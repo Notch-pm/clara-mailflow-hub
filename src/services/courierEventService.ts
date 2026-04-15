@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import type { CourierEvent } from "@/types/courier";
+import type { CourierEventInsert } from "@/types/courier";
 
 export async function getEvents(courierId: string) {
   return supabase
@@ -9,7 +9,7 @@ export async function getEvents(courierId: string) {
     .order("created_at", { ascending: false });
 }
 
-export async function addEvent(data: Omit<CourierEvent, "id" | "created_at">) {
+export async function addEvent(data: CourierEventInsert) {
   return supabase
     .from("courier_events")
     .insert(data)
