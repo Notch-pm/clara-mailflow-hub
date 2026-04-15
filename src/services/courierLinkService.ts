@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import type { CourierLink } from "@/types/courier";
+import type { CourierLinkInsert } from "@/types/courier";
 
 export async function getLinks(courierId: string) {
   return supabase
@@ -9,7 +9,7 @@ export async function getLinks(courierId: string) {
     .order("created_at");
 }
 
-export async function addLink(data: Omit<CourierLink, "id" | "created_at">) {
+export async function addLink(data: CourierLinkInsert) {
   return supabase
     .from("courier_links")
     .insert(data)
