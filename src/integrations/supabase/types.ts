@@ -369,8 +369,11 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          logo_url: string | null
           metadata: Json
           name: string
+          primary_color: string | null
+          secondary_color: string | null
           slug: string
           status: string
           updated_at: string
@@ -378,8 +381,11 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          logo_url?: string | null
           metadata?: Json
           name: string
+          primary_color?: string | null
+          secondary_color?: string | null
           slug: string
           status?: string
           updated_at?: string
@@ -387,8 +393,11 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          logo_url?: string | null
           metadata?: Json
           name?: string
+          primary_color?: string | null
+          secondary_color?: string | null
           slug?: string
           status?: string
           updated_at?: string
@@ -424,6 +433,56 @@ export type Database = {
           },
         ]
       }
+      smtp_settings: {
+        Row: {
+          created_at: string
+          from_email: string
+          from_name: string
+          host: string
+          id: string
+          organization_id: string
+          password: string
+          port: number
+          updated_at: string
+          use_tls: boolean
+          username: string
+        }
+        Insert: {
+          created_at?: string
+          from_email?: string
+          from_name?: string
+          host?: string
+          id?: string
+          organization_id: string
+          password?: string
+          port?: number
+          updated_at?: string
+          use_tls?: boolean
+          username?: string
+        }
+        Update: {
+          created_at?: string
+          from_email?: string
+          from_name?: string
+          host?: string
+          id?: string
+          organization_id?: string
+          password?: string
+          port?: number
+          updated_at?: string
+          use_tls?: boolean
+          username?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "smtp_settings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       users: {
         Row: {
           created_at: string
@@ -431,6 +490,7 @@ export type Database = {
           first_name: string | null
           id: string
           is_active: boolean | null
+          is_superadmin: boolean
           last_name: string | null
           password_hash: string | null
           updated_at: string
@@ -441,6 +501,7 @@ export type Database = {
           first_name?: string | null
           id?: string
           is_active?: boolean | null
+          is_superadmin?: boolean
           last_name?: string | null
           password_hash?: string | null
           updated_at?: string
@@ -451,6 +512,7 @@ export type Database = {
           first_name?: string | null
           id?: string
           is_active?: boolean | null
+          is_superadmin?: boolean
           last_name?: string | null
           password_hash?: string | null
           updated_at?: string
