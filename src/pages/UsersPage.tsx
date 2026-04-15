@@ -84,7 +84,7 @@ export default function UsersPage() {
   const createMutation = useMutation({
     mutationFn: async (values: z.infer<typeof createSchema>) => {
       if (!organizationId) throw new Error("Organisation non sélectionnée");
-      await createOrgMember(organizationId, values, values.role);
+      await createOrgMember(organizationId, { email: values.email, first_name: values.first_name, last_name: values.last_name }, values.role);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["org-members"] });
