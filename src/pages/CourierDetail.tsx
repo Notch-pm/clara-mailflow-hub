@@ -171,30 +171,7 @@ export default function CourierDetail() {
         <TabsContent value="participants">
           <Card>
             <CardContent className="pt-6">
-              {!participants.length ? (
-                <p className="text-sm text-muted-foreground text-center py-4">Aucun participant.</p>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Rôle</TableHead>
-                      <TableHead>Nom</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Organisation</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {participants.map((p: any) => (
-                      <TableRow key={p.id}>
-                        <TableCell><Badge variant="outline">{roleLabels[p.role] ?? p.role}</Badge></TableCell>
-                        <TableCell>{p.name ?? "—"}</TableCell>
-                        <TableCell>{p.email ?? "—"}</TableCell>
-                        <TableCell>{p.organization ?? "—"}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
+              <ParticipantManager courierId={id!} organizationId={organizationId} />
             </CardContent>
           </Card>
         </TabsContent>
