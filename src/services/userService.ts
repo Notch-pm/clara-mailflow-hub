@@ -161,7 +161,6 @@ export async function updateOrgMember(
         if (error) throw error;
       })()
     );
-    );
   }
 
   await Promise.all(promises);
