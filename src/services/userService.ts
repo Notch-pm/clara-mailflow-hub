@@ -138,9 +138,10 @@ export async function updateOrgMember(
 
   if (Object.keys(userUpdates).length > 0) {
     promises.push(
-      supabase.from("users" as any).update(userUpdates).eq("id", userId).then(({ error }) => {
+      (async () => {
+        const { error } = await supabase.from("users" as any).update(userUpdates).eq("id", userId);
         if (error) throw error;
-      })
+      })()
     );
   }
 
@@ -151,14 +152,15 @@ export async function updateOrgMember(
 
   if (Object.keys(membershipUpdates).length > 0) {
     promises.push(
-      supabase
-        .from("organization_users" as any)
-        .update(membershipUpdates)
-        .eq("id", membershipId)
-        .eq("organization_id", organizationId)
-        .then(({ error }) => {
-          if (error) throw error;
-        })
+      (async () => {
+        const { error } = await supabase
+          .from("organization_users" as any)
+          .update(membershipUpdates)
+          .eq("id", membershipId)
+          .eq("organization_id", organizationId);
+        if (error) throw error;
+      })()
+    );
     );
   }
 
