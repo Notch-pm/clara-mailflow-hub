@@ -23,6 +23,7 @@ interface AuthState {
   session: Session | null;
   user: User | null;
   profile: UserProfile | null;
+  profileLoaded: boolean;
   membership: OrgMembership | null;
   loading: boolean;
   signOut: () => Promise<void>;
