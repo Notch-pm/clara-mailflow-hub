@@ -4,21 +4,24 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Users as UsersIcon, Mail, LucideIcon } from "lucide-react";
+import { ArrowLeft, Users as UsersIcon, Mail, Plug, LucideIcon } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import UsersPage from "./UsersPage";
 import SmtpSettings from "@/components/SmtpSettings";
+import OrgIntegrations from "@/components/OrgIntegrations";
 
-type Section = "menu" | "utilisateurs" | "smtp";
+type Section = "menu" | "utilisateurs" | "smtp" | "integrations";
 
 const settingSections: { key: Section; title: string; description: string; icon: LucideIcon }[] = [
   { key: "utilisateurs", title: "Utilisateurs", description: "Gestion des utilisateurs et rôles", icon: UsersIcon },
   { key: "smtp", title: "Notifications mail", description: "Configuration du serveur SMTP", icon: Mail },
+  { key: "integrations", title: "Intégrations", description: "Connexions aux partenaires externes (Arpège…)", icon: Plug },
 ];
 
 const sectionLabels: Record<string, string> = {
   utilisateurs: "Utilisateurs et rôles",
   smtp: "Notifications mail",
+  integrations: "Intégrations externes",
 };
 
 export default function OrgSettings() {
@@ -52,6 +55,7 @@ export default function OrgSettings() {
         </div>
         {activeSection === "utilisateurs" && <UsersPage />}
         {activeSection === "smtp" && <SmtpSettings orgId={orgId!} />}
+        {activeSection === "integrations" && <OrgIntegrations orgId={orgId!} />}
       </div>
     );
   }
