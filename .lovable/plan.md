@@ -1,106 +1,82 @@
 
 
-# Plan: Clara -- SaaS de gestion du courrier administratif
+# Plan : Editeur visuel de Workflows avec @xyflow/react
 
-## Vue d'ensemble
+## Aucune migration, aucune nouvelle table
 
-Construire l'application Clara en reprenant le design system et les composants de navigation de GFA-Ariane, puis structurer les services frontend (Supabase client-side) et les pages pour la gestion du courrier multi-tenant.
+Toutes les opérations utilisent exclusivement `workflows`, `workflow_states`, `workflow_transitions` et `couriers`.
 
-**Rappel**: pas de backend Node.js possible dans Lovable. Les "services backend" seront des modules TypeScript client-side qui encapsulent les requêtes Supabase, filtrées par `organization_id`.
+## Fichiers a creer/modifier
 
----
+### 1. Installer `@xyflow/react`
 
-## Etape 1 -- Design system et composants de navigation (depuis GFA-Ariane)
+### 2. Service layer — `src/services/workflowService.ts`
+Compléter avec les fonctions CRUD manquantes :
+- `createWorkflow`, `updateWorkflow`, `deleteWorkflow`
+- `createState`, `updateState`, `deleteState`
+- `createTransition`, `deleteTransition`
+- `getAffectedCouriers(stateIds)` — compte les courriers liés à des states modifiés
 
-**Fichiers a modifier/creer:**
+### 3. Page liste — `src/pages/Workflows.tsx`
+Refondre complètement :
+- Charger les workflows via `getWorkflows` + `useQuery`
+- Cards avec nom, nombre d'états, badge "default"
+- Dialog de création (nom du workflow)
+- Clic sur card → navigation `/workflows/:id`
 
-- `src/index.css` -- Reprendre la palette Notch (vert/jaune), la font Nunito Sans, les ombres Airbnb, les utilitaires compact mode
-- `tailwind.config.ts` -- Ajouter fontFamily, `success`/`warning` colors, `boxShadow` airbnb, animation `pulse-soft`
-- `src/components/NavLink.tsx` -- Remplacer par la version GFA-Ariane (avec `activeClassName`)
-- `src/components/AppLayout.tsx` -- Layout principal (header + sidebar + outlet + mobile nav), adapte pour Clara (sans org color injection pour l'instant)
-- `src/components/AppHeader.tsx` -- Header avec logo "Clara", profil dropdown (simplifie, sans sites)
-- `src/components/AppSidebar.tsx` -- Sidebar avec icones Lucide (Mail, MailOpen, Link, GitBranch, Send) pour les sections Clara
-- `src/components/MobileNav.tsx` -- Navigation mobile bottom bar
+### 4. Page editeur — `src/pages/WorkflowDetail.tsx` (nouveau)
+Layout 3 colonnes :
+- **Gauche** : palette (boutons pour ajouter un noeud par catégorie)
+- **Centre** : canvas `<ReactFlow>` avec nodes/edges
+- **Droite** : panneau d'édition du noeud sélectionné (name, category dropdown, is_initial toggle, is_final toggle, bouton supprimer)
 
-**Assets**: Utiliser des icones Lucide plutot que copier les SVG specifiques a Ariane (non pertinents pour le courrier).
+Comportement :
+- Charger workflow + states + transitions → convertir en nodes/edges React Flow
+- Positions des noeuds stockées dans `workflow_states.metadata` (le champ n'existe pas — on utilisera un layout automatique dagre ou des positions calculées en grille, stockées en state local)
+- Drag entre handles → crée une transition
+- Bouton "Sauvegarder" → sync complet (upsert states, upsert transitions, supprime les orphelins)
+- Validation avant save : au moins 1 état initial, cohérence transitions
 
-## Etape 2 -- Services (modules Supabase client-side)
+**Note** : `workflow_states` n'a pas de colonne `metadata` ni de colonne position. Les positions des noeuds seront calculées automatiquement via un algorithme dagre layout (bibliothèque `dagre` ou calcul en grille simple) à chaque chargement. Pas de persistance des positions.
 
-Chaque service encapsule les operations CRUD filtrees par `organization_id`.
+### 5. Noeud custom — `src/components/workflow/StateNode.tsx`
+- Affiche le nom de l'état
+- Badge coloré par catégorie (pending=jaune, processing=bleu, processed=vert, archived=gris)
+- Indicateurs visuels initial (eclair) / final (check)
+- Handles source (bottom) et target (top) pour connexions
 
-- `src/services/courierService.ts` -- CRUD couriers (entrants/sortants), filtrage par type/status
-- `src/services/courierParticipantService.ts` -- Gestion des participants (expediteur, destinataire)
-- `src/services/courierDocumentService.ts` -- Upload/liste des documents lies
-- `src/services/courierEventService.ts` -- Historique des evenements (creation, transition, commentaire)
-- `src/services/courierLinkService.ts` -- Liaison avec tickets externes
-- `src/services/workflowService.ts` -- Lecture des workflows, etats, transitions
-- `src/services/courierSequenceService.ts` -- Generation de numeros de reference
+### 6. Panneau d'edition — `src/components/workflow/StateEditPanel.tsx`
+- Formulaire : name (input), category (select parmi les 4 valeurs), is_initial (switch), is_final (switch)
+- Bouton supprimer l'état (avec confirmation)
 
-**Pattern commun:**
-```typescript
-export async function getCouriers(organizationId: string, filters?) {
-  const query = supabase
-    .from('couriers')
-    .select('*, courier_participants(*), courier_documents(*)')
-    .eq('organization_id', organizationId);
-  // appliquer filtres...
-  return query;
-}
-```
+### 7. Regles metier dans l'editeur
+- 1 seul état initial : si on toggle `is_initial` sur un noeud, les autres sont automatiquement désactivés
+- Un état `archived` ne peut pas avoir de transitions sortantes
+- Un état `processed` ne peut pas avoir de transition vers `pending`
+- Suppression d'un état → supprime aussi ses transitions associées
 
-## Etape 3 -- Types TypeScript
+### 8. Integration courriers
+- Avant suppression d'un état lié à des courriers, afficher un dialog de confirmation avec le nombre de courriers impactés
+- Option de réassigner les courriers à un autre état du workflow
 
-- `src/types/courier.ts` -- Interfaces pour toutes les tables (Courier, CourierParticipant, CourierDocument, CourierEvent, CourierLink, Workflow, WorkflowState, WorkflowTransition, CourierSequence)
+### 9. Routing — `src/App.tsx`
+- Ajouter route `/workflows/:id` → `WorkflowDetail`
 
-## Etape 4 -- Pages et routes
+## Fichiers crees
 
-- `src/pages/Dashboard.tsx` -- Tableau de bord (compteurs courriers entrants/sortants, recents)
-- `src/pages/CourriersEntrants.tsx` -- Liste des courriers entrants avec filtres
-- `src/pages/CourriersSortants.tsx` -- Liste des courriers sortants
-- `src/pages/CourierDetail.tsx` -- Detail d'un courrier (infos, participants, documents, evenements, liens)
-- `src/pages/Workflows.tsx` -- Visualisation des workflows et etats
-- `src/App.tsx` -- Mise a jour des routes avec AppLayout comme layout parent
+| Fichier | Role |
+|---------|------|
+| `src/pages/WorkflowDetail.tsx` | Page editeur canvas |
+| `src/components/workflow/StateNode.tsx` | Noeud custom React Flow |
+| `src/components/workflow/StateEditPanel.tsx` | Panneau lateral d'edition |
+| `src/components/workflow/WorkflowToolbar.tsx` | Barre d'outils (save, add state) |
 
-## Etape 5 -- Contexte d'organisation
+## Fichiers modifies
 
-- `src/contexts/OrganizationContext.tsx` -- Fournit `organizationId` a toute l'app (pour le moment, valeur configurable ou depuis l'auth Supabase)
-
----
-
-## Architecture des fichiers
-
-```text
-src/
-  components/
-    AppLayout.tsx
-    AppHeader.tsx
-    AppSidebar.tsx
-    MobileNav.tsx
-    NavLink.tsx
-  contexts/
-    OrganizationContext.tsx
-  services/
-    courierService.ts
-    courierParticipantService.ts
-    courierDocumentService.ts
-    courierEventService.ts
-    courierLinkService.ts
-    workflowService.ts
-    courierSequenceService.ts
-  types/
-    courier.ts
-  pages/
-    Dashboard.tsx
-    CourriersEntrants.tsx
-    CourriersSortants.tsx
-    CourierDetail.tsx
-    Workflows.tsx
-```
-
-## Contraintes respectees
-
-- Aucune table creee, aucune migration
-- Toutes les requetes filtrees par `organization_id`
-- Relations FK utilisees dans les `select` Supabase
-- Code modulaire et maintenable
+| Fichier | Modification |
+|---------|-------------|
+| `src/services/workflowService.ts` | Ajout CRUD complet |
+| `src/pages/Workflows.tsx` | Liste dynamique + creation |
+| `src/App.tsx` | Route `/workflows/:id` |
+| `package.json` | `@xyflow/react`, `dagre` |
 
