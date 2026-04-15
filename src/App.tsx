@@ -5,7 +5,9 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { OrganizationProvider } from "@/contexts/OrganizationContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { isSuperAdmin } from "@/lib/permissions";
 import { AppLayout } from "@/components/AppLayout";
+import { SuperAdminLayout } from "@/components/SuperAdminLayout";
 import Dashboard from "@/pages/Dashboard";
 import CourriersEntrants from "@/pages/CourriersEntrants";
 import CourriersSortants from "@/pages/CourriersSortants";
@@ -16,6 +18,9 @@ import Liens from "@/pages/Liens";
 import Login from "@/pages/Login";
 import ResetPassword from "@/pages/ResetPassword";
 import ActivateAccount from "@/pages/ActivateAccount";
+import SuperAdminDashboard from "@/pages/SuperAdminDashboard";
+import OrganizationsAdmin from "@/pages/OrganizationsAdmin";
+import OrgSettings from "@/pages/OrgSettings";
 import NotFound from "@/pages/NotFound";
 import { Loader2 } from "lucide-react";
 
@@ -30,18 +35,36 @@ function LoadingScreen() {
 }
 
 function ProtectedRoutes() {
-  const { session, loading } = useAuth();
+  const { session, loading, profile } = useAuth();
 
   if (loading) return <LoadingScreen />;
   if (!session) return <Navigate to="/connexion" replace />;
 
+  // Redirect superadmins to their dashboard
+  if (isSuperAdmin(profile)) {
+    return <Navigate to="/superadmin" replace />;
+  }
+
   return <Outlet />;
 }
 
-function PublicRoute({ children }: { children: React.ReactNode }) {
-  const { session, loading } = useAuth();
+function SuperAdminRoute() {
+  const { session, loading, profile } = useAuth();
+
   if (loading) return <LoadingScreen />;
-  if (session) return <Navigate to="/" replace />;
+  if (!session) return <Navigate to="/connexion" replace />;
+  if (!isSuperAdmin(profile)) return <Navigate to="/" replace />;
+
+  return <SuperAdminLayout />;
+}
+
+function PublicRoute({ children }: { children: React.ReactNode }) {
+  const { session, loading, profile } = useAuth();
+  if (loading) return <LoadingScreen />;
+  if (session) {
+    if (isSuperAdmin(profile)) return <Navigate to="/superadmin" replace />;
+    return <Navigate to="/" replace />;
+  }
   return <>{children}</>;
 }
 
@@ -57,6 +80,15 @@ const App = () => (
               <Route path="/connexion" element={<PublicRoute><Login /></PublicRoute>} />
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/activer-compte" element={<ActivateAccount />} />
+
+              {/* Super Admin routes */}
+              <Route path="/superadmin" element={<SuperAdminRoute />}>
+                <Route index element={<SuperAdminDashboard />} />
+                <Route path="organisations" element={<OrganizationsAdmin />} />
+                <Route path="organisations/:orgId" element={<OrgSettings />} />
+              </Route>
+
+              {/* Regular user routes */}
               <Route element={<ProtectedRoutes />}>
                 <Route element={<AppLayout />}>
                   <Route path="/" element={<Dashboard />} />

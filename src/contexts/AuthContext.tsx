@@ -9,6 +9,7 @@ interface UserProfile {
   first_name: string | null;
   last_name: string | null;
   is_active: boolean | null;
+  is_superadmin: boolean;
 }
 
 interface OrgMembership {
@@ -46,7 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Fetch user profile
     const { data: profileData } = await supabase
       .from("users")
-      .select("id, email, first_name, last_name, is_active")
+      .select("id, email, first_name, last_name, is_active, is_superadmin")
       .eq("id", userId)
       .maybeSingle();
 
