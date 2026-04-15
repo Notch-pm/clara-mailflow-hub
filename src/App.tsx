@@ -40,6 +40,9 @@ function ProtectedRoutes() {
   if (loading) return <LoadingScreen />;
   if (!session) return <Navigate to="/connexion" replace />;
 
+  // Wait for profile to be loaded before deciding
+  if (!profile) return <LoadingScreen />;
+
   // Redirect superadmins to their dashboard
   if (isSuperAdmin(profile)) {
     return <Navigate to="/superadmin" replace />;
@@ -53,6 +56,10 @@ function SuperAdminRoute() {
 
   if (loading) return <LoadingScreen />;
   if (!session) return <Navigate to="/connexion" replace />;
+
+  // Wait for profile to be loaded
+  if (!profile) return <LoadingScreen />;
+
   if (!isSuperAdmin(profile)) return <Navigate to="/" replace />;
 
   return <SuperAdminLayout />;

@@ -44,13 +44,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function fetchUserData(userId: string): Promise<UserProfile | null> {
-    // Fetch user profile
+    // Fetch user profile — cast needed because is_superadmin isn't in generated types yet
     const { data: profileData } = await supabase
       .from("users")
       .select("id, email, first_name, last_name, is_active, is_superadmin")
       .eq("id", userId)
-      .maybeSingle();
+      .maybeSingle() as { data: UserProfile | null };
 
+    console.log("[AuthContext] profile fetched:", profileData?.email, "superadmin:", profileData?.is_superadmin);
     setProfile(profileData);
 
     // Fetch organization membership
