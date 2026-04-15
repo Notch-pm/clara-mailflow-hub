@@ -5,13 +5,32 @@ import type { Database } from './types';
 const SUPABASE_URL = "https://aullweizxcjbvtdspjli.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF1bGx3ZWl6eGNqYnZ0ZHNwamxpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNjM0MzQsImV4cCI6MjA5MTgzOTQzNH0.51GHwshenJSgaB8WeckVojfsQGVtuN4sfTbY_b0CbE4";
 
-// Import the supabase client like this:
-// import { supabase } from "@/integrations/supabase/client";
+/**
+ * The current organization ID injected as `x-org-id` header on every
+ * Supabase request so that PostgREST RLS policies can read it via
+ * `current_setting('request.header.x-org-id', true)`.
+ */
+let _orgId: string | null = null;
+
+export function setOrganizationId(orgId: string | null) {
+  _orgId = orgId;
+}
 
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
     storage: localStorage,
     persistSession: true,
     autoRefreshToken: true,
-  }
+  },
+  global: {
+    fetch: (input, init) => {
+      init = init ?? {};
+      const headers = new Headers(init.headers);
+      if (_orgId) {
+        headers.set('x-org-id', _orgId);
+      }
+      init.headers = headers;
+      return fetch(input, init);
+    },
+  },
 });

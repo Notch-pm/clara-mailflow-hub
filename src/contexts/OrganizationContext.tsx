@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { setOrganizationId as setClientOrgId } from "@/integrations/supabase/client";
 
 interface OrganizationContextType {
   organizationId: string | null;
@@ -11,7 +12,24 @@ const OrganizationContext = createContext<OrganizationContextType>({
 });
 
 export function OrganizationProvider({ children }: { children: ReactNode }) {
-  const [organizationId, setOrganizationId] = useState<string | null>(null);
+  const [organizationId, setOrganizationIdState] = useState<string | null>(
+    () => localStorage.getItem("clara_org_id")
+  );
+
+  const setOrganizationId = (id: string | null) => {
+    setOrganizationIdState(id);
+    setClientOrgId(id);
+    if (id) {
+      localStorage.setItem("clara_org_id", id);
+    } else {
+      localStorage.removeItem("clara_org_id");
+    }
+  };
+
+  // Sync on mount
+  useEffect(() => {
+    setClientOrgId(organizationId);
+  }, []);
 
   return (
     <OrganizationContext.Provider value={{ organizationId, setOrganizationId }}>
