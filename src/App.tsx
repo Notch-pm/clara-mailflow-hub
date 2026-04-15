@@ -35,13 +35,16 @@ function LoadingScreen() {
 }
 
 function ProtectedRoutes() {
-  const { session, loading, profile } = useAuth();
+  const { session, loading, profile, profileLoaded } = useAuth();
 
   if (loading) return <LoadingScreen />;
   if (!session) return <Navigate to="/connexion" replace />;
 
-  // Wait for profile to be loaded before deciding
-  if (!profile) return <LoadingScreen />;
+  // Wait for profile fetch to complete
+  if (!profileLoaded) return <LoadingScreen />;
+
+  // If profile is null after loading, user has no record — show error
+  if (!profile) return <Navigate to="/connexion" replace />;
 
   // Redirect superadmins to their dashboard
   if (isSuperAdmin(profile)) {
@@ -52,15 +55,13 @@ function ProtectedRoutes() {
 }
 
 function SuperAdminRoute() {
-  const { session, loading, profile } = useAuth();
+  const { session, loading, profile, profileLoaded } = useAuth();
 
   if (loading) return <LoadingScreen />;
   if (!session) return <Navigate to="/connexion" replace />;
 
-  // Wait for profile to be loaded
-  if (!profile) return <LoadingScreen />;
-
-  if (!isSuperAdmin(profile)) return <Navigate to="/" replace />;
+  if (!profileLoaded) return <LoadingScreen />;
+  if (!profile || !isSuperAdmin(profile)) return <Navigate to="/" replace />;
 
   return <SuperAdminLayout />;
 }

@@ -23,6 +23,7 @@ interface AuthState {
   session: Session | null;
   user: User | null;
   profile: UserProfile | null;
+  profileLoaded: boolean;
   membership: OrgMembership | null;
   loading: boolean;
   signOut: () => Promise<void>;
@@ -34,12 +35,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [profileLoaded, setProfileLoaded] = useState(false);
   const [membership, setMembership] = useState<OrgMembership | null>(null);
   const [loading, setLoading] = useState(true);
   const userIdRef = useRef<string | null>(null);
 
   function clearUserData() {
     setProfile(null);
+    setProfileLoaded(false);
     setMembership(null);
   }
 
@@ -110,6 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearUserData();
     }
 
+    setProfileLoaded(true);
     setLoading(false);
   }
 
@@ -146,7 +150,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ session, user, profile, membership, loading, signOut }}
+      value={{ session, user, profile, profileLoaded, membership, loading, signOut }}
     >
       {children}
     </AuthContext.Provider>
