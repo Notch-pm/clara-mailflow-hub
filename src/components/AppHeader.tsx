@@ -1,7 +1,7 @@
 import { Link, useLocation } from "react-router-dom";
 import { ChevronsUpDown, LogOut, User, Mail, Building2 } from "lucide-react";
-import parametresIcon from "@/assets/icons/parametres.svg";
 import { useEffect, useState } from "react";
+import parametresIcon from "@/assets/icons/parametres.svg";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,21 +14,20 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useOrganization } from "@/contexts/OrganizationContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 
 export function AppHeader() {
   const location = useLocation();
   const isSettings = location.pathname.startsWith("/parametres");
   const { organizationId, setOrganizationId } = useOrganization();
+  const { profile, membership, signOut } = useAuth();
   const [orgs, setOrgs] = useState<{ id: string; name: string }[]>([]);
   const [manualId, setManualId] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  // Fetch organizations (will only return those matching current x-org-id header,
-  // so we do a raw fetch without the header to list all accessible orgs)
   useEffect(() => {
     async function loadOrgs() {
-      // Use service_role or a public listing — for now try to fetch what's accessible
       const { data } = await supabase.from("organizations").select("id, name").limit(50);
       if (data?.length) setOrgs(data);
     }
@@ -44,6 +43,16 @@ export function AppHeader() {
       setManualId("");
     }
   };
+
+  const displayName = profile
+    ? [profile.first_name, profile.last_name].filter(Boolean).join(" ") || profile.email
+    : "Utilisateur";
+
+  const initials = profile
+    ? [profile.first_name?.[0], profile.last_name?.[0]].filter(Boolean).join("").toUpperCase() || "U"
+    : "U";
+
+  const roleName = membership?.role ?? "—";
 
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b bg-background px-4 shrink-0">
@@ -126,7 +135,7 @@ export function AppHeader() {
           <DropdownMenuTrigger asChild>
             <button className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-muted transition-colors focus:outline-none">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-semibold">
-                U
+                {initials}
               </div>
               <ChevronsUpDown className="h-3 w-3 text-muted-foreground hidden sm:block" />
             </button>
@@ -134,8 +143,8 @@ export function AppHeader() {
           <DropdownMenuContent side="bottom" align="end" className="w-48">
             <DropdownMenuLabel>
               <div className="flex flex-col">
-                <span>Utilisateur</span>
-                <span className="text-xs font-normal text-muted-foreground">Administrateur</span>
+                <span>{displayName}</span>
+                <span className="text-xs font-normal text-muted-foreground capitalize">{roleName}</span>
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
@@ -147,8 +156,7 @@ export function AppHeader() {
             <DropdownMenuItem
               className="gap-2 cursor-pointer text-destructive"
               onClick={async () => {
-                await supabase.auth.signOut();
-                window.location.href = "/";
+                await signOut();
               }}
             >
               <LogOut className="h-4 w-4" />
