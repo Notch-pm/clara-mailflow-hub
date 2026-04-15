@@ -1,6 +1,6 @@
 import { useLocation } from "react-router-dom";
 import { NavLink } from "@/components/NavLink";
-import { LayoutDashboard, MailOpen, Send, Link2, GitBranch, LucideIcon } from "lucide-react";
+import { LayoutDashboard, MailOpen, Send, Link2, GitBranch, UserCog, LucideIcon } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -20,6 +20,7 @@ const navItems: NavItem[] = [
   { title: "Courriers sortants", url: "/courriers-sortants", icon: Send },
   { title: "Liens externes", url: "/liens", icon: Link2 },
   { title: "Workflows", url: "/workflows", icon: GitBranch },
+  { title: "Utilisateurs", url: "/utilisateurs", icon: UserCog },
 ];
 
 function SidebarItem({ item }: { item: NavItem }) {
