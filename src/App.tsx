@@ -10,6 +10,7 @@ import CourriersEntrants from "@/pages/CourriersEntrants";
 import CourriersSortants from "@/pages/CourriersSortants";
 import CourierDetail from "@/pages/CourierDetail";
 import Workflows from "@/pages/Workflows";
+import WorkflowDetail from "@/pages/WorkflowDetail";
 import Liens from "@/pages/Liens";
 import UsersPage from "@/pages/UsersPage";
 import NotFound from "@/pages/NotFound";
