@@ -1,5 +1,6 @@
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { ChevronsUpDown, LogOut, User, Mail, Building2 } from "lucide-react";
+import parametresIcon from "@/assets/icons/parametres.svg";
 import { useEffect, useState } from "react";
 import {
   DropdownMenu,
@@ -16,6 +17,8 @@ import { useOrganization } from "@/contexts/OrganizationContext";
 import { supabase } from "@/integrations/supabase/client";
 
 export function AppHeader() {
+  const location = useLocation();
+  const isSettings = location.pathname.startsWith("/parametres");
   const { organizationId, setOrganizationId } = useOrganization();
   const [orgs, setOrgs] = useState<{ id: string; name: string }[]>([]);
   const [manualId, setManualId] = useState("");
@@ -108,6 +111,17 @@ export function AppHeader() {
       <div className="flex-1" />
 
       <div className="flex items-center gap-2 shrink-0">
+        <Link
+          to="/parametres"
+          className={`flex items-center justify-center h-9 w-9 rounded-lg transition-colors ${
+            isSettings
+              ? "bg-primary/10 text-primary"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted"
+          }`}
+          title="Paramètres"
+        >
+          <img src={parametresIcon} alt="Paramètres" className="h-5 w-5" />
+        </Link>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-muted transition-colors focus:outline-none">
