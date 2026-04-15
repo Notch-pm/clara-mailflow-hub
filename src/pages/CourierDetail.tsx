@@ -16,6 +16,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { toast } from "sonner";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { getCourierById, updateCourier } from "@/services/courierService";
+import ParticipantManager from "@/components/courier/ParticipantManager";
 
 const updateSchema = z.object({
   subject: z.string().max(500).optional(),
