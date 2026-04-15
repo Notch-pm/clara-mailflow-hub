@@ -1,5 +1,5 @@
 import { NavLink } from "@/components/NavLink";
-import { LayoutDashboard, MailOpen, Send, Link2, Settings, LucideIcon } from "lucide-react";
+import { LayoutDashboard, MailOpen, Send, Link2, LucideIcon } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -18,7 +18,6 @@ const navItems: NavItem[] = [
   { title: "Courriers entrants", url: "/courriers-entrants", icon: MailOpen },
   { title: "Courriers sortants", url: "/courriers-sortants", icon: Send },
   { title: "Liens externes", url: "/liens", icon: Link2 },
-  { title: "Paramètres", url: "/parametres", icon: Settings },
 ];
 
 function SidebarItem({ item }: { item: NavItem }) {
@@ -50,14 +49,10 @@ export function AppSidebar() {
 
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-0.5 pointer-events-none">
           <div className="pointer-events-auto flex flex-col items-center gap-0.5">
-            {navItems.slice(1, -1).map((item) => (
+            {navItems.slice(1).map((item) => (
               <SidebarItem key={item.url} item={item} />
             ))}
           </div>
-        </div>
-
-        <div className="mt-auto">
-          <SidebarItem item={navItems[navItems.length - 1]} />
         </div>
       </nav>
     </TooltipProvider>

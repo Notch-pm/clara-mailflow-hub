@@ -1,5 +1,5 @@
 import { NavLink } from "@/components/NavLink";
-import { LayoutDashboard, MailOpen, Send, Link2, Settings, LucideIcon } from "lucide-react";
+import { LayoutDashboard, MailOpen, Send, Link2, LucideIcon } from "lucide-react";
 
 interface NavItem {
   title: string;
@@ -12,7 +12,6 @@ const navItems: NavItem[] = [
   { title: "Entrants", url: "/courriers-entrants", icon: MailOpen },
   { title: "Sortants", url: "/courriers-sortants", icon: Send },
   { title: "Liens", url: "/liens", icon: Link2 },
-  { title: "Paramètres", url: "/parametres", icon: Settings },
 ];
 
 export function MobileNav() {
