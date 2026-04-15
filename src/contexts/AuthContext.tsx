@@ -42,6 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   function clearUserData() {
     setProfile(null);
+    setProfileLoaded(false);
     setMembership(null);
   }
 
@@ -112,6 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearUserData();
     }
 
+    setProfileLoaded(true);
     setLoading(false);
   }
 
@@ -148,7 +150,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ session, user, profile, membership, loading, signOut }}
+      value={{ session, user, profile, profileLoaded, membership, loading, signOut }}
     >
       {children}
     </AuthContext.Provider>
