@@ -144,7 +144,13 @@ export function AppHeader() {
               Mon profil
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="gap-2 cursor-pointer text-destructive">
+            <DropdownMenuItem
+              className="gap-2 cursor-pointer text-destructive"
+              onClick={async () => {
+                await supabase.auth.signOut();
+                window.location.href = "/";
+              }}
+            >
               <LogOut className="h-4 w-4" />
               Déconnexion
             </DropdownMenuItem>
