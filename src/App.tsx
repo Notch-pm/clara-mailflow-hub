@@ -11,6 +11,7 @@ import CourriersSortants from "@/pages/CourriersSortants";
 import CourierDetail from "@/pages/CourierDetail";
 import Workflows from "@/pages/Workflows";
 import Liens from "@/pages/Liens";
+import UsersPage from "@/pages/UsersPage";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -29,6 +30,7 @@ const App = () => (
               <Route path="/courriers-sortants" element={<CourriersSortants />} />
               <Route path="/courrier/:id" element={<CourierDetail />} />
               <Route path="/workflows" element={<Workflows />} />
+              <Route path="/utilisateurs" element={<UsersPage />} />
               <Route path="/liens" element={<Liens />} />
             </Route>
             <Route path="*" element={<NotFound />} />
