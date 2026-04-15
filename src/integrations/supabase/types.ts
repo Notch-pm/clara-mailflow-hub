@@ -323,6 +323,53 @@ export type Database = {
           },
         ]
       }
+      organization_integrations: {
+        Row: {
+          access_token: string | null
+          api_base_url: string | null
+          api_url_ticketingapp: string | null
+          client_id: string | null
+          client_secret: string | null
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          organization_id: string | null
+          provider: string
+        }
+        Insert: {
+          access_token?: string | null
+          api_base_url?: string | null
+          api_url_ticketingapp?: string | null
+          client_id?: string | null
+          client_secret?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          organization_id?: string | null
+          provider: string
+        }
+        Update: {
+          access_token?: string | null
+          api_base_url?: string | null
+          api_url_ticketingapp?: string | null
+          client_id?: string | null
+          client_secret?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          organization_id?: string | null
+          provider?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_integrations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organization_users: {
         Row: {
           created_at: string
