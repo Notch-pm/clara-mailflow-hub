@@ -1,0 +1,1 @@
+UPDATE public.users SET is_superadmin = true WHERE email = 'jacquotlaurent@ik.me';
