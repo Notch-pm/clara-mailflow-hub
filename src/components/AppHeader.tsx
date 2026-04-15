@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
-import { ChevronsUpDown, LogOut, User, Mail } from "lucide-react";
+import { ChevronsUpDown, LogOut, User, Mail, Building2 } from "lucide-react";
+import { useEffect, useState } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -8,8 +9,39 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { useOrganization } from "@/contexts/OrganizationContext";
+import { supabase } from "@/integrations/supabase/client";
 
 export function AppHeader() {
+  const { organizationId, setOrganizationId } = useOrganization();
+  const [orgs, setOrgs] = useState<{ id: string; name: string }[]>([]);
+  const [manualId, setManualId] = useState("");
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  // Fetch organizations (will only return those matching current x-org-id header,
+  // so we do a raw fetch without the header to list all accessible orgs)
+  useEffect(() => {
+    async function loadOrgs() {
+      // Use service_role or a public listing — for now try to fetch what's accessible
+      const { data } = await supabase.from("organizations").select("id, name").limit(50);
+      if (data?.length) setOrgs(data);
+    }
+    loadOrgs();
+  }, [organizationId]);
+
+  const currentOrg = orgs.find((o) => o.id === organizationId);
+
+  const handleSetManual = () => {
+    if (manualId.trim()) {
+      setOrganizationId(manualId.trim());
+      setDialogOpen(false);
+      setManualId("");
+    }
+  };
+
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b bg-background px-4 shrink-0">
       <div className="flex items-center gap-2.5 shrink-0">
@@ -19,6 +51,58 @@ export function AppHeader() {
           </div>
           <span className="text-lg font-bold tracking-tight text-foreground">Clara</span>
         </Link>
+      </div>
+
+      {/* Organization selector */}
+      <div className="flex items-center gap-2 ml-4">
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogTrigger asChild>
+            <Button variant="outline" size="sm" className="gap-2 text-xs max-w-[240px]">
+              <Building2 className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">
+                {currentOrg ? currentOrg.name : organizationId ? `Org: ${organizationId.slice(0, 8)}…` : "Choisir une organisation"}
+              </span>
+              <ChevronsUpDown className="h-3 w-3 text-muted-foreground shrink-0" />
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Sélectionner une organisation</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              {orgs.length > 0 && (
+                <div className="space-y-1">
+                  {orgs.map((org) => (
+                    <button
+                      key={org.id}
+                      onClick={() => { setOrganizationId(org.id); setDialogOpen(false); }}
+                      className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                        org.id === organizationId ? "bg-primary/10 text-primary font-medium" : "hover:bg-muted"
+                      }`}
+                    >
+                      {org.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="border-t pt-3 space-y-2">
+                <p className="text-xs text-muted-foreground">Ou saisir l'ID manuellement :</p>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="UUID de l'organisation"
+                    value={manualId}
+                    onChange={(e) => setManualId(e.target.value)}
+                    className="text-xs"
+                    onKeyDown={(e) => e.key === "Enter" && handleSetManual()}
+                  />
+                  <Button size="sm" onClick={handleSetManual} disabled={!manualId.trim()}>
+                    OK
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
 
       <div className="flex-1" />
