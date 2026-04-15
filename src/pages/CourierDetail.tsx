@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, FileText, Users, Clock, Link2, Pencil } from "lucide-react";
+import { ArrowLeft, FileText, Users, Clock, Link2, Pencil, Paperclip } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { getCourierById, updateCourier } from "@/services/courierService";
 import ParticipantManager from "@/components/courier/ParticipantManager";
+import DocumentManager from "@/components/courier/DocumentManager";
 
 const updateSchema = z.object({
   subject: z.string().max(500).optional(),
@@ -135,6 +136,7 @@ export default function CourierDetail() {
         <TabsList>
           <TabsTrigger value="info" className="gap-1.5"><FileText className="h-4 w-4" />Informations</TabsTrigger>
           <TabsTrigger value="participants" className="gap-1.5"><Users className="h-4 w-4" />Participants ({participants.length})</TabsTrigger>
+          <TabsTrigger value="documents" className="gap-1.5"><Paperclip className="h-4 w-4" />Documents ({documents.length})</TabsTrigger>
           <TabsTrigger value="events" className="gap-1.5"><Clock className="h-4 w-4" />Historique ({events.length})</TabsTrigger>
           <TabsTrigger value="links" className="gap-1.5"><Link2 className="h-4 w-4" />Liens ({links.length})</TabsTrigger>
         </TabsList>
@@ -151,19 +153,14 @@ export default function CourierDetail() {
                 <div><dt className="text-muted-foreground">Envoyé le</dt><dd>{courier.sent_at ? new Date(courier.sent_at).toLocaleString("fr-FR") : "—"}</dd></div>
                 <div><dt className="text-muted-foreground">Créé le</dt><dd>{new Date(courier.created_at).toLocaleString("fr-FR")}</dd></div>
               </dl>
-              {documents.length > 0 && (
-                <div className="mt-6">
-                  <h3 className="text-sm font-medium mb-2">Documents ({documents.length})</h3>
-                  <ul className="space-y-1 text-sm">
-                    {documents.map((d: any) => (
-                      <li key={d.id} className="flex items-center gap-2">
-                        <FileText className="h-3.5 w-3.5 text-muted-foreground" />
-                        {d.file_name ?? d.storage_key}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="documents">
+          <Card>
+            <CardContent className="pt-6">
+              <DocumentManager courierId={id!} organizationId={organizationId} />
             </CardContent>
           </Card>
         </TabsContent>
