@@ -100,16 +100,23 @@ export default function SmtpSettings({ orgId }: { orgId: string }) {
       const { data, error } = await supabase.functions.invoke("send-test-email", {
         body: { to: testEmail, organization_id: orgId },
       });
-      if (error) throw error;
+      if (error) {
+        const errBody = typeof error === "object" && "context" in error
+          ? await (error as any).context?.json?.().catch(() => null)
+          : null;
+        const errMsg = errBody?.error || error.message || String(error);
+        throw new Error(errMsg);
+      }
       if (data?.error) throw new Error(data.error);
+      if (!data?.success) throw new Error("Réponse inattendue du serveur");
       toast.success("E-mail de test envoyé avec succès !");
       setTestDialogOpen(false);
       setTestEmail("");
     } catch (e: any) {
       const msg = e.message || "";
-      if (msg.includes("Authentication failed") || msg.includes("Invalid login")) {
-        toast.error("Authentification SMTP échouée : vérifiez l'identifiant et le mot de passe.");
-      } else if (msg.includes("ECONNREFUSED") || msg.includes("ETIMEDOUT")) {
+      if (msg.includes("Authentication failed") || msg.includes("Invalid login") || msg.includes("EAUTH")) {
+        toast.error("Authentification SMTP échouée : vérifiez l'identifiant et le mot de passe configurés.");
+      } else if (msg.includes("ECONNREFUSED") || msg.includes("ETIMEDOUT") || msg.includes("getaddrinfo")) {
         toast.error("Impossible de se connecter au serveur SMTP : vérifiez l'hôte et le port.");
       } else {
         toast.error("Échec de l'envoi : " + msg);
