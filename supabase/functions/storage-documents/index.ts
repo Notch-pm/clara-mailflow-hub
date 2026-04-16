@@ -2,7 +2,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-org-id",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-org-id",
   "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
 };
 
@@ -14,6 +15,9 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 const BUCKET = "clara-documents";
+
+/** Default max file size: 10 MB */
+const DEFAULT_MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 function getAdminClient() {
   const url = Deno.env.get("SUPABASE_URL");
@@ -36,13 +40,34 @@ async function verifyAuth(req: Request) {
   return data.user;
 }
 
+/**
+ * Read the organization's max_file_size from organizations.metadata.
+ * Falls back to DEFAULT_MAX_FILE_SIZE if not set.
+ */
+async function getMaxFileSize(
+  admin: ReturnType<typeof getAdminClient>,
+  orgId: string
+): Promise<number> {
+  const { data } = await admin
+    .from("organizations")
+    .select("metadata")
+    .eq("id", orgId)
+    .single();
+
+  const meta = data?.metadata as Record<string, unknown> | null;
+  if (meta && typeof meta.max_file_size === "number" && meta.max_file_size > 0) {
+    return meta.max_file_size;
+  }
+  return DEFAULT_MAX_FILE_SIZE;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
   try {
-    const user = await verifyAuth(req);
+    await verifyAuth(req);
     const admin = getAdminClient();
     const url = new URL(req.url);
     const action = url.searchParams.get("action");
@@ -50,68 +75,122 @@ Deno.serve(async (req) => {
 
     if (!orgId) return jsonResponse({ error: "Missing x-org-id header" }, 400);
 
-    // All paths are prefixed with org id for isolation
-    const pathPrefix = `${orgId}/`;
+    // Validate org id format
+    const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRe.test(orgId)) return jsonResponse({ error: "Invalid x-org-id" }, 400);
 
+    const pathPrefix = `org_${orgId}/`;
+
+    // ── UPLOAD ────────────────────────────────────────────────────────
     if (req.method === "POST" && action === "upload") {
       const formData = await req.formData();
       const file = formData.get("file") as File | null;
-      const filePath = formData.get("path") as string | null;
+      const courierId = formData.get("courier_id") as string | null;
+      const documentType = (formData.get("document_type") as string) || "attachment";
 
-      if (!file || !filePath) {
-        return jsonResponse({ error: "Missing file or path" }, 400);
+      if (!file) return jsonResponse({ error: "Missing file" }, 400);
+      if (!courierId) return jsonResponse({ error: "Missing courier_id" }, 400);
+
+      // File size check
+      const maxSize = await getMaxFileSize(admin, orgId);
+      if (file.size > maxSize) {
+        const maxMB = (maxSize / (1024 * 1024)).toFixed(1);
+        return jsonResponse(
+          { error: `Fichier trop volumineux (max ${maxMB} Mo)`, max_file_size: maxSize },
+          413
+        );
       }
 
-      const fullPath = `${pathPrefix}${filePath}`;
+      // Generate deterministic path: org_{orgId}/couriers/{courierId}/{uuid}.{ext}
+      const ext = file.name.includes(".") ? file.name.split(".").pop() : "bin";
+      const fileUuid = crypto.randomUUID();
+      const storagePath = `${pathPrefix}couriers/${courierId}/${fileUuid}.${ext}`;
+
       const arrayBuffer = await file.arrayBuffer();
-
-      const { data, error } = await admin.storage
+      const { data: uploadData, error: uploadError } = await admin.storage
         .from(BUCKET)
-        .upload(fullPath, arrayBuffer, {
-          contentType: file.type,
-          upsert: true,
-        });
+        .upload(storagePath, arrayBuffer, { contentType: file.type, upsert: false });
 
-      if (error) return jsonResponse({ error: error.message }, 500);
+      if (uploadError) return jsonResponse({ error: uploadError.message }, 500);
 
-      return jsonResponse({
-        storage_key: data.path,
-        file_name: file.name,
-        mime_type: file.type,
-        file_size: file.size,
-      });
+      // Save reference in courier_documents
+      const { data: docRow, error: docError } = await admin
+        .from("courier_documents")
+        .insert({
+          courier_id: courierId,
+          organization_id: orgId,
+          storage_key: uploadData.path,
+          file_name: file.name,
+          mime_type: file.type,
+          file_size: file.size,
+          document_type: documentType,
+        })
+        .select()
+        .single();
+
+      if (docError) {
+        // Rollback: delete uploaded file
+        await admin.storage.from(BUCKET).remove([uploadData.path]);
+        return jsonResponse({ error: docError.message }, 500);
+      }
+
+      return jsonResponse(docRow, 201);
     }
 
+    // ── DOWNLOAD (signed URL) ─────────────────────────────────────────
     if (req.method === "GET" && action === "download") {
-      const filePath = url.searchParams.get("path");
-      if (!filePath) return jsonResponse({ error: "Missing path" }, 400);
+      const storageKey = url.searchParams.get("path");
+      if (!storageKey) return jsonResponse({ error: "Missing path" }, 400);
 
-      // Ensure path belongs to org
-      if (!filePath.startsWith(pathPrefix)) {
+      if (!storageKey.startsWith(pathPrefix)) {
         return jsonResponse({ error: "Access denied" }, 403);
       }
 
       const { data, error } = await admin.storage
         .from(BUCKET)
-        .createSignedUrl(filePath, 60); // 60s signed URL
+        .createSignedUrl(storageKey, 300); // 5 min
 
       if (error) return jsonResponse({ error: error.message }, 500);
       return jsonResponse({ url: data.signedUrl });
     }
 
+    // ── DELETE (file + DB row) ────────────────────────────────────────
     if (req.method === "DELETE" && action === "delete") {
       const body = await req.json();
-      const filePath = body.path as string;
-      if (!filePath) return jsonResponse({ error: "Missing path" }, 400);
+      const documentId = body.document_id as string;
+      if (!documentId) return jsonResponse({ error: "Missing document_id" }, 400);
 
-      if (!filePath.startsWith(pathPrefix)) {
-        return jsonResponse({ error: "Access denied" }, 403);
+      // Fetch the doc to get storage_key
+      const { data: doc, error: fetchErr } = await admin
+        .from("courier_documents")
+        .select("id, storage_key, organization_id")
+        .eq("id", documentId)
+        .single();
+
+      if (fetchErr || !doc) return jsonResponse({ error: "Document not found" }, 404);
+      if (doc.organization_id !== orgId) return jsonResponse({ error: "Access denied" }, 403);
+
+      // Delete from storage
+      const storageKey = doc.storage_key;
+      if (storageKey) {
+        await admin.storage.from(BUCKET).remove([storageKey]);
       }
 
-      const { error } = await admin.storage.from(BUCKET).remove([filePath]);
-      if (error) return jsonResponse({ error: error.message }, 500);
+      // Delete DB row
+      const { error: delErr } = await admin
+        .from("courier_documents")
+        .delete()
+        .eq("id", documentId);
+
+      if (delErr) return jsonResponse({ error: delErr.message }, 500);
 
       return jsonResponse({ success: true });
+    }
+
+    // ── MAX SIZE (for frontend validation) ────────────────────────────
+    if (req.method === "GET" && action === "max-size") {
+      const maxSize = await getMaxFileSize(admin, orgId);
+      return jsonResponse({ max_file_size: maxSize });
     }
 
     return jsonResponse({ error: "Unknown action" }, 400);
