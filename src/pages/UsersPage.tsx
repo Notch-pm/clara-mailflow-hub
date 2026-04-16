@@ -237,30 +237,57 @@ export default function UsersPage({ organizationId: propOrgId }: UsersPageProps 
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1">
-                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditMember(m)}>
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditMember(m)} title="Modifier">
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive">
-                            <UserX className="h-3.5 w-3.5" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Désactiver cet utilisateur ?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              L'utilisateur {m.email} sera désactivé (soft delete). Cette action est réversible.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Annuler</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => deactivateMutation.mutate(m)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                              Désactiver
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => resetPasswordMutation.mutate(m)}
+                        disabled={resetPasswordMutation.isPending}
+                        title="Envoyer un e-mail de réinitialisation"
+                      >
+                        {resetPasswordMutation.isPending ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <KeyRound className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
+                      {m.is_active !== false ? (
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" title="Désactiver">
+                              <UserX className="h-3.5 w-3.5" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Désactiver cet utilisateur ?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                L'utilisateur {m.email} ne pourra plus se connecter. Cette action est réversible.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Annuler</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => deactivateMutation.mutate(m)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                Désactiver
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-green-600 hover:text-green-700"
+                          onClick={() => reactivateMutation.mutate(m)}
+                          disabled={reactivateMutation.isPending}
+                          title="Réactiver"
+                        >
+                          <UserCheck className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
