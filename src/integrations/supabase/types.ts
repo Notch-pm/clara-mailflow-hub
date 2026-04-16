@@ -713,7 +713,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      is_superadmin: { Args: { _user_id: string }; Returns: boolean }
     }
     Enums: {
       courier_channel: "paper" | "email" | "portal"
