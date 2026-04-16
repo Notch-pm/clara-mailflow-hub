@@ -136,12 +136,20 @@ Deno.serve(async (req) => {
     // Get target user profile
     const { data: targetUser_ } = await adminClient
       .from("users")
-      .select("first_name, last_name")
+      .select("email, first_name, last_name")
       .eq("id", user_id)
       .single();
 
     if (!targetUser_) {
       return new Response(JSON.stringify({ error: "Utilisateur introuvable" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const targetEmail = targetUser_.email?.trim();
+    if (!targetEmail) {
+      return new Response(JSON.stringify({ error: "Email utilisateur introuvable" }), {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -155,22 +163,12 @@ Deno.serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
-    // Get user email from auth
-    const { data: { user: targetAuthUser }, error: targetAuthError } = await adminClient.auth.admin.getUserById(user_id);
-    if (targetAuthError || !targetAuthUser?.email) {
-      console.error("getUserById failed:", targetAuthError?.message, "for user_id:", user_id);
-      return new Response(JSON.stringify({ error: "Email utilisateur introuvable" }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     const origin = Deno.env.get("APP_ORIGIN") || supabaseUrl.replace(".supabase.co", ".lovableproject.com");
     const redirectTo = `${origin}/reset-password`;
 
     const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
       type: "recovery",
-      email: targetAuthUser.email,
+      email: targetEmail,
       options: { redirectTo },
     });
 
@@ -250,13 +248,13 @@ Deno.serve(async (req) => {
 
     await transporter.sendMail({
       from: smtp.from_name ? `${smtp.from_name} <${smtp.from_email}>` : smtp.from_email,
-      to: targetAuthUser.email,
+      to: targetEmail,
       subject: `Réinitialisation de votre mot de passe — ${siteName}`,
       text,
       html,
     });
 
-    console.log(`Password reset email sent to ${targetAuthUser.email} for org ${orgId}`);
+    console.log(`Password reset email sent to ${targetEmail} for org ${orgId}`);
 
     return new Response(JSON.stringify({ success: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
