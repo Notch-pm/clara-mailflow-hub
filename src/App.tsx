@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes, Navigate, Outlet } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -34,6 +35,12 @@ function LoadingScreen() {
   );
 }
 
+function NoProfileFallback() {
+  const { signOut } = useAuth();
+  useEffect(() => { void signOut(); }, []);
+  return <LoadingScreen />;
+}
+
 function ProtectedRoutes() {
   const { session, loading, profile, profileLoaded } = useAuth();
 
@@ -43,8 +50,10 @@ function ProtectedRoutes() {
   // Wait for profile fetch to complete
   if (!profileLoaded) return <LoadingScreen />;
 
-  // If profile is null after loading, user has no record — show error
-  if (!profile) return <Navigate to="/connexion" replace />;
+  // If profile is null after loading, user has no record — sign out to avoid loop
+  if (!profile) {
+    return <NoProfileFallback />;
+  }
 
   // Redirect superadmins to their dashboard
   if (isSuperAdmin(profile)) {
