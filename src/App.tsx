@@ -41,8 +41,28 @@ function NoProfileFallback() {
   return <LoadingScreen />;
 }
 
+function NoOrganizationFallback() {
+  const { signOut } = useAuth();
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-4 px-6 text-center">
+      <div className="rounded-lg border p-6 max-w-md space-y-3">
+        <h2 className="text-lg font-semibold text-foreground">Aucune organisation associée</h2>
+        <p className="text-sm text-muted-foreground">
+          Votre compte n'est rattaché à aucune organisation. Contactez votre administrateur pour être ajouté à une organisation.
+        </p>
+        <button
+          onClick={() => void signOut()}
+          className="mt-2 inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+        >
+          Se déconnecter
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ProtectedRoutes() {
-  const { session, loading, profile, profileLoaded } = useAuth();
+  const { session, loading, profile, profileLoaded, membership } = useAuth();
 
   if (loading) return <LoadingScreen />;
   if (!session) return <Navigate to="/connexion" replace />;
@@ -55,9 +75,14 @@ function ProtectedRoutes() {
     return <NoProfileFallback />;
   }
 
-  // Redirect superadmins to their dashboard
+  // Redirect superadmins to their dashboard (no org required)
   if (isSuperAdmin(profile)) {
     return <Navigate to="/superadmin" replace />;
+  }
+
+  // Non-superadmin must have an organization
+  if (!membership) {
+    return <NoOrganizationFallback />;
   }
 
   return <Outlet />;
