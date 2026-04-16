@@ -17,6 +17,7 @@ interface OrgMembership {
   role: string;
   is_active: boolean | null;
   organization_name: string;
+  organization_logo_url: string | null;
 }
 
 interface AuthState {
@@ -60,18 +61,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Fetch organization membership
     const { data: membershipData } = await supabase
       .from("organization_users")
-      .select("organization_id, role, is_active, organizations(name)")
+      .select("organization_id, role, is_active, organizations(name, logo_url)")
       .eq("user_id", userId)
       .limit(1)
       .maybeSingle();
 
     if (membershipData) {
-      const orgName = (membershipData.organizations as any)?.name ?? "";
+      const org = membershipData.organizations as any;
       const mem: OrgMembership = {
         organization_id: membershipData.organization_id,
         role: membershipData.role,
         is_active: membershipData.is_active,
-        organization_name: orgName,
+        organization_name: org?.name ?? "",
+        organization_logo_url: org?.logo_url ?? null,
       };
       setMembership(mem);
 

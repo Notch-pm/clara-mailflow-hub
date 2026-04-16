@@ -1,7 +1,7 @@
 import { Link, useLocation } from "react-router-dom";
-import { ChevronsUpDown, LogOut, User, Mail, Building2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { ChevronsUpDown, LogOut, User } from "lucide-react";
 import parametresIcon from "@/assets/icons/parametres.svg";
+import notchLogo from "@/assets/logo-notch.png";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,39 +10,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { useOrganization } from "@/contexts/OrganizationContext";
+import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
 
 export function AppHeader() {
   const location = useLocation();
   const isSettings = location.pathname.startsWith("/parametres");
-  const { organizationId, setOrganizationId } = useOrganization();
   const { profile, membership, signOut } = useAuth();
-  const [orgs, setOrgs] = useState<{ id: string; name: string }[]>([]);
-  const [manualId, setManualId] = useState("");
-  const [dialogOpen, setDialogOpen] = useState(false);
-
-  useEffect(() => {
-    async function loadOrgs() {
-      const { data } = await supabase.from("organizations").select("id, name").limit(50);
-      if (data?.length) setOrgs(data);
-    }
-    loadOrgs();
-  }, [organizationId]);
-
-  const currentOrg = orgs.find((o) => o.id === organizationId);
-
-  const handleSetManual = () => {
-    if (manualId.trim()) {
-      setOrganizationId(manualId.trim());
-      setDialogOpen(false);
-      setManualId("");
-    }
-  };
 
   const displayName = profile
     ? [profile.first_name, profile.last_name].filter(Boolean).join(" ") || profile.email
@@ -56,69 +30,32 @@ export function AppHeader() {
 
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b bg-background px-4 shrink-0">
-      <div className="flex items-center gap-2.5 shrink-0">
-        <Link to="/" className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Mail className="h-4 w-4" />
-          </div>
-          <span className="text-lg font-bold tracking-tight text-foreground">Clara</span>
+      {/* Left: Notch logo + org logo */}
+      <div className="flex items-center gap-3 shrink-0">
+        <Link to="/">
+          <img src={notchLogo} alt="Notch - Clara" className="h-5 object-contain shadow-none" />
         </Link>
-      </div>
-
-      {/* Organization selector */}
-      <div className="flex items-center gap-2 ml-4">
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button variant="outline" size="sm" className="gap-2 text-xs max-w-[240px]">
-              <Building2 className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">
-                {currentOrg ? currentOrg.name : organizationId ? `Org: ${organizationId.slice(0, 8)}…` : "Choisir une organisation"}
-              </span>
-              <ChevronsUpDown className="h-3 w-3 text-muted-foreground shrink-0" />
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-sm">
-            <DialogHeader>
-              <DialogTitle>Sélectionner une organisation</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-3">
-              {orgs.length > 0 && (
-                <div className="space-y-1">
-                  {orgs.map((org) => (
-                    <button
-                      key={org.id}
-                      onClick={() => { setOrganizationId(org.id); setDialogOpen(false); }}
-                      className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-                        org.id === organizationId ? "bg-primary/10 text-primary font-medium" : "hover:bg-muted"
-                      }`}
-                    >
-                      {org.name}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <div className="border-t pt-3 space-y-2">
-                <p className="text-xs text-muted-foreground">Ou saisir l'ID manuellement :</p>
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="UUID de l'organisation"
-                    value={manualId}
-                    onChange={(e) => setManualId(e.target.value)}
-                    className="text-xs"
-                    onKeyDown={(e) => e.key === "Enter" && handleSetManual()}
-                  />
-                  <Button size="sm" onClick={handleSetManual} disabled={!manualId.trim()}>
-                    OK
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
+        {membership?.organization_logo_url && (
+          <>
+            <Separator orientation="vertical" className="h-6" />
+            <img
+              src={membership.organization_logo_url}
+              alt={membership.organization_name}
+              className="h-7 max-w-[120px] object-contain"
+            />
+          </>
+        )}
+        {!membership?.organization_logo_url && membership?.organization_name && (
+          <>
+            <Separator orientation="vertical" className="h-6" />
+            <span className="text-sm font-medium text-muted-foreground">{membership.organization_name}</span>
+          </>
+        )}
       </div>
 
       <div className="flex-1" />
 
+      {/* Right: Settings + Profile */}
       <div className="flex items-center gap-2 shrink-0">
         <Link
           to="/parametres"
