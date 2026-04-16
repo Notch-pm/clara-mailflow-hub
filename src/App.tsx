@@ -10,7 +10,7 @@ import { isSuperAdmin } from "@/lib/permissions";
 import { AppLayout } from "@/components/AppLayout";
 import { SuperAdminLayout } from "@/components/SuperAdminLayout";
 import Dashboard from "@/pages/Dashboard";
-import CourriersEntrants from "@/pages/CourriersEntrants";
+import BoiteAuxLettres, { recordLogin } from "@/pages/BoiteAuxLettres";
 import CourriersSortants from "@/pages/CourriersSortants";
 import CourierDetail from "@/pages/CourierDetail";
 import WorkflowDetail from "@/pages/WorkflowDetail";
@@ -134,7 +134,7 @@ const App = () => (
               <Route element={<ProtectedRoutes />}>
                 <Route element={<AppLayout />}>
                   <Route path="/" element={<Dashboard />} />
-                  <Route path="/courriers-entrants" element={<CourriersEntrants />} />
+                  <Route path="/boite-aux-lettres" element={<BoiteAuxLettres />} />
                   <Route path="/courriers-sortants" element={<CourriersSortants />} />
                   <Route path="/courrier/:id" element={<CourierDetail />} />
                   <Route path="/workflows/:id" element={<WorkflowDetail />} />

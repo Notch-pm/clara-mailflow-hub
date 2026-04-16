@@ -1,15 +1,17 @@
 import { NavLink } from "@/components/NavLink";
-import { LayoutDashboard, MailOpen, Send, Link2, LucideIcon } from "lucide-react";
+import { LayoutDashboard, Send, Link2, LucideIcon } from "lucide-react";
+import mailboxIcon from "@/assets/icons/mailbox.svg";
 
 interface NavItem {
   title: string;
   url: string;
-  icon: LucideIcon;
+  icon?: LucideIcon;
+  svgIcon?: string;
 }
 
 const navItems: NavItem[] = [
   { title: "Accueil", url: "/", icon: LayoutDashboard },
-  { title: "Entrants", url: "/courriers-entrants", icon: MailOpen },
+  { title: "Boîte", url: "/boite-aux-lettres", svgIcon: mailboxIcon },
   { title: "Sortants", url: "/courriers-sortants", icon: Send },
   { title: "Liens", url: "/liens", icon: Link2 },
 ];
@@ -27,7 +29,11 @@ export function MobileNav() {
             className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg transition-colors text-primary-foreground/70 hover:text-primary-foreground hover:bg-primary-foreground/10"
             activeClassName="!text-primary-foreground !bg-primary-foreground/20"
           >
-            <Icon className="h-5 w-5" />
+            {item.svgIcon ? (
+              <img src={item.svgIcon} alt="" className="h-5 w-5 brightness-0 invert opacity-70" />
+            ) : Icon ? (
+              <Icon className="h-5 w-5" />
+            ) : null}
             <span className="text-[9px] leading-tight text-center font-medium">
               {item.title}
             </span>
