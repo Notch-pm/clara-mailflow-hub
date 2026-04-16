@@ -1,11 +1,10 @@
 import { supabase } from "@/integrations/supabase/client";
-import type { AppUser, AppUserInsert, OrganizationUserInsert, OrgMember } from "@/types/user";
+import type { OrgMember } from "@/types/user";
 
 /**
  * List users belonging to an organization (JOIN users + organization_users).
  */
 export async function getOrgMembers(organizationId: string): Promise<OrgMember[]> {
-  // Use organization_users as base, join users via user_id
   const { data, error } = await supabase
     .from("organization_users" as any)
     .select("id, role, is_active, user_id, users:user_id(id, email, first_name, last_name, is_active)")
@@ -54,69 +53,34 @@ export async function getOrgMember(organizationId: string, userId: string): Prom
 }
 
 /**
- * Create a user + link to organization in one flow.
- * Returns the created user ID.
+ * Create a user via the invite-user Edge Function.
+ * This creates an auth account, sends an invitation email,
+ * creates the public.users record, and links to the organization.
  */
 export async function createOrgMember(
   organizationId: string,
   userData: { email: string; first_name: string; last_name: string },
   role: string
 ): Promise<string> {
-  // 1. Check email uniqueness
-  const { data: existing } = await supabase
-    .from("users" as any)
-    .select("id")
-    .eq("email", userData.email)
-    .maybeSingle();
+  const { data, error } = await supabase.functions.invoke("invite-user", {
+    body: {
+      email: userData.email,
+      first_name: userData.first_name,
+      last_name: userData.last_name,
+      role,
+      organization_id: organizationId,
+    },
+  });
 
-  let userId: string;
-
-  if (existing) {
-    userId = (existing as any).id;
-    // Check if already linked to this org
-    const { data: existingLink } = await supabase
-      .from("organization_users" as any)
-      .select("id")
-      .eq("organization_id", organizationId)
-      .eq("user_id", userId)
-      .maybeSingle();
-
-    if (existingLink) {
-      throw new Error("Cet utilisateur est déjà membre de cette organisation.");
-    }
-  } else {
-    // 2. Create user
-    const { data: newUser, error: userError } = await supabase
-      .from("users" as any)
-      .insert({
-        email: userData.email,
-        first_name: userData.first_name,
-        last_name: userData.last_name,
-        password_hash: "pending_auth_setup",
-      } satisfies AppUserInsert)
-      .select("id")
-      .single();
-
-    if (userError) {
-      if (userError.code === "23505") throw new Error("Un utilisateur avec cet email existe déjà.");
-      throw userError;
-    }
-    userId = (newUser as any).id;
+  if (error) {
+    throw new Error(error.message || "Erreur lors de l'invitation");
   }
 
-  // 3. Create organization_users link
-  const { error: linkError } = await supabase
-    .from("organization_users" as any)
-    .insert({
-      organization_id: organizationId,
-      user_id: userId,
-      role,
-      is_active: true,
-    } satisfies OrganizationUserInsert);
+  if (data?.error) {
+    throw new Error(data.error);
+  }
 
-  if (linkError) throw linkError;
-
-  return userId;
+  return data.user_id;
 }
 
 /**
@@ -130,7 +94,6 @@ export async function updateOrgMember(
 ) {
   const promises: Promise<any>[] = [];
 
-  // Update user fields
   const userUpdates: Record<string, any> = {};
   if (updates.first_name !== undefined) userUpdates.first_name = updates.first_name;
   if (updates.last_name !== undefined) userUpdates.last_name = updates.last_name;
@@ -145,7 +108,6 @@ export async function updateOrgMember(
     );
   }
 
-  // Update role / membership active
   const membershipUpdates: Record<string, any> = {};
   if (updates.role !== undefined) membershipUpdates.role = updates.role;
   if (updates.is_active !== undefined) membershipUpdates.is_active = updates.is_active;
