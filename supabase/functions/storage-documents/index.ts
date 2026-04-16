@@ -41,6 +41,38 @@ async function verifyAuth(req: Request) {
 }
 
 /**
+ * Verify the authenticated user belongs to the given organization.
+ * Uses service-role client to bypass RLS on organization_users.
+ */
+async function verifyOrgMembership(
+  admin: ReturnType<typeof getAdminClient>,
+  userId: string,
+  orgId: string
+) {
+  // Superadmins bypass org membership check
+  const { data: userRow } = await admin
+    .from("users")
+    .select("is_superadmin")
+    .eq("id", userId)
+    .single();
+
+  if (userRow?.is_superadmin) return;
+
+  const { data, error } = await admin
+    .from("organization_users")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("organization_id", orgId)
+    .eq("is_active", true)
+    .limit(1)
+    .single();
+
+  if (error || !data) {
+    throw new Error("Forbidden: user does not belong to this organization");
+  }
+}
+
+/**
  * Read the organization's max_file_size from organizations.metadata.
  * Falls back to DEFAULT_MAX_FILE_SIZE if not set.
  */
@@ -67,7 +99,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    await verifyAuth(req);
+    const user = await verifyAuth(req);
     const admin = getAdminClient();
     const url = new URL(req.url);
     const action = url.searchParams.get("action");
@@ -78,6 +110,9 @@ Deno.serve(async (req) => {
     // Validate org id format
     const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidRe.test(orgId)) return jsonResponse({ error: "Invalid x-org-id" }, 400);
+
+    // Verify user belongs to this organization
+    await verifyOrgMembership(admin, user.id, orgId);
 
     const pathPrefix = `org_${orgId}/`;
 
@@ -196,7 +231,7 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: "Unknown action" }, 400);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal error";
-    const status = message === "Unauthorized" ? 401 : 500;
+    const status = message === "Unauthorized" ? 401 : message.startsWith("Forbidden") ? 403 : 500;
     return jsonResponse({ error: message }, status);
   }
 });
