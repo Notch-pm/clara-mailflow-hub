@@ -205,19 +205,32 @@ Deno.serve(async (req) => {
       if (fetchErr || !doc) return jsonResponse({ error: "Document not found" }, 404);
       if (doc.organization_id !== orgId) return jsonResponse({ error: "Access denied" }, 403);
 
-      // Delete from storage
+      // Step 1: Delete from storage — abort if this fails
       const storageKey = doc.storage_key;
       if (storageKey) {
-        await admin.storage.from(BUCKET).remove([storageKey]);
+        const { error: storageErr } = await admin.storage.from(BUCKET).remove([storageKey]);
+        if (storageErr) {
+          return jsonResponse(
+            { error: `Échec suppression fichier: ${storageErr.message}` },
+            500
+          );
+        }
       }
 
-      // Delete DB row
+      // Step 2: Delete DB row — if this fails, log but still report error
+      // (file is already gone, admin can clean up the orphan row)
       const { error: delErr } = await admin
         .from("courier_documents")
         .delete()
         .eq("id", documentId);
 
-      if (delErr) return jsonResponse({ error: delErr.message }, 500);
+      if (delErr) {
+        console.error(`Storage file deleted but DB row removal failed for ${documentId}:`, delErr.message);
+        return jsonResponse(
+          { error: `Fichier supprimé mais erreur DB: ${delErr.message}` },
+          500
+        );
+      }
 
       return jsonResponse({ success: true });
     }
