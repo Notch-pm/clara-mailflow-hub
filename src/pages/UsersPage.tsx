@@ -125,6 +125,28 @@ export default function UsersPage({ organizationId: propOrgId }: UsersPageProps 
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const reactivateMutation = useMutation({
+    mutationFn: async (member: OrgMember) => {
+      if (!organizationId) throw new Error("Organisation non sélectionnée");
+      await reactivateOrgMember(organizationId, member.id, member.membership_id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["org-members"] });
+      toast.success("Utilisateur réactivé");
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const resetPasswordMutation = useMutation({
+    mutationFn: async (member: OrgMember) => {
+      await sendPasswordReset(member.id);
+    },
+    onSuccess: () => {
+      toast.success("E-mail de réinitialisation envoyé");
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
