@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Users, Plus, Search, UserCog, UserX, Pencil } from "lucide-react";
+import { Users, Plus, Search, UserCog, UserX, UserCheck, Pencil, KeyRound, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { useOrganization } from "@/contexts/OrganizationContext";
-import { getOrgMembers, createOrgMember, updateOrgMember, deactivateOrgMember } from "@/services/userService";
+import { getOrgMembers, createOrgMember, updateOrgMember, deactivateOrgMember, reactivateOrgMember, sendPasswordReset } from "@/services/userService";
 import type { OrgMember } from "@/types/user";
 
 const ROLES = [
@@ -125,6 +125,28 @@ export default function UsersPage({ organizationId: propOrgId }: UsersPageProps 
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const reactivateMutation = useMutation({
+    mutationFn: async (member: OrgMember) => {
+      if (!organizationId) throw new Error("Organisation non sélectionnée");
+      await reactivateOrgMember(organizationId, member.id, member.membership_id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["org-members"] });
+      toast.success("Utilisateur réactivé");
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const resetPasswordMutation = useMutation({
+    mutationFn: async (member: OrgMember) => {
+      await sendPasswordReset(member.id);
+    },
+    onSuccess: () => {
+      toast.success("E-mail de réinitialisation envoyé");
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -215,30 +237,57 @@ export default function UsersPage({ organizationId: propOrgId }: UsersPageProps 
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1">
-                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditMember(m)}>
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditMember(m)} title="Modifier">
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive">
-                            <UserX className="h-3.5 w-3.5" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Désactiver cet utilisateur ?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              L'utilisateur {m.email} sera désactivé (soft delete). Cette action est réversible.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Annuler</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => deactivateMutation.mutate(m)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                              Désactiver
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => resetPasswordMutation.mutate(m)}
+                        disabled={resetPasswordMutation.isPending}
+                        title="Envoyer un e-mail de réinitialisation"
+                      >
+                        {resetPasswordMutation.isPending ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <KeyRound className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
+                      {m.is_active !== false ? (
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" title="Désactiver">
+                              <UserX className="h-3.5 w-3.5" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Désactiver cet utilisateur ?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                L'utilisateur {m.email} ne pourra plus se connecter. Cette action est réversible.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Annuler</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => deactivateMutation.mutate(m)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                Désactiver
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-green-600 hover:text-green-700"
+                          onClick={() => reactivateMutation.mutate(m)}
+                          disabled={reactivateMutation.isPending}
+                          title="Réactiver"
+                        >
+                          <UserCheck className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

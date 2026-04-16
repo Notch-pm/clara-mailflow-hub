@@ -145,3 +145,37 @@ export async function deactivateOrgMember(
       .eq("organization_id", organizationId),
   ]);
 }
+
+/**
+ * Reactivate a previously deactivated user + membership.
+ */
+export async function reactivateOrgMember(
+  organizationId: string,
+  userId: string,
+  membershipId: string
+) {
+  await Promise.all([
+    supabase.from("users" as any).update({ is_active: true }).eq("id", userId),
+    supabase
+      .from("organization_users" as any)
+      .update({ is_active: true })
+      .eq("id", membershipId)
+      .eq("organization_id", organizationId),
+  ]);
+}
+
+/**
+ * Send a password reset email via the org's SMTP.
+ */
+export async function sendPasswordReset(userId: string) {
+  const { data, error } = await supabase.functions.invoke("send-password-reset", {
+    body: { user_id: userId },
+  });
+
+  if (error) {
+    throw new Error(error.message || "Erreur lors de l'envoi");
+  }
+  if (data?.error) {
+    throw new Error(data.error);
+  }
+}
