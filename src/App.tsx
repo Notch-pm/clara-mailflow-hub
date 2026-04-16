@@ -43,8 +43,10 @@ function ProtectedRoutes() {
   // Wait for profile fetch to complete
   if (!profileLoaded) return <LoadingScreen />;
 
-  // If profile is null after loading, user has no record — show error
-  if (!profile) return <Navigate to="/connexion" replace />;
+  // If profile is null after loading, user has no record — sign out to avoid loop
+  if (!profile) {
+    return <NoProfileFallback />;
+  }
 
   // Redirect superadmins to their dashboard
   if (isSuperAdmin(profile)) {
