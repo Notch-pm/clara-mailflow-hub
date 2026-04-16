@@ -111,6 +111,9 @@ Deno.serve(async (req) => {
     const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidRe.test(orgId)) return jsonResponse({ error: "Invalid x-org-id" }, 400);
 
+    // Verify user belongs to this organization
+    await verifyOrgMembership(admin, user.id, orgId);
+
     const pathPrefix = `org_${orgId}/`;
 
     // ── UPLOAD ────────────────────────────────────────────────────────
