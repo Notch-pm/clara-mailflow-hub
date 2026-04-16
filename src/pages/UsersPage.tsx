@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Users, Plus, Search, UserCog, UserX, Pencil } from "lucide-react";
+import { Users, Plus, Search, UserCog, UserX, UserCheck, Pencil, KeyRound, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { useOrganization } from "@/contexts/OrganizationContext";
-import { getOrgMembers, createOrgMember, updateOrgMember, deactivateOrgMember } from "@/services/userService";
+import { getOrgMembers, createOrgMember, updateOrgMember, deactivateOrgMember, reactivateOrgMember, sendPasswordReset } from "@/services/userService";
 import type { OrgMember } from "@/types/user";
 
 const ROLES = [
