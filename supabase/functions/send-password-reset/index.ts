@@ -156,9 +156,9 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     // Get user email from auth
-    const { data: { users } } = await adminClient.auth.admin.listUsers();
-    const targetAuthUser = users?.find((u: any) => u.id === user_id);
-    if (!targetAuthUser?.email) {
+    const { data: { user: targetAuthUser }, error: targetAuthError } = await adminClient.auth.admin.getUserById(user_id);
+    if (targetAuthError || !targetAuthUser?.email) {
+      console.error("getUserById failed:", targetAuthError?.message, "for user_id:", user_id);
       return new Response(JSON.stringify({ error: "Email utilisateur introuvable" }), {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
