@@ -1,20 +1,18 @@
-import { useState } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { Plus, FileText, Trash2, FileUp, Paperclip, FileOutput } from "lucide-react";
+import { FileUp, FileText, Trash2, Paperclip, FileOutput, Download, Upload, X, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
-import { getDocuments, addDocument, removeDocument } from "@/services/courierDocumentService";
+import { getDocuments } from "@/services/courierDocumentService";
+import { storage } from "@/services/storageService";
 import type { CourierDocument } from "@/types/courier";
+
+// ── Constants ───────────────────────────────────────────────────────────
 
 const DOC_TYPES = [
   { value: "original", label: "Original" },
@@ -40,21 +38,6 @@ const docTypeLabel: Record<string, string> = {
   attachment: "Pièce jointe",
 };
 
-const documentSchema = z.object({
-  storage_key: z.string().min(1, "Clé de stockage obligatoire").max(500),
-  document_type: z.enum(["original", "response", "attachment"], { required_error: "Type obligatoire" }),
-  file_name: z.string().max(255).optional(),
-  mime_type: z.string().max(100).optional(),
-  file_size: z.coerce.number().int().nonnegative().optional(),
-});
-
-type DocumentFormValues = z.infer<typeof documentSchema>;
-
-interface DocumentManagerProps {
-  courierId: string;
-  organizationId: string;
-}
-
 function formatFileSize(bytes?: number | null): string {
   if (!bytes) return "—";
   if (bytes < 1024) return `${bytes} o`;
@@ -62,14 +45,28 @@ function formatFileSize(bytes?: number | null): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
 }
 
+// ── Component ───────────────────────────────────────────────────────────
+
+interface DocumentManagerProps {
+  courierId: string;
+  organizationId: string;
+}
+
 export default function DocumentManager({ courierId, organizationId }: DocumentManagerProps) {
   const queryClient = useQueryClient();
   const queryKey = ["courier-documents", courierId];
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedType, setSelectedType] = useState<string>("attachment");
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [dragOver, setDragOver] = useState(false);
 
-  const form = useForm<DocumentFormValues>({
-    resolver: zodResolver(documentSchema),
-    defaultValues: { storage_key: "", document_type: "attachment", file_name: "", mime_type: "", file_size: undefined },
+  // Fetch max file size
+  const { data: maxFileSize = 10 * 1024 * 1024 } = useQuery({
+    queryKey: ["max-file-size", organizationId],
+    queryFn: () => storage.getMaxFileSize(organizationId),
+    enabled: !!organizationId,
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: documents = [], isLoading } = useQuery({
@@ -78,33 +75,68 @@ export default function DocumentManager({ courierId, organizationId }: DocumentM
     enabled: !!courierId,
   });
 
-  const resetAndClose = () => {
-    setDialogOpen(false);
-    form.reset({ storage_key: "", document_type: "attachment", file_name: "", mime_type: "", file_size: undefined });
-  };
+  // ── Upload ──────────────────────────────────────────────────────────
 
-  const addMutation = useMutation({
-    mutationFn: (values: DocumentFormValues) =>
-      addDocument({
-        courier_id: courierId,
-        organization_id: organizationId,
-        storage_key: values.storage_key,
-        document_type: values.document_type,
-        file_name: values.file_name || null,
-        mime_type: values.mime_type || null,
-        file_size: values.file_size ?? null,
-      }),
-    onSuccess: () => {
+  const handleUpload = useCallback(
+    async (files: FileList | File[]) => {
+      const fileArray = Array.from(files);
+      if (!fileArray.length) return;
+
+      // Client-side size check
+      const oversized = fileArray.filter((f) => f.size > maxFileSize);
+      if (oversized.length) {
+        const maxMB = (maxFileSize / (1024 * 1024)).toFixed(1);
+        toast.error(
+          `${oversized.length} fichier(s) dépasse(nt) la limite de ${maxMB} Mo : ${oversized.map((f) => f.name).join(", ")}`
+        );
+        return;
+      }
+
+      setUploading(true);
+      setUploadProgress(0);
+      let uploaded = 0;
+
+      for (const file of fileArray) {
+        try {
+          await storage.upload(organizationId, courierId, file, selectedType);
+          uploaded++;
+          setUploadProgress(Math.round((uploaded / fileArray.length) * 100));
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "Erreur upload";
+          toast.error(`${file.name} : ${msg}`);
+        }
+      }
+
       queryClient.invalidateQueries({ queryKey });
       queryClient.invalidateQueries({ queryKey: ["courier", courierId] });
-      toast.success("Document ajouté");
-      resetAndClose();
+      if (uploaded > 0) {
+        toast.success(`${uploaded} document${uploaded > 1 ? "s" : ""} ajouté${uploaded > 1 ? "s" : ""}`);
+      }
+      setUploading(false);
+      setUploadProgress(0);
     },
-    onError: (err: Error) => toast.error(err.message),
-  });
+    [organizationId, courierId, selectedType, maxFileSize, queryClient]
+  );
+
+  // Drag & drop handlers
+  const onDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(true);
+  }, []);
+  const onDragLeave = useCallback(() => setDragOver(false), []);
+  const onDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragOver(false);
+      if (e.dataTransfer.files.length) handleUpload(e.dataTransfer.files);
+    },
+    [handleUpload]
+  );
+
+  // ── Delete ──────────────────────────────────────────────────────────
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => removeDocument(id),
+    mutationFn: (docId: string) => storage.delete(organizationId, docId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
       queryClient.invalidateQueries({ queryKey: ["courier", courierId] });
@@ -113,35 +145,104 @@ export default function DocumentManager({ courierId, organizationId }: DocumentM
     onError: (err: Error) => toast.error(err.message),
   });
 
+  // ── Download ────────────────────────────────────────────────────────
+
+  const handleDownload = useCallback(
+    async (doc: CourierDocument) => {
+      try {
+        const url = await storage.getSignedUrl(organizationId, doc.storage_key);
+        window.open(url, "_blank");
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Erreur téléchargement");
+      }
+    },
+    [organizationId]
+  );
+
+  // ── Render ──────────────────────────────────────────────────────────
+
   return (
     <div className="space-y-4">
+      {/* Upload zone */}
+      <div
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+        className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
+          dragOver
+            ? "border-primary bg-primary/5"
+            : "border-muted-foreground/25 hover:border-muted-foreground/50"
+        }`}
+      >
+        {uploading ? (
+          <div className="space-y-2">
+            <Loader2 className="h-6 w-6 animate-spin mx-auto text-primary" />
+            <p className="text-sm text-muted-foreground">Upload en cours…</p>
+            <Progress value={uploadProgress} className="max-w-xs mx-auto" />
+          </div>
+        ) : (
+          <>
+            <Upload className="h-8 w-8 mx-auto text-muted-foreground/50 mb-2" />
+            <p className="text-sm text-muted-foreground mb-3">
+              Glissez-déposez vos fichiers ici ou
+            </p>
+            <div className="flex items-center justify-center gap-3">
+              <Select value={selectedType} onValueChange={setSelectedType}>
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {DOC_TYPES.map((t) => (
+                    <SelectItem key={t.value} value={t.value}>
+                      {t.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                size="sm"
+                className="gap-1.5"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <FileUp className="h-4 w-4" /> Parcourir
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">
+              Max {(maxFileSize / (1024 * 1024)).toFixed(0)} Mo par fichier
+            </p>
+          </>
+        )}
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            if (e.target.files?.length) handleUpload(e.target.files);
+            e.target.value = "";
+          }}
+        />
+      </div>
+
+      {/* Document list */}
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
           {documents.length} document{documents.length !== 1 ? "s" : ""}
         </p>
-        <Button size="sm" className="gap-1.5" onClick={() => setDialogOpen(true)}>
-          <FileUp className="h-4 w-4" /> Ajouter
-        </Button>
       </div>
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground text-center py-4">Chargement…</p>
       ) : !documents.length ? (
-        <div className="text-center py-8">
-          <p className="text-sm text-muted-foreground mb-3">Aucun document.</p>
-          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setDialogOpen(true)}>
-            <Plus className="h-4 w-4" /> Ajouter le premier document
-          </Button>
-        </div>
+        <p className="text-sm text-muted-foreground text-center py-4">Aucun document.</p>
       ) : (
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>Type</TableHead>
               <TableHead>Nom</TableHead>
-              <TableHead>Clé de stockage</TableHead>
               <TableHead>Taille</TableHead>
-              <TableHead className="w-[60px]">Actions</TableHead>
+              <TableHead className="w-[100px]">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -154,97 +255,55 @@ export default function DocumentManager({ courierId, organizationId }: DocumentM
                   </Badge>
                 </TableCell>
                 <TableCell className="font-medium">{d.file_name ?? "—"}</TableCell>
-                <TableCell className="font-mono text-xs max-w-[200px] truncate">{d.storage_key}</TableCell>
                 <TableCell className="text-sm">{formatFileSize(d.file_size)}</TableCell>
                 <TableCell>
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Supprimer ce document ?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          La référence au document « {d.file_name ?? d.storage_key} » sera supprimée. Le fichier externe n'est pas affecté.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Annuler</AlertDialogCancel>
-                        <AlertDialogAction
-                          onClick={() => deleteMutation.mutate(d.id)}
-                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      title="Télécharger"
+                      onClick={() => handleDownload(d)}
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-destructive hover:text-destructive"
+                          title="Supprimer"
                         >
-                          Supprimer
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Supprimer ce document ?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Le fichier « {d.file_name ?? d.storage_key} » sera supprimé du stockage
+                            et de la base de données. Cette action est irréversible.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Annuler</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => deleteMutation.mutate(d.id)}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          >
+                            Supprimer
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       )}
-
-      {/* Add document dialog */}
-      <Dialog open={dialogOpen} onOpenChange={(open) => !open && resetAndClose()}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Ajouter un document</DialogTitle>
-          </DialogHeader>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit((v) => addMutation.mutate(v))} className="space-y-4">
-              <FormField control={form.control} name="document_type" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Type de document</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl><SelectTrigger><SelectValue placeholder="Sélectionner" /></SelectTrigger></FormControl>
-                    <SelectContent>
-                      {DOC_TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={form.control} name="storage_key" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Clé de stockage</FormLabel>
-                  <FormControl><Input placeholder="ex: documents/2026/courrier-abc.pdf" {...field} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <div className="grid grid-cols-2 gap-3">
-                <FormField control={form.control} name="file_name" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Nom du fichier</FormLabel>
-                    <FormControl><Input placeholder="rapport.pdf" {...field} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )} />
-                <FormField control={form.control} name="mime_type" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Type MIME</FormLabel>
-                    <FormControl><Input placeholder="application/pdf" {...field} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )} />
-              </div>
-              <FormField control={form.control} name="file_size" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Taille (octets)</FormLabel>
-                  <FormControl><Input type="number" placeholder="1024" {...field} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <Button type="submit" className="w-full" disabled={addMutation.isPending}>
-                {addMutation.isPending ? "Ajout…" : "Ajouter le document"}
-              </Button>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
