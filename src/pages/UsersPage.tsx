@@ -43,8 +43,13 @@ const editSchema = z.object({
   role: z.enum(["administrateur", "gestionnaire", "consultant"], { required_error: "Rôle obligatoire" }),
 });
 
-export default function UsersPage() {
-  const { organizationId } = useOrganization();
+interface UsersPageProps {
+  organizationId?: string;
+}
+
+export default function UsersPage({ organizationId: propOrgId }: UsersPageProps = {}) {
+  const { organizationId: ctxOrgId } = useOrganization();
+  const organizationId = propOrgId || ctxOrgId;
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);

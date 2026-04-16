@@ -53,7 +53,7 @@ export default function OrgSettings() {
             <p className="text-muted-foreground">{sectionLabels[activeSection]}</p>
           </div>
         </div>
-        {activeSection === "utilisateurs" && <UsersPage />}
+        {activeSection === "utilisateurs" && <UsersPage organizationId={orgId!} />}
         {activeSection === "smtp" && <SmtpSettings orgId={orgId!} />}
         {activeSection === "integrations" && <OrgIntegrations orgId={orgId!} />}
       </div>
