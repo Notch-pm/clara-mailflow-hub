@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, useRef, ReactNode } fro
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { setOrganizationId } from "@/integrations/supabase/client";
+import { recordLogin } from "@/pages/BoiteAuxLettres";
 
 interface UserProfile {
   id: string;
@@ -99,6 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     userIdRef.current = nextUserId;
 
     if (nextSession?.user) {
+      recordLogin();
       const fetchedProfile = await fetchUserData(nextSession.user.id);
 
       // Block deactivated users
