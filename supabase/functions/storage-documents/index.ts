@@ -99,7 +99,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    await verifyAuth(req);
+    const user = await verifyAuth(req);
     const admin = getAdminClient();
     const url = new URL(req.url);
     const action = url.searchParams.get("action");
