@@ -34,6 +34,12 @@ function LoadingScreen() {
   );
 }
 
+function NoProfileFallback() {
+  const { signOut } = useAuth();
+  useEffect(() => { void signOut(); }, []);
+  return <LoadingScreen />;
+}
+
 function ProtectedRoutes() {
   const { session, loading, profile, profileLoaded } = useAuth();
 
