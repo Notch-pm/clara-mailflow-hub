@@ -231,7 +231,7 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: "Unknown action" }, 400);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal error";
-    const status = message === "Unauthorized" ? 401 : 500;
+    const status = message === "Unauthorized" ? 401 : message.startsWith("Forbidden") ? 403 : 500;
     return jsonResponse({ error: message }, status);
   }
 });
