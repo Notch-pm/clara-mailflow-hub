@@ -292,7 +292,7 @@ async function processOrganization(
           for (const att of parsed.attachments) {
             try {
               const safeName = (att.filename || "attachment").replace(/[^\w.\-]+/g, "_");
-              const storageKey = `${s.organization_id}/${courier.id}/${crypto.randomUUID()}-${safeName}`;
+              const storageKey = `org_${s.organization_id}/couriers/${courier.id}/${crypto.randomUUID()}-${safeName}`;
               const { error: upErr } = await admin.storage
                 .from("clara-documents")
                 .upload(storageKey, att.content as Uint8Array, {
