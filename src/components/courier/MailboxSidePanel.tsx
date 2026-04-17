@@ -340,6 +340,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
               <TabsTrigger value="content">Contenu et intentions</TabsTrigger>
               <TabsTrigger value="actions">Actions liées</TabsTrigger>
               <TabsTrigger value="response">Réponse</TabsTrigger>
+              <TabsTrigger value="notes">Notes internes</TabsTrigger>
             </TabsList>
           )}
           <TabsContent
