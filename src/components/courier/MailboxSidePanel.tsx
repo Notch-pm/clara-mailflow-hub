@@ -27,10 +27,12 @@ import { updateCourier } from "@/services/courierService";
 import { listTags, type CourierTag } from "@/services/courierTagService";
 import { listServices } from "@/services/orgServiceService";
 import { getDocuments } from "@/services/courierDocumentService";
+import { addParticipant, updateParticipant } from "@/services/courierParticipantService";
 import { cn } from "@/lib/utils";
 import { readableTextColor } from "@/lib/tag-color";
 import DocumentManager from "./DocumentManager";
 import DocumentViewer from "./DocumentViewer";
+import InlineEditField from "./InlineEditField";
 import type { CourierChannel, CourierParticipant, WorkflowTransition, WorkflowState } from "@/types/courier";
 
 const channelLabels: Record<CourierChannel, string> = {
@@ -221,6 +223,53 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
     setSelectedDocId(null);
   }, [courier?.id]);
 
+  // ── Inline edit handlers ────────────────────────────────────────────
+
+  async function persistCourierUpdate(patch: Record<string, any>, successMsg = "Modifié") {
+    if (!courier) return;
+    const { error } = await updateCourier(organizationId, courier.id, patch);
+    if (error) {
+      toast.error(error.message);
+      throw error;
+    }
+    queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
+    queryClient.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
+    toast.success(successMsg);
+  }
+
+  async function upsertParticipant(
+    role: "sender" | "recipient",
+    fields: { name?: string | null; email?: string | null },
+  ) {
+    if (!courier) return;
+    const existing = participants.find((p) => p.role === role);
+    try {
+      if (existing) {
+        // If both name and email become empty, leave the row but blank the fields.
+        await updateParticipant(existing.id, fields);
+      } else {
+        // Don't create empty participants
+        const hasContent =
+          (fields.name && fields.name.trim()) ||
+          (fields.email && fields.email.trim());
+        if (!hasContent) return;
+        await addParticipant({
+          courier_id: courier.id,
+          organization_id: organizationId,
+          role,
+          name: fields.name ?? null,
+          email: fields.email ?? null,
+        });
+      }
+      queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
+      queryClient.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
+      toast.success("Modifié");
+    } catch (err: any) {
+      toast.error(err?.message ?? "Erreur lors de la modification");
+      throw err;
+    }
+  }
+
   if (!courier) return null;
 
   return (
@@ -228,7 +277,19 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
       <SheetContent className="w-full sm:max-w-[95vw] lg:max-w-[1100px] overflow-hidden p-0 flex flex-col">
         <SheetHeader className="px-6 pt-6 pb-3 border-b shrink-0">
           <div className="flex items-start justify-between gap-4 pr-8">
-            <SheetTitle className="text-lg flex-1">{courier.subject ?? "Sans objet"}</SheetTitle>
+            <div className="flex-1 min-w-0">
+              <SheetTitle className="text-lg sr-only">
+                {courier.subject ?? "Sans objet"}
+              </SheetTitle>
+              <InlineEditField
+                label=""
+                value={courier.subject ?? ""}
+                placeholder="Objet du courrier"
+                emptyDisplay="Sans objet"
+                maxLength={255}
+                onSave={(v) => persistCourierUpdate({ subject: v.trim() || null }, "Objet modifié")}
+              />
+            </div>
             {transitions && transitions.length > 0 && (
               <div className="flex flex-wrap gap-2 justify-end shrink-0">
                 {transitions.map((t) => (
@@ -251,35 +312,74 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
         <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-[360px_1fr]">
           {/* Left: metadata + workflow */}
           <aside className="overflow-y-auto px-6 py-5 lg:border-r space-y-5">
-            <dl className="space-y-3 text-sm">
-              <div className="flex justify-between">
-                <dt className="text-muted-foreground">Date de réception</dt>
-                <dd className="font-medium">
-                  {courier.received_at
-                    ? new Date(courier.received_at).toLocaleDateString("fr-FR", {
-                        day: "2-digit",
-                        month: "2-digit",
-                        year: "numeric",
-                      })
-                    : "—"}
-                </dd>
+            <dl className="space-y-1 text-sm">
+              <InlineEditField
+                label="Date de réception"
+                type="date"
+                value={courier.received_at ? courier.received_at.slice(0, 10) : ""}
+                onSave={(v) =>
+                  persistCourierUpdate(
+                    { received_at: v ? new Date(v).toISOString() : null },
+                    "Date modifiée",
+                  )
+                }
+                renderDisplay={(v) =>
+                  new Date(v).toLocaleDateString("fr-FR", {
+                    day: "2-digit",
+                    month: "2-digit",
+                    year: "numeric",
+                  })
+                }
+              />
+
+              <div className="flex items-center justify-between gap-2 py-1">
+                <span className="text-muted-foreground text-sm">Canal de réception</span>
+                <Select
+                  value={courier.channel}
+                  onValueChange={(v) =>
+                    persistCourierUpdate({ channel: v }, "Canal modifié")
+                  }
+                >
+                  <SelectTrigger className="h-7 w-auto text-sm border-0 bg-transparent hover:bg-muted px-2 gap-1.5 [&>span]:font-medium">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent align="end">
+                    {(Object.keys(channelLabels) as CourierChannel[]).map((c) => (
+                      <SelectItem key={c} value={c}>
+                        {channelLabels[c]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-              <div className="flex justify-between">
-                <dt className="text-muted-foreground">Canal de réception</dt>
-                <dd>
-                  <Badge variant="outline">
-                    {channelLabels[courier.channel] ?? courier.channel}
-                  </Badge>
-                </dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-muted-foreground">Destinataire</dt>
-                <dd className="font-medium">{recipient?.name ?? recipient?.email ?? "—"}</dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-muted-foreground">Expéditeur</dt>
-                <dd className="font-medium">{sender?.name ?? sender?.email ?? "—"}</dd>
-              </div>
+
+              <InlineEditField
+                label="Destinataire (nom)"
+                value={recipient?.name ?? ""}
+                placeholder="Nom du destinataire"
+                maxLength={150}
+                onSave={(v) =>
+                  upsertParticipant("recipient", { name: v.trim() || null })
+                }
+              />
+
+              <InlineEditField
+                label="Expéditeur (nom)"
+                value={sender?.name ?? ""}
+                placeholder="Nom de l'expéditeur"
+                maxLength={150}
+                onSave={(v) => upsertParticipant("sender", { name: v.trim() || null })}
+              />
+
+              <InlineEditField
+                label="Expéditeur (email)"
+                type="email"
+                value={sender?.email ?? ""}
+                placeholder="email@exemple.com"
+                onSave={(v) =>
+                  upsertParticipant("sender", { email: v.trim() || null })
+                }
+              />
             </dl>
 
             <Separator />
