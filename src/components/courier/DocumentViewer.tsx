@@ -55,7 +55,7 @@ export default function DocumentViewer({ documents, currentId, onChange, organiz
   return (
     <div className="flex flex-col h-full min-h-[300px]">
       {/* Viewer body */}
-      <div className="flex-1 border rounded-lg bg-muted/20 overflow-hidden flex items-center justify-center min-h-[300px]">
+      <div className="flex-1 border bg-muted/20 overflow-hidden flex items-center justify-center min-h-[300px]">
         {isLoading || !signedUrl ? (
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         ) : isImage ? (
