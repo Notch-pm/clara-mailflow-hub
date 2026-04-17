@@ -419,7 +419,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 <FileText className="h-4 w-4 text-muted-foreground" />
                 <h3 className="text-sm font-medium">Aperçu</h3>
               </div>
-              <div className="h-[420px]">
+              <div className="h-[70vh] min-h-[500px]">
                 <DocumentViewer
                   documents={documents}
                   currentId={selectedDocId}
