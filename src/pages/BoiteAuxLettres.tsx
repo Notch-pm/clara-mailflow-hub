@@ -27,6 +27,7 @@ export default function BoiteAuxLettres() {
   const [search, setSearch] = useState("");
   const [selectedCourier, setSelectedCourier] = useState<any | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [newDialogOpen, setNewDialogOpen] = useState(false);
 
   const lastLogin = useMemo(() => getLastLogin(), []);
 
