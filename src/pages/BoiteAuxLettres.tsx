@@ -212,6 +212,7 @@ export default function BoiteAuxLettres() {
                 <TableHead>Date de réception</TableHead>
                 <TableHead>Destinataire</TableHead>
                 <TableHead>Expéditeur</TableHead>
+                <TableHead className="w-10"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -235,6 +236,20 @@ export default function BoiteAuxLettres() {
                     </TableCell>
                     <TableCell className="text-sm font-medium">{getRecipient(c)}</TableCell>
                     <TableCell className="text-sm">{getSender(c)}</TableCell>
+                    <TableCell className="w-10">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCourierToDelete(c);
+                        }}
+                        aria-label="Supprimer le courrier"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 );
               })}
