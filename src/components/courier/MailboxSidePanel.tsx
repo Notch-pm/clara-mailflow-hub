@@ -49,10 +49,24 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
   const queryClient = useQueryClient();
   const [newTag, setNewTag] = useState("");
 
+  const [newTag, setNewTag] = useState("");
+  const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
+
   const participants = courier?.courier_participants ?? [];
   const sender = participants.find((p) => p.role === "sender");
   const recipient = participants.find((p) => p.role === "recipient");
-  const tags: string[] = (courier?.metadata as any)?.tags ?? [];
+  const selectedTags: string[] = (courier?.metadata as any)?.tags ?? [];
+
+  // Available tags for the org
+  const { data: orgTags } = useQuery({
+    queryKey: ["courier-tags", organizationId],
+    queryFn: () => listTags(organizationId),
+    enabled: !!organizationId && open,
+  });
+
+  const tagByName = new Map<string, CourierTag>(
+    (orgTags ?? []).map((t) => [t.name.toLowerCase(), t]),
+  );
 
   // Fetch transitions from current state
   const { data: transitions } = useQuery({
