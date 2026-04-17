@@ -220,7 +220,9 @@ async function processOrganization(
       try {
         const raw = await client.fetchMessage(uid);
         if (!raw) continue;
-        const parsed = await simpleParser(raw);
+        // mailparser sous Deno ne supporte pas Uint8Array directement → on passe une string
+        const rawStr = new TextDecoder("latin1").decode(raw);
+        const parsed = await simpleParser(rawStr);
         const messageId = parsed.messageId || `imap-${s.organization_id}-${uid}`;
 
         const { data: existing } = await admin
