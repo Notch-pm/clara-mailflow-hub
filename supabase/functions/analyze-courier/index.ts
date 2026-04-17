@@ -327,6 +327,15 @@ async function analyzeCourier(
     .eq("courier_id", courierId)
     .eq("organization_id", orgId);
 
+  // Tags disponibles dans l'organisation — le LLM ne peut choisir QUE parmi ceux-ci
+  const { data: orgTags } = await admin
+    .from("courier_tags")
+    .select("name")
+    .eq("organization_id", orgId);
+  const availableTagNames = (orgTags ?? [])
+    .map((t: { name: string }) => t.name)
+    .filter((n) => typeof n === "string" && n.trim().length > 0);
+
   // Corps de l'email (si présent dans metadata)
   const meta = (courier.metadata ?? {}) as Record<string, unknown>;
   const bodyText = typeof meta.body_text === "string" ? meta.body_text.trim() : "";
