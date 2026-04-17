@@ -150,7 +150,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
       if (!courier?.workflow_state_id) return null;
       const { data, error } = await supabase
         .from("workflow_states")
-        .select("id, is_final")
+        .select("id, name, category, is_final")
         .eq("id", courier.workflow_state_id)
         .maybeSingle();
       if (error) throw error;
@@ -486,6 +486,24 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
           >
             {/* Left: metadata + workflow */}
             <aside className="overflow-y-auto px-6 py-5 lg:border-r space-y-5">
+              {currentStateInfo?.name && (
+                <div className="flex items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2">
+                  <span className="text-xs uppercase tracking-wide text-muted-foreground">Statut</span>
+                  <Badge variant="secondary" className="gap-1.5 font-medium">
+                    <span
+                      className={cn(
+                        "h-2 w-2 rounded-full",
+                        currentStateInfo.category === "pending" && "bg-amber-500",
+                        currentStateInfo.category === "processing" && "bg-blue-500",
+                        currentStateInfo.category === "processed" && "bg-emerald-500",
+                        currentStateInfo.category === "archived" && "bg-slate-400",
+                        !currentStateInfo.category && "bg-gray-300",
+                      )}
+                    />
+                    {currentStateInfo.name}
+                  </Badge>
+                </div>
+              )}
               <dl className="space-y-1 text-sm">
                 <InlineEditField
                   label="Date de réception"
