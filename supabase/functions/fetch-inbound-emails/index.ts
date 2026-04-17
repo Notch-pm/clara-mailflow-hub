@@ -144,13 +144,23 @@ class ImapClient {
     if (!r.ok) throw new Error(`SELECT ${name} refusé`);
   }
 
-  async searchUnseen(): Promise<number[]> {
-    const r = await this.command(`UID SEARCH UNSEEN`);
+  async search(criteria: string): Promise<number[]> {
+    const r = await this.command(`UID SEARCH ${criteria}`);
     if (!r.ok) throw new Error(`UID SEARCH refusé`);
     const line = r.lines.find((l) => l.startsWith("* SEARCH"));
     if (!line) return [];
     const parts = line.replace("* SEARCH", "").trim().split(/\s+/).filter(Boolean);
     return parts.map((p) => parseInt(p, 10)).filter((n) => !isNaN(n));
+  }
+
+  /**
+   * Récupère uniquement les en-têtes (RFC822.HEADER) pour pouvoir lire le
+   * Message-ID sans télécharger tout le corps. Économise la bande passante.
+   */
+  async fetchHeaders(uid: number): Promise<string | null> {
+    const r = await this.command(`UID FETCH ${uid} BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)]`);
+    if (!r.ok || !r.literals[0]) return null;
+    return new TextDecoder("latin1").decode(r.literals[0]);
   }
 
   async fetchMessage(uid: number): Promise<Uint8Array | null> {
