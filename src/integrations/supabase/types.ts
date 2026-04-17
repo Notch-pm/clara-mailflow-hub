@@ -1101,6 +1101,7 @@ export type Database = {
     Functions: {
       is_superadmin: { Args: { _user_id: string }; Returns: boolean }
       trigger_arpege_sync: { Args: never; Returns: number }
+      trigger_fetch_inbound_emails: { Args: never; Returns: number }
     }
     Enums: {
       courier_channel: "paper" | "email" | "portal"
