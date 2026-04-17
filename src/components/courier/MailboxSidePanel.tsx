@@ -420,7 +420,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 </Badge>
               )}
             </div>
-            <div className="flex flex-wrap items-center gap-2 justify-end shrink-0">
+            <div className="flex items-center gap-2 justify-end shrink-0">
               {transitions && transitions.length > 0 && (
                 <>
                   <span className="text-xs text-muted-foreground inline-flex items-center gap-1 shrink-0">
