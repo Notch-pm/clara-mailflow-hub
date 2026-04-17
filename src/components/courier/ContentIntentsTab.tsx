@@ -255,7 +255,7 @@ export default function ContentIntentsTab({ courierId, organizationId }: Props) 
           </div>
         ) : !analysis ? (
           <Card className="p-4 text-center text-sm text-muted-foreground">
-            {hasExtracts
+            {canAnalyze
               ? "Cliquez sur \"Analyser\" pour détecter les intentions, l'état d'esprit et les actions à mettre en œuvre."
               : "Extrayez d'abord le texte des documents."}
           </Card>
