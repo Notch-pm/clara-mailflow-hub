@@ -27,6 +27,30 @@ export default function OrgIntegrations({ orgId }: OrgIntegrationsProps) {
   const [editing, setEditing] = useState(false);
   const [testResult, setTestResult] = useState<{ status: string; message: string } | null>(null);
   const [isTesting, setIsTesting] = useState(false);
+  const [isSyncingProcedures, setIsSyncingProcedures] = useState(false);
+  const [syncProceduresResult, setSyncProceduresResult] = useState<
+    { total: number; created: number; updated: number; skipped?: number } | null
+  >(null);
+
+  async function handleSyncProcedures() {
+    setIsSyncingProcedures(true);
+    setSyncProceduresResult(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("sync-arpege-services", {
+        body: { organization_id: orgId },
+      });
+      if (error) throw error;
+      setSyncProceduresResult(data);
+      queryClient.invalidateQueries({ queryKey: ["procedures", orgId] });
+      toast.success(
+        `Synchronisation : ${data?.created ?? 0} créées, ${data?.updated ?? 0} mises à jour`,
+      );
+    } catch (e: any) {
+      toast.error("Erreur lors de la synchronisation : " + e.message);
+    } finally {
+      setIsSyncingProcedures(false);
+    }
+  }
 
   async function handleTestConnection() {
     setIsTesting(true);
@@ -155,32 +179,55 @@ export default function OrgIntegrations({ orgId }: OrgIntegrationsProps) {
             </div>
             <div className="gap-2 flex flex-col">
               {integration?.is_active && (
-                <Button variant="outline" size="sm" onClick={handleTestConnection} disabled={isTesting}>
-                  {isTesting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
-                  Tester la connexion API
-                </Button>
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSyncProcedures}
+                    disabled={isSyncingProcedures}
+                  >
+                    {isSyncingProcedures ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+                    Récupérer les démarches
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={handleTestConnection} disabled={isTesting}>
+                    {isTesting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+                    Tester la connexion API
+                  </Button>
+                </>
               )}
               <Button variant="outline" size="sm" onClick={startEdit}>
                 {integration ? "Modifier" : "Configurer"}
               </Button>
             </div>
           </CardHeader>
-          {testResult && (
+          {(testResult || syncProceduresResult) && (
             <CardContent className="pt-0 space-y-2">
-              <div
-                className={`flex items-center gap-2 text-sm ${
-                  testResult.status === "success" ? "text-green-600" : "text-destructive"
-                }`}
-              >
-                {testResult.status === "success" ? (
+              {testResult && (
+                <div
+                  className={`flex items-center gap-2 text-sm ${
+                    testResult.status === "success" ? "text-green-600" : "text-destructive"
+                  }`}
+                >
+                  {testResult.status === "success" ? (
+                    <CheckCircle2 className="h-4 w-4" />
+                  ) : (
+                    <XCircle className="h-4 w-4" />
+                  )}
+                  {testResult.status === "success"
+                    ? "Connexion réussie avec l'API Arpège"
+                    : `Impossible de se connecter à l'API Arpège : ${testResult.message}`}
+                </div>
+              )}
+              {syncProceduresResult && (
+                <div className="flex items-center gap-2 text-sm text-green-600">
                   <CheckCircle2 className="h-4 w-4" />
-                ) : (
-                  <XCircle className="h-4 w-4" />
-                )}
-                {testResult.status === "success"
-                  ? "Connexion réussie avec l'API Arpège"
-                  : `Impossible de se connecter à l'API Arpège : ${testResult.message}`}
-              </div>
+                  {syncProceduresResult.created} démarche(s) créée(s),{" "}
+                  {syncProceduresResult.updated} mise(s) à jour
+                  {typeof syncProceduresResult.skipped === "number"
+                    ? `, ${syncProceduresResult.skipped} inchangée(s)`
+                    : ""}
+                </div>
+              )}
             </CardContent>
           )}
         </Card>
