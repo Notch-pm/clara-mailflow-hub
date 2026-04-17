@@ -23,10 +23,16 @@ export default function DocumentViewer({ documents, currentId, onChange, organiz
   const currentIndex = documents.findIndex((d) => d.id === currentId);
   const current = currentIndex >= 0 ? documents[currentIndex] : null;
 
+  // Synthetic inline doc (e.g. email body) carries `inline_content` in storage_key field convention,
+  // signaled by id starting with "inline:". We render its content directly without fetching.
+  const isInline = !!current && typeof current.id === "string" && current.id.startsWith("inline:");
+  const inlineHtml = isInline ? (current as any).inline_html as string | null : null;
+  const inlineText = isInline ? (current as any).inline_text as string | null : null;
+
   const { data: signedUrl, isLoading } = useQuery({
     queryKey: ["doc-signed-url", current?.id],
     queryFn: () => storage.getSignedUrl(organizationId, current!.storage_key),
-    enabled: !!current,
+    enabled: !!current && !isInline,
     staleTime: 4 * 60 * 1000, // 4 min — URL TTL is usually 5 min
   });
 
@@ -56,7 +62,20 @@ export default function DocumentViewer({ documents, currentId, onChange, organiz
     <div className="flex flex-col h-full min-h-[300px]">
       {/* Viewer body */}
       <div className="flex-1 border bg-muted/20 overflow-hidden flex items-center justify-center min-h-[300px]">
-        {isLoading || !signedUrl ? (
+        {isInline ? (
+          inlineHtml ? (
+            <iframe
+              srcDoc={`<!doctype html><meta charset="utf-8"><base target="_blank"><style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#111;padding:16px;line-height:1.5;margin:0}img{max-width:100%;height:auto}a{color:#0a84ff}</style>${inlineHtml}`}
+              title="Corps de l'email"
+              sandbox="allow-popups allow-same-origin"
+              className="w-full h-full min-h-[400px] border-0 bg-white"
+            />
+          ) : (
+            <pre className="w-full h-full overflow-auto p-4 text-sm whitespace-pre-wrap bg-white text-foreground">
+              {inlineText ?? "(corps vide)"}
+            </pre>
+          )
+        ) : isLoading || !signedUrl ? (
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         ) : isImage ? (
           <img

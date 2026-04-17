@@ -293,6 +293,30 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
     enabled: !!courier?.id && open,
   });
 
+  // If the courier metadata holds an email body (body_html / body_text), inject it as
+  // a synthetic "first document" so it appears in the Aperçu just like an attachment.
+  const displayDocuments = useMemo(() => {
+    const meta = (courier?.metadata as any) ?? {};
+    const html: string | null = meta.body_html ?? null;
+    const text: string | null = meta.body_text ?? null;
+    if (!html && !text) return documents;
+    const inlineDoc: any = {
+      id: `inline:email-body:${courier?.id}`,
+      courier_id: courier?.id,
+      organization_id: organizationId,
+      file_name: "Corps de l'email",
+      mime_type: html ? "text/html" : "text/plain",
+      file_size: null,
+      document_type: "original",
+      storage_key: "",
+      checksum: null,
+      created_at: new Date().toISOString(),
+      inline_html: html,
+      inline_text: text,
+    };
+    return [inlineDoc, ...documents];
+  }, [documents, courier?.id, courier?.metadata, organizationId]);
+
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
   useEffect(() => {
     setSelectedDocId(null);
