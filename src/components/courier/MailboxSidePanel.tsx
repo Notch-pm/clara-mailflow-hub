@@ -47,9 +47,6 @@ interface Props {
 
 export default function MailboxSidePanel({ courier, open, onOpenChange, organizationId }: Props) {
   const queryClient = useQueryClient();
-  const [newTag, setNewTag] = useState("");
-
-  const [newTag, setNewTag] = useState("");
   const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
 
   const participants = courier?.courier_participants ?? [];
@@ -114,15 +111,16 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
     onError: (err: Error) => toast.error(err.message),
   });
 
-  function addTag() {
-    const tag = newTag.trim();
-    if (!tag || tags.includes(tag)) return;
-    tagMutation.mutate([...tags, tag]);
-    setNewTag("");
+  function toggleTag(tagName: string) {
+    const exists = selectedTags.some((t) => t.toLowerCase() === tagName.toLowerCase());
+    const next = exists
+      ? selectedTags.filter((t) => t.toLowerCase() !== tagName.toLowerCase())
+      : [...selectedTags, tagName];
+    tagMutation.mutate(next);
   }
 
-  function removeTag(tag: string) {
-    tagMutation.mutate(tags.filter((t) => t !== tag));
+  function removeTag(tagName: string) {
+    tagMutation.mutate(selectedTags.filter((t) => t !== tagName));
   }
 
   if (!courier) return null;
@@ -171,34 +169,90 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
 
           {/* Tags */}
           <div className="space-y-3">
-            <h3 className="text-sm font-medium">Tags</h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-medium">Tags</h3>
+              <Popover open={tagPopoverOpen} onOpenChange={setTagPopoverOpen}>
+                <PopoverTrigger asChild>
+                  <Button size="sm" variant="outline" className="h-8">
+                    <TagIcon className="h-3.5 w-3.5 mr-1.5" />
+                    Gérer
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 p-0" align="end">
+                  <Command>
+                    <CommandInput placeholder="Rechercher un tag…" />
+                    <CommandList>
+                      <CommandEmpty>
+                        Aucun tag défini. Allez dans Paramètres → Classification.
+                      </CommandEmpty>
+                      <CommandGroup>
+                        {(orgTags ?? []).map((tag) => {
+                          const checked = selectedTags.some(
+                            (t) => t.toLowerCase() === tag.name.toLowerCase(),
+                          );
+                          return (
+                            <CommandItem
+                              key={tag.id}
+                              value={tag.name}
+                              onSelect={() => toggleTag(tag.name)}
+                              className="gap-2"
+                            >
+                              <span
+                                className="h-2.5 w-2.5 rounded-full shrink-0"
+                                style={{ backgroundColor: tag.color ?? "hsl(var(--muted-foreground))" }}
+                              />
+                              <span className="flex-1">{tag.name}</span>
+                              <Check
+                                className={cn(
+                                  "h-4 w-4",
+                                  checked ? "opacity-100" : "opacity-0",
+                                )}
+                              />
+                            </CommandItem>
+                          );
+                        })}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            </div>
             <div className="flex flex-wrap gap-1.5">
-              {tags.map((tag) => (
-                <Badge key={tag} variant="secondary" className="gap-1 pr-1">
-                  {tag}
-                  <button
-                    onClick={() => removeTag(tag)}
-                    className="ml-0.5 rounded-full p-0.5 hover:bg-destructive/20 transition-colors"
+              {selectedTags.map((tagName) => {
+                const tag = tagByName.get(tagName.toLowerCase());
+                const orphan = !tag;
+                return (
+                  <Badge
+                    key={tagName}
+                    variant="secondary"
+                    className={cn("gap-1.5 pl-2 pr-1", orphan && "opacity-60 italic")}
+                    style={
+                      tag?.color
+                        ? { backgroundColor: `${tag.color}20`, color: tag.color }
+                        : undefined
+                    }
                   >
-                    <X className="h-3 w-3" />
-                  </button>
-                </Badge>
-              ))}
-              {tags.length === 0 && (
+                    {tag?.color && (
+                      <span
+                        className="h-2 w-2 rounded-full"
+                        style={{ backgroundColor: tag.color }}
+                        aria-hidden
+                      />
+                    )}
+                    {tagName}
+                    <button
+                      onClick={() => removeTag(tagName)}
+                      className="ml-0.5 rounded-full p-0.5 hover:bg-destructive/20 transition-colors"
+                      aria-label={`Retirer ${tagName}`}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                );
+              })}
+              {selectedTags.length === 0 && (
                 <span className="text-xs text-muted-foreground">Aucun tag</span>
               )}
-            </div>
-            <div className="flex gap-2">
-              <Input
-                value={newTag}
-                onChange={(e) => setNewTag(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addTag())}
-                placeholder="Ajouter un tag…"
-                className="h-8 text-sm"
-              />
-              <Button size="sm" variant="outline" onClick={addTag} disabled={!newTag.trim()}>
-                <Plus className="h-4 w-4" />
-              </Button>
             </div>
           </div>
 
