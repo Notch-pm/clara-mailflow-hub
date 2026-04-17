@@ -12,6 +12,7 @@ import { SuperAdminLayout } from "@/components/SuperAdminLayout";
 import Dashboard from "@/pages/Dashboard";
 import BoiteAuxLettres, { recordLogin } from "@/pages/BoiteAuxLettres";
 import CourriersEnInstruction from "@/pages/CourriersEnInstruction";
+import CourriersTraites from "@/pages/CourriersTraites";
 import CourriersSortants from "@/pages/CourriersSortants";
 import CourierDetail from "@/pages/CourierDetail";
 import WorkflowDetail from "@/pages/WorkflowDetail";
@@ -138,6 +139,7 @@ const App = () => (
                   <Route path="/" element={<Dashboard />} />
                   <Route path="/boite-aux-lettres" element={<BoiteAuxLettres />} />
                   <Route path="/courriers-en-instruction" element={<CourriersEnInstruction />} />
+                  <Route path="/courriers-traites" element={<CourriersTraites />} />
                   <Route path="/courriers-sortants" element={<CourriersSortants />} />
                   <Route path="/courrier/:id" element={<CourierDetail />} />
                   <Route path="/workflows/:id" element={<WorkflowDetail />} />
