@@ -1,5 +1,5 @@
 import { NavLink } from "@/components/NavLink";
-import { LayoutDashboard, Send, Link2, LucideIcon } from "lucide-react";
+import { LayoutDashboard, Send, Link2, FileClock, LucideIcon } from "lucide-react";
 import mailboxIcon from "@/assets/icons/mailbox.svg";
 import {
   Tooltip,
@@ -18,6 +18,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { title: "Tableau de bord", url: "/", icon: LayoutDashboard },
   { title: "Boîte aux lettres", url: "/boite-aux-lettres", svgIcon: mailboxIcon },
+  { title: "Courriers en instruction", url: "/courriers-en-instruction", icon: FileClock },
   { title: "Courriers sortants", url: "/courriers-sortants", icon: Send },
   { title: "Liens externes", url: "/liens", icon: Link2 },
 ];
