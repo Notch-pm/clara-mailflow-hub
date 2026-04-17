@@ -12,10 +12,15 @@ export async function getParticipants(courierId: string) {
   return data ?? [];
 }
 
-export async function addParticipant(data: CourierParticipantInsert) {
+export async function addParticipant(data: CourierParticipantInsert & {
+  first_name?: string | null;
+  last_name?: string | null;
+  phone?: string | null;
+  usager_id?: string | null;
+}) {
   const { data: result, error } = await supabase
     .from("courier_participants")
-    .insert(data)
+    .insert(data as any)
     .select()
     .single();
 
@@ -27,15 +32,19 @@ export async function updateParticipant(
   participantId: string,
   updates: {
     name?: string | null;
+    first_name?: string | null;
+    last_name?: string | null;
     email?: string | null;
+    phone?: string | null;
     address?: string | null;
     organization?: string | null;
     role?: "sender" | "recipient" | "cc";
+    usager_id?: string | null;
   }
 ) {
   const { data, error } = await supabase
     .from("courier_participants")
-    .update(updates)
+    .update(updates as any)
     .eq("id", participantId)
     .select()
     .single();
