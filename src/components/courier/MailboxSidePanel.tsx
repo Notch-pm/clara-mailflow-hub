@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { X, ArrowRight, Tag as TagIcon, Check, Briefcase, FileText } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -59,9 +60,11 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   organizationId: string;
+  /** When true, displays the body inside tabs (Détail / Actions liées / Réponse). */
+  withTabs?: boolean;
 }
 
-export default function MailboxSidePanel({ courier, open, onOpenChange, organizationId }: Props) {
+export default function MailboxSidePanel({ courier, open, onOpenChange, organizationId, withTabs = false }: Props) {
   const queryClient = useQueryClient();
   const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
 
