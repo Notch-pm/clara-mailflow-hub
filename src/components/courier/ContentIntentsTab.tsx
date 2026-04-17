@@ -76,6 +76,35 @@ export default function ContentIntentsTab({ courierId, organizationId }: Props) 
     enabled: !!courierId,
   });
 
+  const { data: orgTags } = useQuery({
+    queryKey: ["courier-tags", organizationId],
+    queryFn: () => listTags(organizationId),
+    enabled: !!organizationId,
+  });
+
+  const tagByLowerName = useMemo(() => {
+    const m = new Map<string, { name: string; color: string | null }>();
+    (orgTags ?? []).forEach((t) => m.set(t.name.toLowerCase(), { name: t.name, color: t.color }));
+    return m;
+  }, [orgTags]);
+
+  // État local de la sélection d'intents (modifiable avant application)
+  const [selectedIntents, setSelectedIntents] = useState<string[]>([]);
+  useEffect(() => {
+    setSelectedIntents(analysis?.intents ?? []);
+  }, [analysis?.intents, courierId]);
+
+  const currentCourierTags = useMemo(
+    () => ((courierData?.metadata as Record<string, unknown> | null)?.tags as string[] | undefined) ?? [],
+    [courierData?.metadata],
+  );
+
+  const isDirty = useMemo(() => {
+    const a = [...selectedIntents].sort();
+    const b = [...currentCourierTags].sort();
+    return a.length !== b.length || a.some((v, i) => v !== b[i]);
+  }, [selectedIntents, currentCourierTags]);
+
   const ocrMutation = useMutation({
     mutationFn: () => runOcr(courierId),
     onSuccess: (data) => {
@@ -97,6 +126,23 @@ export default function ContentIntentsTab({ courierId, organizationId }: Props) 
     onSuccess: () => {
       toast.success("Analyse mise à jour");
       qc.invalidateQueries({ queryKey: ["courier-analysis", courierId] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const applyTagsMutation = useMutation({
+    mutationFn: async () => {
+      const currentMeta = (courierData?.metadata as Record<string, unknown> | null) ?? {};
+      const { error } = await updateCourier(organizationId, courierId, {
+        metadata: { ...currentMeta, tags: selectedIntents },
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Tags appliqués au courrier");
+      qc.invalidateQueries({ queryKey: ["courier", organizationId, courierId] });
+      qc.invalidateQueries({ queryKey: ["couriers"] });
+      qc.invalidateQueries({ queryKey: ["courier-instruction"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
