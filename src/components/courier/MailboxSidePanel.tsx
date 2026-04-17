@@ -150,7 +150,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
       if (!courier?.workflow_state_id) return null;
       const { data, error } = await supabase
         .from("workflow_states")
-        .select("id, is_final")
+        .select("id, name, category, is_final")
         .eq("id", courier.workflow_state_id)
         .maybeSingle();
       if (error) throw error;
