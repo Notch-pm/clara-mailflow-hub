@@ -102,14 +102,19 @@ export default function ContentIntentsTab({ courierId, organizationId }: Props) 
   const docCount = documents?.length ?? 0;
   const extractCount = extracts?.length ?? 0;
   const hasExtracts = extractCount > 0;
+  const meta = (courierData?.metadata ?? {}) as Record<string, unknown>;
+  const hasEmailBody =
+    (typeof meta.body_text === "string" && meta.body_text.trim().length > 0) ||
+    (typeof meta.body_html === "string" && meta.body_html.trim().length > 0);
+  const canAnalyze = hasExtracts || hasEmailBody;
 
-  if (docCount === 0) {
+  if (docCount === 0 && !hasEmailBody) {
     return (
       <div className="text-center py-10">
         <FileText className="h-10 w-10 mx-auto text-muted-foreground/40 mb-3" />
-        <p className="text-sm text-muted-foreground">Aucun document à analyser.</p>
+        <p className="text-sm text-muted-foreground">Aucun contenu à analyser.</p>
         <p className="text-xs text-muted-foreground/70 mt-1">
-          Joignez un fichier pour activer l'extraction et l'analyse IA.
+          Joignez un fichier ou réceptionnez un email pour activer l'analyse IA.
         </p>
       </div>
     );
