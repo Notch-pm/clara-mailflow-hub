@@ -39,7 +39,7 @@ import CourierNotes from "./CourierNotes";
 import CourierHistoryTab from "./CourierHistoryTab";
 import ContentIntentsTab from "./ContentIntentsTab";
 import LinkedActionsTab from "./LinkedActionsTab";
-import type { CourierChannel, CourierParticipant, WorkflowTransition, WorkflowState } from "@/types/courier";
+import type { CourierChannel, CourierParticipant, WorkflowTransition, WorkflowState, WorkflowCategory } from "@/types/courier";
 
 const channelLabels: Record<CourierChannel, string> = {
   paper: "Papier",
