@@ -1,0 +1,1 @@
+SELECT vault.create_secret('clf8k2x9m0a7q3w5z1v6b4n8j', 'cron_secret', 'Shared secret for cron edge function calls');
