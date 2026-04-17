@@ -16,6 +16,8 @@ interface Props {
   renderDisplay?: (value: string) => React.ReactNode;
   /** Extra classes applied to the displayed value (read mode). */
   displayClassName?: string;
+  /** When true, displays the value but disables editing entirely. */
+  readOnly?: boolean;
 }
 
 export default function InlineEditField({
@@ -28,6 +30,7 @@ export default function InlineEditField({
   onSave,
   renderDisplay,
   displayClassName,
+  readOnly = false,
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -72,7 +75,7 @@ export default function InlineEditField({
     <div className="flex items-start justify-between gap-2 group">
       <span className="text-muted-foreground text-sm shrink-0 pt-1">{label}</span>
       <div className="flex-1 gap-1 min-w-0 flex items-center justify-start">
-        {editing ? (
+        {editing && !readOnly ? (
           <>
             <Input
               ref={inputRef}
@@ -116,6 +119,19 @@ export default function InlineEditField({
               <X className="h-3.5 w-3.5" />
             </Button>
           </>
+        ) : readOnly ? (
+          <span
+            className={cn(
+              "flex items-center gap-1.5 text-sm font-medium text-right px-1.5 py-0.5 -mx-1.5 max-w-full",
+              displayClassName,
+            )}
+          >
+            <span className="truncate text-left">
+              {displayValue ? (renderDisplay ? renderDisplay(displayValue) : displayValue) : (
+                <span className="text-muted-foreground italic font-normal">{emptyDisplay}</span>
+              )}
+            </span>
+          </span>
         ) : (
           <button
             type="button"

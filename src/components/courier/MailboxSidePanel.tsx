@@ -66,9 +66,11 @@ interface Props {
   organizationId: string;
   /** When true, displays the body inside tabs (Détail / Actions liées / Réponse). */
   withTabs?: boolean;
+  /** When true, the panel is fully read-only: no edits, no transitions, no uploads, no notes. */
+  readOnly?: boolean;
 }
 
-export default function MailboxSidePanel({ courier, open, onOpenChange, organizationId, withTabs = false }: Props) {
+export default function MailboxSidePanel({ courier, open, onOpenChange, organizationId, withTabs = false, readOnly = false }: Props) {
   const queryClient = useQueryClient();
   const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
 
@@ -401,6 +403,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   emptyDisplay="Sans titre"
                   maxLength={255}
                   displayClassName="text-lg font-semibold"
+                  readOnly={readOnly}
                   onSave={(v) => persistCourierUpdate({ subject: v.trim() || null }, "Titre modifié")}
                 />
               </div>
@@ -421,7 +424,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
               )}
             </div>
             <div className="flex items-center gap-2 justify-end shrink-0">
-              {transitions && transitions.length > 0 && (
+              {!readOnly && transitions && transitions.length > 0 && (
                 <>
                   <span className="text-xs text-muted-foreground inline-flex items-center gap-1 shrink-0">
                     <ArrowRight className="h-3.5 w-3.5" />
@@ -513,6 +516,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   label="Date de réception"
                 type="date"
                 value={courier.received_at ? courier.received_at.slice(0, 10) : ""}
+                readOnly={readOnly}
                 onSave={(v) =>
                   persistCourierUpdate(
                     { received_at: v ? new Date(v).toISOString() : null },
@@ -530,23 +534,27 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
 
               <div className="flex items-center justify-between gap-2 py-1">
                 <span className="text-muted-foreground text-sm">Canal de réception</span>
-                <Select
-                  value={courier.channel}
-                  onValueChange={(v) =>
-                    persistCourierUpdate({ channel: v }, "Canal modifié")
-                  }
-                >
-                  <SelectTrigger className="h-7 w-auto text-sm border-0 bg-transparent hover:bg-muted px-2 gap-1.5 [&>span]:font-medium">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent align="end">
-                    {(Object.keys(channelLabels) as CourierChannel[]).map((c) => (
-                      <SelectItem key={c} value={c}>
-                        {channelLabels[c]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {readOnly ? (
+                  <span className="text-sm font-medium px-2">{channelLabels[courier.channel]}</span>
+                ) : (
+                  <Select
+                    value={courier.channel}
+                    onValueChange={(v) =>
+                      persistCourierUpdate({ channel: v }, "Canal modifié")
+                    }
+                  >
+                    <SelectTrigger className="h-7 w-auto text-sm border-0 bg-transparent hover:bg-muted px-2 gap-1.5 [&>span]:font-medium">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent align="end">
+                      {(Object.keys(channelLabels) as CourierChannel[]).map((c) => (
+                        <SelectItem key={c} value={c}>
+                          {channelLabels[c]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
 
               <InlineEditField
@@ -554,6 +562,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 value={recipient?.name ?? ""}
                 placeholder="Nom du destinataire"
                 maxLength={150}
+                readOnly={readOnly}
                 onSave={(v) =>
                   upsertParticipant("recipient", { name: v.trim() || null })
                 }
@@ -564,6 +573,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 value={sender?.name ?? ""}
                 placeholder="Nom de l'expéditeur"
                 maxLength={150}
+                readOnly={readOnly}
                 onSave={(v) => upsertParticipant("sender", { name: v.trim() || null })}
               />
 
@@ -572,6 +582,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 type="email"
                 value={sender?.email ?? ""}
                 placeholder="email@exemple.com"
+                readOnly={readOnly}
                 onSave={(v) =>
                   upsertParticipant("sender", { email: v.trim() || null })
                 }
@@ -586,31 +597,39 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 <Briefcase className="h-4 w-4 text-muted-foreground" />
                 <h3 className="text-sm font-medium">Service gestionnaire</h3>
               </div>
-              <Select
-                value={currentService?.id ?? ""}
-                onValueChange={(v) => serviceMutation.mutate(v)}
-                disabled={serviceMutation.isPending}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Sélectionner un service" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(services ?? []).map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name}
-                      {s.workflow?.name && (
-                        <span className="text-muted-foreground text-xs ml-2">
-                          — {s.workflow.name}
-                        </span>
-                      )}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {courier.assigned_service && !currentService && (
-                <p className="text-xs text-muted-foreground italic">
-                  Service actuel « {courier.assigned_service} » introuvable.
+              {readOnly ? (
+                <p className="text-sm font-medium px-1">
+                  {courier.assigned_service ?? <span className="text-muted-foreground italic font-normal">—</span>}
                 </p>
+              ) : (
+                <>
+                  <Select
+                    value={currentService?.id ?? ""}
+                    onValueChange={(v) => serviceMutation.mutate(v)}
+                    disabled={serviceMutation.isPending}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Sélectionner un service" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(services ?? []).map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.name}
+                          {s.workflow?.name && (
+                            <span className="text-muted-foreground text-xs ml-2">
+                              — {s.workflow.name}
+                            </span>
+                          )}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {courier.assigned_service && !currentService && (
+                    <p className="text-xs text-muted-foreground italic">
+                      Service actuel « {courier.assigned_service} » introuvable.
+                    </p>
+                  )}
+                </>
               )}
             </div>
 
@@ -618,51 +637,53 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-medium">Tags</h3>
-                <Popover open={tagPopoverOpen} onOpenChange={setTagPopoverOpen}>
-                  <PopoverTrigger asChild>
-                    <Button size="sm" variant="outline" className="h-8">
-                      <TagIcon className="h-3.5 w-3.5 mr-1.5" />
-                      Gérer
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-64 p-0" align="end">
-                    <Command>
-                      <CommandInput placeholder="Rechercher un tag…" />
-                      <CommandList>
-                        <CommandEmpty>
-                          Aucun tag défini. Allez dans Paramètres → Classification.
-                        </CommandEmpty>
-                        <CommandGroup>
-                          {(orgTags ?? []).map((tag) => {
-                            const checked = selectedTags.some(
-                              (t) => t.toLowerCase() === tag.name.toLowerCase(),
-                            );
-                            return (
-                              <CommandItem
-                                key={tag.id}
-                                value={tag.name}
-                                onSelect={() => toggleTag(tag.name)}
-                                className="gap-2"
-                              >
-                                <span
-                                  className="h-2.5 w-2.5 rounded-full shrink-0"
-                                  style={{ backgroundColor: tag.color ?? "hsl(var(--muted-foreground))" }}
-                                />
-                                <span className="flex-1">{tag.name}</span>
-                                <Check
-                                  className={cn(
-                                    "h-4 w-4",
-                                    checked ? "opacity-100" : "opacity-0",
-                                  )}
-                                />
-                              </CommandItem>
-                            );
-                          })}
-                        </CommandGroup>
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
+                {!readOnly && (
+                  <Popover open={tagPopoverOpen} onOpenChange={setTagPopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <Button size="sm" variant="outline" className="h-8">
+                        <TagIcon className="h-3.5 w-3.5 mr-1.5" />
+                        Gérer
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-64 p-0" align="end">
+                      <Command>
+                        <CommandInput placeholder="Rechercher un tag…" />
+                        <CommandList>
+                          <CommandEmpty>
+                            Aucun tag défini. Allez dans Paramètres → Classification.
+                          </CommandEmpty>
+                          <CommandGroup>
+                            {(orgTags ?? []).map((tag) => {
+                              const checked = selectedTags.some(
+                                (t) => t.toLowerCase() === tag.name.toLowerCase(),
+                              );
+                              return (
+                                <CommandItem
+                                  key={tag.id}
+                                  value={tag.name}
+                                  onSelect={() => toggleTag(tag.name)}
+                                  className="gap-2"
+                                >
+                                  <span
+                                    className="h-2.5 w-2.5 rounded-full shrink-0"
+                                    style={{ backgroundColor: tag.color ?? "hsl(var(--muted-foreground))" }}
+                                  />
+                                  <span className="flex-1">{tag.name}</span>
+                                  <Check
+                                    className={cn(
+                                      "h-4 w-4",
+                                      checked ? "opacity-100" : "opacity-0",
+                                    )}
+                                  />
+                                </CommandItem>
+                              );
+                            })}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                )}
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {selectedTags.map((tagName) => {
@@ -676,6 +697,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                       className={cn(
                         "gap-1.5 pl-2 pr-1 border-transparent",
                         orphan && "opacity-60 italic",
+                        readOnly && "pr-2",
                       )}
                       style={
                         tag?.color
@@ -684,19 +706,21 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                       }
                     >
                       {tagName}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          removeTag(tagName);
-                        }}
-                        className="ml-0.5 rounded-full p-0.5 hover:bg-black/20 transition-colors"
-                        aria-label={`Retirer ${tagName}`}
-                        style={fg ? { color: fg } : undefined}
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
+                      {!readOnly && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            removeTag(tagName);
+                          }}
+                          className="ml-0.5 rounded-full p-0.5 hover:bg-black/20 transition-colors"
+                          aria-label={`Retirer ${tagName}`}
+                          style={fg ? { color: fg } : undefined}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
                     </Badge>
                   );
                 })}
@@ -734,6 +758,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 organizationId={organizationId}
                 selectedDocId={selectedDocId}
                 onSelectDoc={setSelectedDocId}
+                readOnly={readOnly}
               />
             </div>
 
@@ -743,7 +768,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 <CourierNotes
                   courierId={courier.id}
                   organizationId={organizationId}
-                  readOnly={isFinalState}
+                  readOnly={readOnly || isFinalState}
                 />
               </>
             )}
@@ -782,7 +807,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 <CourierNotes
                   courierId={courier.id}
                   organizationId={organizationId}
-                  readOnly={isFinalState}
+                  readOnly={readOnly || isFinalState}
                 />
               </TabsContent>
               <TabsContent
