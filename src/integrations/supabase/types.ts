@@ -14,6 +14,71 @@ export type Database = {
   }
   public: {
     Tables: {
+      action_tickets: {
+        Row: {
+          courier_id: string
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          organization_id: string
+          procedure_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          courier_id: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          organization_id: string
+          procedure_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          courier_id?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          organization_id?: string
+          procedure_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "action_tickets_courier_id_fkey"
+            columns: ["courier_id"]
+            isOneToOne: false
+            referencedRelation: "couriers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "action_tickets_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "action_tickets_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "action_tickets_procedure_id_fkey"
+            columns: ["procedure_id"]
+            isOneToOne: false
+            referencedRelation: "procedures"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       courier_analyses: {
         Row: {
           courier_id: string
