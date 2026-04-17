@@ -597,31 +597,39 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 <Briefcase className="h-4 w-4 text-muted-foreground" />
                 <h3 className="text-sm font-medium">Service gestionnaire</h3>
               </div>
-              <Select
-                value={currentService?.id ?? ""}
-                onValueChange={(v) => serviceMutation.mutate(v)}
-                disabled={serviceMutation.isPending}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Sélectionner un service" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(services ?? []).map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name}
-                      {s.workflow?.name && (
-                        <span className="text-muted-foreground text-xs ml-2">
-                          — {s.workflow.name}
-                        </span>
-                      )}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {courier.assigned_service && !currentService && (
-                <p className="text-xs text-muted-foreground italic">
-                  Service actuel « {courier.assigned_service} » introuvable.
+              {readOnly ? (
+                <p className="text-sm font-medium px-1">
+                  {courier.assigned_service ?? <span className="text-muted-foreground italic font-normal">—</span>}
                 </p>
+              ) : (
+                <>
+                  <Select
+                    value={currentService?.id ?? ""}
+                    onValueChange={(v) => serviceMutation.mutate(v)}
+                    disabled={serviceMutation.isPending}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Sélectionner un service" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(services ?? []).map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.name}
+                          {s.workflow?.name && (
+                            <span className="text-muted-foreground text-xs ml-2">
+                              — {s.workflow.name}
+                            </span>
+                          )}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {courier.assigned_service && !currentService && (
+                    <p className="text-xs text-muted-foreground italic">
+                      Service actuel « {courier.assigned_service} » introuvable.
+                    </p>
+                  )}
+                </>
               )}
             </div>
 
