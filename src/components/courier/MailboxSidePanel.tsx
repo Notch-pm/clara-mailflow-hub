@@ -162,7 +162,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
 
   const serviceMutation = useMutation({
     mutationFn: async (newServiceId: string) => {
-      if (!courier) return;
+      if (!courier) return null;
       const newService = services?.find((s) => s.id === newServiceId);
       if (!newService) throw new Error("Service introuvable");
 
@@ -195,8 +195,11 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
           state_name: initial.name,
         });
       }
+
+      return { name: newService.name };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
+      if (result?.name) setLocalAssignedService(result.name);
       queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
       queryClient.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
       queryClient.invalidateQueries({ queryKey: ["courier-events", courier?.id] });
