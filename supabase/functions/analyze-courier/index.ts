@@ -368,12 +368,19 @@ async function analyzeCourier(
     throw new Error("Aucun contenu à analyser. Lancez d'abord l'extraction OCR ou ajoutez un corps d'email.");
   }
 
+  const tagListForPrompt = availableTagNames.length > 0
+    ? availableTagNames.map((n) => `- ${n}`).join("\n")
+    : "(aucun tag défini — laisse intents vide)";
+
   const systemPrompt = `Tu es un assistant expert en gestion de courrier administratif. Analyse le contenu fourni et restitue UNIQUEMENT via l'outil "report_analysis" :
 - summary: résumé concis (2-3 phrases) du contenu
-- intents: liste des intentions/objets principaux (verbe + complément court, ex: "demande d'attestation", "réclamation facture")
+- intents: liste des tags qui qualifient ce courrier, choisis EXCLUSIVEMENT dans la liste des tags disponibles ci-dessous (copie exacte du nom, sensible à la casse). N'invente AUCUN tag. Si aucun tag ne s'applique, renvoie une liste vide.
 - sentiment: ton/état d'esprit du rédacteur, parmi: neutre, courtois, urgent, mécontent, agressif, satisfait, inquiet
 - suggested_actions: 2 à 5 actions concrètes que l'organisation devrait entreprendre
-Sois factuel, en français. Si le corps de l'email et les pièces jointes coexistent, traite-les comme un tout cohérent.`;
+Sois factuel, en français. Si le corps de l'email et les pièces jointes coexistent, traite-les comme un tout cohérent.
+
+Tags disponibles pour intents :
+${tagListForPrompt}`;
 
   const sections: string[] = [`Sujet du courrier : ${courier.subject ?? "(aucun)"}`];
   if (emailBody.trim()) {
@@ -383,6 +390,11 @@ Sois factuel, en français. Si le corps de l'email et les pièces jointes coexis
     sections.push(`Contenu extrait des pièces jointes :\n${concatenated}`);
   }
   const userPrompt = sections.join("\n\n");
+
+  const intentsSchema: Record<string, unknown> = { type: "array", items: { type: "string" } };
+  if (availableTagNames.length > 0) {
+    intentsSchema.items = { type: "string", enum: availableTagNames };
+  }
 
   const tools = [
     {
@@ -394,7 +406,7 @@ Sois factuel, en français. Si le corps de l'email et les pièces jointes coexis
           type: "object",
           properties: {
             summary: { type: "string" },
-            intents: { type: "array", items: { type: "string" } },
+            intents: intentsSchema,
             sentiment: {
               type: "string",
               enum: ["neutre", "courtois", "urgent", "mécontent", "agressif", "satisfait", "inquiet"],
