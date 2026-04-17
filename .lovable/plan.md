@@ -1,75 +1,57 @@
 
-## Plan : Onglet "Contenu et intentions" avec OCR Mistral + analyse LLM
 
-### Vue d'ensemble
-Pour chaque courrier ouvert dans le volet latéral (mode `withTabs`), l'onglet 2 affichera :
-1. **Contenu textuel** des documents joints (extraction OCR Mistral pour PDF/images, lecture directe pour TXT)
-2. **Analyse IA** (Mistral chat) : intentions, état d'esprit, actions suggérées
-3. Bouton "Relancer l'analyse" + cache en base pour éviter de re-payer à chaque ouverture
+## Plan : Bypass OCR pour les documents textuels natifs
 
-### Architecture
+### Objectif
+Pour les documents dont le texte est directement extractible (sans OCR), lire le contenu nativement et économiser des appels Mistral OCR.
 
-```text
-┌────────────────────┐       ┌──────────────────────┐       ┌─────────────┐
-│ Onglet "Contenu et │──────▶│ Edge func            │──────▶│ Mistral OCR │
-│ intentions" (React)│       │ analyze-courier      │       │ + Chat API  │
-└────────────────────┘       └──────────────────────┘       └─────────────┘
-        │                              │
-        │                              ▼
-        │                    ┌────────────────────┐
-        └────lecture─────────│ courier_analyses   │ (nouvelle table)
-                             │ + document_extracts│
-                             └────────────────────┘
-```
+### État actuel
+Dans `analyze-courier/index.ts`, seul `text/*` (TXT, MD, CSV, JSON…) bypasse déjà l'OCR via `blob.text()`. Tous les autres formats (PDF, DOCX, etc.) passent par Mistral OCR — y compris les Word natifs dont le texte est pourtant directement extractible.
 
-### Étapes
+### Formats à traiter en natif (sans OCR)
 
-**1. Secret Mistral**
-- Demander la clé API via `add_secret` (`MISTRAL_API_KEY`) — tu la fourniras quand on passera en mode default.
+| Format | MIME | Méthode d'extraction |
+|---|---|---|
+| TXT/MD/CSV/JSON | `text/*` | déjà géré (`blob.text()`) |
+| **DOCX** | `application/vnd.openxmlformats-officedocument.wordprocessingml.document` | unzip + parse `word/document.xml` |
+| **ODT** | `application/vnd.oasis.opendocument.text` | unzip + parse `content.xml` |
+| **RTF** | `application/rtf`, `text/rtf` | strip des codes RTF (regex simple) |
+| **PDF "texte"** | `application/pdf` | tentative d'extraction texte ; si vide ou trop court → fallback OCR Mistral |
+| Images (JPG/PNG…) | `image/*` | OCR obligatoire (inchangé) |
+| PDF scanné | `application/pdf` | fallback OCR (inchangé) |
 
-**2. Migration DB (2 tables)**
-- `courier_document_extracts` : cache du texte OCR par document
-  - `id, document_id (unique), organization_id, courier_id, text, page_count, model, tokens_used, created_at, updated_at`
-- `courier_analyses` : analyse globale du courrier
-  - `id, courier_id (unique), organization_id, intents (jsonb), sentiment (text), suggested_actions (jsonb), summary (text), model, created_at, updated_at`
-- RLS : isolation `organization_id` (pattern existant via header `x-org-id`)
+### Implémentation (modification de `supabase/functions/analyze-courier/index.ts`)
 
-**3. Edge function `analyze-courier`** (`supabase/functions/analyze-courier/index.ts`)
-- Auth JWT + vérif org membership (réutilise pattern `storage-documents`)
-- Endpoints internes : `?action=ocr-document` (un doc), `?action=analyze` (tout le courrier)
-- Pour OCR :
-  - Génère un signed URL court pour le fichier dans le bucket `clara-documents`
-  - Appelle `https://api.mistral.ai/v1/ocr` avec `model: mistral-ocr-latest` et `document_url`
-  - Pour images : `image_url` ; pour PDF : `document_url` ; pour `text/*` : lecture directe sans OCR
-  - Stocke le résultat dans `courier_document_extracts`
-- Pour analyse :
-  - Concatène les extraits, appelle `https://api.mistral.ai/v1/chat/completions` (modèle `mistral-large-latest`) avec tool calling pour sortie structurée : `{intents[], sentiment, suggested_actions[], summary}`
-  - Stocke dans `courier_analyses`
+Refactor de la fonction `ocrDocument` pour router selon le MIME :
 
-**4. Service client** (`src/services/courierAnalysisService.ts`)
-- `getExtracts(courierId)`, `getAnalysis(courierId)`, `runOcr(courierId)`, `runAnalysis(courierId)`
+1. **Branche `text/*`** → inchangée, modèle `direct-text`
+2. **Nouvelle branche DOCX/ODT** : 
+   - Télécharger le blob depuis Storage
+   - Utiliser `JSZip` (via esm.sh) pour dézipper en mémoire
+   - Extraire le XML cible (`word/document.xml` ou `content.xml`)
+   - Strip des balises XML via regex pour récupérer le texte brut
+   - Modèle stocké : `native-docx` ou `native-odt`
+3. **Nouvelle branche RTF** : 
+   - Télécharger le blob, lire en texte
+   - Regex pour retirer les codes de contrôle RTF (`\\[a-z]+\d* ?`, accolades, etc.)
+   - Modèle stocké : `native-rtf`
+4. **Nouvelle branche PDF** :
+   - Tenter d'abord une extraction texte native via une lib légère Deno (ex : `pdf-parse` via esm.sh, ou `unpdf`)
+   - Si le texte extrait fait moins d'un seuil (ex : <50 caractères pour un PDF de plusieurs pages) → fallback OCR Mistral
+   - Modèle stocké : `native-pdf` ou `mistral-ocr-latest` selon le chemin pris
+5. **Branche par défaut (images, PDF scannés)** → OCR Mistral inchangé
 
-**5. Composant `ContentIntentsTab`** (`src/components/courier/ContentIntentsTab.tsx`)
-- Section haute : "Contenu textuel des documents" — liste collapsible par document avec texte OCR (markdown rendu)
-- Section basse : "Analyse" — cards pour Résumé / Intentions (badges) / État d'esprit (badge coloré) / Actions suggérées (liste)
-- Boutons "Extraire le texte" / "Analyser" + état loading + dernière mise à jour
-- Si pas de docs : message "Aucun document à analyser"
-
-**6. Intégration dans `MailboxSidePanel.tsx`**
-- Remplacer le placeholder de l'onglet `content` par `<ContentIntentsTab courierId organizationId />`
+### UI (`ContentIntentsTab.tsx`)
+Léger ajustement du badge affiché : au lieu de toujours montrer "X p." ou "extrait", afficher la **méthode** ("natif", "OCR", "X p.") via `extract.model` pour rendre transparent le mode utilisé. Optionnel.
 
 ### Notes techniques
-- **Mode 2 étapes** : OCR d'abord (par doc, cache permanent), puis analyse (re-générable à la demande)
-- **Coût maîtrisé** : pas d'appel auto à l'ouverture — l'utilisateur clique pour déclencher la 1ère extraction. Si extrait déjà en cache, affichage instantané.
-- **Pas de streaming** nécessaire (volumétrie courte, sortie structurée via tool calling)
-- **Limites** : taille max fichier déjà gérée côté upload ; on documente que Mistral OCR supporte PDF/PPTX/DOCX/PNG/JPG
+- **Pas de migration DB** : la colonne `model` existe déjà et accepte n'importe quelle string.
+- **Pas de nouveaux secrets** : tout se fait côté edge function avec libs npm/esm.sh.
+- **Économie** : DOCX/ODT/RTF/PDF-texte = 0 appel Mistral OCR. Coût uniquement pour images et scans.
+- **Risque PDF** : certaines libs Deno-compatibles pour extraction PDF peuvent être lourdes ; je privilégierai `unpdf` (zéro dépendance, conçue pour Deno/serverless). Si extraction trop pauvre, fallback automatique sur Mistral.
+- **Limites** : pas de support natif pour PPTX/XLSX dans cette itération (pourraient être ajoutés sur le même modèle si besoin).
 
-### Fichiers créés/modifiés
-- `supabase/migrations/<timestamp>_courier_analysis.sql` (nouveau)
-- `supabase/functions/analyze-courier/index.ts` (nouveau)
-- `src/services/courierAnalysisService.ts` (nouveau)
-- `src/components/courier/ContentIntentsTab.tsx` (nouveau)
-- `src/components/courier/MailboxSidePanel.tsx` (modifié — remplacer placeholder)
+### Fichiers modifiés
+- `supabase/functions/analyze-courier/index.ts` (refactor `ocrDocument` + helpers `extractDocx`, `extractOdt`, `extractRtf`, `extractPdfNative`)
+- `src/components/courier/ContentIntentsTab.tsx` (optionnel — affichage méthode dans le badge)
 
-### Question avant de coder
-Préfères-tu un **déclenchement automatique** au 1er affichage de l'onglet (UX fluide, coût immédiat) ou **manuel** via boutons "Extraire" / "Analyser" (coût maîtrisé) ? Ma reco : **manuel** pour l'OCR (coût Mistral OCR par page) et **manuel** pour l'analyse, avec re-affichage instantané du cache à la prochaine ouverture.
