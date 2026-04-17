@@ -637,51 +637,53 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-medium">Tags</h3>
-                <Popover open={tagPopoverOpen} onOpenChange={setTagPopoverOpen}>
-                  <PopoverTrigger asChild>
-                    <Button size="sm" variant="outline" className="h-8">
-                      <TagIcon className="h-3.5 w-3.5 mr-1.5" />
-                      Gérer
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-64 p-0" align="end">
-                    <Command>
-                      <CommandInput placeholder="Rechercher un tag…" />
-                      <CommandList>
-                        <CommandEmpty>
-                          Aucun tag défini. Allez dans Paramètres → Classification.
-                        </CommandEmpty>
-                        <CommandGroup>
-                          {(orgTags ?? []).map((tag) => {
-                            const checked = selectedTags.some(
-                              (t) => t.toLowerCase() === tag.name.toLowerCase(),
-                            );
-                            return (
-                              <CommandItem
-                                key={tag.id}
-                                value={tag.name}
-                                onSelect={() => toggleTag(tag.name)}
-                                className="gap-2"
-                              >
-                                <span
-                                  className="h-2.5 w-2.5 rounded-full shrink-0"
-                                  style={{ backgroundColor: tag.color ?? "hsl(var(--muted-foreground))" }}
-                                />
-                                <span className="flex-1">{tag.name}</span>
-                                <Check
-                                  className={cn(
-                                    "h-4 w-4",
-                                    checked ? "opacity-100" : "opacity-0",
-                                  )}
-                                />
-                              </CommandItem>
-                            );
-                          })}
-                        </CommandGroup>
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
+                {!readOnly && (
+                  <Popover open={tagPopoverOpen} onOpenChange={setTagPopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <Button size="sm" variant="outline" className="h-8">
+                        <TagIcon className="h-3.5 w-3.5 mr-1.5" />
+                        Gérer
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-64 p-0" align="end">
+                      <Command>
+                        <CommandInput placeholder="Rechercher un tag…" />
+                        <CommandList>
+                          <CommandEmpty>
+                            Aucun tag défini. Allez dans Paramètres → Classification.
+                          </CommandEmpty>
+                          <CommandGroup>
+                            {(orgTags ?? []).map((tag) => {
+                              const checked = selectedTags.some(
+                                (t) => t.toLowerCase() === tag.name.toLowerCase(),
+                              );
+                              return (
+                                <CommandItem
+                                  key={tag.id}
+                                  value={tag.name}
+                                  onSelect={() => toggleTag(tag.name)}
+                                  className="gap-2"
+                                >
+                                  <span
+                                    className="h-2.5 w-2.5 rounded-full shrink-0"
+                                    style={{ backgroundColor: tag.color ?? "hsl(var(--muted-foreground))" }}
+                                  />
+                                  <span className="flex-1">{tag.name}</span>
+                                  <Check
+                                    className={cn(
+                                      "h-4 w-4",
+                                      checked ? "opacity-100" : "opacity-0",
+                                    )}
+                                  />
+                                </CommandItem>
+                              );
+                            })}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                )}
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {selectedTags.map((tagName) => {
@@ -695,6 +697,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                       className={cn(
                         "gap-1.5 pl-2 pr-1 border-transparent",
                         orphan && "opacity-60 italic",
+                        readOnly && "pr-2",
                       )}
                       style={
                         tag?.color
@@ -703,19 +706,21 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                       }
                     >
                       {tagName}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          removeTag(tagName);
-                        }}
-                        className="ml-0.5 rounded-full p-0.5 hover:bg-black/20 transition-colors"
-                        aria-label={`Retirer ${tagName}`}
-                        style={fg ? { color: fg } : undefined}
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
+                      {!readOnly && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            removeTag(tagName);
+                          }}
+                          className="ml-0.5 rounded-full p-0.5 hover:bg-black/20 transition-colors"
+                          aria-label={`Retirer ${tagName}`}
+                          style={fg ? { color: fg } : undefined}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
                     </Badge>
                   );
                 })}
