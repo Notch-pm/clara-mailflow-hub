@@ -47,6 +47,13 @@ interface MailboxCourier {
   courier_participants?: CourierParticipant[];
 }
 
+interface Props {
+  courier: MailboxCourier | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  organizationId: string;
+}
+
 export default function MailboxSidePanel({ courier, open, onOpenChange, organizationId }: Props) {
   const queryClient = useQueryClient();
   const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
