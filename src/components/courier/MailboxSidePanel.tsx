@@ -579,13 +579,16 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
               />
             </div>
 
-            <Separator />
-
-            <CourierNotes
-              courierId={courier.id}
-              organizationId={organizationId}
-              readOnly={isFinalState}
-            />
+            {!withTabs && (
+              <>
+                <Separator />
+                <CourierNotes
+                  courierId={courier.id}
+                  organizationId={organizationId}
+                  readOnly={isFinalState}
+                />
+              </>
+            )}
           </main>
           </TabsContent>
 
