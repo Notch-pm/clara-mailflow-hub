@@ -66,9 +66,11 @@ interface Props {
   organizationId: string;
   /** When true, displays the body inside tabs (Détail / Actions liées / Réponse). */
   withTabs?: boolean;
+  /** When true, the panel is fully read-only: no edits, no transitions, no uploads, no notes. */
+  readOnly?: boolean;
 }
 
-export default function MailboxSidePanel({ courier, open, onOpenChange, organizationId, withTabs = false }: Props) {
+export default function MailboxSidePanel({ courier, open, onOpenChange, organizationId, withTabs = false, readOnly = false }: Props) {
   const queryClient = useQueryClient();
   const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
 
