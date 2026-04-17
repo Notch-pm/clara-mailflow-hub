@@ -135,6 +135,7 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const filterOrgId = body.organization_id || null;
+    const runInBackground = body.background !== false; // default true
 
     let query = supabaseAdmin
       .from("organization_integrations")
@@ -153,6 +154,42 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Long-running work — execute in the background and return immediately
+    // so the client (browser) does not hit a network timeout.
+    const work = runSync(supabaseAdmin, integrations);
+
+    if (runInBackground) {
+      // @ts-ignore Deno edge runtime
+      if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) {
+        // @ts-ignore
+        EdgeRuntime.waitUntil(work);
+      } else {
+        work.catch((e) => console.error("background sync error:", e));
+      }
+      return new Response(
+        JSON.stringify({
+          message: "Synchronisation lancée en arrière-plan",
+          organizations: integrations.length,
+        }),
+        { status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    const result = await work;
+    return new Response(
+      JSON.stringify({ message: "Synchronisation terminée", ...result }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  } catch (error) {
+    console.error("sync-arpege-services error:", error);
+    return new Response(
+      JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+});
+
+async function runSync(supabaseAdmin: any, integrations: any[]) {
     let totalCreated = 0;
     let totalUpdated = 0;
     let totalSkipped = 0;
