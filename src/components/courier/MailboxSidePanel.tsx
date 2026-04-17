@@ -279,15 +279,16 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
           <div className="flex items-start justify-between gap-4 pr-8">
             <div className="flex-1 min-w-0">
               <SheetTitle className="text-lg sr-only">
-                {courier.subject ?? "Sans objet"}
+                {courier.subject ?? "Sans titre"}
               </SheetTitle>
               <InlineEditField
                 label=""
                 value={courier.subject ?? ""}
-                placeholder="Objet du courrier"
-                emptyDisplay="Sans objet"
+                placeholder="Titre du courrier"
+                emptyDisplay="Sans titre"
                 maxLength={255}
-                onSave={(v) => persistCourierUpdate({ subject: v.trim() || null }, "Objet modifié")}
+                displayClassName="text-lg font-semibold"
+                onSave={(v) => persistCourierUpdate({ subject: v.trim() || null }, "Titre modifié")}
               />
             </div>
             {transitions && transitions.length > 0 && (

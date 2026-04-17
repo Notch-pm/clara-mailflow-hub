@@ -14,6 +14,8 @@ interface Props {
   onSave: (next: string) => Promise<void> | void;
   /** Render mode for the displayed value (read-only). */
   renderDisplay?: (value: string) => React.ReactNode;
+  /** Extra classes applied to the displayed value (read mode). */
+  displayClassName?: string;
 }
 
 export default function InlineEditField({
@@ -25,6 +27,7 @@ export default function InlineEditField({
   maxLength,
   onSave,
   renderDisplay,
+  displayClassName,
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -115,12 +118,13 @@ export default function InlineEditField({
             className={cn(
               "flex items-center gap-1.5 text-sm font-medium text-right rounded px-1.5 py-0.5 -mx-1.5",
               "hover:bg-muted transition-colors max-w-full",
+              displayClassName,
             )}
             title="Cliquer pour modifier"
           >
             <span className="truncate">
               {value ? (renderDisplay ? renderDisplay(value) : value) : (
-                <span className="text-muted-foreground italic">{emptyDisplay}</span>
+                <span className="text-muted-foreground italic font-normal">{emptyDisplay}</span>
               )}
             </span>
             <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
