@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { X, ArrowRight, Tag as TagIcon, Check, Briefcase } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
@@ -62,7 +62,15 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
   const participants = courier?.courier_participants ?? [];
   const sender = participants.find((p) => p.role === "sender");
   const recipient = participants.find((p) => p.role === "recipient");
-  const selectedTags: string[] = (courier?.metadata as any)?.tags ?? [];
+
+  // Local copy of tags so the UI reflects mutations immediately
+  // (the parent's `courier` prop is a snapshot and doesn't refetch on tag change).
+  const [selectedTags, setSelectedTags] = useState<string[]>(
+    ((courier?.metadata as any)?.tags ?? []) as string[],
+  );
+  useEffect(() => {
+    setSelectedTags(((courier?.metadata as any)?.tags ?? []) as string[]);
+  }, [courier?.id, courier?.metadata]);
 
   // Available tags for the org
   const { data: orgTags } = useQuery({
@@ -170,8 +178,13 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
+      queryClient.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error, _vars, ctx: any) => {
+      // rollback
+      if (ctx?.previous) setSelectedTags(ctx.previous);
+      toast.error(err.message);
+    },
   });
 
   function toggleTag(tagName: string) {
@@ -179,13 +192,18 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
     const next = exists
       ? selectedTags.filter((t) => t.toLowerCase() !== tagName.toLowerCase())
       : [...selectedTags, tagName];
-    tagMutation.mutate(next);
+    const previous = selectedTags;
+    setSelectedTags(next);
+    tagMutation.mutate(next, { onError: () => setSelectedTags(previous) } as any);
   }
 
   function removeTag(tagName: string) {
-    tagMutation.mutate(
-      selectedTags.filter((t) => t.toLowerCase() !== tagName.toLowerCase()),
+    const previous = selectedTags;
+    const next = selectedTags.filter(
+      (t) => t.toLowerCase() !== tagName.toLowerCase(),
     );
+    setSelectedTags(next);
+    tagMutation.mutate(next, { onError: () => setSelectedTags(previous) } as any);
   }
 
   if (!courier) return null;
