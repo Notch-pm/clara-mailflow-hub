@@ -133,8 +133,8 @@ export default function BoiteAuxLettres() {
         </div>
       </div>
 
-      {/* Search */}
-      <div className="flex items-center gap-2">
+      {/* Search + actions */}
+      <div className="flex items-center gap-2 justify-between flex-wrap">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -144,6 +144,12 @@ export default function BoiteAuxLettres() {
             className="pl-9"
           />
         </div>
+        {organizationId && (
+          <Button onClick={() => setNewDialogOpen(true)}>
+            <Plus className="h-4 w-4 mr-1" />
+            Nouveau courrier
+          </Button>
+        )}
       </div>
 
       {/* Content */}
