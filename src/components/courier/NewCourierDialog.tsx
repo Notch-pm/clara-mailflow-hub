@@ -287,14 +287,13 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId }:
             {/* Left column — form */}
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="nc-subject">Objet *</Label>
-                <Textarea
+                <Label htmlFor="nc-subject">Titre *</Label>
+                <Input
                   id="nc-subject"
                   value={subject}
                   onChange={(e) => setSubject(e.target.value)}
                   maxLength={255}
-                  rows={2}
-                  placeholder="Objet du courrier"
+                  placeholder="Titre du courrier"
                 />
                 {errors.subject && (
                   <p className="text-xs text-destructive">{errors.subject}</p>
