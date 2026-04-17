@@ -62,7 +62,15 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
   const participants = courier?.courier_participants ?? [];
   const sender = participants.find((p) => p.role === "sender");
   const recipient = participants.find((p) => p.role === "recipient");
-  const selectedTags: string[] = (courier?.metadata as any)?.tags ?? [];
+
+  // Local copy of tags so the UI reflects mutations immediately
+  // (the parent's `courier` prop is a snapshot and doesn't refetch on tag change).
+  const [selectedTags, setSelectedTags] = useState<string[]>(
+    ((courier?.metadata as any)?.tags ?? []) as string[],
+  );
+  useEffect(() => {
+    setSelectedTags(((courier?.metadata as any)?.tags ?? []) as string[]);
+  }, [courier?.id, courier?.metadata]);
 
   // Available tags for the org
   const { data: orgTags } = useQuery({
