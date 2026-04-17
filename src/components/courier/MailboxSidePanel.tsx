@@ -423,6 +423,10 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
             <div className="flex flex-wrap items-center gap-2 justify-end shrink-0">
               {transitions && transitions.length > 0 && (
                 <>
+                  <span className="text-xs text-muted-foreground inline-flex items-center gap-1 shrink-0">
+                    <ArrowRight className="h-3.5 w-3.5" />
+                    Déplacer vers
+                  </span>
                   {transitions.length <= 3 ? (
                     transitions.map((t) => {
                       const category = (t.to_state as any)?.category as WorkflowCategory | undefined;
@@ -454,8 +458,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                       disabled={transitionMutation.isPending}
                     >
                       <SelectTrigger className="h-8 text-sm gap-2">
-                        <ArrowRight className="h-4 w-4 shrink-0" />
-                        <span>Déplacer vers</span>
+                        <SelectValue placeholder="Choisir…" />
                       </SelectTrigger>
                       <SelectContent align="end">
                         {transitions.map((t) => {
