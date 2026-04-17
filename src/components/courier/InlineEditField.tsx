@@ -118,12 +118,13 @@ export default function InlineEditField({
             className={cn(
               "flex items-center gap-1.5 text-sm font-medium text-right rounded px-1.5 py-0.5 -mx-1.5",
               "hover:bg-muted transition-colors max-w-full",
+              displayClassName,
             )}
             title="Cliquer pour modifier"
           >
             <span className="truncate">
               {value ? (renderDisplay ? renderDisplay(value) : value) : (
-                <span className="text-muted-foreground italic">{emptyDisplay}</span>
+                <span className="text-muted-foreground italic font-normal">{emptyDisplay}</span>
               )}
             </span>
             <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
