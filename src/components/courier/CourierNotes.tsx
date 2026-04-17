@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Trash2, Check, X, Plus, StickyNote } from "lucide-react";
+import { Pencil, Trash2, Check, X, Plus, StickyNote, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -90,6 +90,16 @@ export default function CourierNotes({ courierId, organizationId, readOnly = fal
         <StickyNote className="h-4 w-4 text-muted-foreground" />
         <h3 className="text-sm font-medium">Notes internes</h3>
         <span className="text-xs text-muted-foreground">({notes.length})</span>
+      </div>
+
+      <div
+        role="note"
+        className="flex items-start gap-2 rounded-md border border-border bg-muted/50 px-3 py-2 text-xs text-muted-foreground"
+      >
+        <ShieldAlert className="h-4 w-4 shrink-0 mt-0.5 text-primary" />
+        <span>
+          Le contenu des notes doit respecter les préconisations du RGPD et ne pas contenir d'informations sensibles.
+        </span>
       </div>
 
       {!readOnly && (
