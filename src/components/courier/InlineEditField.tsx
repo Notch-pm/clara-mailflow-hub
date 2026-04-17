@@ -16,6 +16,8 @@ interface Props {
   renderDisplay?: (value: string) => React.ReactNode;
   /** Extra classes applied to the displayed value (read mode). */
   displayClassName?: string;
+  /** When true, displays the value but disables editing entirely. */
+  readOnly?: boolean;
 }
 
 export default function InlineEditField({
@@ -28,6 +30,7 @@ export default function InlineEditField({
   onSave,
   renderDisplay,
   displayClassName,
+  readOnly = false,
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
