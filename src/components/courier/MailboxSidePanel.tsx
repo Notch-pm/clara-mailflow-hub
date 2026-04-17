@@ -47,20 +47,6 @@ interface MailboxCourier {
   courier_participants?: CourierParticipant[];
 }
 
-interface Props {
-  courier: MailboxCourier | null;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  organizationId: string;
-}
-
-interface Props {
-  courier: MailboxCourier | null;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  organizationId: string;
-}
-
 export default function MailboxSidePanel({ courier, open, onOpenChange, organizationId }: Props) {
   const queryClient = useQueryClient();
   const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
@@ -81,19 +67,72 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
     (orgTags ?? []).map((t) => [t.name.toLowerCase(), t]),
   );
 
-  // Fetch transitions from current state
+  // Available services for the org
+  const { data: services } = useQuery({
+    queryKey: ["org-services", organizationId],
+    queryFn: () => listServices(organizationId),
+    enabled: !!organizationId && open,
+  });
+
+  // Resolve courier's current service from its name (assigned_service)
+  const currentService = useMemo(() => {
+    if (!courier?.assigned_service || !services) return null;
+    return (
+      services.find(
+        (s) => s.name.toLowerCase() === courier.assigned_service?.toLowerCase(),
+      ) ?? null
+    );
+  }, [courier?.assigned_service, services]);
+
+  // Transitions from current state, scoped to the service's workflow
   const { data: transitions } = useQuery({
-    queryKey: ["mailbox-transitions", courier?.workflow_state_id],
+    queryKey: [
+      "mailbox-transitions",
+      courier?.workflow_state_id,
+      currentService?.workflow_id,
+    ],
     queryFn: async () => {
-      if (!courier?.workflow_state_id) return [];
+      if (!courier?.workflow_state_id || !currentService?.workflow_id) return [];
       const { data, error } = await supabase
         .from("workflow_transitions")
         .select("*, to_state:workflow_states!workflow_transitions_to_state_id_fkey(id, name, category)")
+        .eq("workflow_id", currentService.workflow_id)
         .eq("from_state_id", courier.workflow_state_id);
       if (error) throw error;
       return (data ?? []) as (WorkflowTransition & { to_state: WorkflowState })[];
     },
-    enabled: !!courier?.workflow_state_id,
+    enabled: !!courier?.workflow_state_id && !!currentService?.workflow_id,
+  });
+
+  const serviceMutation = useMutation({
+    mutationFn: async (newServiceId: string) => {
+      if (!courier) return;
+      const newService = services?.find((s) => s.id === newServiceId);
+      if (!newService) throw new Error("Service introuvable");
+
+      // Find initial state of the new service's workflow
+      const { data: initial, error: stateErr } = await supabase
+        .from("workflow_states")
+        .select("id")
+        .eq("workflow_id", newService.workflow_id)
+        .eq("is_initial", true)
+        .maybeSingle();
+      if (stateErr) throw stateErr;
+
+      const currentMeta = (courier.metadata as any) ?? {};
+      const { error } = await updateCourier(organizationId, courier.id, {
+        assigned_service: newService.name,
+        workflow_state_id: initial?.id ?? null,
+        metadata: { ...currentMeta, service_id: newService.id },
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
+      queryClient.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
+      toast.success("Service gestionnaire mis à jour");
+    },
+    onError: (err: Error) => toast.error(err.message),
   });
 
   const transitionMutation = useMutation({
