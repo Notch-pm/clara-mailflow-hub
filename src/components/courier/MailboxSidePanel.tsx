@@ -27,6 +27,7 @@ import { updateCourier } from "@/services/courierService";
 import { listTags, type CourierTag } from "@/services/courierTagService";
 import { listServices } from "@/services/orgServiceService";
 import { cn } from "@/lib/utils";
+import { readableTextColor } from "@/lib/tag-color";
 import type { CourierChannel, CourierParticipant, WorkflowTransition, WorkflowState } from "@/types/courier";
 
 const channelLabels: Record<CourierChannel, string> = {
@@ -182,7 +183,9 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
   }
 
   function removeTag(tagName: string) {
-    tagMutation.mutate(selectedTags.filter((t) => t !== tagName));
+    tagMutation.mutate(
+      selectedTags.filter((t) => t.toLowerCase() !== tagName.toLowerCase()),
+    );
   }
 
   if (!courier) return null;
@@ -317,29 +320,32 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
               {selectedTags.map((tagName) => {
                 const tag = tagByName.get(tagName.toLowerCase());
                 const orphan = !tag;
+                const fg = tag?.color ? readableTextColor(tag.color) : undefined;
                 return (
                   <Badge
                     key={tagName}
                     variant="secondary"
-                    className={cn("gap-1.5 pl-2 pr-1", orphan && "opacity-60 italic")}
+                    className={cn(
+                      "gap-1.5 pl-2 pr-1 border-transparent",
+                      orphan && "opacity-60 italic",
+                    )}
                     style={
                       tag?.color
-                        ? { backgroundColor: `${tag.color}20`, color: tag.color }
+                        ? { backgroundColor: tag.color, color: fg }
                         : undefined
                     }
                   >
-                    {tag?.color && (
-                      <span
-                        className="h-2 w-2 rounded-full"
-                        style={{ backgroundColor: tag.color }}
-                        aria-hidden
-                      />
-                    )}
                     {tagName}
                     <button
-                      onClick={() => removeTag(tagName)}
-                      className="ml-0.5 rounded-full p-0.5 hover:bg-destructive/20 transition-colors"
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        removeTag(tagName);
+                      }}
+                      className="ml-0.5 rounded-full p-0.5 hover:bg-black/20 transition-colors"
                       aria-label={`Retirer ${tagName}`}
+                      style={fg ? { color: fg } : undefined}
                     >
                       <X className="h-3 w-3" />
                     </button>
