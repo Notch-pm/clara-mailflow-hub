@@ -144,13 +144,23 @@ class ImapClient {
     if (!r.ok) throw new Error(`SELECT ${name} refusé`);
   }
 
-  async searchUnseen(): Promise<number[]> {
-    const r = await this.command(`UID SEARCH UNSEEN`);
+  async search(criteria: string): Promise<number[]> {
+    const r = await this.command(`UID SEARCH ${criteria}`);
     if (!r.ok) throw new Error(`UID SEARCH refusé`);
     const line = r.lines.find((l) => l.startsWith("* SEARCH"));
     if (!line) return [];
     const parts = line.replace("* SEARCH", "").trim().split(/\s+/).filter(Boolean);
     return parts.map((p) => parseInt(p, 10)).filter((n) => !isNaN(n));
+  }
+
+  /**
+   * Récupère uniquement les en-têtes (RFC822.HEADER) pour pouvoir lire le
+   * Message-ID sans télécharger tout le corps. Économise la bande passante.
+   */
+  async fetchHeaders(uid: number): Promise<string | null> {
+    const r = await this.command(`UID FETCH ${uid} BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)]`);
+    if (!r.ok || !r.literals[0]) return null;
+    return new TextDecoder("latin1").decode(r.literals[0]);
   }
 
   async fetchMessage(uid: number): Promise<Uint8Array | null> {
@@ -215,15 +225,41 @@ async function processOrganization(
       initialStateId = initState?.id ?? null;
     }
 
-    const uids = await client.searchUnseen();
+    // On scanne les emails reçus depuis 7 jours (au lieu de UNSEEN uniquement),
+    // ce qui permet de rattraper les mails déjà lus dans le webmail. La
+    // déduplication se fait sur Message-ID stocké dans couriers.metadata.
+    const sinceDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const sinceStr = `${sinceDate.getUTCDate().toString().padStart(2,"0")}-${months[sinceDate.getUTCMonth()]}-${sinceDate.getUTCFullYear()}`;
+
+    const uids = await client.search(`SINCE ${sinceStr}`);
     for (const uid of uids) {
       try {
+        // 1) Lit d'abord juste l'en-tête pour récupérer Message-ID (économise la BP)
+        const headerRaw = await client.fetchHeaders(uid);
+        let earlyMessageId: string | null = null;
+        if (headerRaw) {
+          const m = headerRaw.match(/Message-ID:\s*<([^>]+)>/i);
+          if (m) earlyMessageId = `<${m[1]}>`;
+        }
+
+        // 2) Si déjà importé, on saute sans toucher au flag Seen côté serveur
+        if (earlyMessageId) {
+          const { data: dup } = await admin
+            .from("couriers")
+            .select("id")
+            .eq("organization_id", s.organization_id)
+            .filter("metadata->>email_message_id", "eq", earlyMessageId)
+            .maybeSingle();
+          if (dup) continue;
+        }
+
         const raw = await client.fetchMessage(uid);
         if (!raw) continue;
         // mailparser sous Deno ne supporte pas Uint8Array directement → on passe une string
         const rawStr = new TextDecoder("latin1").decode(raw);
         const parsed = await simpleParser(rawStr);
-        const messageId = parsed.messageId || `imap-${s.organization_id}-${uid}`;
+        const messageId = parsed.messageId || earlyMessageId || `imap-${s.organization_id}-${uid}`;
 
         const { data: existing } = await admin
           .from("couriers")
@@ -232,7 +268,6 @@ async function processOrganization(
           .filter("metadata->>email_message_id", "eq", messageId)
           .maybeSingle();
         if (existing) {
-          await client.markSeen(uid);
           continue;
         }
 
@@ -325,7 +360,9 @@ async function processOrganization(
           payload: { from: senderEmail, subject, attachments: parsed.attachments?.length || 0 },
         });
 
-        await client.markSeen(uid);
+        // Volontairement, on ne marque pas l'email comme lu côté serveur IMAP :
+        // ainsi le webmail / client mail conserve son propre statut. La
+        // déduplication par Message-ID empêche les imports en double.
         processed++;
       } catch (e) {
         console.error("Erreur traitement message uid", uid, e);
