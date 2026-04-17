@@ -463,6 +463,13 @@ ${tagListForPrompt}`;
 
   const tokensUsed = chatData?.usage?.total_tokens ?? null;
 
+  // Sécurité : filtrer les intents pour ne garder que ceux qui appartiennent
+  // bien aux tags de l'organisation (mapping strict, insensible à la casse).
+  const allowed = new Set(availableTagNames.map((n) => n.toLowerCase()));
+  const safeIntents = Array.isArray(parsed.intents)
+    ? parsed.intents.filter((i) => typeof i === "string" && allowed.has(i.toLowerCase()))
+    : [];
+
   const { data: row, error: upErr } = await admin
     .from("courier_analyses")
     .upsert(
@@ -470,7 +477,7 @@ ${tagListForPrompt}`;
         courier_id: courierId,
         organization_id: orgId,
         summary: parsed.summary,
-        intents: parsed.intents ?? [],
+        intents: safeIntents,
         sentiment: parsed.sentiment,
         suggested_actions: parsed.suggested_actions ?? [],
         model: CHAT_MODEL,
