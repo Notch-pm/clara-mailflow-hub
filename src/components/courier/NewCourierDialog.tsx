@@ -90,6 +90,7 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId }:
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tagPopover, setTagPopover] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [bodyText, setBodyText] = useState("");
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -104,6 +105,7 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId }:
     setServiceId("");
     setSelectedTags([]);
     setErrors({});
+    setBodyText("");
     setPendingFiles([]);
   }, [open]);
 
@@ -198,7 +200,11 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId }:
         received_at: new Date(receivedAt).toISOString(),
         assigned_service: service.name,
         workflow_state_id: initialState?.id ?? null,
-        metadata: { tags: selectedTags, service_id: service.id } as any,
+        metadata: {
+          tags: selectedTags,
+          service_id: service.id,
+          ...(bodyText.trim() ? { body_text: bodyText.trim() } : {}),
+        } as any,
         created_by: user?.id ?? null,
       });
       if (cErr) throw cErr;
@@ -484,9 +490,22 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId }:
               </div>
             </div>
 
-            {/* Right column — file upload */}
-            <div className="space-y-3">
-              <Label>Documents (facultatif)</Label>
+            {/* Right column — body + file upload */}
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="nc-body">Contenu</Label>
+                <Textarea
+                  id="nc-body"
+                  value={bodyText}
+                  onChange={(e) => setBodyText(e.target.value)}
+                  placeholder="Saisissez le contenu du courrier (facultatif)…"
+                  rows={8}
+                  className="resize-y min-h-[180px]"
+                />
+              </div>
+
+              <div className="space-y-3">
+                <Label>Documents (facultatif)</Label>
               <div
                 onDragOver={(e) => {
                   e.preventDefault();
@@ -560,6 +579,7 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId }:
                   Aucun fichier sélectionné
                 </p>
               )}
+              </div>
             </div>
           </div>
 
