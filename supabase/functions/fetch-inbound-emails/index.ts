@@ -18,7 +18,21 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
-const CRON_SECRET = Deno.env.get("CRON_SECRET") ?? "";
+
+// Lit le secret cron partagé directement depuis le Vault Postgres via RPC service_role.
+async function getCronSecret(admin: ReturnType<typeof createClient>): Promise<string> {
+  try {
+    const { data, error } = await admin.rpc("get_cron_secret");
+    if (error) {
+      console.error("get_cron_secret RPC error:", error.message);
+      return "";
+    }
+    return (data as string) ?? "";
+  } catch (e) {
+    console.error("get_cron_secret exception:", e);
+    return "";
+  }
+}
 
 interface ImapSettings {
   id: string;
