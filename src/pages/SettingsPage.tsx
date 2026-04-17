@@ -49,10 +49,7 @@ export default function SettingsPage() {
         </div>
         {activeSection === "utilisateurs" && <UsersPage />}
         {activeSection === "emails" && organizationId && (
-          <div className="space-y-6">
-            <SmtpSettings orgId={organizationId} />
-            <ImapSettings orgId={organizationId} />
-          </div>
+          <ImapSettings orgId={organizationId} />
         )}
         {activeSection === "workflows" && <Workflows />}
         {activeSection === "classification" && <ClassificationSettings />}
