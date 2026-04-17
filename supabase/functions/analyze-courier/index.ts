@@ -1,4 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
+import JSZip from "https://esm.sh/jszip@3.10.1";
+import { extractText, getDocumentProxy } from "https://esm.sh/unpdf@0.12.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -62,6 +64,78 @@ async function verifyOrgMembership(
   if (error || !data) throw new Error("Forbidden: user does not belong to this organization");
 }
 
+/** Strip XML tags and decode common entities to plain text. */
+function xmlToText(xml: string): string {
+  return xml
+    // Convert paragraph/break boundaries to newlines
+    .replace(/<\/w:p>/g, "\n")
+    .replace(/<w:br\s*\/?>/g, "\n")
+    .replace(/<\/text:p>/g, "\n")
+    .replace(/<text:line-break\s*\/?>/g, "\n")
+    .replace(/<text:tab\s*\/?>/g, "\t")
+    // Strip all remaining tags
+    .replace(/<[^>]+>/g, "")
+    // Decode common XML entities
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(parseInt(d, 10)))
+    // Collapse runs of blank lines
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+async function extractDocx(blob: Blob): Promise<string> {
+  const buf = await blob.arrayBuffer();
+  const zip = await JSZip.loadAsync(buf);
+  const file = zip.file("word/document.xml");
+  if (!file) throw new Error("DOCX invalide: word/document.xml introuvable");
+  const xml = await file.async("string");
+  return xmlToText(xml);
+}
+
+async function extractOdt(blob: Blob): Promise<string> {
+  const buf = await blob.arrayBuffer();
+  const zip = await JSZip.loadAsync(buf);
+  const file = zip.file("content.xml");
+  if (!file) throw new Error("ODT invalide: content.xml introuvable");
+  const xml = await file.async("string");
+  return xmlToText(xml);
+}
+
+function extractRtf(rtf: string): string {
+  // Very small RTF stripper: handles common control words, hex escapes, groups.
+  let out = rtf;
+  // Drop font/color tables and stylesheets (everything inside their groups)
+  out = out.replace(/\{\\(fonttbl|colortbl|stylesheet|info|\*\\[a-z]+)[^{}]*(\{[^{}]*\}[^{}]*)*\}/gi, "");
+  // Hex-escaped chars: \'xx
+  out = out.replace(/\\'([0-9a-fA-F]{2})/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
+  // Unicode escapes: \uXXXX?
+  out = out.replace(/\\u(-?\d+)\??/g, (_, n) => String.fromCodePoint(((parseInt(n, 10) + 65536) % 65536)));
+  // Paragraph / line breaks
+  out = out.replace(/\\par[d]?\b/g, "\n").replace(/\\line\b/g, "\n").replace(/\\tab\b/g, "\t");
+  // Remaining control words (\word, \word123)
+  out = out.replace(/\\[a-zA-Z]+-?\d* ?/g, "");
+  // Escaped braces and backslashes
+  out = out.replace(/\\([{}\\])/g, "$1");
+  // Drop remaining group braces
+  out = out.replace(/[{}]/g, "");
+  return out.replace(/\n{3,}/g, "\n\n").trim();
+}
+
+async function extractPdfNative(blob: Blob): Promise<{ text: string; pageCount: number }> {
+  const buf = new Uint8Array(await blob.arrayBuffer());
+  const pdf = await getDocumentProxy(buf);
+  const { text } = await extractText(pdf, { mergePages: true });
+  return {
+    text: (Array.isArray(text) ? text.join("\n\n") : text).trim(),
+    pageCount: pdf.numPages,
+  };
+}
+
 /** Run OCR via Mistral on a single document, store extract, return text. */
 async function ocrDocument(
   admin: ReturnType<typeof getAdminClient>,
@@ -78,25 +152,105 @@ async function ocrDocument(
   if (docErr || !doc) throw new Error("Document not found");
   if (doc.organization_id !== orgId) throw new Error("Forbidden: document not in org");
 
-  const mime = doc.mime_type ?? "";
+  const mime = (doc.mime_type ?? "").toLowerCase();
+  const fileName = (doc.file_name ?? "").toLowerCase();
   let extractedText = "";
   let pageCount: number | null = null;
   let model = OCR_MODEL;
 
-  if (mime.startsWith("text/")) {
-    // Plain text → download directly
+  const isDocx =
+    mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    fileName.endsWith(".docx");
+  const isOdt = mime === "application/vnd.oasis.opendocument.text" || fileName.endsWith(".odt");
+  const isRtf =
+    mime === "application/rtf" || mime === "text/rtf" || fileName.endsWith(".rtf");
+  const isPdf = mime === "application/pdf" || fileName.endsWith(".pdf");
+  const isText = mime.startsWith("text/");
+  const isImage = mime.startsWith("image/");
+
+  // ---- Native paths (no Mistral OCR) ----
+  if (isText) {
     const { data: blob, error: dlErr } = await admin.storage.from(BUCKET).download(doc.storage_key);
     if (dlErr || !blob) throw new Error(`Téléchargement impossible: ${dlErr?.message}`);
     extractedText = await blob.text();
     model = "direct-text";
+  } else if (isDocx) {
+    const { data: blob, error: dlErr } = await admin.storage.from(BUCKET).download(doc.storage_key);
+    if (dlErr || !blob) throw new Error(`Téléchargement impossible: ${dlErr?.message}`);
+    extractedText = await extractDocx(blob);
+    model = "native-docx";
+  } else if (isOdt) {
+    const { data: blob, error: dlErr } = await admin.storage.from(BUCKET).download(doc.storage_key);
+    if (dlErr || !blob) throw new Error(`Téléchargement impossible: ${dlErr?.message}`);
+    extractedText = await extractOdt(blob);
+    model = "native-odt";
+  } else if (isRtf) {
+    const { data: blob, error: dlErr } = await admin.storage.from(BUCKET).download(doc.storage_key);
+    if (dlErr || !blob) throw new Error(`Téléchargement impossible: ${dlErr?.message}`);
+    extractedText = extractRtf(await blob.text());
+    model = "native-rtf";
+  } else if (isPdf) {
+    // Try native text extraction first
+    const { data: blob, error: dlErr } = await admin.storage.from(BUCKET).download(doc.storage_key);
+    if (dlErr || !blob) throw new Error(`Téléchargement impossible: ${dlErr?.message}`);
+    let nativeFailed = false;
+    try {
+      const native = await extractPdfNative(blob);
+      // Heuristic: if very little text relative to page count, treat as scanned PDF
+      const minChars = Math.max(50, native.pageCount * 30);
+      if (native.text.length >= minChars) {
+        extractedText = native.text;
+        pageCount = native.pageCount;
+        model = "native-pdf";
+      } else {
+        nativeFailed = true;
+        pageCount = native.pageCount;
+      }
+    } catch (e) {
+      console.warn("Native PDF extraction failed, falling back to OCR:", (e as Error).message);
+      nativeFailed = true;
+    }
+
+    if (nativeFailed) {
+      // Fallback: Mistral OCR via signed URL
+      const { data: signed, error: signErr } = await admin.storage
+        .from(BUCKET)
+        .createSignedUrl(doc.storage_key, 600);
+      if (signErr || !signed) throw new Error(`Signed URL error: ${signErr?.message}`);
+
+      const ocrResp = await fetch(MISTRAL_OCR_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${mistralKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: OCR_MODEL,
+          document: { type: "document_url", document_url: signed.signedUrl },
+          include_image_base64: false,
+        }),
+      });
+      if (!ocrResp.ok) {
+        const t = await ocrResp.text();
+        console.error("Mistral OCR error", ocrResp.status, t);
+        throw new Error(`Mistral OCR ${ocrResp.status}: ${t.slice(0, 200)}`);
+      }
+      const ocrData = await ocrResp.json();
+      const pages = Array.isArray(ocrData.pages) ? ocrData.pages : [];
+      pageCount = pages.length || pageCount;
+      extractedText = pages
+        .map((p: { markdown?: string; text?: string }) => p.markdown ?? p.text ?? "")
+        .join("\n\n---\n\n")
+        .trim();
+      model = OCR_MODEL;
+    }
   } else {
-    // Need a public-ish URL for Mistral → signed URL
+    // Default: images and unknown formats → Mistral OCR via signed URL
     const { data: signed, error: signErr } = await admin.storage
       .from(BUCKET)
       .createSignedUrl(doc.storage_key, 600);
     if (signErr || !signed) throw new Error(`Signed URL error: ${signErr?.message}`);
 
-    const isImage = mime.startsWith("image/");
     const ocrBody = isImage
       ? {
           model: OCR_MODEL,
@@ -124,7 +278,6 @@ async function ocrDocument(
       throw new Error(`Mistral OCR ${ocrResp.status}: ${t.slice(0, 200)}`);
     }
     const ocrData = await ocrResp.json();
-    // Response shape: { pages: [{ index, markdown, ... }], ... }
     const pages = Array.isArray(ocrData.pages) ? ocrData.pages : [];
     pageCount = pages.length || null;
     extractedText = pages

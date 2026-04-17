@@ -161,7 +161,18 @@ export default function ContentIntentsTab({ courierId, organizationId }: Props) 
                     </span>
                     {extract ? (
                       <Badge variant="secondary" className="text-[10px]">
-                        {extract.page_count ? `${extract.page_count} p.` : "extrait"}
+                        {(() => {
+                          const m = extract.model ?? "";
+                          if (m === "direct-text") return "texte";
+                          if (m === "native-docx") return "Word";
+                          if (m === "native-odt") return "ODT";
+                          if (m === "native-rtf") return "RTF";
+                          if (m === "native-pdf")
+                            return extract.page_count ? `PDF · ${extract.page_count} p.` : "PDF";
+                          if (m.startsWith("mistral-ocr"))
+                            return extract.page_count ? `OCR · ${extract.page_count} p.` : "OCR";
+                          return extract.page_count ? `${extract.page_count} p.` : "extrait";
+                        })()}
                       </Badge>
                     ) : (
                       <Badge variant="outline" className="text-[10px] text-muted-foreground">
