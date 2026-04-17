@@ -14,6 +14,8 @@ interface Props {
   onSave: (next: string) => Promise<void> | void;
   /** Render mode for the displayed value (read-only). */
   renderDisplay?: (value: string) => React.ReactNode;
+  /** Extra classes applied to the displayed value (read mode). */
+  displayClassName?: string;
 }
 
 export default function InlineEditField({
@@ -25,6 +27,7 @@ export default function InlineEditField({
   maxLength,
   onSave,
   renderDisplay,
+  displayClassName,
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
