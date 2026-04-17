@@ -64,7 +64,12 @@ export default function OrgSettings() {
           </div>
         </div>
         {activeSection === "utilisateurs" && <UsersPage organizationId={orgId!} />}
-        {activeSection === "smtp" && <SmtpSettings orgId={orgId!} />}
+        {activeSection === "smtp" && (
+          <div className="space-y-6">
+            <SmtpSettings orgId={orgId!} />
+            <ImapSettings orgId={orgId!} />
+          </div>
+        )}
         {activeSection === "integrations" && <OrgIntegrations orgId={orgId!} />}
         {activeSection === "classification" && (
           <ClassificationSettings organizationId={orgId!} isAdminOverride />
