@@ -218,6 +218,15 @@ export default function BoiteAuxLettres() {
           organizationId={organizationId}
         />
       )}
+
+      {/* New courier dialog */}
+      {organizationId && (
+        <NewCourierDialog
+          open={newDialogOpen}
+          onOpenChange={setNewDialogOpen}
+          organizationId={organizationId}
+        />
+      )}
     </div>
   );
 }
