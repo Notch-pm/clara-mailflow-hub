@@ -614,6 +614,16 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   Description à prévoir.
                 </p>
               </TabsContent>
+              <TabsContent
+                value="notes"
+                className="flex-1 overflow-y-auto px-6 py-5 mt-0"
+              >
+                <CourierNotes
+                  courierId={courier.id}
+                  organizationId={organizationId}
+                  readOnly={isFinalState}
+                />
+              </TabsContent>
             </>
           )}
         </Tabs>
