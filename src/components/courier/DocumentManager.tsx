@@ -319,7 +319,7 @@ export default function DocumentManager({
                         <AlertDialogFooter>
                           <AlertDialogCancel>Annuler</AlertDialogCancel>
                           <AlertDialogAction
-                            onClick={() => deleteMutation.mutate(d.id)}
+                            onClick={() => deleteMutation.mutate(d)}
                             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                           >
                             Supprimer
