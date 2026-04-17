@@ -94,9 +94,9 @@ export default function CourierNotes({ courierId, organizationId, readOnly = fal
 
       <div
         role="note"
-        className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200"
+        className="flex items-start gap-2 rounded-md border border-border bg-muted/50 px-3 py-2 text-xs text-muted-foreground"
       >
-        <ShieldAlert className="h-4 w-4 shrink-0 mt-0.5" />
+        <ShieldAlert className="h-4 w-4 shrink-0 mt-0.5 text-primary" />
         <span>
           Le contenu des notes doit respecter les préconisations du RGPD et ne pas contenir d'informations sensibles.
         </span>
