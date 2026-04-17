@@ -66,7 +66,7 @@ export default function InlineEditField({
   return (
     <div className="flex items-start justify-between gap-2 group">
       <span className="text-muted-foreground text-sm shrink-0 pt-1">{label}</span>
-      <div className="flex-1 flex items-center justify-end gap-1 min-w-0">
+      <div className="flex-1 gap-1 min-w-0 flex items-center justify-start">
         {editing ? (
           <>
             <Input
@@ -122,7 +122,7 @@ export default function InlineEditField({
             )}
             title="Cliquer pour modifier"
           >
-            <span className="truncate">
+            <span className="truncate text-left">
               {value ? (renderDisplay ? renderDisplay(value) : value) : (
                 <span className="text-muted-foreground italic font-normal">{emptyDisplay}</span>
               )}
