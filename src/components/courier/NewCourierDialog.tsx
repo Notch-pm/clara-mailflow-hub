@@ -90,6 +90,7 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId }:
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tagPopover, setTagPopover] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [bodyText, setBodyText] = useState("");
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
