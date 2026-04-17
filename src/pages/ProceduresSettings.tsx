@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
-import { useOrganization } from "@/contexts/OrganizationContext";
 import {
   listProcedures,
   createProcedure,
@@ -68,12 +67,12 @@ function isUrl(v: string | null | undefined): boolean {
 }
 
 export default function ProceduresSettings({ organizationId, isAdminOverride }: Props) {
-  const { user, organization } = useAuth();
-  const { currentRole } = useOrganization();
+  const { membership, profile } = useAuth();
   const queryClient = useQueryClient();
 
-  const orgId = organizationId || organization?.id;
-  const isAdmin = isAdminOverride || currentRole === "administrateur" || user?.is_superadmin;
+  const orgId = organizationId ?? membership?.organization_id ?? "";
+  const isAdmin =
+    isAdminOverride ?? (membership?.role === "administrateur" || !!profile?.is_superadmin);
 
   const [search, setSearch] = useState("");
   const [showHidden, setShowHidden] = useState(false);
