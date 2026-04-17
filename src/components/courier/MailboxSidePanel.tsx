@@ -25,6 +25,7 @@ import {
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { updateCourier } from "@/services/courierService";
+import { logEvent } from "@/services/courierEventService";
 import { listTags, type CourierTag } from "@/services/courierTagService";
 import { listServices } from "@/services/orgServiceService";
 import { getDocuments } from "@/services/courierDocumentService";
@@ -35,6 +36,7 @@ import DocumentManager from "./DocumentManager";
 import DocumentViewer from "./DocumentViewer";
 import InlineEditField from "./InlineEditField";
 import CourierNotes from "./CourierNotes";
+import CourierHistoryTab from "./CourierHistoryTab";
 import ContentIntentsTab from "./ContentIntentsTab";
 import SuggestedActionsCard from "./SuggestedActionsCard";
 import type { CourierChannel, CourierParticipant, WorkflowTransition, WorkflowState } from "@/types/courier";
@@ -157,12 +159,13 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
       // Find initial state of the new service's workflow
       const { data: initial, error: stateErr } = await supabase
         .from("workflow_states")
-        .select("id")
+        .select("id, name, category")
         .eq("workflow_id", newService.workflow_id)
         .eq("is_initial", true)
         .maybeSingle();
       if (stateErr) throw stateErr;
 
+      const previousService = courier.assigned_service ?? null;
       const currentMeta = (courier.metadata as any) ?? {};
       const { error } = await updateCourier(organizationId, courier.id, {
         assigned_service: newService.name,
@@ -170,10 +173,23 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
         metadata: { ...currentMeta, service_id: newService.id },
       });
       if (error) throw error;
+
+      await logEvent(organizationId, courier.id, "service_changed", {
+        from: previousService,
+        to: newService.name,
+      });
+
+      // If we just landed in a processing state, mark instruction as started.
+      if (initial?.category === "processing") {
+        await logEvent(organizationId, courier.id, "instruction_started", {
+          state_name: initial.name,
+        });
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
       queryClient.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
+      queryClient.invalidateQueries({ queryKey: ["courier-events", courier?.id] });
       toast.success("Service gestionnaire mis à jour");
     },
     onError: (err: Error) => toast.error(err.message),
@@ -182,13 +198,49 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
   const transitionMutation = useMutation({
     mutationFn: async (toStateId: string) => {
       if (!courier) return;
+
+      // Look up current and target state metadata for the event payload.
+      const fromState = transitions?.find(
+        (t) => (t.to_state as any)?.id === toStateId,
+      );
+      const { data: toStateRow } = await supabase
+        .from("workflow_states")
+        .select("id, name, category")
+        .eq("id", toStateId)
+        .maybeSingle();
+      const { data: fromStateRow } = courier.workflow_state_id
+        ? await supabase
+            .from("workflow_states")
+            .select("id, name, category")
+            .eq("id", courier.workflow_state_id)
+            .maybeSingle()
+        : { data: null as any };
+
       const { error } = await updateCourier(organizationId, courier.id, {
         workflow_state_id: toStateId,
       });
       if (error) throw error;
+
+      await logEvent(organizationId, courier.id, "state_changed", {
+        from_id: fromStateRow?.id ?? null,
+        from_name: fromStateRow?.name ?? null,
+        to_id: toStateRow?.id ?? null,
+        to_name: toStateRow?.name ?? fromState?.name ?? null,
+      });
+
+      // First time entering a processing state → instruction_started.
+      if (
+        toStateRow?.category === "processing" &&
+        fromStateRow?.category !== "processing"
+      ) {
+        await logEvent(organizationId, courier.id, "instruction_started", {
+          state_name: toStateRow.name,
+        });
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
+      queryClient.invalidateQueries({ queryKey: ["courier-events", courier?.id] });
       toast.success("Courrier déplacé");
       onOpenChange(false);
     },
@@ -341,6 +393,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
               <TabsTrigger value="actions">Actions liées</TabsTrigger>
               <TabsTrigger value="response">Réponse</TabsTrigger>
               <TabsTrigger value="notes">Notes internes</TabsTrigger>
+              <TabsTrigger value="history">Historique</TabsTrigger>
             </TabsList>
           )}
           <TabsContent
@@ -622,6 +675,15 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   courierId={courier.id}
                   organizationId={organizationId}
                   readOnly={isFinalState}
+                />
+              </TabsContent>
+              <TabsContent
+                value="history"
+                className="flex-1 overflow-y-auto px-6 py-5 mt-0"
+              >
+                <CourierHistoryTab
+                  courierId={courier.id}
+                  organizationId={organizationId}
                 />
               </TabsContent>
             </>

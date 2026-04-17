@@ -50,6 +50,7 @@ export default function CourierNotes({ courierId, organizationId, readOnly = fal
     onSuccess: () => {
       setDraft("");
       queryClient.invalidateQueries({ queryKey });
+      queryClient.invalidateQueries({ queryKey: ["courier-events", courierId] });
       toast.success("Note ajoutée");
     },
     onError: (e: Error) => toast.error(e.message),
@@ -61,6 +62,7 @@ export default function CourierNotes({ courierId, organizationId, readOnly = fal
       setEditingId(null);
       setEditingDraft("");
       queryClient.invalidateQueries({ queryKey });
+      queryClient.invalidateQueries({ queryKey: ["courier-events", courierId] });
       toast.success("Note modifiée");
     },
     onError: (e: Error) => toast.error(e.message),
@@ -71,6 +73,7 @@ export default function CourierNotes({ courierId, organizationId, readOnly = fal
     onSuccess: () => {
       setDeleteId(null);
       queryClient.invalidateQueries({ queryKey });
+      queryClient.invalidateQueries({ queryKey: ["courier-events", courierId] });
       toast.success("Note supprimée");
     },
     onError: (e: Error) => toast.error(e.message),

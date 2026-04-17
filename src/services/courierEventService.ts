@@ -16,3 +16,30 @@ export async function addEvent(data: CourierEventInsert) {
     .select()
     .single();
 }
+
+/**
+ * Fire-and-forget event logger used by UI mutations.
+ * Never throws — failures only log to the console so the main action is not blocked.
+ */
+export async function logEvent(
+  organizationId: string,
+  courierId: string,
+  eventType: string,
+  payload?: Record<string, unknown>,
+): Promise<void> {
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    await supabase.from("courier_events").insert({
+      organization_id: organizationId,
+      courier_id: courierId,
+      event_type: eventType,
+      payload: (payload ?? null) as any,
+      created_by: user?.id ?? null,
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn(`[logEvent:${eventType}] failed`, err);
+  }
+}

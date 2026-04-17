@@ -10,6 +10,7 @@ import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 import { getDocuments } from "@/services/courierDocumentService";
 import { storage } from "@/services/storageService";
+import { logEvent } from "@/services/courierEventService";
 import type { CourierDocument } from "@/types/courier";
 
 // ── Constants ───────────────────────────────────────────────────────────
@@ -105,7 +106,12 @@ export default function DocumentManager({
 
       for (const file of fileArray) {
         try {
-          await storage.upload(organizationId, courierId, file, selectedType);
+          const doc = await storage.upload(organizationId, courierId, file, selectedType);
+          await logEvent(organizationId, courierId, "document_added", {
+            file_name: file.name,
+            document_type: selectedType,
+            document_id: (doc as any)?.id,
+          });
           uploaded++;
           setUploadProgress(Math.round((uploaded / fileArray.length) * 100));
         } catch (err) {
@@ -116,6 +122,7 @@ export default function DocumentManager({
 
       queryClient.invalidateQueries({ queryKey });
       queryClient.invalidateQueries({ queryKey: ["courier", courierId] });
+      queryClient.invalidateQueries({ queryKey: ["courier-events", courierId] });
       if (uploaded > 0) {
         toast.success(`${uploaded} document${uploaded > 1 ? "s" : ""} ajouté${uploaded > 1 ? "s" : ""}`);
       }
@@ -143,10 +150,18 @@ export default function DocumentManager({
   // ── Delete ──────────────────────────────────────────────────────────
 
   const deleteMutation = useMutation({
-    mutationFn: (docId: string) => storage.delete(organizationId, docId),
+    mutationFn: async (doc: CourierDocument) => {
+      await storage.delete(organizationId, doc.id);
+      await logEvent(organizationId, courierId, "document_deleted", {
+        file_name: doc.file_name,
+        document_type: doc.document_type,
+        document_id: doc.id,
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
       queryClient.invalidateQueries({ queryKey: ["courier", courierId] });
+      queryClient.invalidateQueries({ queryKey: ["courier-events", courierId] });
       toast.success("Document supprimé");
     },
     onError: (err: Error) => toast.error(err.message),
@@ -304,7 +319,7 @@ export default function DocumentManager({
                         <AlertDialogFooter>
                           <AlertDialogCancel>Annuler</AlertDialogCancel>
                           <AlertDialogAction
-                            onClick={() => deleteMutation.mutate(d.id)}
+                            onClick={() => deleteMutation.mutate(d)}
                             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                           >
                             Supprimer
