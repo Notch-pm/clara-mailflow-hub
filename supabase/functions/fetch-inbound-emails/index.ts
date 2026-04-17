@@ -12,7 +12,7 @@ import { simpleParser } from "npm:mailparser@3.7.1";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-cron-secret",
+    "authorization, x-client-info, apikey, content-type, x-cron-secret, x-org-id",
 };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
