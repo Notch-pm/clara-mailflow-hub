@@ -32,10 +32,14 @@ export default function InlineEditField({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   const [saving, setSaving] = useState(false);
+  // Locally retained value: shown immediately after a successful save,
+  // until the parent prop catches up.
+  const [displayValue, setDisplayValue] = useState(value);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setDraft(value);
+    setDisplayValue(value);
   }, [value]);
 
   useEffect(() => {
@@ -43,23 +47,24 @@ export default function InlineEditField({
   }, [editing]);
 
   async function commit() {
-    if (draft === value) {
+    if (draft === displayValue) {
       setEditing(false);
       return;
     }
     setSaving(true);
     try {
       await onSave(draft);
+      setDisplayValue(draft);
       setEditing(false);
     } catch {
-      setDraft(value);
+      setDraft(displayValue);
     } finally {
       setSaving(false);
     }
   }
 
   function cancel() {
-    setDraft(value);
+    setDraft(displayValue);
     setEditing(false);
   }
 
