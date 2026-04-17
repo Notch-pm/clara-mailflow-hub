@@ -33,6 +33,8 @@ import {
 } from "@/components/ui/command";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { readableTextColor } from "@/lib/tag-color";
+import { X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { createCourier } from "@/services/courierService";
 import { addParticipant } from "@/services/courierParticipantService";
@@ -391,17 +393,28 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId }:
               )}
               {selectedTags.map((name) => {
                 const tag = tagByName.get(name.toLowerCase());
+                const fg = tag?.color ? readableTextColor(tag.color) : undefined;
                 return (
                   <Badge
                     key={name}
                     variant="secondary"
+                    className="gap-1.5 pl-2 pr-1 border-transparent"
                     style={
                       tag?.color
-                        ? { backgroundColor: `${tag.color}20`, color: tag.color }
+                        ? { backgroundColor: tag.color, color: fg }
                         : undefined
                     }
                   >
                     {name}
+                    <button
+                      type="button"
+                      onClick={() => toggleTag(name)}
+                      className="ml-0.5 rounded-full p-0.5 hover:bg-black/20 transition-colors"
+                      aria-label={`Retirer ${name}`}
+                      style={fg ? { color: fg } : undefined}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
                   </Badge>
                 );
               })}
