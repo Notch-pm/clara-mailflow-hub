@@ -33,6 +33,7 @@ import { readableTextColor } from "@/lib/tag-color";
 import DocumentManager from "./DocumentManager";
 import DocumentViewer from "./DocumentViewer";
 import InlineEditField from "./InlineEditField";
+import CourierNotes from "./CourierNotes";
 import type { CourierChannel, CourierParticipant, WorkflowTransition, WorkflowState } from "@/types/courier";
 
 const channelLabels: Record<CourierChannel, string> = {
@@ -124,6 +125,23 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
     },
     enabled: !!courier?.workflow_state_id && !!currentService?.workflow_id,
   });
+
+  // Is the current state a final one? (used to decide if notes can be added)
+  const { data: currentStateInfo } = useQuery({
+    queryKey: ["workflow-state-info", courier?.workflow_state_id],
+    queryFn: async () => {
+      if (!courier?.workflow_state_id) return null;
+      const { data, error } = await supabase
+        .from("workflow_states")
+        .select("id, is_final")
+        .eq("id", courier.workflow_state_id)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!courier?.workflow_state_id && open,
+  });
+  const isFinalState = currentStateInfo?.is_final === true;
 
   const serviceMutation = useMutation({
     mutationFn: async (newServiceId: string) => {
@@ -541,6 +559,14 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 onSelectDoc={setSelectedDocId}
               />
             </div>
+
+            <Separator />
+
+            <CourierNotes
+              courierId={courier.id}
+              organizationId={organizationId}
+              readOnly={isFinalState}
+            />
           </main>
         </div>
       </SheetContent>
