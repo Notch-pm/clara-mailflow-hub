@@ -10,6 +10,7 @@ import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 import { getDocuments } from "@/services/courierDocumentService";
 import { storage } from "@/services/storageService";
+import { logEvent } from "@/services/courierEventService";
 import type { CourierDocument } from "@/types/courier";
 
 // ── Constants ───────────────────────────────────────────────────────────
