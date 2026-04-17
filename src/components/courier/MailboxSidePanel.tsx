@@ -335,6 +335,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
           {withTabs && (
             <TabsList className="mx-6 mt-3 self-start shrink-0">
               <TabsTrigger value="detail">Détail du courrier</TabsTrigger>
+              <TabsTrigger value="content">Contenu et intentions</TabsTrigger>
               <TabsTrigger value="actions">Actions liées</TabsTrigger>
               <TabsTrigger value="response">Réponse</TabsTrigger>
             </TabsList>
