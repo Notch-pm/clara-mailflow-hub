@@ -7,7 +7,7 @@ import Workflows from "./Workflows";
 import ClassificationSettings from "./ClassificationSettings";
 import ServicesSettings from "./ServicesSettings";
 import ProceduresSettings from "./ProceduresSettings";
-import SmtpSettings from "@/components/SmtpSettings";
+
 import ImapSettings from "@/components/ImapSettings";
 import { useOrganization } from "@/contexts/OrganizationContext";
 
