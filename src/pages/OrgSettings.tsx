@@ -65,6 +65,9 @@ export default function OrgSettings() {
         {activeSection === "classification" && (
           <ClassificationSettings organizationId={orgId!} isAdminOverride />
         )}
+        {activeSection === "services" && (
+          <ServicesSettings organizationId={orgId!} isAdminOverride />
+        )}
       </div>
     );
   }
