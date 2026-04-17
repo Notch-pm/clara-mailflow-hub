@@ -1,13 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
+import { Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getAnalysis } from "@/services/courierAnalysisService";
 
 interface Props {
   courierId: string;
+  /** When provided, displays a "Créer un ticket" button next to each suggested action. */
+  onCreateTicket?: (action: string) => void;
 }
 
-export default function SuggestedActionsCard({ courierId }: Props) {
+export default function SuggestedActionsCard({ courierId, onCreateTicket }: Props) {
   const { data: analysis, isLoading } = useQuery({
     queryKey: ["courier-analysis", courierId],
     queryFn: () => getAnalysis(courierId),
@@ -32,9 +36,21 @@ export default function SuggestedActionsCard({ courierId }: Props) {
       ) : (
         <ul className="space-y-1.5">
           {analysis.suggested_actions.map((action, i) => (
-            <li key={i} className="text-sm flex gap-2">
-              <span className="text-primary shrink-0">→</span>
-              <span>{action}</span>
+            <li key={i} className="text-sm flex gap-2 items-start group">
+              <span className="text-primary shrink-0 mt-0.5">→</span>
+              <span className="flex-1">{action}</span>
+              {onCreateTicket && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 px-2 text-xs shrink-0 opacity-60 group-hover:opacity-100"
+                  onClick={() => onCreateTicket(action)}
+                  title="Créer un ticket à partir de cette action"
+                >
+                  <Plus className="h-3 w-3" />
+                  Ticket
+                </Button>
+              )}
             </li>
           ))}
         </ul>
