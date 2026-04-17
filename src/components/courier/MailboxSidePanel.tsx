@@ -227,7 +227,25 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-[95vw] lg:max-w-[1100px] overflow-hidden p-0 flex flex-col">
         <SheetHeader className="px-6 pt-6 pb-3 border-b shrink-0">
-          <SheetTitle className="text-lg pr-8">{courier.subject ?? "Sans objet"}</SheetTitle>
+          <div className="flex items-start justify-between gap-4 pr-8">
+            <SheetTitle className="text-lg flex-1">{courier.subject ?? "Sans objet"}</SheetTitle>
+            {transitions && transitions.length > 0 && (
+              <div className="flex flex-wrap gap-2 justify-end shrink-0">
+                {transitions.map((t) => (
+                  <Button
+                    key={t.id}
+                    size="sm"
+                    onClick={() => transitionMutation.mutate((t.to_state as any).id)}
+                    disabled={transitionMutation.isPending}
+                    className="gap-1.5"
+                  >
+                    <ArrowRight className="h-4 w-4" />
+                    {t.name ?? (t.to_state as any)?.name ?? "Suivant"}
+                  </Button>
+                ))}
+              </div>
+            )}
+          </div>
         </SheetHeader>
 
         <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-[360px_1fr]">
@@ -392,29 +410,6 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
               </div>
             </div>
 
-            <Separator />
-
-            {/* Workflow transition buttons */}
-            <div className="space-y-3">
-              <h3 className="text-sm font-medium">Actions</h3>
-              {transitions && transitions.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {transitions.map((t) => (
-                    <Button
-                      key={t.id}
-                      onClick={() => transitionMutation.mutate((t.to_state as any).id)}
-                      disabled={transitionMutation.isPending}
-                      className="gap-1.5"
-                    >
-                      <ArrowRight className="h-4 w-4" />
-                      {t.name ?? (t.to_state as any)?.name ?? "Suivant"}
-                    </Button>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground">Aucune transition disponible.</p>
-              )}
-            </div>
           </aside>
 
           {/* Right: viewer + documents */}
