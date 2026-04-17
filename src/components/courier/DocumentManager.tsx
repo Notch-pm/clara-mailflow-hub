@@ -189,65 +189,67 @@ export default function DocumentManager({
   return (
     <div className="space-y-4">
       {/* Upload zone */}
-      <div
-        onDragOver={onDragOver}
-        onDragLeave={onDragLeave}
-        onDrop={onDrop}
-        className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
-          dragOver
-            ? "border-primary bg-primary/5"
-            : "border-muted-foreground/25 hover:border-muted-foreground/50"
-        }`}
-      >
-        {uploading ? (
-          <div className="space-y-2">
-            <Loader2 className="h-6 w-6 animate-spin mx-auto text-primary" />
-            <p className="text-sm text-muted-foreground">Upload en cours…</p>
-            <Progress value={uploadProgress} className="max-w-xs mx-auto" />
-          </div>
-        ) : (
-          <>
-            <Upload className="h-8 w-8 mx-auto text-muted-foreground/50 mb-2" />
-            <p className="text-sm text-muted-foreground mb-3">
-              Glissez-déposez vos fichiers ici ou
-            </p>
-            <div className="flex items-center justify-center gap-3">
-              <Select value={selectedType} onValueChange={setSelectedType}>
-                <SelectTrigger className="w-[160px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {DOC_TYPES.map((t) => (
-                    <SelectItem key={t.value} value={t.value}>
-                      {t.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button
-                size="sm"
-                className="gap-1.5"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <FileUp className="h-4 w-4" /> Parcourir
-              </Button>
+      {!readOnly && (
+        <div
+          onDragOver={onDragOver}
+          onDragLeave={onDragLeave}
+          onDrop={onDrop}
+          className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
+            dragOver
+              ? "border-primary bg-primary/5"
+              : "border-muted-foreground/25 hover:border-muted-foreground/50"
+          }`}
+        >
+          {uploading ? (
+            <div className="space-y-2">
+              <Loader2 className="h-6 w-6 animate-spin mx-auto text-primary" />
+              <p className="text-sm text-muted-foreground">Upload en cours…</p>
+              <Progress value={uploadProgress} className="max-w-xs mx-auto" />
             </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              Max {(maxFileSize / (1024 * 1024)).toFixed(0)} Mo par fichier
-            </p>
-          </>
-        )}
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          className="hidden"
-          onChange={(e) => {
-            if (e.target.files?.length) handleUpload(e.target.files);
-            e.target.value = "";
-          }}
-        />
-      </div>
+          ) : (
+            <>
+              <Upload className="h-8 w-8 mx-auto text-muted-foreground/50 mb-2" />
+              <p className="text-sm text-muted-foreground mb-3">
+                Glissez-déposez vos fichiers ici ou
+              </p>
+              <div className="flex items-center justify-center gap-3">
+                <Select value={selectedType} onValueChange={setSelectedType}>
+                  <SelectTrigger className="w-[160px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {DOC_TYPES.map((t) => (
+                      <SelectItem key={t.value} value={t.value}>
+                        {t.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <FileUp className="h-4 w-4" /> Parcourir
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                Max {(maxFileSize / (1024 * 1024)).toFixed(0)} Mo par fichier
+              </p>
+            </>
+          )}
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              if (e.target.files?.length) handleUpload(e.target.files);
+              e.target.value = "";
+            }}
+          />
+        </div>
+      )}
 
       {/* Document list */}
       <div className="flex items-center justify-between">
