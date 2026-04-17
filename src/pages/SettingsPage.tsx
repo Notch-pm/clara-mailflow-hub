@@ -24,7 +24,7 @@ const settingSections: { key: Section; title: string; description: string; icon:
 
 const sectionLabels: Record<string, string> = {
   utilisateurs: "Utilisateurs et rôles",
-  emails: "Emails — SMTP (envoi) & IMAP (réception)",
+  emails: "Emails — réception IMAP",
   workflows: "Workflows",
   services: "Services",
   demarches: "Démarches administratives",
