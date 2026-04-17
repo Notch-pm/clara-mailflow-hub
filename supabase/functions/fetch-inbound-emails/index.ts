@@ -319,12 +319,40 @@ async function processOrganization(
 
         const participants: any[] = [];
         if (senderEmail) {
+          // Matching usager : email d'abord
+          let usagerId: string | null = null;
+          const emailNorm = senderEmail.trim().toLowerCase();
+          const { data: byEmail } = await admin
+            .from("usagers" as any)
+            .select("id, first_name, last_name, phone")
+            .eq("organization_id", s.organization_id)
+            .ilike("email", emailNorm)
+            .limit(1)
+            .maybeSingle();
+          if (byEmail) {
+            usagerId = (byEmail as any).id;
+          } else {
+            // Pas de tel disponible depuis email IMAP → on crée un nouvel usager (citoyen par défaut)
+            const { data: created } = await admin
+              .from("usagers" as any)
+              .insert({
+                organization_id: s.organization_id,
+                category: "citoyen",
+                last_name: senderName || senderEmail,
+                email: senderEmail,
+              })
+              .select("id")
+              .single();
+            usagerId = (created as any)?.id ?? null;
+          }
           participants.push({
             organization_id: s.organization_id,
             courier_id: courier.id,
             role: "sender",
             name: senderName,
+            last_name: senderName || senderEmail,
             email: senderEmail,
+            usager_id: usagerId,
           });
         }
         participants.push({
