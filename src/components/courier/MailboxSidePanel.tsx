@@ -223,6 +223,53 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
     setSelectedDocId(null);
   }, [courier?.id]);
 
+  // ── Inline edit handlers ────────────────────────────────────────────
+
+  async function persistCourierUpdate(patch: Record<string, any>, successMsg = "Modifié") {
+    if (!courier) return;
+    const { error } = await updateCourier(organizationId, courier.id, patch);
+    if (error) {
+      toast.error(error.message);
+      throw error;
+    }
+    queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
+    queryClient.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
+    toast.success(successMsg);
+  }
+
+  async function upsertParticipant(
+    role: "sender" | "recipient",
+    fields: { name?: string | null; email?: string | null },
+  ) {
+    if (!courier) return;
+    const existing = participants.find((p) => p.role === role);
+    try {
+      if (existing) {
+        // If both name and email become empty, leave the row but blank the fields.
+        await updateParticipant(existing.id, fields);
+      } else {
+        // Don't create empty participants
+        const hasContent =
+          (fields.name && fields.name.trim()) ||
+          (fields.email && fields.email.trim());
+        if (!hasContent) return;
+        await addParticipant({
+          courier_id: courier.id,
+          organization_id: organizationId,
+          role,
+          name: fields.name ?? null,
+          email: fields.email ?? null,
+        });
+      }
+      queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
+      queryClient.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
+      toast.success("Modifié");
+    } catch (err: any) {
+      toast.error(err?.message ?? "Erreur lors de la modification");
+      throw err;
+    }
+  }
+
   if (!courier) return null;
 
   return (
