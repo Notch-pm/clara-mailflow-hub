@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getDocuments } from "@/services/courierDocumentService";
+import { getCourierById } from "@/services/courierService";
 import {
   getExtracts,
   getAnalysis,
@@ -51,6 +52,16 @@ export default function ContentIntentsTab({ courierId, organizationId }: Props) 
     enabled: !!courierId,
   });
 
+  const { data: courierData } = useQuery({
+    queryKey: ["courier", organizationId, courierId],
+    queryFn: async () => {
+      const { data, error } = await getCourierById(organizationId, courierId);
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!courierId && !!organizationId,
+  });
+
   const { data: extracts, isLoading: extractsLoading } = useQuery({
     queryKey: ["courier-extracts", courierId],
     queryFn: () => getExtracts(courierId),
@@ -91,14 +102,19 @@ export default function ContentIntentsTab({ courierId, organizationId }: Props) 
   const docCount = documents?.length ?? 0;
   const extractCount = extracts?.length ?? 0;
   const hasExtracts = extractCount > 0;
+  const meta = (courierData?.metadata ?? {}) as Record<string, unknown>;
+  const hasEmailBody =
+    (typeof meta.body_text === "string" && meta.body_text.trim().length > 0) ||
+    (typeof meta.body_html === "string" && meta.body_html.trim().length > 0);
+  const canAnalyze = hasExtracts || hasEmailBody;
 
-  if (docCount === 0) {
+  if (docCount === 0 && !hasEmailBody) {
     return (
       <div className="text-center py-10">
         <FileText className="h-10 w-10 mx-auto text-muted-foreground/40 mb-3" />
-        <p className="text-sm text-muted-foreground">Aucun document à analyser.</p>
+        <p className="text-sm text-muted-foreground">Aucun contenu à analyser.</p>
         <p className="text-xs text-muted-foreground/70 mt-1">
-          Joignez un fichier pour activer l'extraction et l'analyse IA.
+          Joignez un fichier ou réceptionnez un email pour activer l'analyse IA.
         </p>
       </div>
     );
@@ -218,8 +234,8 @@ export default function ContentIntentsTab({ courierId, organizationId }: Props) 
             size="sm"
             variant={analysis ? "outline" : "default"}
             onClick={() => analyzeMutation.mutate()}
-            disabled={analyzeMutation.isPending || !hasExtracts}
-            title={!hasExtracts ? "Extrayez d'abord le texte des documents" : undefined}
+            disabled={analyzeMutation.isPending || !canAnalyze}
+            title={!canAnalyze ? "Extrayez d'abord le texte des documents ou réceptionnez un email" : undefined}
           >
             {analyzeMutation.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -239,7 +255,7 @@ export default function ContentIntentsTab({ courierId, organizationId }: Props) 
           </div>
         ) : !analysis ? (
           <Card className="p-4 text-center text-sm text-muted-foreground">
-            {hasExtracts
+            {canAnalyze
               ? "Cliquez sur \"Analyser\" pour détecter les intentions, l'état d'esprit et les actions à mettre en œuvre."
               : "Extrayez d'abord le texte des documents."}
           </Card>
