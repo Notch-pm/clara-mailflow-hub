@@ -579,6 +579,7 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId }:
                   Aucun fichier sélectionné
                 </p>
               )}
+              </div>
             </div>
           </div>
 
