@@ -12,8 +12,10 @@ const corsHeaders = {
 const BUCKET = "clara-documents";
 const MISTRAL_OCR_URL = "https://api.mistral.ai/v1/ocr";
 const MISTRAL_CHAT_URL = "https://api.mistral.ai/v1/chat/completions";
+const MISTRAL_AGENT_URL = "https://api.mistral.ai/v1/agents/completions";
 const OCR_MODEL = "mistral-ocr-latest";
 const CHAT_MODEL = "mistral-large-latest";
+const ANALYSIS_AGENT_ID = "ag_019d9b92d28872079534f45f246671ed";
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
