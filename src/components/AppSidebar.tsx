@@ -19,6 +19,7 @@ const navItems: NavItem[] = [
   { title: "Tableau de bord", url: "/", icon: LayoutDashboard },
   { title: "Boîte aux lettres", url: "/boite-aux-lettres", svgIcon: mailboxIcon },
   { title: "Courriers en instruction", url: "/courriers-en-instruction", icon: FileClock },
+  { title: "Courriers traités", url: "/courriers-traites", icon: CheckCircle2 },
   { title: "Courriers sortants", url: "/courriers-sortants", icon: Send },
   { title: "Usagers", url: "/usagers", icon: Users },
   { title: "Liens externes", url: "/liens", icon: Link2 },
