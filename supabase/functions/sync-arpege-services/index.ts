@@ -143,6 +143,7 @@ Deno.serve(async (req) => {
 
     let totalCreated = 0;
     let totalUpdated = 0;
+    let totalSkipped = 0;
 
     for (const integration of integrations) {
       const { organization_id } = integration;
@@ -180,26 +181,80 @@ Deno.serve(async (req) => {
       // Filter: only published
       const published = typesDemandes.filter((td: any) => {
         const etat = td.TypeEtatPublication || td.typeEtatPublication || "";
-        return etat === "ENLIGNE";
+        return etat === "ENLIGNE" || etat === ""; // accept empty (some endpoints don't return this)
       });
 
-      console.log(`Org ${organization_id}: ${published.length}/${typesDemandes.length} published services`);
+      console.log(`Org ${organization_id}: ${published.length}/${typesDemandes.length} published démarches`);
 
       for (const td of published) {
-        const externalRef = String(td.CodeQualificationTypeDemande || td.IdTypeDemande || td.Id || "");
-        const name = td.LibelleQualificationTypeDemande || td.Libelle || td.Label || td.Nom || "";
+        const externalRef = String(
+          td.CodeQualificationTypeDemande || td.IdTypeDemande || td.Id || "",
+        );
+        const name =
+          td.LibelleQualificationTypeDemande || td.Libelle || td.Label || td.Nom || "";
         if (!externalRef || !name) continue;
 
-        // Log for now — actual storage will depend on Clara's service/workflow model
-        console.log(`Service: ${name} (ref=${externalRef})`);
-        totalCreated++;
+        const description = td.Description || td.description || null;
+        const vignetteUrl =
+          td.UrlVignetteQualificationTypeDemande || td.UrlVignette || null;
+
+        const { data: existing } = await supabaseAdmin
+          .from("procedures")
+          .select("id, name, description, icon")
+          .eq("organization_id", organization_id)
+          .eq("external_source", "arpege")
+          .eq("external_reference_id", externalRef)
+          .maybeSingle();
+
+        if (existing) {
+          const nameChanged = existing.name !== name;
+          const descChanged = (existing.description || null) !== (description || null);
+          const shouldUpdateIcon = vignetteUrl && existing.icon !== vignetteUrl;
+
+          if (nameChanged || descChanged || shouldUpdateIcon) {
+            const updateData: Record<string, unknown> = { name, description };
+            if (shouldUpdateIcon) updateData.icon = vignetteUrl;
+            const { error: updErr } = await supabaseAdmin
+              .from("procedures")
+              .update(updateData)
+              .eq("id", existing.id);
+            if (updErr) {
+              console.error(`Update failed for "${name}": ${updErr.message}`);
+              continue;
+            }
+            totalUpdated++;
+          } else {
+            totalSkipped++;
+          }
+        } else {
+          const { error: insertErr } = await supabaseAdmin.from("procedures").insert({
+            organization_id,
+            name,
+            description,
+            icon: vignetteUrl || null,
+            external_reference_id: externalRef,
+            external_source: "arpege",
+            is_displayed: true,
+          });
+          if (insertErr) {
+            console.error(`Insert failed for "${name}": ${insertErr.message}`);
+            continue;
+          }
+          totalCreated++;
+        }
       }
     }
 
-    console.log(`Sync done: ${totalCreated} services found`);
+    console.log(`Sync done: ${totalCreated} created, ${totalUpdated} updated, ${totalSkipped} unchanged`);
 
     return new Response(
-      JSON.stringify({ message: "Synchronisation terminée", total: totalCreated, created: totalCreated, updated: totalUpdated }),
+      JSON.stringify({
+        message: "Synchronisation terminée",
+        total: totalCreated + totalUpdated + totalSkipped,
+        created: totalCreated,
+        updated: totalUpdated,
+        skipped: totalSkipped,
+      }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
