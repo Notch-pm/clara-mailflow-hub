@@ -1,68 +1,75 @@
 
+## Plan : Onglet "Contenu et intentions" avec OCR Mistral + analyse LLM
 
-## Goal
+### Vue d'ensemble
+Pour chaque courrier ouvert dans le volet latéral (mode `withTabs`), l'onglet 2 affichera :
+1. **Contenu textuel** des documents joints (extraction OCR Mistral pour PDF/images, lecture directe pour TXT)
+2. **Analyse IA** (Mistral chat) : intentions, état d'esprit, actions suggérées
+3. Bouton "Relancer l'analyse" + cache en base pour éviter de re-payer à chaque ouverture
 
-1. Élargir la dialog "Nouveau courrier" et y intégrer un upload de fichiers (drag & drop + parcourir).
-2. Élargir fortement le volet latéral et y intégrer la gestion des fichiers (ajout/suppression).
-3. Ajouter une visionneuse intégrée dans le volet latéral pour PDF et images, avec navigation entre fichiers.
-
-## Approach
-
-### 1. `NewCourierDialog.tsx` — élargissement + upload de fichiers
-- Passer `DialogContent` de `max-w-xl` à `max-w-4xl` (~896 px).
-- Layout en 2 colonnes (`grid grid-cols-1 md:grid-cols-2 gap-6`) :
-  - Colonne gauche : formulaire (objet, canal, date, expéditeur, destinataire, service, tags).
-  - Colonne droite : zone de drop pour fichiers.
-- Réutiliser la logique drag & drop de `DocumentManager` mais en mode "buffer" : tant que le courrier n'est pas créé, on stocke les `File[]` dans un state local `pendingFiles`. Affichage d'une liste compacte avec bouton retirer.
-- Après `createCourier` réussi, boucler sur `pendingFiles` et appeler `storage.upload(orgId, courier.id, file, "attachment")` pour chaque fichier. Toaster en cas d'erreur partielle.
-- Conserver le check de taille max (`storage.getMaxFileSize`).
-
-### 2. `MailboxSidePanel.tsx` — élargissement + gestion + visionneuse
-- Élargir `SheetContent` : `w-full sm:max-w-[90vw] lg:max-w-[1100px]` pour avoir la place d'un viewer.
-- Layout interne en 2 colonnes via grid :
-  - Gauche (`w-[360px] shrink-0`) : infos courrier, service, tags, actions workflow (contenu actuel).
-  - Droite (flex-1) : nouvel encart "Documents" avec :
-    - Liste verticale compacte des fichiers (vignette + nom + type + bouton supprimer).
-    - Bouton/zone d'ajout (drag & drop + parcourir) réutilisant `storage.upload`.
-    - Visionneuse au-dessus/à droite affichant le fichier sélectionné.
-- Visionneuse :
-  - Récupérer une URL signée via `storage.getSignedUrl(orgId, doc.storage_key)` à la sélection (mémorisée par `useQuery` keyed sur `doc.id`).
-  - Si `mime_type` commence par `image/` → balise `<img>` `object-contain`.
-  - Si `mime_type === "application/pdf"` → `<iframe src={url} />` plein hauteur.
-  - Sinon → message "Aperçu non disponible — Télécharger".
-  - Boutons Précédent / Suivant pour naviguer dans la liste, plus clic direct sur un item de la liste.
-- Refactor : extraire la logique d'upload/listing/suppression de `DocumentManager` dans un nouveau composant léger `CourierDocumentsPanel` (ou réutiliser `DocumentManager` directement pour la zone d'upload + liste, et ajouter à côté un composant `DocumentViewer`). Préférence : créer `DocumentViewer.tsx` séparé et garder `DocumentManager` quasi intact mais avec une prop `onSelect(doc)` pour notifier le panel parent.
-
-### 3. Nouveaux fichiers
-- `src/components/courier/DocumentViewer.tsx` : visionneuse + navigation (props : `documents`, `currentId`, `onChange`, `organizationId`).
-
-### 4. Fichiers modifiés
-- `src/components/courier/NewCourierDialog.tsx` : largeur, layout 2 colonnes, upload différé.
-- `src/components/courier/MailboxSidePanel.tsx` : largeur, layout 2 colonnes, intégration `DocumentManager` + `DocumentViewer`.
-- `src/components/courier/DocumentManager.tsx` : ajout prop optionnelle `selectedDocId` + `onSelectDoc` pour piloter la sélection externe (pas de breaking change, props facultatives).
-
-### Notes techniques
-- Aucune migration DB nécessaire : tables `courier_documents`, bucket `clara-documents` et edge function `storage-documents` déjà en place.
-- Les URLs signées sont éphémères : ne pas les persister, les regénérer via `useQuery` avec `staleTime` ~ 4 min.
-- Sur mobile (<768 px), passer la dialog et le sheet en pleine largeur, la visionneuse passe sous la liste (stack vertical).
-
-### ASCII layout cible — volet latéral
+### Architecture
 
 ```text
-┌─────────────────────────────────────────────────────────────────┐
-│ Sujet du courrier                                          [X]  │
-├──────────────────────┬──────────────────────────────────────────┤
-│ Date / Canal         │  ┌─ Visionneuse ────────────────────┐    │
-│ Destinataire         │  │                                  │    │
-│ Expéditeur           │  │   PDF / image preview            │    │
-│ ─────────            │  │                                  │    │
-│ Service ▼            │  └──────────────────────────────────┘    │
-│ Tags [ + ]           │  [◀ Préc]  fichier 2/5  [Suiv ▶]         │
-│ ─────────            │  ─────────────────────────────────────   │
-│ Actions workflow     │  Documents (liste + upload)              │
-│ [Étape A] [Étape B]  │  • doc1.pdf       [👁] [⬇] [🗑]          │
-│                      │  • photo.jpg      [👁] [⬇] [🗑]          │
-│                      │  [Drop zone / Parcourir]                 │
-└──────────────────────┴──────────────────────────────────────────┘
+┌────────────────────┐       ┌──────────────────────┐       ┌─────────────┐
+│ Onglet "Contenu et │──────▶│ Edge func            │──────▶│ Mistral OCR │
+│ intentions" (React)│       │ analyze-courier      │       │ + Chat API  │
+└────────────────────┘       └──────────────────────┘       └─────────────┘
+        │                              │
+        │                              ▼
+        │                    ┌────────────────────┐
+        └────lecture─────────│ courier_analyses   │ (nouvelle table)
+                             │ + document_extracts│
+                             └────────────────────┘
 ```
 
+### Étapes
+
+**1. Secret Mistral**
+- Demander la clé API via `add_secret` (`MISTRAL_API_KEY`) — tu la fourniras quand on passera en mode default.
+
+**2. Migration DB (2 tables)**
+- `courier_document_extracts` : cache du texte OCR par document
+  - `id, document_id (unique), organization_id, courier_id, text, page_count, model, tokens_used, created_at, updated_at`
+- `courier_analyses` : analyse globale du courrier
+  - `id, courier_id (unique), organization_id, intents (jsonb), sentiment (text), suggested_actions (jsonb), summary (text), model, created_at, updated_at`
+- RLS : isolation `organization_id` (pattern existant via header `x-org-id`)
+
+**3. Edge function `analyze-courier`** (`supabase/functions/analyze-courier/index.ts`)
+- Auth JWT + vérif org membership (réutilise pattern `storage-documents`)
+- Endpoints internes : `?action=ocr-document` (un doc), `?action=analyze` (tout le courrier)
+- Pour OCR :
+  - Génère un signed URL court pour le fichier dans le bucket `clara-documents`
+  - Appelle `https://api.mistral.ai/v1/ocr` avec `model: mistral-ocr-latest` et `document_url`
+  - Pour images : `image_url` ; pour PDF : `document_url` ; pour `text/*` : lecture directe sans OCR
+  - Stocke le résultat dans `courier_document_extracts`
+- Pour analyse :
+  - Concatène les extraits, appelle `https://api.mistral.ai/v1/chat/completions` (modèle `mistral-large-latest`) avec tool calling pour sortie structurée : `{intents[], sentiment, suggested_actions[], summary}`
+  - Stocke dans `courier_analyses`
+
+**4. Service client** (`src/services/courierAnalysisService.ts`)
+- `getExtracts(courierId)`, `getAnalysis(courierId)`, `runOcr(courierId)`, `runAnalysis(courierId)`
+
+**5. Composant `ContentIntentsTab`** (`src/components/courier/ContentIntentsTab.tsx`)
+- Section haute : "Contenu textuel des documents" — liste collapsible par document avec texte OCR (markdown rendu)
+- Section basse : "Analyse" — cards pour Résumé / Intentions (badges) / État d'esprit (badge coloré) / Actions suggérées (liste)
+- Boutons "Extraire le texte" / "Analyser" + état loading + dernière mise à jour
+- Si pas de docs : message "Aucun document à analyser"
+
+**6. Intégration dans `MailboxSidePanel.tsx`**
+- Remplacer le placeholder de l'onglet `content` par `<ContentIntentsTab courierId organizationId />`
+
+### Notes techniques
+- **Mode 2 étapes** : OCR d'abord (par doc, cache permanent), puis analyse (re-générable à la demande)
+- **Coût maîtrisé** : pas d'appel auto à l'ouverture — l'utilisateur clique pour déclencher la 1ère extraction. Si extrait déjà en cache, affichage instantané.
+- **Pas de streaming** nécessaire (volumétrie courte, sortie structurée via tool calling)
+- **Limites** : taille max fichier déjà gérée côté upload ; on documente que Mistral OCR supporte PDF/PPTX/DOCX/PNG/JPG
+
+### Fichiers créés/modifiés
+- `supabase/migrations/<timestamp>_courier_analysis.sql` (nouveau)
+- `supabase/functions/analyze-courier/index.ts` (nouveau)
+- `src/services/courierAnalysisService.ts` (nouveau)
+- `src/components/courier/ContentIntentsTab.tsx` (nouveau)
+- `src/components/courier/MailboxSidePanel.tsx` (modifié — remplacer placeholder)
+
+### Question avant de coder
+Préfères-tu un **déclenchement automatique** au 1er affichage de l'onglet (UX fluide, coût immédiat) ou **manuel** via boutons "Extraire" / "Analyser" (coût maîtrisé) ? Ma reco : **manuel** pour l'OCR (coût Mistral OCR par page) et **manuel** pour l'analyse, avec re-affichage instantané du cache à la prochaine ouverture.
