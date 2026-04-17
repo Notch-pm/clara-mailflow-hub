@@ -209,6 +209,18 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
     tagMutation.mutate(next, { onError: () => setSelectedTags(previous) } as any);
   }
 
+  // Documents for this courier
+  const { data: documents = [] } = useQuery({
+    queryKey: ["courier-documents", courier?.id],
+    queryFn: () => getDocuments(courier!.id),
+    enabled: !!courier?.id && open,
+  });
+
+  const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
+  useEffect(() => {
+    setSelectedDocId(null);
+  }, [courier?.id]);
+
   if (!courier) return null;
 
   return (
@@ -220,206 +232,223 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
 
         <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-[360px_1fr]">
           {/* Left: metadata + workflow */}
-          <aside className="overflow-y-auto px-6 py-5 lg:border-r"><PanelMeta /></aside>
+          <aside className="overflow-y-auto px-6 py-5 lg:border-r space-y-5">
+            <dl className="space-y-3 text-sm">
+              <div className="flex justify-between">
+                <dt className="text-muted-foreground">Date de réception</dt>
+                <dd className="font-medium">
+                  {courier.received_at
+                    ? new Date(courier.received_at).toLocaleDateString("fr-FR", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "numeric",
+                      })
+                    : "—"}
+                </dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-muted-foreground">Canal de réception</dt>
+                <dd>
+                  <Badge variant="outline">
+                    {channelLabels[courier.channel] ?? courier.channel}
+                  </Badge>
+                </dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-muted-foreground">Destinataire</dt>
+                <dd className="font-medium">{recipient?.name ?? recipient?.email ?? "—"}</dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-muted-foreground">Expéditeur</dt>
+                <dd className="font-medium">{sender?.name ?? sender?.email ?? "—"}</dd>
+              </div>
+            </dl>
 
-          {/* Right: documents + viewer */}
-          <main className="overflow-y-auto px-6 py-5">
-            <PanelDocs />
+            <Separator />
+
+            {/* Service gestionnaire */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Briefcase className="h-4 w-4 text-muted-foreground" />
+                <h3 className="text-sm font-medium">Service gestionnaire</h3>
+              </div>
+              <Select
+                value={currentService?.id ?? ""}
+                onValueChange={(v) => serviceMutation.mutate(v)}
+                disabled={serviceMutation.isPending}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Sélectionner un service" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(services ?? []).map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                      {s.workflow?.name && (
+                        <span className="text-muted-foreground text-xs ml-2">
+                          — {s.workflow.name}
+                        </span>
+                      )}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {courier.assigned_service && !currentService && (
+                <p className="text-xs text-muted-foreground italic">
+                  Service actuel « {courier.assigned_service} » introuvable.
+                </p>
+              )}
+            </div>
+
+            <Separator />
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium">Tags</h3>
+                <Popover open={tagPopoverOpen} onOpenChange={setTagPopoverOpen}>
+                  <PopoverTrigger asChild>
+                    <Button size="sm" variant="outline" className="h-8">
+                      <TagIcon className="h-3.5 w-3.5 mr-1.5" />
+                      Gérer
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-64 p-0" align="end">
+                    <Command>
+                      <CommandInput placeholder="Rechercher un tag…" />
+                      <CommandList>
+                        <CommandEmpty>
+                          Aucun tag défini. Allez dans Paramètres → Classification.
+                        </CommandEmpty>
+                        <CommandGroup>
+                          {(orgTags ?? []).map((tag) => {
+                            const checked = selectedTags.some(
+                              (t) => t.toLowerCase() === tag.name.toLowerCase(),
+                            );
+                            return (
+                              <CommandItem
+                                key={tag.id}
+                                value={tag.name}
+                                onSelect={() => toggleTag(tag.name)}
+                                className="gap-2"
+                              >
+                                <span
+                                  className="h-2.5 w-2.5 rounded-full shrink-0"
+                                  style={{ backgroundColor: tag.color ?? "hsl(var(--muted-foreground))" }}
+                                />
+                                <span className="flex-1">{tag.name}</span>
+                                <Check
+                                  className={cn(
+                                    "h-4 w-4",
+                                    checked ? "opacity-100" : "opacity-0",
+                                  )}
+                                />
+                              </CommandItem>
+                            );
+                          })}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {selectedTags.map((tagName) => {
+                  const tag = tagByName.get(tagName.toLowerCase());
+                  const orphan = !tag;
+                  const fg = tag?.color ? readableTextColor(tag.color) : undefined;
+                  return (
+                    <Badge
+                      key={tagName}
+                      variant="secondary"
+                      className={cn(
+                        "gap-1.5 pl-2 pr-1 border-transparent",
+                        orphan && "opacity-60 italic",
+                      )}
+                      style={
+                        tag?.color
+                          ? { backgroundColor: tag.color, color: fg }
+                          : undefined
+                      }
+                    >
+                      {tagName}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          removeTag(tagName);
+                        }}
+                        className="ml-0.5 rounded-full p-0.5 hover:bg-black/20 transition-colors"
+                        aria-label={`Retirer ${tagName}`}
+                        style={fg ? { color: fg } : undefined}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  );
+                })}
+                {selectedTags.length === 0 && (
+                  <span className="text-xs text-muted-foreground">Aucun tag</span>
+                )}
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Workflow transition buttons */}
+            <div className="space-y-3">
+              <h3 className="text-sm font-medium">Actions</h3>
+              {transitions && transitions.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {transitions.map((t) => (
+                    <Button
+                      key={t.id}
+                      onClick={() => transitionMutation.mutate((t.to_state as any).id)}
+                      disabled={transitionMutation.isPending}
+                      className="gap-1.5"
+                    >
+                      <ArrowRight className="h-4 w-4" />
+                      {t.name ?? (t.to_state as any)?.name ?? "Suivant"}
+                    </Button>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">Aucune transition disponible.</p>
+              )}
+            </div>
+          </aside>
+
+          {/* Right: viewer + documents */}
+          <main className="overflow-y-auto px-6 py-5 space-y-5 bg-muted/10">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <FileText className="h-4 w-4 text-muted-foreground" />
+                <h3 className="text-sm font-medium">Aperçu</h3>
+              </div>
+              <div className="h-[420px]">
+                <DocumentViewer
+                  documents={documents}
+                  currentId={selectedDocId}
+                  onChange={setSelectedDocId}
+                  organizationId={organizationId}
+                />
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-2">
+              <h3 className="text-sm font-medium">Documents</h3>
+              <DocumentManager
+                courierId={courier.id}
+                organizationId={organizationId}
+                selectedDocId={selectedDocId}
+                onSelectDoc={setSelectedDocId}
+              />
+            </div>
           </main>
         </div>
       </SheetContent>
     </Sheet>
   );
-
-  // Inline subcomponents declared via closures so they share state.
-  function PanelMeta() {
-    return (
-      <div className="space-y-5">
-          {/* Info fields */}
-          <dl className="space-y-3 text-sm">
-            <div className="flex justify-between">
-              <dt className="text-muted-foreground">Date de réception</dt>
-              <dd className="font-medium">
-                {courier.received_at
-                  ? new Date(courier.received_at).toLocaleDateString("fr-FR", {
-                      day: "2-digit",
-                      month: "2-digit",
-                      year: "numeric",
-                    })
-                  : "—"}
-              </dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-muted-foreground">Canal de réception</dt>
-              <dd>
-                <Badge variant="outline">
-                  {channelLabels[courier.channel] ?? courier.channel}
-                </Badge>
-              </dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-muted-foreground">Destinataire</dt>
-              <dd className="font-medium">{recipient?.name ?? recipient?.email ?? "—"}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-muted-foreground">Expéditeur</dt>
-              <dd className="font-medium">{sender?.name ?? sender?.email ?? "—"}</dd>
-            </div>
-          </dl>
-
-          <Separator />
-
-          {/* Service gestionnaire */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Briefcase className="h-4 w-4 text-muted-foreground" />
-              <h3 className="text-sm font-medium">Service gestionnaire</h3>
-            </div>
-            <Select
-              value={currentService?.id ?? ""}
-              onValueChange={(v) => serviceMutation.mutate(v)}
-              disabled={serviceMutation.isPending}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Sélectionner un service" />
-              </SelectTrigger>
-              <SelectContent>
-                {(services ?? []).map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.name}
-                    {s.workflow?.name && (
-                      <span className="text-muted-foreground text-xs ml-2">
-                        — {s.workflow.name}
-                      </span>
-                    )}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {courier.assigned_service && !currentService && (
-              <p className="text-xs text-muted-foreground italic">
-                Service actuel « {courier.assigned_service} » introuvable.
-              </p>
-            )}
-          </div>
-
-          <Separator />
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-medium">Tags</h3>
-              <Popover open={tagPopoverOpen} onOpenChange={setTagPopoverOpen}>
-                <PopoverTrigger asChild>
-                  <Button size="sm" variant="outline" className="h-8">
-                    <TagIcon className="h-3.5 w-3.5 mr-1.5" />
-                    Gérer
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-64 p-0" align="end">
-                  <Command>
-                    <CommandInput placeholder="Rechercher un tag…" />
-                    <CommandList>
-                      <CommandEmpty>
-                        Aucun tag défini. Allez dans Paramètres → Classification.
-                      </CommandEmpty>
-                      <CommandGroup>
-                        {(orgTags ?? []).map((tag) => {
-                          const checked = selectedTags.some(
-                            (t) => t.toLowerCase() === tag.name.toLowerCase(),
-                          );
-                          return (
-                            <CommandItem
-                              key={tag.id}
-                              value={tag.name}
-                              onSelect={() => toggleTag(tag.name)}
-                              className="gap-2"
-                            >
-                              <span
-                                className="h-2.5 w-2.5 rounded-full shrink-0"
-                                style={{ backgroundColor: tag.color ?? "hsl(var(--muted-foreground))" }}
-                              />
-                              <span className="flex-1">{tag.name}</span>
-                              <Check
-                                className={cn(
-                                  "h-4 w-4",
-                                  checked ? "opacity-100" : "opacity-0",
-                                )}
-                              />
-                            </CommandItem>
-                          );
-                        })}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {selectedTags.map((tagName) => {
-                const tag = tagByName.get(tagName.toLowerCase());
-                const orphan = !tag;
-                const fg = tag?.color ? readableTextColor(tag.color) : undefined;
-                return (
-                  <Badge
-                    key={tagName}
-                    variant="secondary"
-                    className={cn(
-                      "gap-1.5 pl-2 pr-1 border-transparent",
-                      orphan && "opacity-60 italic",
-                    )}
-                    style={
-                      tag?.color
-                        ? { backgroundColor: tag.color, color: fg }
-                        : undefined
-                    }
-                  >
-                    {tagName}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        removeTag(tagName);
-                      }}
-                      className="ml-0.5 rounded-full p-0.5 hover:bg-black/20 transition-colors"
-                      aria-label={`Retirer ${tagName}`}
-                      style={fg ? { color: fg } : undefined}
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </Badge>
-                );
-              })}
-              {selectedTags.length === 0 && (
-                <span className="text-xs text-muted-foreground">Aucun tag</span>
-              )}
-            </div>
-          </div>
-
-          <Separator />
-
-          {/* Workflow transition buttons */}
-          <div className="space-y-3">
-            <h3 className="text-sm font-medium">Actions</h3>
-            {transitions && transitions.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {transitions.map((t) => (
-                  <Button
-                    key={t.id}
-                    onClick={() => transitionMutation.mutate((t.to_state as any).id)}
-                    disabled={transitionMutation.isPending}
-                    className="gap-1.5"
-                  >
-                    <ArrowRight className="h-4 w-4" />
-                    {t.name ?? (t.to_state as any)?.name ?? "Suivant"}
-                  </Button>
-                ))}
-              </div>
-            ) : (
-              <p className="text-xs text-muted-foreground">Aucune transition disponible.</p>
-            )}
-          </div>
-        </div>
-      </SheetContent>
-    </Sheet>
-  );
 }
+
