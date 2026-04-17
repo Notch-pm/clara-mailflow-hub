@@ -316,7 +316,7 @@ async function analyzeCourier(
   // Get courier subject + extracts
   const { data: courier } = await admin
     .from("couriers")
-    .select("id, subject, organization_id")
+    .select("id, subject, organization_id, channel, metadata")
     .eq("id", courierId)
     .single();
   if (!courier || courier.organization_id !== orgId) throw new Error("Courier not found");
@@ -327,14 +327,36 @@ async function analyzeCourier(
     .eq("courier_id", courierId)
     .eq("organization_id", orgId);
 
+  // Corps de l'email (si présent dans metadata)
+  const meta = (courier.metadata ?? {}) as Record<string, unknown>;
+  const bodyText = typeof meta.body_text === "string" ? meta.body_text.trim() : "";
+  const bodyHtml = typeof meta.body_html === "string" ? meta.body_html : "";
+  const bodyFromHtml = bodyHtml
+    ? bodyHtml
+        .replace(/<style[\s\S]*?<\/style>/gi, "")
+        .replace(/<script[\s\S]*?<\/script>/gi, "")
+        .replace(/<br\s*\/?>/gi, "\n")
+        .replace(/<\/p>/gi, "\n\n")
+        .replace(/<[^>]+>/g, "")
+        .replace(/&nbsp;/g, " ")
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim()
+    : "";
+  const emailBody = (bodyText || bodyFromHtml).slice(0, 30_000);
+
   const concatenated = (extracts ?? [])
     .map((e) => e.text)
     .filter(Boolean)
     .join("\n\n===\n\n")
     .slice(0, 60_000); // safety cap
 
-  if (!concatenated.trim()) {
-    throw new Error("Aucun texte extrait à analyser. Lancez d'abord l'extraction OCR.");
+  if (!concatenated.trim() && !emailBody.trim()) {
+    throw new Error("Aucun contenu à analyser. Lancez d'abord l'extraction OCR ou ajoutez un corps d'email.");
   }
 
   const systemPrompt = `Tu es un assistant expert en gestion de courrier administratif. Analyse le contenu fourni et restitue UNIQUEMENT via l'outil "report_analysis" :
@@ -342,9 +364,16 @@ async function analyzeCourier(
 - intents: liste des intentions/objets principaux (verbe + complément court, ex: "demande d'attestation", "réclamation facture")
 - sentiment: ton/état d'esprit du rédacteur, parmi: neutre, courtois, urgent, mécontent, agressif, satisfait, inquiet
 - suggested_actions: 2 à 5 actions concrètes que l'organisation devrait entreprendre
-Sois factuel, en français.`;
+Sois factuel, en français. Si le corps de l'email et les pièces jointes coexistent, traite-les comme un tout cohérent.`;
 
-  const userPrompt = `Sujet du courrier : ${courier.subject ?? "(aucun)"}\n\nContenu extrait des pièces jointes :\n${concatenated}`;
+  const sections: string[] = [`Sujet du courrier : ${courier.subject ?? "(aucun)"}`];
+  if (emailBody.trim()) {
+    sections.push(`Corps de l'email :\n${emailBody}`);
+  }
+  if (concatenated.trim()) {
+    sections.push(`Contenu extrait des pièces jointes :\n${concatenated}`);
+  }
+  const userPrompt = sections.join("\n\n");
 
   const tools = [
     {
