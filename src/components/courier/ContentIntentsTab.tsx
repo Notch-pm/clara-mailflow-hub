@@ -319,19 +319,63 @@ export default function ContentIntentsTab({ courierId, organizationId }: Props) 
             )}
 
             <Card className="p-3">
-              <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-                Intentions
-              </h4>
-              {analysis.intents.length === 0 ? (
-                <p className="text-xs text-muted-foreground italic">Aucune intention détectée</p>
+              <div className="flex items-center justify-between mb-2 gap-2">
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Intentions (tags)
+                </h4>
+                <Button
+                  size="sm"
+                  variant={isDirty ? "default" : "outline"}
+                  onClick={() => applyTagsMutation.mutate()}
+                  disabled={!isDirty || applyTagsMutation.isPending}
+                  className="h-7 text-xs"
+                >
+                  {applyTagsMutation.isPending ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Check className="h-3 w-3" />
+                  )}
+                  Appliquer les tags
+                </Button>
+              </div>
+              {selectedIntents.length === 0 ? (
+                <p className="text-xs text-muted-foreground italic">
+                  {analysis.intents.length === 0
+                    ? "Aucun tag retenu par l'analyse. Vérifiez que des tags sont définis dans Paramètres > Classification."
+                    : "Tous les tags ont été retirés. Cliquez sur 'Appliquer' pour valider."}
+                </p>
               ) : (
                 <div className="flex flex-wrap gap-1.5">
-                  {analysis.intents.map((intent, i) => (
-                    <Badge key={i} variant="secondary" className="text-xs">
-                      {intent}
-                    </Badge>
-                  ))}
+                  {selectedIntents.map((intent) => {
+                    const meta = tagByLowerName.get(intent.toLowerCase());
+                    const fg = meta?.color ? readableTextColor(meta.color) : undefined;
+                    return (
+                      <Badge
+                        key={intent}
+                        variant="secondary"
+                        className="gap-1 pl-2 pr-1 py-0.5 text-xs border-transparent"
+                        style={meta?.color ? { backgroundColor: meta.color, color: fg } : undefined}
+                      >
+                        {meta?.name ?? intent}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setSelectedIntents((prev) => prev.filter((t) => t !== intent))
+                          }
+                          className="ml-0.5 rounded-full p-0.5 hover:bg-background/30 transition-colors"
+                          aria-label={`Retirer ${intent}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    );
+                  })}
                 </div>
+              )}
+              {currentCourierTags.length > 0 && !isDirty && (
+                <p className="mt-2 text-[10px] text-muted-foreground/80">
+                  ✓ Ces tags sont appliqués au courrier.
+                </p>
               )}
             </Card>
 
