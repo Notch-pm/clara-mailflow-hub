@@ -39,7 +39,7 @@ import CourierNotes from "./CourierNotes";
 import CourierHistoryTab from "./CourierHistoryTab";
 import ContentIntentsTab from "./ContentIntentsTab";
 import LinkedActionsTab from "./LinkedActionsTab";
-import type { CourierChannel, CourierParticipant, WorkflowTransition, WorkflowState } from "@/types/courier";
+import type { CourierChannel, CourierParticipant, WorkflowTransition, WorkflowState, WorkflowCategory } from "@/types/courier";
 
 const channelLabels: Record<CourierChannel, string> = {
   paper: "Papier",
@@ -366,43 +366,68 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 onSave={(v) => persistCourierUpdate({ subject: v.trim() || null }, "Titre modifié")}
               />
             </div>
-{transitions && transitions.length > 0 && (
-  <div className="flex flex-wrap gap-2 justify-end shrink-0">
-    {transitions.length <= 3 ? (
-      transitions.map((t) => (
-        <Button
-          key={t.id}
-          size="sm"
-          onClick={() => transitionMutation.mutate((t.to_state as any).id)}
-          disabled={transitionMutation.isPending}
-          className="gap-1.5"
-        >
-          <ArrowRight className="h-4 w-4" />
-          {t.name ?? (t.to_state as any)?.name ?? "Suivant"}
-        </Button>
-      ))
-    ) : (
-      <Select
-        onValueChange={(v) => transitionMutation.mutate(v)}
-        disabled={transitionMutation.isPending}
-      >
-        <SelectTrigger className="h-8 text-sm gap-2">
-          <span className="flex items-center gap-1.5">
-            <ArrowRight className="h-4 w-4" />
-            Déplacer vers
-          </span>
-        </SelectTrigger>
-        <SelectContent align="end">
-          {transitions.map((t) => (
-            <SelectItem key={t.id} value={(t.to_state as any).id}>
-              {t.name ?? (t.to_state as any)?.name ?? "Suivant"}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    )}
-  </div>
-)}
+            {transitions && transitions.length > 0 && (
+              <div className="flex flex-wrap gap-2 justify-end shrink-0">
+                {transitions.length <= 3 ? (
+                  transitions.map((t) => {
+                    const category = (t.to_state as any)?.category as WorkflowCategory | undefined;
+                    return (
+                      <Button
+                        key={t.id}
+                        size="sm"
+                        onClick={() => transitionMutation.mutate((t.to_state as any).id)}
+                        disabled={transitionMutation.isPending}
+                        className="gap-1.5"
+                      >
+                        <span
+                          className={cn(
+                            "h-2 w-2 rounded-full",
+                            category === "pending" && "bg-amber-500",
+                            category === "processing" && "bg-blue-500",
+                            category === "processed" && "bg-emerald-500",
+                            category === "archived" && "bg-slate-400",
+                            !category && "bg-gray-300"
+                          )}
+                        />
+                        {t.name ?? (t.to_state as any)?.name ?? "Suivant"}
+                      </Button>
+                    );
+                  })
+                ) : (
+                  <Select
+                    onValueChange={(v) => transitionMutation.mutate(v)}
+                    disabled={transitionMutation.isPending}
+                  >
+                    <SelectTrigger className="h-8 text-sm gap-2">
+                      <ArrowRight className="h-4 w-4 shrink-0" />
+                      <span>Déplacer vers</span>
+                    </SelectTrigger>
+                    <SelectContent align="end">
+                      {transitions.map((t) => {
+                        const category = (t.to_state as any)?.category as WorkflowCategory | undefined;
+                        return (
+                          <SelectItem key={t.id} value={(t.to_state as any).id}>
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={cn(
+                                  "h-2 w-2 rounded-full shrink-0",
+                                  category === "pending" && "bg-amber-500",
+                                  category === "processing" && "bg-blue-500",
+                                  category === "processed" && "bg-emerald-500",
+                                  category === "archived" && "bg-slate-400",
+                                  !category && "bg-gray-300"
+                                )}
+                              />
+                              <span>{t.name ?? (t.to_state as any)?.name ?? "Suivant"}</span>
+                            </div>
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+            )}
           </div>
         </SheetHeader>
 
