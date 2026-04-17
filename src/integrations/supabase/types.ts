@@ -549,6 +549,62 @@ export type Database = {
           },
         ]
       }
+      imap_settings: {
+        Row: {
+          auto_fetch: boolean
+          created_at: string
+          folder: string
+          host: string
+          id: string
+          last_error: string | null
+          last_fetch_at: string | null
+          organization_id: string
+          password: string
+          port: number
+          updated_at: string
+          use_tls: boolean
+          username: string
+        }
+        Insert: {
+          auto_fetch?: boolean
+          created_at?: string
+          folder?: string
+          host?: string
+          id?: string
+          last_error?: string | null
+          last_fetch_at?: string | null
+          organization_id: string
+          password?: string
+          port?: number
+          updated_at?: string
+          use_tls?: boolean
+          username?: string
+        }
+        Update: {
+          auto_fetch?: boolean
+          created_at?: string
+          folder?: string
+          host?: string
+          id?: string
+          last_error?: string | null
+          last_fetch_at?: string | null
+          organization_id?: string
+          password?: string
+          port?: number
+          updated_at?: string
+          use_tls?: boolean
+          username?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "imap_settings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organization_integrations: {
         Row: {
           access_token: string | null
