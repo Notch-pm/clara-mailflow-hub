@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, Check, ChevronsUpDown } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -14,12 +14,15 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 import { listProcedures } from "@/services/procedureService";
 import { createTicket } from "@/services/actionTicketService";
 import { logEvent } from "@/services/courierEventService";
@@ -43,6 +46,7 @@ export default function CreateTicketDialog({
   const qc = useQueryClient();
   const [procedureId, setProcedureId] = useState<string>("");
   const [description, setDescription] = useState<string>(initialDescription);
+  const [popoverOpen, setPopoverOpen] = useState(false);
 
   // Sync when dialog reopens with a different initial description
   useEffect(() => {
@@ -59,6 +63,8 @@ export default function CreateTicketDialog({
   });
 
   const displayedProcedures = (procedures ?? []).filter((p) => p.is_displayed);
+
+  const selectedProcedure = displayedProcedures.find((p) => p.id === procedureId);
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -100,28 +106,53 @@ export default function CreateTicketDialog({
         <div className="space-y-4 py-2">
           <div className="space-y-1.5">
             <Label htmlFor="procedure">Démarche</Label>
-            <Select value={procedureId} onValueChange={setProcedureId}>
-              <SelectTrigger id="procedure">
-                <SelectValue
-                  placeholder={
-                    loadingProcedures ? "Chargement…" : "Sélectionnez une démarche"
-                  }
-                />
-              </SelectTrigger>
-              <SelectContent>
-                {displayedProcedures.length === 0 ? (
-                  <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                    Aucune démarche disponible
-                  </div>
-                ) : (
-                  displayedProcedures.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name}
-                    </SelectItem>
-                  ))
-                )}
-              </SelectContent>
-            </Select>
+            <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  id="procedure"
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={popoverOpen}
+                  className="w-full justify-between"
+                  disabled={loadingProcedures}
+                >
+                  {selectedProcedure
+                    ? selectedProcedure.name
+                    : loadingProcedures
+                      ? "Chargement…"
+                      : "Sélectionnez une démarche"}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                <Command>
+                  <CommandInput placeholder="Rechercher une démarche…" />
+                  <CommandList>
+                    <CommandEmpty>Aucune démarche trouvée</CommandEmpty>
+                    <CommandGroup>
+                      {displayedProcedures.map((p) => (
+                        <CommandItem
+                          key={p.id}
+                          value={p.name}
+                          onSelect={() => {
+                            setProcedureId(p.id);
+                            setPopoverOpen(false);
+                          }}
+                        >
+                          <Check
+                            className={cn(
+                              "mr-2 h-4 w-4",
+                              procedureId === p.id ? "opacity-100" : "opacity-0",
+                            )}
+                          />
+                          {p.name}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
           </div>
 
           <div className="space-y-1.5">
