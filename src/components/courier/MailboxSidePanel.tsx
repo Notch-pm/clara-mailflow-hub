@@ -213,12 +213,28 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle className="text-lg">{courier.subject ?? "Sans objet"}</SheetTitle>
+      <SheetContent className="w-full sm:max-w-[95vw] lg:max-w-[1100px] overflow-hidden p-0 flex flex-col">
+        <SheetHeader className="px-6 pt-6 pb-3 border-b shrink-0">
+          <SheetTitle className="text-lg pr-8">{courier.subject ?? "Sans objet"}</SheetTitle>
         </SheetHeader>
 
-        <div className="mt-6 space-y-5">
+        <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-[360px_1fr]">
+          {/* Left: metadata + workflow */}
+          <aside className="overflow-y-auto px-6 py-5 lg:border-r"><PanelMeta /></aside>
+
+          {/* Right: documents + viewer */}
+          <main className="overflow-y-auto px-6 py-5">
+            <PanelDocs />
+          </main>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+
+  // Inline subcomponents declared via closures so they share state.
+  function PanelMeta() {
+    return (
+      <div className="space-y-5">
           {/* Info fields */}
           <dl className="space-y-3 text-sm">
             <div className="flex justify-between">
