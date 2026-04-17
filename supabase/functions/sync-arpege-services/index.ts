@@ -81,11 +81,18 @@ function extractArray(data: any): any[] {
 // ── Auth helper ──
 
 async function checkAuth(req: Request, supabaseAdmin: any, supabaseUrl: string, anonKey: string): Promise<boolean> {
-  // 1) Cron secret header (used by the nightly pg_cron job)
-  const cronSecret = Deno.env.get("CRON_SECRET");
+  // 1) Cron secret header — lit la valeur partagée directement depuis le Vault Postgres
   const providedCronSecret = req.headers.get("x-cron-secret");
-  if (cronSecret && providedCronSecret && providedCronSecret === cronSecret) {
-    return true;
+  if (providedCronSecret) {
+    try {
+      const { data: vaultSecret, error: rpcErr } = await supabaseAdmin.rpc("get_cron_secret");
+      if (!rpcErr && vaultSecret && providedCronSecret === vaultSecret) {
+        return true;
+      }
+      if (rpcErr) console.error("get_cron_secret RPC error:", rpcErr.message);
+    } catch (e) {
+      console.error("get_cron_secret exception:", e);
+    }
   }
 
   const authHeader = req.headers.get("Authorization");
