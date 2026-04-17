@@ -682,7 +682,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
               </div>
               <div className="h-[70vh] min-h-[500px]">
                 <DocumentViewer
-                  documents={documents}
+                  documents={displayDocuments}
                   currentId={selectedDocId}
                   onChange={setSelectedDocId}
                   organizationId={organizationId}
