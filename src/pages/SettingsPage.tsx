@@ -41,6 +41,7 @@ export default function SettingsPage() {
         {activeSection === "utilisateurs" && <UsersPage />}
         {activeSection === "workflows" && <Workflows />}
         {activeSection === "classification" && <ClassificationSettings />}
+        {activeSection === "services" && <ServicesSettings />}
       </div>
     );
   }
