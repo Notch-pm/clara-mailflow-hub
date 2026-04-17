@@ -105,6 +105,7 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId }:
     setServiceId("");
     setSelectedTags([]);
     setErrors({});
+    setBodyText("");
     setPendingFiles([]);
   }, [open]);
 
