@@ -81,6 +81,13 @@ function extractArray(data: any): any[] {
 // ── Auth helper ──
 
 async function checkAuth(req: Request, supabaseAdmin: any, supabaseUrl: string, anonKey: string): Promise<boolean> {
+  // 1) Cron secret header (used by the nightly pg_cron job)
+  const cronSecret = Deno.env.get("CRON_SECRET");
+  const providedCronSecret = req.headers.get("x-cron-secret");
+  if (cronSecret && providedCronSecret && providedCronSecret === cronSecret) {
+    return true;
+  }
+
   const authHeader = req.headers.get("Authorization");
   if (!authHeader) return false;
   const token = authHeader.replace("Bearer ", "").trim();
@@ -97,8 +104,13 @@ async function checkAuth(req: Request, supabaseAdmin: any, supabaseUrl: string, 
   const { data: userProfile } = await supabaseAdmin.from("users").select("is_superadmin").eq("id", user.id).single();
   if (userProfile?.is_superadmin) return true;
 
-  const { data: orgUser } = await supabaseAdmin.from("organization_users").select("role").eq("user_id", user.id).limit(1).maybeSingle();
-  return orgUser?.role === "admin";
+  const { data: orgUser } = await supabaseAdmin
+    .from("organization_users")
+    .select("role")
+    .eq("user_id", user.id)
+    .limit(1)
+    .maybeSingle();
+  return orgUser?.role === "admin" || orgUser?.role === "administrateur";
 }
 
 // ── Main handler ──
