@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { Plus, Pencil, Trash2, Briefcase, Mail, GitBranch } from "lucide-react";
@@ -61,6 +61,8 @@ const serviceSchema = z.object({
   workflow_id: z.string().uuid("Workflow obligatoire"),
 });
 
+type ServiceFormValues = z.infer<typeof serviceSchema>;
+
 interface Props {
   organizationId?: string;
   isAdminOverride?: boolean;
@@ -97,7 +99,7 @@ export default function ServicesSettings({ organizationId, isAdminOverride }: Pr
   });
 
   const saveMutation = useMutation({
-    mutationFn: async (values: z.infer<typeof serviceSchema>) => {
+    mutationFn: async (values: ServiceFormValues) => {
       const payload = {
         name: values.name,
         email: values.email || null,
@@ -291,7 +293,7 @@ function ServiceDialog({
   onOpenChange: (o: boolean) => void;
   editing: OrgService | null;
   workflows: { id: string; name: string }[];
-  onSubmit: (values: z.infer<typeof serviceSchema>) => void;
+  onSubmit: (values: ServiceFormValues) => void;
   isSubmitting: boolean;
 }) {
   const [name, setName] = useState("");
@@ -299,14 +301,13 @@ function ServiceDialog({
   const [workflowId, setWorkflowId] = useState<string>("");
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const editingId = editing?.id ?? null;
-  const lastInitRef = useRefEqual({ open, editingId });
-  if (lastInitRef.changed) {
+  useEffect(() => {
+    if (!open) return;
     setName(editing?.name ?? "");
     setEmail(editing?.email ?? "");
     setWorkflowId(editing?.workflow_id ?? "");
     setErrors({});
-  }
+  }, [open, editing?.id, editing?.name, editing?.email, editing?.workflow_id]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -390,13 +391,4 @@ function ServiceDialog({
       </DialogContent>
     </Dialog>
   );
-}
-
-function useRefEqual<T extends Record<string, unknown>>(value: T) {
-  const ref = useRef<T | null>(null);
-  const prev = ref.current;
-  const changed =
-    !prev || Object.keys(value).some((k) => (value as any)[k] !== (prev as any)[k]);
-  if (changed) ref.current = { ...value };
-  return { changed };
 }
