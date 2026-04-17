@@ -3,11 +3,13 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Sparkles } from "lucide-react";
+import { Search, Sparkles, Plus } from "lucide-react";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { supabase } from "@/integrations/supabase/client";
 import MailboxSidePanel from "@/components/courier/MailboxSidePanel";
+import NewCourierDialog from "@/components/courier/NewCourierDialog";
 import mailboxIcon from "@/assets/icons/mailbox.svg";
 
 const LAST_LOGIN_KEY = "clara_last_login_at";
@@ -25,6 +27,7 @@ export default function BoiteAuxLettres() {
   const [search, setSearch] = useState("");
   const [selectedCourier, setSelectedCourier] = useState<any | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [newDialogOpen, setNewDialogOpen] = useState(false);
 
   const lastLogin = useMemo(() => getLastLogin(), []);
 
@@ -130,8 +133,8 @@ export default function BoiteAuxLettres() {
         </div>
       </div>
 
-      {/* Search */}
-      <div className="flex items-center gap-2">
+      {/* Search + actions */}
+      <div className="flex items-center gap-2 justify-between flex-wrap">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -141,6 +144,12 @@ export default function BoiteAuxLettres() {
             className="pl-9"
           />
         </div>
+        {organizationId && (
+          <Button onClick={() => setNewDialogOpen(true)}>
+            <Plus className="h-4 w-4 mr-1" />
+            Nouveau courrier
+          </Button>
+        )}
       </div>
 
       {/* Content */}
@@ -206,6 +215,15 @@ export default function BoiteAuxLettres() {
           courier={selectedCourier}
           open={panelOpen}
           onOpenChange={setPanelOpen}
+          organizationId={organizationId}
+        />
+      )}
+
+      {/* New courier dialog */}
+      {organizationId && (
+        <NewCourierDialog
+          open={newDialogOpen}
+          onOpenChange={setNewDialogOpen}
           organizationId={organizationId}
         />
       )}

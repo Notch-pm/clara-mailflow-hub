@@ -1,11 +1,18 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { X, ArrowRight, Tag as TagIcon, Check } from "lucide-react";
+import { useMemo, useState } from "react";
+import { X, ArrowRight, Tag as TagIcon, Check, Briefcase } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Command,
   CommandEmpty,
@@ -18,6 +25,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { updateCourier } from "@/services/courierService";
 import { listTags, type CourierTag } from "@/services/courierTagService";
+import { listServices } from "@/services/orgServiceService";
 import { cn } from "@/lib/utils";
 import type { CourierChannel, CourierParticipant, WorkflowTransition, WorkflowState } from "@/types/courier";
 
@@ -35,6 +43,7 @@ interface MailboxCourier {
   metadata: any;
   workflow_state_id: string | null;
   organization_id: string;
+  assigned_service: string | null;
   courier_participants?: CourierParticipant[];
 }
 
@@ -65,19 +74,72 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
     (orgTags ?? []).map((t) => [t.name.toLowerCase(), t]),
   );
 
-  // Fetch transitions from current state
+  // Available services for the org
+  const { data: services } = useQuery({
+    queryKey: ["org-services", organizationId],
+    queryFn: () => listServices(organizationId),
+    enabled: !!organizationId && open,
+  });
+
+  // Resolve courier's current service from its name (assigned_service)
+  const currentService = useMemo(() => {
+    if (!courier?.assigned_service || !services) return null;
+    return (
+      services.find(
+        (s) => s.name.toLowerCase() === courier.assigned_service?.toLowerCase(),
+      ) ?? null
+    );
+  }, [courier?.assigned_service, services]);
+
+  // Transitions from current state, scoped to the service's workflow
   const { data: transitions } = useQuery({
-    queryKey: ["mailbox-transitions", courier?.workflow_state_id],
+    queryKey: [
+      "mailbox-transitions",
+      courier?.workflow_state_id,
+      currentService?.workflow_id,
+    ],
     queryFn: async () => {
-      if (!courier?.workflow_state_id) return [];
+      if (!courier?.workflow_state_id || !currentService?.workflow_id) return [];
       const { data, error } = await supabase
         .from("workflow_transitions")
         .select("*, to_state:workflow_states!workflow_transitions_to_state_id_fkey(id, name, category)")
+        .eq("workflow_id", currentService.workflow_id)
         .eq("from_state_id", courier.workflow_state_id);
       if (error) throw error;
       return (data ?? []) as (WorkflowTransition & { to_state: WorkflowState })[];
     },
-    enabled: !!courier?.workflow_state_id,
+    enabled: !!courier?.workflow_state_id && !!currentService?.workflow_id,
+  });
+
+  const serviceMutation = useMutation({
+    mutationFn: async (newServiceId: string) => {
+      if (!courier) return;
+      const newService = services?.find((s) => s.id === newServiceId);
+      if (!newService) throw new Error("Service introuvable");
+
+      // Find initial state of the new service's workflow
+      const { data: initial, error: stateErr } = await supabase
+        .from("workflow_states")
+        .select("id")
+        .eq("workflow_id", newService.workflow_id)
+        .eq("is_initial", true)
+        .maybeSingle();
+      if (stateErr) throw stateErr;
+
+      const currentMeta = (courier.metadata as any) ?? {};
+      const { error } = await updateCourier(organizationId, courier.id, {
+        assigned_service: newService.name,
+        workflow_state_id: initial?.id ?? null,
+        metadata: { ...currentMeta, service_id: newService.id },
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
+      queryClient.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
+      toast.success("Service gestionnaire mis à jour");
+    },
+    onError: (err: Error) => toast.error(err.message),
   });
 
   const transitionMutation = useMutation({
@@ -167,7 +229,41 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
 
           <Separator />
 
-          {/* Tags */}
+          {/* Service gestionnaire */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Briefcase className="h-4 w-4 text-muted-foreground" />
+              <h3 className="text-sm font-medium">Service gestionnaire</h3>
+            </div>
+            <Select
+              value={currentService?.id ?? ""}
+              onValueChange={(v) => serviceMutation.mutate(v)}
+              disabled={serviceMutation.isPending}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Sélectionner un service" />
+              </SelectTrigger>
+              <SelectContent>
+                {(services ?? []).map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.name}
+                    {s.workflow?.name && (
+                      <span className="text-muted-foreground text-xs ml-2">
+                        — {s.workflow.name}
+                      </span>
+                    )}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {courier.assigned_service && !currentService && (
+              <p className="text-xs text-muted-foreground italic">
+                Service actuel « {courier.assigned_service} » introuvable.
+              </p>
+            )}
+          </div>
+
+          <Separator />
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-medium">Tags</h3>
