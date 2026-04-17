@@ -106,7 +106,12 @@ export default function DocumentManager({
 
       for (const file of fileArray) {
         try {
-          await storage.upload(organizationId, courierId, file, selectedType);
+          const doc = await storage.upload(organizationId, courierId, file, selectedType);
+          await logEvent(organizationId, courierId, "document_added", {
+            file_name: file.name,
+            document_type: selectedType,
+            document_id: (doc as any)?.id,
+          });
           uploaded++;
           setUploadProgress(Math.round((uploaded / fileArray.length) * 100));
         } catch (err) {
@@ -117,6 +122,7 @@ export default function DocumentManager({
 
       queryClient.invalidateQueries({ queryKey });
       queryClient.invalidateQueries({ queryKey: ["courier", courierId] });
+      queryClient.invalidateQueries({ queryKey: ["courier-events", courierId] });
       if (uploaded > 0) {
         toast.success(`${uploaded} document${uploaded > 1 ? "s" : ""} ajouté${uploaded > 1 ? "s" : ""}`);
       }
