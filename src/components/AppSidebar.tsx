@@ -1,5 +1,5 @@
 import { NavLink } from "@/components/NavLink";
-import { LayoutDashboard, Send, Link2, FileClock, Users, LucideIcon } from "lucide-react";
+import { LayoutDashboard, Send, Link2, FileClock, Users, CheckCircle2, LucideIcon } from "lucide-react";
 import mailboxIcon from "@/assets/icons/mailbox.svg";
 import {
   Tooltip,
