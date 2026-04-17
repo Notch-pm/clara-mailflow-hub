@@ -807,7 +807,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 <CourierNotes
                   courierId={courier.id}
                   organizationId={organizationId}
-                  readOnly={isFinalState}
+                  readOnly={readOnly || isFinalState}
                 />
               </TabsContent>
               <TabsContent
