@@ -33,6 +33,7 @@ const sectionLabels: Record<string, string> = {
 
 export default function SettingsPage() {
   const [activeSection, setActiveSection] = useState<Section>("menu");
+  const { organizationId } = useOrganization();
 
   if (activeSection !== "menu") {
     return (
@@ -47,6 +48,12 @@ export default function SettingsPage() {
           </div>
         </div>
         {activeSection === "utilisateurs" && <UsersPage />}
+        {activeSection === "emails" && organizationId && (
+          <div className="space-y-6">
+            <SmtpSettings orgId={organizationId} />
+            <ImapSettings orgId={organizationId} />
+          </div>
+        )}
         {activeSection === "workflows" && <Workflows />}
         {activeSection === "classification" && <ClassificationSettings />}
         {activeSection === "services" && <ServicesSettings />}
