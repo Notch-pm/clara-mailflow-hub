@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { X, ArrowRight, Tag as TagIcon, Check, Briefcase } from "lucide-react";
+import { X, ArrowRight, Tag as TagIcon, Check, Briefcase, FileText } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,8 +26,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { updateCourier } from "@/services/courierService";
 import { listTags, type CourierTag } from "@/services/courierTagService";
 import { listServices } from "@/services/orgServiceService";
+import { getDocuments } from "@/services/courierDocumentService";
 import { cn } from "@/lib/utils";
 import { readableTextColor } from "@/lib/tag-color";
+import DocumentManager from "./DocumentManager";
+import DocumentViewer from "./DocumentViewer";
 import type { CourierChannel, CourierParticipant, WorkflowTransition, WorkflowState } from "@/types/courier";
 
 const channelLabels: Record<CourierChannel, string> = {
