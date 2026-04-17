@@ -1,14 +1,16 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { ChevronDown, ChevronRight, FileText, Sparkles, Loader2, RefreshCw } from "lucide-react";
+import { ChevronDown, ChevronRight, FileText, Sparkles, Loader2, RefreshCw, X, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getDocuments } from "@/services/courierDocumentService";
-import { getCourierById } from "@/services/courierService";
+import { getCourierById, updateCourier } from "@/services/courierService";
+import { listTags } from "@/services/courierTagService";
+import { readableTextColor } from "@/lib/tag-color";
 import {
   getExtracts,
   getAnalysis,
