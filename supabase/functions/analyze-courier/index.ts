@@ -482,7 +482,7 @@ ${tagListForPrompt}`;
         intents: safeIntents,
         sentiment: parsed.sentiment,
         suggested_actions: parsed.suggested_actions ?? [],
-        model: CHAT_MODEL,
+        model: `agent:${ANALYSIS_AGENT_ID}`,
         tokens_used: tokensUsed,
       },
       { onConflict: "courier_id" },
