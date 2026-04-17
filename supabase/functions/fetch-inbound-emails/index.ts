@@ -12,7 +12,7 @@ import { simpleParser } from "npm:mailparser@3.7.1";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-cron-secret",
+    "authorization, x-client-info, apikey, content-type, x-cron-secret, x-org-id",
 };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -399,11 +399,11 @@ Deno.serve(async (req) => {
       global: { headers: { Authorization: authHeader } },
     });
     const token = authHeader.replace("Bearer ", "");
-    const { data: claims, error: claimsErr } = await userClient.auth.getClaims(token);
-    if (claimsErr || !claims?.claims?.sub) {
+    const { data: authData, error: authErr } = await userClient.auth.getUser(token);
+    if (authErr || !authData?.user) {
       return jsonResponse(401, { ok: false, error: "Unauthorized" });
     }
-    const userId = claims.claims.sub;
+    const userId = authData.user.id;
 
     const { data: membership } = await admin
       .from("organization_users")
