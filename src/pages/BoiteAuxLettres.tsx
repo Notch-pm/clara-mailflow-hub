@@ -36,6 +36,28 @@ export function recordLogin() {
 
 export default function BoiteAuxLettres() {
   const { organizationId } = useOrganization();
+  const queryClient = useQueryClient();
+  const [courierToDelete, setCourierToDelete] = useState<any | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleConfirmDelete() {
+    if (!organizationId || !courierToDelete) return;
+    setDeleting(true);
+    const { error } = await deleteCourier(organizationId, courierToDelete.id);
+    setDeleting(false);
+    if (error) {
+      toast({ title: "Erreur", description: error.message, variant: "destructive" });
+      return;
+    }
+    toast({ title: "Courrier supprimé" });
+    if (selectedCourier?.id === courierToDelete.id) {
+      setPanelOpen(false);
+      setSelectedCourier(null);
+    }
+    setCourierToDelete(null);
+    queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
+    queryClient.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
+  }
   const [search, setSearch] = useState("");
   const [selectedCourier, setSelectedCourier] = useState<any | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
