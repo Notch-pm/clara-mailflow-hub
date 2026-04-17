@@ -43,7 +43,15 @@ interface MailboxCourier {
   metadata: any;
   workflow_state_id: string | null;
   organization_id: string;
+  assigned_service: string | null;
   courier_participants?: CourierParticipant[];
+}
+
+interface Props {
+  courier: MailboxCourier | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  organizationId: string;
 }
 
 interface Props {
