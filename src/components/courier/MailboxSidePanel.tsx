@@ -103,15 +103,25 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
     enabled: !!organizationId && open,
   });
 
+  // Local override for assigned_service so the UI reflects the change immediately
+  // after the user picks a service (the parent prop is a snapshot and only updates
+  // after the next mailbox-couriers refetch resolves).
+  const [localAssignedService, setLocalAssignedService] = useState<string | null>(
+    courier?.assigned_service ?? null,
+  );
+  useEffect(() => {
+    setLocalAssignedService(courier?.assigned_service ?? null);
+  }, [courier?.id, courier?.assigned_service]);
+
   // Resolve courier's current service from its name (assigned_service)
   const currentService = useMemo(() => {
-    if (!courier?.assigned_service || !services) return null;
+    if (!localAssignedService || !services) return null;
     return (
       services.find(
-        (s) => s.name.toLowerCase() === courier.assigned_service?.toLowerCase(),
+        (s) => s.name.toLowerCase() === localAssignedService.toLowerCase(),
       ) ?? null
     );
-  }, [courier?.assigned_service, services]);
+  }, [localAssignedService, services]);
 
   // Transitions from current state, scoped to the service's workflow
   const { data: transitions } = useQuery({
