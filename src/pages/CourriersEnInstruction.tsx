@@ -361,6 +361,7 @@ export default function CourriersEnInstruction() {
           open={panelOpen}
           onOpenChange={setPanelOpen}
           organizationId={organizationId}
+          withTabs
         />
       )}
     </div>

@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { X, ArrowRight, Tag as TagIcon, Check, Briefcase, FileText } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -59,9 +60,11 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   organizationId: string;
+  /** When true, displays the body inside tabs (Détail / Actions liées / Réponse). */
+  withTabs?: boolean;
 }
 
-export default function MailboxSidePanel({ courier, open, onOpenChange, organizationId }: Props) {
+export default function MailboxSidePanel({ courier, open, onOpenChange, organizationId, withTabs = false }: Props) {
   const queryClient = useQueryClient();
   const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
 
@@ -328,12 +331,24 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
           </div>
         </SheetHeader>
 
-        <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-[360px_1fr]">
-          {/* Left: metadata + workflow */}
-          <aside className="overflow-y-auto px-6 py-5 lg:border-r space-y-5">
-            <dl className="space-y-1 text-sm">
-              <InlineEditField
-                label="Date de réception"
+        <Tabs defaultValue="detail" className="flex-1 overflow-hidden flex flex-col">
+          {withTabs && (
+            <TabsList className="mx-6 mt-3 self-start shrink-0">
+              <TabsTrigger value="detail">Détail du courrier</TabsTrigger>
+              <TabsTrigger value="actions">Actions liées</TabsTrigger>
+              <TabsTrigger value="response">Réponse</TabsTrigger>
+            </TabsList>
+          )}
+          <TabsContent
+            value="detail"
+            className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-[360px_1fr] mt-0 data-[state=inactive]:hidden"
+            forceMount
+          >
+            {/* Left: metadata + workflow */}
+            <aside className="overflow-y-auto px-6 py-5 lg:border-r space-y-5">
+              <dl className="space-y-1 text-sm">
+                <InlineEditField
+                  label="Date de réception"
                 type="date"
                 value={courier.received_at ? courier.received_at.slice(0, 10) : ""}
                 onSave={(v) =>
@@ -568,7 +583,29 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
               readOnly={isFinalState}
             />
           </main>
-        </div>
+          </TabsContent>
+
+          {withTabs && (
+            <>
+              <TabsContent
+                value="actions"
+                className="flex-1 overflow-y-auto px-6 py-5 mt-0"
+              >
+                <p className="text-sm text-muted-foreground italic">
+                  Description à venir.
+                </p>
+              </TabsContent>
+              <TabsContent
+                value="response"
+                className="flex-1 overflow-y-auto px-6 py-5 mt-0"
+              >
+                <p className="text-sm text-muted-foreground italic">
+                  Description à prévoir.
+                </p>
+              </TabsContent>
+            </>
+          )}
+        </Tabs>
       </SheetContent>
     </Sheet>
   );
