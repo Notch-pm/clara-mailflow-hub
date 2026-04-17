@@ -294,23 +294,13 @@ async function runSync(supabaseAdmin: any, integrations: any[]) {
       }
     }
 
-    console.log(`Sync done: ${totalCreated} created, ${totalUpdated} updated, ${totalSkipped} unchanged`);
+  console.log(`Sync done: ${totalCreated} created, ${totalUpdated} updated, ${totalSkipped} unchanged`);
 
-    return new Response(
-      JSON.stringify({
-        message: "Synchronisation terminée",
-        total: totalCreated + totalUpdated + totalSkipped,
-        created: totalCreated,
-        updated: totalUpdated,
-        skipped: totalSkipped,
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  } catch (error) {
-    console.error("sync-arpege-services error:", error);
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  }
-});
+  return {
+    total: totalCreated + totalUpdated + totalSkipped,
+    created: totalCreated,
+    updated: totalUpdated,
+    skipped: totalSkipped,
+  };
+}
+
