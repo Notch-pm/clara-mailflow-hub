@@ -12,8 +12,10 @@ const corsHeaders = {
 const BUCKET = "clara-documents";
 const MISTRAL_OCR_URL = "https://api.mistral.ai/v1/ocr";
 const MISTRAL_CHAT_URL = "https://api.mistral.ai/v1/chat/completions";
+const MISTRAL_AGENT_URL = "https://api.mistral.ai/v1/agents/completions";
 const OCR_MODEL = "mistral-ocr-latest";
 const CHAT_MODEL = "mistral-large-latest";
+const ANALYSIS_AGENT_ID = "ag_019d9b92d28872079534f45f246671ed";
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -420,14 +422,14 @@ ${tagListForPrompt}`;
     },
   ];
 
-  const chatResp = await fetch(MISTRAL_CHAT_URL, {
+  const chatResp = await fetch(MISTRAL_AGENT_URL, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${mistralKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: CHAT_MODEL,
+      agent_id: ANALYSIS_AGENT_ID,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
@@ -440,8 +442,8 @@ ${tagListForPrompt}`;
 
   if (!chatResp.ok) {
     const t = await chatResp.text();
-    console.error("Mistral chat error", chatResp.status, t);
-    throw new Error(`Mistral chat ${chatResp.status}: ${t.slice(0, 200)}`);
+    console.error("Mistral agent error", chatResp.status, t);
+    throw new Error(`Mistral agent ${chatResp.status}: ${t.slice(0, 200)}`);
   }
 
   const chatData = await chatResp.json();
@@ -480,7 +482,7 @@ ${tagListForPrompt}`;
         intents: safeIntents,
         sentiment: parsed.sentiment,
         suggested_actions: parsed.suggested_actions ?? [],
-        model: CHAT_MODEL,
+        model: `agent:${ANALYSIS_AGENT_ID}`,
         tokens_used: tokensUsed,
       },
       { onConflict: "courier_id" },
