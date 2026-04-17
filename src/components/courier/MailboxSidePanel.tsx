@@ -516,6 +516,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   label="Date de réception"
                 type="date"
                 value={courier.received_at ? courier.received_at.slice(0, 10) : ""}
+                readOnly={readOnly}
                 onSave={(v) =>
                   persistCourierUpdate(
                     { received_at: v ? new Date(v).toISOString() : null },
@@ -533,23 +534,27 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
 
               <div className="flex items-center justify-between gap-2 py-1">
                 <span className="text-muted-foreground text-sm">Canal de réception</span>
-                <Select
-                  value={courier.channel}
-                  onValueChange={(v) =>
-                    persistCourierUpdate({ channel: v }, "Canal modifié")
-                  }
-                >
-                  <SelectTrigger className="h-7 w-auto text-sm border-0 bg-transparent hover:bg-muted px-2 gap-1.5 [&>span]:font-medium">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent align="end">
-                    {(Object.keys(channelLabels) as CourierChannel[]).map((c) => (
-                      <SelectItem key={c} value={c}>
-                        {channelLabels[c]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {readOnly ? (
+                  <span className="text-sm font-medium px-2">{channelLabels[courier.channel]}</span>
+                ) : (
+                  <Select
+                    value={courier.channel}
+                    onValueChange={(v) =>
+                      persistCourierUpdate({ channel: v }, "Canal modifié")
+                    }
+                  >
+                    <SelectTrigger className="h-7 w-auto text-sm border-0 bg-transparent hover:bg-muted px-2 gap-1.5 [&>span]:font-medium">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent align="end">
+                      {(Object.keys(channelLabels) as CourierChannel[]).map((c) => (
+                        <SelectItem key={c} value={c}>
+                          {channelLabels[c]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
 
               <InlineEditField
@@ -557,6 +562,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 value={recipient?.name ?? ""}
                 placeholder="Nom du destinataire"
                 maxLength={150}
+                readOnly={readOnly}
                 onSave={(v) =>
                   upsertParticipant("recipient", { name: v.trim() || null })
                 }
@@ -567,6 +573,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 value={sender?.name ?? ""}
                 placeholder="Nom de l'expéditeur"
                 maxLength={150}
+                readOnly={readOnly}
                 onSave={(v) => upsertParticipant("sender", { name: v.trim() || null })}
               />
 
@@ -575,6 +582,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 type="email"
                 value={sender?.email ?? ""}
                 placeholder="email@exemple.com"
+                readOnly={readOnly}
                 onSave={(v) =>
                   upsertParticipant("sender", { email: v.trim() || null })
                 }
