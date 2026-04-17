@@ -63,6 +63,29 @@ export async function updateService(
 }
 
 export async function deleteService(id: string): Promise<void> {
+  // Récupérer le service pour connaître son nom et son organisation
+  const { data: svc, error: fetchErr } = await supabase
+    .from("services" as any)
+    .select("name, organization_id")
+    .eq("id", id)
+    .single();
+  if (fetchErr) throw fetchErr;
+  const service = svc as unknown as { name: string; organization_id: string };
+
+  // Vérifier qu'aucun courrier n'est associé à ce service (champ assigned_service stocke le nom)
+  const { count, error: countErr } = await supabase
+    .from("couriers")
+    .select("id", { count: "exact", head: true })
+    .eq("organization_id", service.organization_id)
+    .eq("assigned_service", service.name);
+  if (countErr) throw countErr;
+
+  if ((count ?? 0) > 0) {
+    throw new Error(
+      `Impossible de supprimer ce service : ${count} courrier(s) y sont associés.`,
+    );
+  }
+
   const { error } = await supabase.from("services" as any).delete().eq("id", id);
   if (error) throw error;
 }
