@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { logEvent } from "./courierEventService";
 
 export interface CourierNote {
   id: string;
@@ -8,6 +9,11 @@ export interface CourierNote {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+}
+
+function preview(text: string, max = 80): string {
+  const t = text.trim().replace(/\s+/g, " ");
+  return t.length > max ? `${t.slice(0, max)}…` : t;
 }
 
 export async function listNotes(courierId: string): Promise<CourierNote[]> {
@@ -39,6 +45,7 @@ export async function createNote(
     .select()
     .single();
   if (error) throw error;
+  await logEvent(orgId, courierId, "note_added", { preview: preview(content) });
   return data as unknown as CourierNote;
 }
 
@@ -50,10 +57,25 @@ export async function updateNote(id: string, content: string): Promise<CourierNo
     .select()
     .single();
   if (error) throw error;
-  return data as unknown as CourierNote;
+  const row = data as unknown as CourierNote;
+  await logEvent(row.organization_id, row.courier_id, "note_updated", {
+    preview: preview(content),
+  });
+  return row;
 }
 
 export async function deleteNote(id: string): Promise<void> {
+  // Fetch the row first so we can log against its courier/org
+  const { data: existing } = await supabase
+    .from("courier_notes" as any)
+    .select("organization_id, courier_id")
+    .eq("id", id)
+    .maybeSingle();
+
   const { error } = await supabase.from("courier_notes" as any).delete().eq("id", id);
   if (error) throw error;
+  if (existing) {
+    const row = existing as unknown as { organization_id: string; courier_id: string };
+    await logEvent(row.organization_id, row.courier_id, "note_deleted");
+  }
 }
