@@ -276,6 +276,33 @@ export default function BoiteAuxLettres() {
           organizationId={organizationId}
         />
       )}
+
+      {/* Delete confirmation */}
+      <AlertDialog
+        open={!!courierToDelete}
+        onOpenChange={(open) => !open && setCourierToDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer ce courrier ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Cette action est définitive. Le courrier
+              {courierToDelete?.subject ? ` « ${courierToDelete.subject} »` : ""} sera
+              supprimé de la boîte aux lettres.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDelete}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? "Suppression…" : "Supprimer"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
