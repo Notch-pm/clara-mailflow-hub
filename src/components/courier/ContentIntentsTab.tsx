@@ -234,8 +234,8 @@ export default function ContentIntentsTab({ courierId, organizationId }: Props) 
             size="sm"
             variant={analysis ? "outline" : "default"}
             onClick={() => analyzeMutation.mutate()}
-            disabled={analyzeMutation.isPending || !hasExtracts}
-            title={!hasExtracts ? "Extrayez d'abord le texte des documents" : undefined}
+            disabled={analyzeMutation.isPending || !canAnalyze}
+            title={!canAnalyze ? "Extrayez d'abord le texte des documents ou réceptionnez un email" : undefined}
           >
             {analyzeMutation.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
