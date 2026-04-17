@@ -52,6 +52,16 @@ export default function ContentIntentsTab({ courierId, organizationId }: Props) 
     enabled: !!courierId,
   });
 
+  const { data: courierData } = useQuery({
+    queryKey: ["courier", organizationId, courierId],
+    queryFn: async () => {
+      const { data, error } = await getCourierById(organizationId, courierId);
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!courierId && !!organizationId,
+  });
+
   const { data: extracts, isLoading: extractsLoading } = useQuery({
     queryKey: ["courier-extracts", courierId],
     queryFn: () => getExtracts(courierId),
