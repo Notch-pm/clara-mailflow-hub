@@ -490,9 +490,22 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId }:
               </div>
             </div>
 
-            {/* Right column — file upload */}
-            <div className="space-y-3">
-              <Label>Documents (facultatif)</Label>
+            {/* Right column — body + file upload */}
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="nc-body">Contenu</Label>
+                <Textarea
+                  id="nc-body"
+                  value={bodyText}
+                  onChange={(e) => setBodyText(e.target.value)}
+                  placeholder="Saisissez le contenu du courrier (facultatif)…"
+                  rows={8}
+                  className="resize-y min-h-[180px]"
+                />
+              </div>
+
+              <div className="space-y-3">
+                <Label>Documents (facultatif)</Label>
               <div
                 onDragOver={(e) => {
                   e.preventDefault();
