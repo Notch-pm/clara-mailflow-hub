@@ -1,5 +1,5 @@
 import { NavLink } from "@/components/NavLink";
-import { LayoutDashboard, Send, Link2, FileClock, LucideIcon } from "lucide-react";
+import { LayoutDashboard, Send, Link2, FileClock, CheckCircle2, LucideIcon } from "lucide-react";
 import mailboxIcon from "@/assets/icons/mailbox.svg";
 
 interface NavItem {
