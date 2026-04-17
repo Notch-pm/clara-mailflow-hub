@@ -36,6 +36,7 @@ import DocumentManager from "./DocumentManager";
 import DocumentViewer from "./DocumentViewer";
 import InlineEditField from "./InlineEditField";
 import CourierNotes from "./CourierNotes";
+import CourierHistoryTab from "./CourierHistoryTab";
 import ContentIntentsTab from "./ContentIntentsTab";
 import SuggestedActionsCard from "./SuggestedActionsCard";
 import type { CourierChannel, CourierParticipant, WorkflowTransition, WorkflowState } from "@/types/courier";
