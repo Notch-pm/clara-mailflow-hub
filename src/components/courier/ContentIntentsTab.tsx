@@ -1,14 +1,16 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { ChevronDown, ChevronRight, FileText, Sparkles, Loader2, RefreshCw } from "lucide-react";
+import { ChevronDown, ChevronRight, FileText, Sparkles, Loader2, RefreshCw, X, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getDocuments } from "@/services/courierDocumentService";
-import { getCourierById } from "@/services/courierService";
+import { getCourierById, updateCourier } from "@/services/courierService";
+import { listTags } from "@/services/courierTagService";
+import { readableTextColor } from "@/lib/tag-color";
 import {
   getExtracts,
   getAnalysis,
@@ -74,6 +76,35 @@ export default function ContentIntentsTab({ courierId, organizationId }: Props) 
     enabled: !!courierId,
   });
 
+  const { data: orgTags } = useQuery({
+    queryKey: ["courier-tags", organizationId],
+    queryFn: () => listTags(organizationId),
+    enabled: !!organizationId,
+  });
+
+  const tagByLowerName = useMemo(() => {
+    const m = new Map<string, { name: string; color: string | null }>();
+    (orgTags ?? []).forEach((t) => m.set(t.name.toLowerCase(), { name: t.name, color: t.color }));
+    return m;
+  }, [orgTags]);
+
+  // État local de la sélection d'intents (modifiable avant application)
+  const [selectedIntents, setSelectedIntents] = useState<string[]>([]);
+  useEffect(() => {
+    setSelectedIntents(analysis?.intents ?? []);
+  }, [analysis?.intents, courierId]);
+
+  const currentCourierTags = useMemo(
+    () => ((courierData?.metadata as Record<string, unknown> | null)?.tags as string[] | undefined) ?? [],
+    [courierData?.metadata],
+  );
+
+  const isDirty = useMemo(() => {
+    const a = [...selectedIntents].sort();
+    const b = [...currentCourierTags].sort();
+    return a.length !== b.length || a.some((v, i) => v !== b[i]);
+  }, [selectedIntents, currentCourierTags]);
+
   const ocrMutation = useMutation({
     mutationFn: () => runOcr(courierId),
     onSuccess: (data) => {
@@ -95,6 +126,23 @@ export default function ContentIntentsTab({ courierId, organizationId }: Props) 
     onSuccess: () => {
       toast.success("Analyse mise à jour");
       qc.invalidateQueries({ queryKey: ["courier-analysis", courierId] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const applyTagsMutation = useMutation({
+    mutationFn: async () => {
+      const currentMeta = (courierData?.metadata as Record<string, unknown> | null) ?? {};
+      const { error } = await updateCourier(organizationId, courierId, {
+        metadata: { ...currentMeta, tags: selectedIntents },
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Tags appliqués au courrier");
+      qc.invalidateQueries({ queryKey: ["courier", organizationId, courierId] });
+      qc.invalidateQueries({ queryKey: ["couriers"] });
+      qc.invalidateQueries({ queryKey: ["courier-instruction"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -271,19 +319,63 @@ export default function ContentIntentsTab({ courierId, organizationId }: Props) 
             )}
 
             <Card className="p-3">
-              <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-                Intentions
-              </h4>
-              {analysis.intents.length === 0 ? (
-                <p className="text-xs text-muted-foreground italic">Aucune intention détectée</p>
+              <div className="flex items-center justify-between mb-2 gap-2">
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Intentions (tags)
+                </h4>
+                <Button
+                  size="sm"
+                  variant={isDirty ? "default" : "outline"}
+                  onClick={() => applyTagsMutation.mutate()}
+                  disabled={!isDirty || applyTagsMutation.isPending}
+                  className="h-7 text-xs"
+                >
+                  {applyTagsMutation.isPending ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Check className="h-3 w-3" />
+                  )}
+                  Appliquer les tags
+                </Button>
+              </div>
+              {selectedIntents.length === 0 ? (
+                <p className="text-xs text-muted-foreground italic">
+                  {analysis.intents.length === 0
+                    ? "Aucun tag retenu par l'analyse. Vérifiez que des tags sont définis dans Paramètres > Classification."
+                    : "Tous les tags ont été retirés. Cliquez sur 'Appliquer' pour valider."}
+                </p>
               ) : (
                 <div className="flex flex-wrap gap-1.5">
-                  {analysis.intents.map((intent, i) => (
-                    <Badge key={i} variant="secondary" className="text-xs">
-                      {intent}
-                    </Badge>
-                  ))}
+                  {selectedIntents.map((intent) => {
+                    const meta = tagByLowerName.get(intent.toLowerCase());
+                    const fg = meta?.color ? readableTextColor(meta.color) : undefined;
+                    return (
+                      <Badge
+                        key={intent}
+                        variant="secondary"
+                        className="gap-1 pl-2 pr-1 py-0.5 text-xs border-transparent"
+                        style={meta?.color ? { backgroundColor: meta.color, color: fg } : undefined}
+                      >
+                        {meta?.name ?? intent}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setSelectedIntents((prev) => prev.filter((t) => t !== intent))
+                          }
+                          className="ml-0.5 rounded-full p-0.5 hover:bg-background/30 transition-colors"
+                          aria-label={`Retirer ${intent}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    );
+                  })}
                 </div>
+              )}
+              {currentCourierTags.length > 0 && !isDirty && (
+                <p className="mt-2 text-[10px] text-muted-foreground/80">
+                  ✓ Ces tags sont appliqués au courrier.
+                </p>
               )}
             </Card>
 

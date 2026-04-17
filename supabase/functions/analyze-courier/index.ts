@@ -327,6 +327,15 @@ async function analyzeCourier(
     .eq("courier_id", courierId)
     .eq("organization_id", orgId);
 
+  // Tags disponibles dans l'organisation — le LLM ne peut choisir QUE parmi ceux-ci
+  const { data: orgTags } = await admin
+    .from("courier_tags")
+    .select("name")
+    .eq("organization_id", orgId);
+  const availableTagNames = (orgTags ?? [])
+    .map((t: { name: string }) => t.name)
+    .filter((n) => typeof n === "string" && n.trim().length > 0);
+
   // Corps de l'email (si présent dans metadata)
   const meta = (courier.metadata ?? {}) as Record<string, unknown>;
   const bodyText = typeof meta.body_text === "string" ? meta.body_text.trim() : "";
@@ -359,12 +368,19 @@ async function analyzeCourier(
     throw new Error("Aucun contenu à analyser. Lancez d'abord l'extraction OCR ou ajoutez un corps d'email.");
   }
 
+  const tagListForPrompt = availableTagNames.length > 0
+    ? availableTagNames.map((n) => `- ${n}`).join("\n")
+    : "(aucun tag défini — laisse intents vide)";
+
   const systemPrompt = `Tu es un assistant expert en gestion de courrier administratif. Analyse le contenu fourni et restitue UNIQUEMENT via l'outil "report_analysis" :
 - summary: résumé concis (2-3 phrases) du contenu
-- intents: liste des intentions/objets principaux (verbe + complément court, ex: "demande d'attestation", "réclamation facture")
+- intents: liste des tags qui qualifient ce courrier, choisis EXCLUSIVEMENT dans la liste des tags disponibles ci-dessous (copie exacte du nom, sensible à la casse). N'invente AUCUN tag. Si aucun tag ne s'applique, renvoie une liste vide.
 - sentiment: ton/état d'esprit du rédacteur, parmi: neutre, courtois, urgent, mécontent, agressif, satisfait, inquiet
 - suggested_actions: 2 à 5 actions concrètes que l'organisation devrait entreprendre
-Sois factuel, en français. Si le corps de l'email et les pièces jointes coexistent, traite-les comme un tout cohérent.`;
+Sois factuel, en français. Si le corps de l'email et les pièces jointes coexistent, traite-les comme un tout cohérent.
+
+Tags disponibles pour intents :
+${tagListForPrompt}`;
 
   const sections: string[] = [`Sujet du courrier : ${courier.subject ?? "(aucun)"}`];
   if (emailBody.trim()) {
@@ -374,6 +390,11 @@ Sois factuel, en français. Si le corps de l'email et les pièces jointes coexis
     sections.push(`Contenu extrait des pièces jointes :\n${concatenated}`);
   }
   const userPrompt = sections.join("\n\n");
+
+  const intentsSchema: Record<string, unknown> = { type: "array", items: { type: "string" } };
+  if (availableTagNames.length > 0) {
+    intentsSchema.items = { type: "string", enum: availableTagNames };
+  }
 
   const tools = [
     {
@@ -385,7 +406,7 @@ Sois factuel, en français. Si le corps de l'email et les pièces jointes coexis
           type: "object",
           properties: {
             summary: { type: "string" },
-            intents: { type: "array", items: { type: "string" } },
+            intents: intentsSchema,
             sentiment: {
               type: "string",
               enum: ["neutre", "courtois", "urgent", "mécontent", "agressif", "satisfait", "inquiet"],
@@ -442,6 +463,13 @@ Sois factuel, en français. Si le corps de l'email et les pièces jointes coexis
 
   const tokensUsed = chatData?.usage?.total_tokens ?? null;
 
+  // Sécurité : filtrer les intents pour ne garder que ceux qui appartiennent
+  // bien aux tags de l'organisation (mapping strict, insensible à la casse).
+  const allowed = new Set(availableTagNames.map((n) => n.toLowerCase()));
+  const safeIntents = Array.isArray(parsed.intents)
+    ? parsed.intents.filter((i) => typeof i === "string" && allowed.has(i.toLowerCase()))
+    : [];
+
   const { data: row, error: upErr } = await admin
     .from("courier_analyses")
     .upsert(
@@ -449,7 +477,7 @@ Sois factuel, en français. Si le corps de l'email et les pièces jointes coexis
         courier_id: courierId,
         organization_id: orgId,
         summary: parsed.summary,
-        intents: parsed.intents ?? [],
+        intents: safeIntents,
         sentiment: parsed.sentiment,
         suggested_actions: parsed.suggested_actions ?? [],
         model: CHAT_MODEL,
