@@ -225,15 +225,41 @@ async function processOrganization(
       initialStateId = initState?.id ?? null;
     }
 
-    const uids = await client.searchUnseen();
+    // On scanne les emails reçus depuis 7 jours (au lieu de UNSEEN uniquement),
+    // ce qui permet de rattraper les mails déjà lus dans le webmail. La
+    // déduplication se fait sur Message-ID stocké dans couriers.metadata.
+    const sinceDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const sinceStr = `${sinceDate.getUTCDate().toString().padStart(2,"0")}-${months[sinceDate.getUTCMonth()]}-${sinceDate.getUTCFullYear()}`;
+
+    const uids = await client.search(`SINCE ${sinceStr}`);
     for (const uid of uids) {
       try {
+        // 1) Lit d'abord juste l'en-tête pour récupérer Message-ID (économise la BP)
+        const headerRaw = await client.fetchHeaders(uid);
+        let earlyMessageId: string | null = null;
+        if (headerRaw) {
+          const m = headerRaw.match(/Message-ID:\s*<([^>]+)>/i);
+          if (m) earlyMessageId = `<${m[1]}>`;
+        }
+
+        // 2) Si déjà importé, on saute sans toucher au flag Seen côté serveur
+        if (earlyMessageId) {
+          const { data: dup } = await admin
+            .from("couriers")
+            .select("id")
+            .eq("organization_id", s.organization_id)
+            .filter("metadata->>email_message_id", "eq", earlyMessageId)
+            .maybeSingle();
+          if (dup) continue;
+        }
+
         const raw = await client.fetchMessage(uid);
         if (!raw) continue;
         // mailparser sous Deno ne supporte pas Uint8Array directement → on passe une string
         const rawStr = new TextDecoder("latin1").decode(raw);
         const parsed = await simpleParser(rawStr);
-        const messageId = parsed.messageId || `imap-${s.organization_id}-${uid}`;
+        const messageId = parsed.messageId || earlyMessageId || `imap-${s.organization_id}-${uid}`;
 
         const { data: existing } = await admin
           .from("couriers")
@@ -242,7 +268,6 @@ async function processOrganization(
           .filter("metadata->>email_message_id", "eq", messageId)
           .maybeSingle();
         if (existing) {
-          await client.markSeen(uid);
           continue;
         }
 
