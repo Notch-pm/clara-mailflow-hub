@@ -54,7 +54,20 @@ export async function runOcr(courierId: string) {
   const { data, error } = await supabase.functions.invoke("analyze-courier?action=ocr-courier", {
     body: { courier_id: courierId },
   });
-  if (error) throw error;
+  if (error) {
+    // Cas légitime : courrier sans pièce jointe (email texte pur) → l'edge function
+    // renvoie 400 "Aucun document à extraire". On ne traite pas ça comme une erreur.
+    const ctx: any = (error as any).context;
+    const msg = String((error as any).message || "");
+    if (
+      ctx?.status === 400 ||
+      msg.includes("Aucun document") ||
+      msg.includes("non-2xx")
+    ) {
+      return { results: [] as Array<{ document_id: string; ok: boolean; error?: string }> };
+    }
+    throw error;
+  }
   return data as { results: Array<{ document_id: string; ok: boolean; error?: string }> };
 }
 
