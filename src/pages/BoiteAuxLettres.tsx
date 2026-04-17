@@ -139,14 +139,18 @@ export default function BoiteAuxLettres() {
     return new Date(receivedAt) > new Date(lastLogin);
   }
 
-  function getSender(courier: any): string {
+  function getSender(courier: any): { last: string; first: string } {
     const p = courier.courier_participants?.find((p: any) => p.role === "sender");
-    return p?.name ?? p?.email ?? "—";
+    if (!p) return { last: "—", first: "—" };
+    return {
+      last: p.last_name ?? p.name ?? p.email ?? "—",
+      first: p.first_name ?? "—",
+    };
   }
 
   function getRecipient(courier: any): string {
     const p = courier.courier_participants?.find((p: any) => p.role === "recipient");
-    return p?.name ?? p?.email ?? "—";
+    return p?.last_name ?? p?.name ?? p?.email ?? "—";
   }
 
   function handleRowClick(courier: any) {
@@ -211,13 +215,15 @@ export default function BoiteAuxLettres() {
                 <TableHead className="w-10"></TableHead>
                 <TableHead>Date de réception</TableHead>
                 <TableHead>Destinataire</TableHead>
-                <TableHead>Expéditeur</TableHead>
+                <TableHead>Nom expéditeur</TableHead>
+                <TableHead>Prénom expéditeur</TableHead>
                 <TableHead className="w-10"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {allCouriers.map((c) => {
                 const isNewCourier = isNew(c);
+                const sender = getSender(c);
                 return (
                   <TableRow
                     key={c.id}
@@ -235,7 +241,8 @@ export default function BoiteAuxLettres() {
                         : "—"}
                     </TableCell>
                     <TableCell className="text-sm font-medium">{getRecipient(c)}</TableCell>
-                    <TableCell className="text-sm">{getSender(c)}</TableCell>
+                    <TableCell className="text-sm font-medium">{sender.last}</TableCell>
+                    <TableCell className="text-sm">{sender.first}</TableCell>
                     <TableCell className="w-10">
                       <Button
                         variant="ghost"

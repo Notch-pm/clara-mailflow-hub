@@ -335,28 +335,26 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId }:
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="nc-sender-name">Expéditeur (nom)</Label>
-                  <Input
-                    id="nc-sender-name"
-                    value={senderName}
-                    onChange={(e) => setSenderName(e.target.value)}
-                    maxLength={150}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="nc-sender-email">Expéditeur (email)</Label>
-                  <Input
-                    id="nc-sender-email"
-                    type="email"
-                    value={senderEmail}
-                    onChange={(e) => setSenderEmail(e.target.value)}
-                  />
-                  {errors.sender_email && (
-                    <p className="text-xs text-destructive">{errors.sender_email}</p>
-                  )}
-                </div>
+              <div className="space-y-2">
+                <Label>Expéditeur (usager)</Label>
+                <UsagerPicker
+                  organizationId={organizationId}
+                  value={senderUsager}
+                  onChange={setSenderUsager}
+                />
+                {senderUsager && (
+                  <div className="text-xs text-muted-foreground space-y-0.5 pt-1">
+                    <div>
+                      <span className="font-medium">Nature :</span> {categoryLabels[senderUsager.category]}
+                    </div>
+                    {senderUsager.email && (
+                      <div><span className="font-medium">Email :</span> {senderUsager.email}</div>
+                    )}
+                    {senderUsager.phone && (
+                      <div><span className="font-medium">Téléphone :</span> {senderUsager.phone}</div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2">
