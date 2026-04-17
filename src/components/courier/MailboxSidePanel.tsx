@@ -340,6 +340,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
               <TabsTrigger value="content">Contenu et intentions</TabsTrigger>
               <TabsTrigger value="actions">Actions liées</TabsTrigger>
               <TabsTrigger value="response">Réponse</TabsTrigger>
+              <TabsTrigger value="notes">Notes internes</TabsTrigger>
             </TabsList>
           )}
           <TabsContent
@@ -578,13 +579,16 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
               />
             </div>
 
-            <Separator />
-
-            <CourierNotes
-              courierId={courier.id}
-              organizationId={organizationId}
-              readOnly={isFinalState}
-            />
+            {!withTabs && (
+              <>
+                <Separator />
+                <CourierNotes
+                  courierId={courier.id}
+                  organizationId={organizationId}
+                  readOnly={isFinalState}
+                />
+              </>
+            )}
           </main>
           </TabsContent>
 
@@ -609,6 +613,16 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 <p className="text-sm text-muted-foreground italic">
                   Description à prévoir.
                 </p>
+              </TabsContent>
+              <TabsContent
+                value="notes"
+                className="flex-1 overflow-y-auto px-6 py-5 mt-0"
+              >
+                <CourierNotes
+                  courierId={courier.id}
+                  organizationId={organizationId}
+                  readOnly={isFinalState}
+                />
               </TabsContent>
             </>
           )}
