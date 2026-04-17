@@ -559,6 +559,14 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 onSelectDoc={setSelectedDocId}
               />
             </div>
+
+            <Separator />
+
+            <CourierNotes
+              courierId={courier.id}
+              organizationId={organizationId}
+              readOnly={isFinalState}
+            />
           </main>
         </div>
       </SheetContent>
