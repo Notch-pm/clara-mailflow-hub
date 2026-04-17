@@ -389,23 +389,23 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
       <SheetContent className="w-full sm:max-w-[95vw] lg:max-w-[1100px] overflow-hidden p-0 flex flex-col">
         <SheetHeader className="px-6 pt-6 pb-3 border-b shrink-0">
           <div className="flex items-start justify-between gap-4 pr-8">
-            <div className="flex-1 min-w-0">
-              <SheetTitle className="text-lg sr-only">
-                {courier.subject ?? "Sans titre"}
-              </SheetTitle>
-              <InlineEditField
-                label=""
-                value={courier.subject ?? ""}
-                placeholder="Titre du courrier"
-                emptyDisplay="Sans titre"
-                maxLength={255}
-                displayClassName="text-lg font-semibold"
-                onSave={(v) => persistCourierUpdate({ subject: v.trim() || null }, "Titre modifié")}
-              />
-            </div>
-            <div className="flex flex-wrap items-center gap-2 justify-end shrink-0">
+            <div className="flex-1 min-w-0 flex items-center gap-3 flex-wrap">
+              <div className="min-w-0 flex-1">
+                <SheetTitle className="text-lg sr-only">
+                  {courier.subject ?? "Sans titre"}
+                </SheetTitle>
+                <InlineEditField
+                  label=""
+                  value={courier.subject ?? ""}
+                  placeholder="Titre du courrier"
+                  emptyDisplay="Sans titre"
+                  maxLength={255}
+                  displayClassName="text-lg font-semibold"
+                  onSave={(v) => persistCourierUpdate({ subject: v.trim() || null }, "Titre modifié")}
+                />
+              </div>
               {currentStateInfo?.name && (
-                <Badge variant="secondary" className="gap-1.5 font-medium h-8 px-2.5">
+                <Badge variant="secondary" className="gap-1.5 font-medium shrink-0">
                   <span
                     className={cn(
                       "h-2 w-2 rounded-full",
@@ -419,6 +419,8 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   {currentStateInfo.name}
                 </Badge>
               )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2 justify-end shrink-0">
               {transitions && transitions.length > 0 && (
                 <>
                   {transitions.length <= 3 ? (
