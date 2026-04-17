@@ -25,6 +25,7 @@ import {
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { updateCourier } from "@/services/courierService";
+import { logEvent } from "@/services/courierEventService";
 import { listTags, type CourierTag } from "@/services/courierTagService";
 import { listServices } from "@/services/orgServiceService";
 import { getDocuments } from "@/services/courierDocumentService";
