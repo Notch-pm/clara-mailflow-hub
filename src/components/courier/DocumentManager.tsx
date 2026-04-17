@@ -271,7 +271,7 @@ export default function DocumentManager({
                 </TableCell>
                 <TableCell className="font-medium">{d.file_name ?? "—"}</TableCell>
                 <TableCell className="text-sm">{formatFileSize(d.file_size)}</TableCell>
-                <TableCell>
+                <TableCell onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center gap-1">
                     <Button
                       variant="ghost"
