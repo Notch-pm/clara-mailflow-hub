@@ -200,7 +200,11 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId }:
         received_at: new Date(receivedAt).toISOString(),
         assigned_service: service.name,
         workflow_state_id: initialState?.id ?? null,
-        metadata: { tags: selectedTags, service_id: service.id } as any,
+        metadata: {
+          tags: selectedTags,
+          service_id: service.id,
+          ...(bodyText.trim() ? { body_text: bodyText.trim() } : {}),
+        } as any,
         created_by: user?.id ?? null,
       });
       if (cErr) throw cErr;
