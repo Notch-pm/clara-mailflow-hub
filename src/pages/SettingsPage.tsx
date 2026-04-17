@@ -1,18 +1,20 @@
 import { useState } from "react";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Users, ArrowLeft, GitBranch, Settings, Tags, Briefcase, LucideIcon } from "lucide-react";
+import { Users, ArrowLeft, GitBranch, Settings, Tags, Briefcase, ClipboardList, LucideIcon } from "lucide-react";
 import UsersPage from "./UsersPage";
 import Workflows from "./Workflows";
 import ClassificationSettings from "./ClassificationSettings";
 import ServicesSettings from "./ServicesSettings";
+import ProceduresSettings from "./ProceduresSettings";
 
-type Section = "menu" | "utilisateurs" | "workflows" | "classification" | "services";
+type Section = "menu" | "utilisateurs" | "workflows" | "classification" | "services" | "demarches";
 
 const settingSections: { key: Section; title: string; description: string; icon: LucideIcon }[] = [
   { key: "utilisateurs", title: "Utilisateurs", description: "Gestion des membres et rôles", icon: Users },
   { key: "workflows", title: "Workflows", description: "Processus de traitement du courrier", icon: GitBranch },
   { key: "services", title: "Services", description: "Services de l'organisation et workflows associés", icon: Briefcase },
+  { key: "demarches", title: "Démarches", description: "Liste des démarches administratives proposées", icon: ClipboardList },
   { key: "classification", title: "Classification", description: "Tags de classement des courriers", icon: Tags },
 ];
 
@@ -20,6 +22,7 @@ const sectionLabels: Record<string, string> = {
   utilisateurs: "Utilisateurs et rôles",
   workflows: "Workflows",
   services: "Services",
+  demarches: "Démarches administratives",
   classification: "Classification (tags)",
 };
 
@@ -42,6 +45,7 @@ export default function SettingsPage() {
         {activeSection === "workflows" && <Workflows />}
         {activeSection === "classification" && <ClassificationSettings />}
         {activeSection === "services" && <ServicesSettings />}
+        {activeSection === "demarches" && <ProceduresSettings />}
       </div>
     );
   }

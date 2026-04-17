@@ -612,6 +612,62 @@ export type Database = {
         }
         Relationships: []
       }
+      procedures: {
+        Row: {
+          color: string | null
+          created_at: string
+          created_by: string | null
+          description: string | null
+          display_order: number
+          external_reference_id: string | null
+          external_source: string | null
+          icon: string | null
+          id: string
+          is_displayed: boolean
+          name: string
+          organization_id: string
+          updated_at: string
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          display_order?: number
+          external_reference_id?: string | null
+          external_source?: string | null
+          icon?: string | null
+          id?: string
+          is_displayed?: boolean
+          name: string
+          organization_id: string
+          updated_at?: string
+        }
+        Update: {
+          color?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          display_order?: number
+          external_reference_id?: string | null
+          external_source?: string | null
+          icon?: string | null
+          id?: string
+          is_displayed?: boolean
+          name?: string
+          organization_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procedures_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       roles: {
         Row: {
           description: string | null
