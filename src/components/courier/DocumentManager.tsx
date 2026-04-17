@@ -53,6 +53,8 @@ interface DocumentManagerProps {
   organizationId: string;
   selectedDocId?: string | null;
   onSelectDoc?: (id: string) => void;
+  /** When true, disable upload + delete; only allow viewing/downloading. */
+  readOnly?: boolean;
 }
 
 export default function DocumentManager({
@@ -60,6 +62,7 @@ export default function DocumentManager({
   organizationId,
   selectedDocId,
   onSelectDoc,
+  readOnly = false,
 }: DocumentManagerProps) {
   const queryClient = useQueryClient();
   const queryKey = ["courier-documents", courierId];
