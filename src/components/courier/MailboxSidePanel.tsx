@@ -178,8 +178,13 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
+      queryClient.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error, _vars, ctx: any) => {
+      // rollback
+      if (ctx?.previous) setSelectedTags(ctx.previous);
+      toast.error(err.message);
+    },
   });
 
   function toggleTag(tagName: string) {
@@ -187,13 +192,18 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
     const next = exists
       ? selectedTags.filter((t) => t.toLowerCase() !== tagName.toLowerCase())
       : [...selectedTags, tagName];
-    tagMutation.mutate(next);
+    const previous = selectedTags;
+    setSelectedTags(next);
+    tagMutation.mutate(next, { onError: () => setSelectedTags(previous) } as any);
   }
 
   function removeTag(tagName: string) {
-    tagMutation.mutate(
-      selectedTags.filter((t) => t.toLowerCase() !== tagName.toLowerCase()),
+    const previous = selectedTags;
+    const next = selectedTags.filter(
+      (t) => t.toLowerCase() !== tagName.toLowerCase(),
     );
+    setSelectedTags(next);
+    tagMutation.mutate(next, { onError: () => setSelectedTags(previous) } as any);
   }
 
   if (!courier) return null;
