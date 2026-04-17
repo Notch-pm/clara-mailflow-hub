@@ -50,9 +50,16 @@ function formatFileSize(bytes?: number | null): string {
 interface DocumentManagerProps {
   courierId: string;
   organizationId: string;
+  selectedDocId?: string | null;
+  onSelectDoc?: (id: string) => void;
 }
 
-export default function DocumentManager({ courierId, organizationId }: DocumentManagerProps) {
+export default function DocumentManager({
+  courierId,
+  organizationId,
+  selectedDocId,
+  onSelectDoc,
+}: DocumentManagerProps) {
   const queryClient = useQueryClient();
   const queryKey = ["courier-documents", courierId];
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -247,7 +254,15 @@ export default function DocumentManager({ courierId, organizationId }: DocumentM
           </TableHeader>
           <TableBody>
             {documents.map((d) => (
-              <TableRow key={d.id}>
+              <TableRow
+                key={d.id}
+                onClick={() => onSelectDoc?.(d.id)}
+                className={
+                  onSelectDoc
+                    ? `cursor-pointer ${selectedDocId === d.id ? "bg-muted/60" : "hover:bg-muted/30"}`
+                    : undefined
+                }
+              >
                 <TableCell>
                   <Badge variant={docTypeBadge[d.document_type] ?? "outline"} className="gap-1">
                     {docTypeIcon[d.document_type]}
@@ -256,7 +271,7 @@ export default function DocumentManager({ courierId, organizationId }: DocumentM
                 </TableCell>
                 <TableCell className="font-medium">{d.file_name ?? "—"}</TableCell>
                 <TableCell className="text-sm">{formatFileSize(d.file_size)}</TableCell>
-                <TableCell>
+                <TableCell onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center gap-1">
                     <Button
                       variant="ghost"
