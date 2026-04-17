@@ -141,6 +141,7 @@ const App = () => (
                   <Route path="/boite-aux-lettres" element={<BoiteAuxLettres />} />
                   <Route path="/courriers-en-instruction" element={<CourriersEnInstruction />} />
                   <Route path="/courriers-traites" element={<CourriersTraites />} />
+                  <Route path="/courriers-archives" element={<CourriersArchives />} />
                   <Route path="/courriers-sortants" element={<CourriersSortants />} />
                   <Route path="/courrier/:id" element={<CourierDetail />} />
                   <Route path="/workflows/:id" element={<WorkflowDetail />} />
