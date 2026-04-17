@@ -4,21 +4,23 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Users as UsersIcon, Mail, Plug, Tags, Briefcase, LucideIcon } from "lucide-react";
+import { ArrowLeft, Users as UsersIcon, Mail, Plug, Tags, Briefcase, ClipboardList, LucideIcon } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import UsersPage from "./UsersPage";
 import SmtpSettings from "@/components/SmtpSettings";
 import OrgIntegrations from "@/components/OrgIntegrations";
 import ClassificationSettings from "./ClassificationSettings";
 import ServicesSettings from "./ServicesSettings";
+import ProceduresSettings from "./ProceduresSettings";
 
-type Section = "menu" | "utilisateurs" | "smtp" | "integrations" | "classification" | "services";
+type Section = "menu" | "utilisateurs" | "smtp" | "integrations" | "classification" | "services" | "demarches";
 
 const settingSections: { key: Section; title: string; description: string; icon: LucideIcon }[] = [
   { key: "utilisateurs", title: "Utilisateurs", description: "Gestion des utilisateurs et rôles", icon: UsersIcon },
   { key: "smtp", title: "Notifications mail", description: "Configuration du serveur SMTP", icon: Mail },
   { key: "integrations", title: "Intégrations", description: "Connexions aux partenaires externes (Arpège…)", icon: Plug },
   { key: "services", title: "Services", description: "Services de l'organisation et workflows associés", icon: Briefcase },
+  { key: "demarches", title: "Démarches", description: "Liste des démarches administratives (sync Arpège possible)", icon: ClipboardList },
   { key: "classification", title: "Classification", description: "Tags de classement des courriers", icon: Tags },
 ];
 
@@ -27,6 +29,7 @@ const sectionLabels: Record<string, string> = {
   smtp: "Notifications mail",
   integrations: "Intégrations externes",
   services: "Services",
+  demarches: "Démarches administratives",
   classification: "Classification (tags)",
 };
 
@@ -67,6 +70,9 @@ export default function OrgSettings() {
         )}
         {activeSection === "services" && (
           <ServicesSettings organizationId={orgId!} isAdminOverride />
+        )}
+        {activeSection === "demarches" && (
+          <ProceduresSettings organizationId={orgId!} isAdminOverride />
         )}
       </div>
     );
