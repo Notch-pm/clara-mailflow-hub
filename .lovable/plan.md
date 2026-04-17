@@ -1,57 +1,65 @@
 
+## Objectif
+Récupérer automatiquement les emails reçus sur une adresse dédiée et créer un courrier par email — pièces jointes attachées comme documents, expéditeur enregistré comme participant.
 
-## Plan : Bypass OCR pour les documents textuels natifs
+## Approche recommandée : IMAP polling
 
-### Objectif
-Pour les documents dont le texte est directement extractible (sans OCR), lire le contenu nativement et économiser des appels Mistral OCR.
+Trois options techniquement possibles :
 
-### État actuel
-Dans `analyze-courier/index.ts`, seul `text/*` (TXT, MD, CSV, JSON…) bypasse déjà l'OCR via `blob.text()`. Tous les autres formats (PDF, DOCX, etc.) passent par Mistral OCR — y compris les Word natifs dont le texte est pourtant directement extractible.
-
-### Formats à traiter en natif (sans OCR)
-
-| Format | MIME | Méthode d'extraction |
+| Option | Avantages | Inconvénients |
 |---|---|---|
-| TXT/MD/CSV/JSON | `text/*` | déjà géré (`blob.text()`) |
-| **DOCX** | `application/vnd.openxmlformats-officedocument.wordprocessingml.document` | unzip + parse `word/document.xml` |
-| **ODT** | `application/vnd.oasis.opendocument.text` | unzip + parse `content.xml` |
-| **RTF** | `application/rtf`, `text/rtf` | strip des codes RTF (regex simple) |
-| **PDF "texte"** | `application/pdf` | tentative d'extraction texte ; si vide ou trop court → fallback OCR Mistral |
-| Images (JPG/PNG…) | `image/*` | OCR obligatoire (inchangé) |
-| PDF scanné | `application/pdf` | fallback OCR (inchangé) |
+| **IMAP polling** (recommandé) | Marche avec n'importe quelle boîte (Gmail, Outlook, OVH, IONOS, free…). Cohérent avec ton SMTP par organisation déjà en place. | Latence ~5 min selon fréquence du cron |
+| Webhook inbound (Postmark/SendGrid) | Temps réel | Compte tiers payant + redirection MX/sous-domaine dédié |
+| Connecteur Outlook OAuth | OAuth propre | Limité aux comptes Microsoft 365 du dev (pas par-organisation), config lourde |
 
-### Implémentation (modification de `supabase/functions/analyze-courier/index.ts`)
+## Ce que je vais ajouter
 
-Refactor de la fonction `ocrDocument` pour router selon le MIME :
+### 1. Nouvelle table `imap_settings` (par organisation)
+Champs : `host`, `port`, `username`, `password`, `use_tls`, `folder` (défaut `INBOX`), `auto_fetch`, `last_fetch_at`, `last_error`. RLS identiques à `smtp_settings`.
 
-1. **Branche `text/*`** → inchangée, modèle `direct-text`
-2. **Nouvelle branche DOCX/ODT** : 
-   - Télécharger le blob depuis Storage
-   - Utiliser `JSZip` (via esm.sh) pour dézipper en mémoire
-   - Extraire le XML cible (`word/document.xml` ou `content.xml`)
-   - Strip des balises XML via regex pour récupérer le texte brut
-   - Modèle stocké : `native-docx` ou `native-odt`
-3. **Nouvelle branche RTF** : 
-   - Télécharger le blob, lire en texte
-   - Regex pour retirer les codes de contrôle RTF (`\\[a-z]+\d* ?`, accolades, etc.)
-   - Modèle stocké : `native-rtf`
-4. **Nouvelle branche PDF** :
-   - Tenter d'abord une extraction texte native via une lib légère Deno (ex : `pdf-parse` via esm.sh, ou `unpdf`)
-   - Si le texte extrait fait moins d'un seuil (ex : <50 caractères pour un PDF de plusieurs pages) → fallback OCR Mistral
-   - Modèle stocké : `native-pdf` ou `mistral-ocr-latest` selon le chemin pris
-5. **Branche par défaut (images, PDF scannés)** → OCR Mistral inchangé
+### 2. Section UI « Réception d'emails » dans les paramètres
+À côté du SMTP, dans `SmtpSettings` (ou nouveau `ImapSettings`) :
+- Hôte / port / identifiant / mot de passe / TLS / dossier
+- Switch « Récupérer automatiquement »
+- Bouton « Tester la connexion »
+- Bouton « Récupérer maintenant »
+- Affichage du dernier fetch et de la dernière erreur
 
-### UI (`ContentIntentsTab.tsx`)
-Léger ajustement du badge affiché : au lieu de toujours montrer "X p." ou "extrait", afficher la **méthode** ("natif", "OCR", "X p.") via `extract.model` pour rendre transparent le mode utilisé. Optionnel.
+### 3. Edge Function `fetch-inbound-emails`
+Pour chaque organisation active :
+- Connexion IMAP, sélection du dossier, recherche des messages **UNSEEN**
+- Pour chaque email :
+  - **Déduplication** sur `Message-ID` (stocké dans `couriers.metadata`)
+  - Crée un `courier` : `direction=inbound`, `channel=email`, `subject`, `received_at`, `workflow_state_id` = état initial
+  - Crée participant `sender` (nom + email expéditeur)
+  - Crée participant `recipient` (adresse de la boîte)
+  - Stocke corps HTML + texte dans `metadata.body_html` / `metadata.body_text`
+  - Upload chaque pièce jointe dans le bucket `clara-documents` + ligne `courier_documents`
+  - Marque l'email `\Seen`
+  - Logge un `courier_event` `email_received`
+- Met à jour `last_fetch_at` / `last_error`
 
-### Notes techniques
-- **Pas de migration DB** : la colonne `model` existe déjà et accepte n'importe quelle string.
-- **Pas de nouveaux secrets** : tout se fait côté edge function avec libs npm/esm.sh.
-- **Économie** : DOCX/ODT/RTF/PDF-texte = 0 appel Mistral OCR. Coût uniquement pour images et scans.
-- **Risque PDF** : certaines libs Deno-compatibles pour extraction PDF peuvent être lourdes ; je privilégierai `unpdf` (zéro dépendance, conçue pour Deno/serverless). Si extraction trop pauvre, fallback automatique sur Mistral.
-- **Limites** : pas de support natif pour PPTX/XLSX dans cette itération (pourraient être ajoutés sur le même modèle si besoin).
+Bibliothèques : `npm:imapflow` + `npm:mailparser`.
 
-### Fichiers modifiés
-- `supabase/functions/analyze-courier/index.ts` (refactor `ocrDocument` + helpers `extractDocx`, `extractOdt`, `extractRtf`, `extractPdfNative`)
-- `src/components/courier/ContentIntentsTab.tsx` (optionnel — affichage méthode dans le badge)
+### 4. Planification automatique
+`pg_cron` toutes les 5 min appelle `fetch-inbound-emails` avec `CRON_SECRET` (même pattern que `trigger_arpege_sync`).
 
+## Ce que tu devras faire de ton côté
+1. **Créer (ou réutiliser) une boîte mail dédiée** par organisation, ex. `courrier@monorga.fr`. Idéalement pas une boîte personnelle.
+2. **Activer IMAP** sur cette boîte (souvent désactivé par défaut chez Gmail/Outlook).
+3. **Générer un mot de passe d'application** si la boîte a la 2FA (Gmail, Outlook, iCloud…).
+4. Renseigner dans Clara : hôte IMAP (ex. `imap.gmail.com:993`), identifiant, mot de passe d'application.
+5. Cliquer sur « Tester » puis activer la récupération auto.
+
+## Limites assumées
+- Pas de réponse depuis Clara dans cette itération (réception uniquement)
+- Emails > taille max org : pièces jointes rejetées avec un courrier_event d'avertissement
+- Seuls les emails UNSEEN sont récupérés (pas l'historique antérieur à l'activation)
+- Les emails récupérés sont marqués comme lus dans la boîte source
+
+<lov-actions>
+<lov-suggestion message="OK, lance l'implémentation : table imap_settings + UI + edge function + cron toutes les 5 minutes.">Lancer l'implémentation IMAP</lov-suggestion>
+<lov-suggestion message="Avant de coder, ajoute aussi la possibilité d'avoir plusieurs adresses IMAP par organisation (ex. une par service).">Plusieurs adresses par organisation</lov-suggestion>
+<lov-suggestion message="Je préfère utiliser un webhook inbound (Postmark ou SendGrid) plutôt que l'IMAP polling. Décris-moi ce que ça implique.">Plutôt webhook inbound</lov-suggestion>
+<lov-suggestion message="Génère aussi un PDF du corps de l'email comme pièce jointe du courrier, en plus des vraies pièces jointes.">PDF du corps en pièce jointe</lov-suggestion>
+</lov-actions>
