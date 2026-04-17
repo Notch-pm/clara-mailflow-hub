@@ -599,9 +599,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 value="actions"
                 className="flex-1 overflow-y-auto px-6 py-5 mt-0"
               >
-                <p className="text-sm text-muted-foreground italic">
-                  Description à venir.
-                </p>
+                <SuggestedActionsCard courierId={courier.id} />
               </TabsContent>
               <TabsContent
                 value="response"
