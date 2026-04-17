@@ -8,6 +8,7 @@ import { ArrowLeft, Users as UsersIcon, Mail, Plug, Tags, Briefcase, ClipboardLi
 import { Skeleton } from "@/components/ui/skeleton";
 import UsersPage from "./UsersPage";
 import SmtpSettings from "@/components/SmtpSettings";
+import ImapSettings from "@/components/ImapSettings";
 import OrgIntegrations from "@/components/OrgIntegrations";
 import ClassificationSettings from "./ClassificationSettings";
 import ServicesSettings from "./ServicesSettings";
