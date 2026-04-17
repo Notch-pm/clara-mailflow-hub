@@ -12,6 +12,7 @@ import { SuperAdminLayout } from "@/components/SuperAdminLayout";
 import Dashboard from "@/pages/Dashboard";
 import BoiteAuxLettres, { recordLogin } from "@/pages/BoiteAuxLettres";
 import CourriersEnInstruction from "@/pages/CourriersEnInstruction";
+import CourriersTraites from "@/pages/CourriersTraites";
 import CourriersSortants from "@/pages/CourriersSortants";
 import CourierDetail from "@/pages/CourierDetail";
 import WorkflowDetail from "@/pages/WorkflowDetail";
