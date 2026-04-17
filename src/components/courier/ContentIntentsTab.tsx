@@ -185,7 +185,8 @@ export default function ContentIntentsTab({ courierId, organizationId }: Props) 
             size="sm"
             variant={hasExtracts ? "outline" : "default"}
             onClick={() => ocrMutation.mutate()}
-            disabled={ocrMutation.isPending}
+            disabled={ocrMutation.isPending || docCount === 0}
+            title={docCount === 0 ? "Aucun document à extraire" : undefined}
           >
             {ocrMutation.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
