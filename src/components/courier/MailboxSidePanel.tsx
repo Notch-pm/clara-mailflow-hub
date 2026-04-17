@@ -331,51 +331,19 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
           </div>
         </SheetHeader>
 
-        {withTabs ? (
-          <Tabs defaultValue="detail" className="flex-1 overflow-hidden flex flex-col">
-            <TabsList className="mx-6 mt-3 self-start">
+        <Tabs defaultValue="detail" className="flex-1 overflow-hidden flex flex-col">
+          {withTabs && (
+            <TabsList className="mx-6 mt-3 self-start shrink-0">
               <TabsTrigger value="detail">Détail du courrier</TabsTrigger>
               <TabsTrigger value="actions">Actions liées</TabsTrigger>
               <TabsTrigger value="response">Réponse</TabsTrigger>
             </TabsList>
-            <TabsContent value="detail" className="flex-1 overflow-hidden mt-3 grid grid-cols-1 lg:grid-cols-[360px_1fr]">
-              <DetailPane
-                courier={courier}
-                organizationId={organizationId}
-                participants={participants}
-                sender={sender}
-                recipient={recipient}
-                services={services}
-                currentService={currentService}
-                serviceMutation={serviceMutation}
-                tagPopoverOpen={tagPopoverOpen}
-                setTagPopoverOpen={setTagPopoverOpen}
-                orgTags={orgTags}
-                tagByName={tagByName}
-                selectedTags={selectedTags}
-                toggleTag={toggleTag}
-                removeTag={removeTag}
-                documents={documents}
-                selectedDocId={selectedDocId}
-                setSelectedDocId={setSelectedDocId}
-                isFinalState={isFinalState}
-                persistCourierUpdate={persistCourierUpdate}
-                upsertParticipant={upsertParticipant}
-              />
-            </TabsContent>
-            <TabsContent value="actions" className="flex-1 overflow-y-auto mt-3 px-6 py-5">
-              <p className="text-sm text-muted-foreground italic">
-                Description à venir.
-              </p>
-            </TabsContent>
-            <TabsContent value="response" className="flex-1 overflow-y-auto mt-3 px-6 py-5">
-              <p className="text-sm text-muted-foreground italic">
-                Description à prévoir.
-              </p>
-            </TabsContent>
-          </Tabs>
-        ) : (
-          <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-[360px_1fr]">
+          )}
+          <TabsContent
+            value="detail"
+            className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-[360px_1fr] mt-0 data-[state=inactive]:hidden"
+            forceMount
+          >
             {/* Left: metadata + workflow */}
             <aside className="overflow-y-auto px-6 py-5 lg:border-r space-y-5">
               <dl className="space-y-1 text-sm">
