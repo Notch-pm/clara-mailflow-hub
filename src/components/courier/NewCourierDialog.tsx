@@ -192,12 +192,21 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId }:
         data: { user },
       } = await supabase.auth.getUser();
 
+      // Build received_at: if the chosen date is today, use the current time
+      // so manually created couriers are sorted alongside other recent items.
+      // Otherwise, anchor to noon local time to avoid timezone-induced day shifts.
+      const today = new Date().toISOString().slice(0, 10);
+      const receivedAtIso =
+        receivedAt === today
+          ? new Date().toISOString()
+          : new Date(`${receivedAt}T12:00:00`).toISOString();
+
       const { data: courier, error: cErr } = await createCourier({
         organization_id: organizationId,
         direction: "inbound",
         channel,
         subject: subject.trim(),
-        received_at: new Date(receivedAt).toISOString(),
+        received_at: receivedAtIso,
         assigned_service: service.name,
         workflow_state_id: initialState?.id ?? null,
         metadata: {
