@@ -1,17 +1,21 @@
 import { useState } from "react";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Users, ArrowLeft, GitBranch, Settings, Tags, Briefcase, ClipboardList, LucideIcon } from "lucide-react";
+import { Users, ArrowLeft, GitBranch, Settings, Tags, Briefcase, ClipboardList, Mail, LucideIcon } from "lucide-react";
 import UsersPage from "./UsersPage";
 import Workflows from "./Workflows";
 import ClassificationSettings from "./ClassificationSettings";
 import ServicesSettings from "./ServicesSettings";
 import ProceduresSettings from "./ProceduresSettings";
+import SmtpSettings from "@/components/SmtpSettings";
+import ImapSettings from "@/components/ImapSettings";
+import { useOrganization } from "@/contexts/OrganizationContext";
 
-type Section = "menu" | "utilisateurs" | "workflows" | "classification" | "services" | "demarches";
+type Section = "menu" | "utilisateurs" | "workflows" | "classification" | "services" | "demarches" | "emails";
 
 const settingSections: { key: Section; title: string; description: string; icon: LucideIcon }[] = [
   { key: "utilisateurs", title: "Utilisateurs", description: "Gestion des membres et rôles", icon: Users },
+  { key: "emails", title: "Emails (SMTP / IMAP)", description: "Envoi de notifications et réception automatique des courriers", icon: Mail },
   { key: "workflows", title: "Workflows", description: "Processus de traitement du courrier", icon: GitBranch },
   { key: "services", title: "Services", description: "Services de l'organisation et workflows associés", icon: Briefcase },
   { key: "demarches", title: "Démarches", description: "Liste des démarches administratives proposées", icon: ClipboardList },
@@ -20,6 +24,7 @@ const settingSections: { key: Section; title: string; description: string; icon:
 
 const sectionLabels: Record<string, string> = {
   utilisateurs: "Utilisateurs et rôles",
+  emails: "Emails — SMTP (envoi) & IMAP (réception)",
   workflows: "Workflows",
   services: "Services",
   demarches: "Démarches administratives",
