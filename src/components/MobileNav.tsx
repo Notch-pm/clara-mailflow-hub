@@ -13,6 +13,7 @@ const navItems: NavItem[] = [
   { title: "Accueil", url: "/", icon: LayoutDashboard },
   { title: "Boîte", url: "/boite-aux-lettres", svgIcon: mailboxIcon },
   { title: "Instruction", url: "/courriers-en-instruction", icon: FileClock },
+  { title: "Traités", url: "/courriers-traites", icon: CheckCircle2 },
   { title: "Sortants", url: "/courriers-sortants", icon: Send },
   { title: "Liens", url: "/liens", icon: Link2 },
 ];
