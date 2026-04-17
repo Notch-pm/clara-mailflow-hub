@@ -1,20 +1,23 @@
 import { useState } from "react";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Users, ArrowLeft, GitBranch, Settings, LucideIcon } from "lucide-react";
+import { Users, ArrowLeft, GitBranch, Settings, Tags, LucideIcon } from "lucide-react";
 import UsersPage from "./UsersPage";
 import Workflows from "./Workflows";
+import ClassificationSettings from "./ClassificationSettings";
 
-type Section = "menu" | "utilisateurs" | "workflows";
+type Section = "menu" | "utilisateurs" | "workflows" | "classification";
 
 const settingSections: { key: Section; title: string; description: string; icon: LucideIcon }[] = [
   { key: "utilisateurs", title: "Utilisateurs", description: "Gestion des membres et rôles", icon: Users },
   { key: "workflows", title: "Workflows", description: "Processus de traitement du courrier", icon: GitBranch },
+  { key: "classification", title: "Classification", description: "Tags de classement des courriers", icon: Tags },
 ];
 
 const sectionLabels: Record<string, string> = {
   utilisateurs: "Utilisateurs et rôles",
   workflows: "Workflows",
+  classification: "Classification (tags)",
 };
 
 export default function SettingsPage() {
@@ -34,6 +37,7 @@ export default function SettingsPage() {
         </div>
         {activeSection === "utilisateurs" && <UsersPage />}
         {activeSection === "workflows" && <Workflows />}
+        {activeSection === "classification" && <ClassificationSettings />}
       </div>
     );
   }
