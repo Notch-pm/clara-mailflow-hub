@@ -1,4 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
+import JSZip from "https://esm.sh/jszip@3.10.1";
+import { extractText, getDocumentProxy } from "https://esm.sh/unpdf@0.12.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
