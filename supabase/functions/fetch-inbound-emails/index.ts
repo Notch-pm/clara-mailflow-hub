@@ -360,7 +360,9 @@ async function processOrganization(
           payload: { from: senderEmail, subject, attachments: parsed.attachments?.length || 0 },
         });
 
-        await client.markSeen(uid);
+        // Volontairement, on ne marque pas l'email comme lu côté serveur IMAP :
+        // ainsi le webmail / client mail conserve son propre statut. La
+        // déduplication par Message-ID empêche les imports en double.
         processed++;
       } catch (e) {
         console.error("Erreur traitement message uid", uid, e);
