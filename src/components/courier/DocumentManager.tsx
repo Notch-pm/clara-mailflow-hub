@@ -150,10 +150,18 @@ export default function DocumentManager({
   // ── Delete ──────────────────────────────────────────────────────────
 
   const deleteMutation = useMutation({
-    mutationFn: (docId: string) => storage.delete(organizationId, docId),
+    mutationFn: async (doc: CourierDocument) => {
+      await storage.delete(organizationId, doc.id);
+      await logEvent(organizationId, courierId, "document_deleted", {
+        file_name: doc.file_name,
+        document_type: doc.document_type,
+        document_id: doc.id,
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
       queryClient.invalidateQueries({ queryKey: ["courier", courierId] });
+      queryClient.invalidateQueries({ queryKey: ["courier-events", courierId] });
       toast.success("Document supprimé");
     },
     onError: (err: Error) => toast.error(err.message),
