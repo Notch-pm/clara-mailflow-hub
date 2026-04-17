@@ -327,7 +327,9 @@ function UsagerDetail({ usagerId, organizationId, onBack }: { usagerId: string; 
                       })()}
                     </TableCell>
                     <TableCell className="text-sm">{c.chrono ?? "—"}</TableCell>
-                    <TableCell className="text-sm capitalize">{c.direction}</TableCell>
+                    <TableCell className="text-sm">
+                      {c.direction === "inbound" ? "Entrant" : c.direction === "outbound" ? "Sortant" : "Interne"}
+                    </TableCell>
                     <TableCell className="text-sm font-medium">{c.subject ?? "(sans objet)"}</TableCell>
                   </TableRow>
                 ))}
