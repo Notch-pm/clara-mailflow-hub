@@ -366,22 +366,43 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 onSave={(v) => persistCourierUpdate({ subject: v.trim() || null }, "Titre modifié")}
               />
             </div>
-            {transitions && transitions.length > 0 && (
-              <div className="flex flex-wrap gap-2 justify-end shrink-0">
-                {transitions.map((t) => (
-                  <Button
-                    key={t.id}
-                    size="sm"
-                    onClick={() => transitionMutation.mutate((t.to_state as any).id)}
-                    disabled={transitionMutation.isPending}
-                    className="gap-1.5"
-                  >
-                    <ArrowRight className="h-4 w-4" />
-                    {t.name ?? (t.to_state as any)?.name ?? "Suivant"}
-                  </Button>
-                ))}
-              </div>
-            )}
+{transitions && transitions.length > 0 && (
+  <div className="flex flex-wrap gap-2 justify-end shrink-0">
+    {transitions.length <= 3 ? (
+      transitions.map((t) => (
+        <Button
+          key={t.id}
+          size="sm"
+          onClick={() => transitionMutation.mutate((t.to_state as any).id)}
+          disabled={transitionMutation.isPending}
+          className="gap-1.5"
+        >
+          <ArrowRight className="h-4 w-4" />
+          {t.name ?? (t.to_state as any)?.name ?? "Suivant"}
+        </Button>
+      ))
+    ) : (
+      <Select
+        onValueChange={(v) => transitionMutation.mutate(v)}
+        disabled={transitionMutation.isPending}
+      >
+        <SelectTrigger className="h-8 text-sm gap-2">
+          <span className="flex items-center gap-1.5">
+            <ArrowRight className="h-4 w-4" />
+            Déplacer vers
+          </span>
+        </SelectTrigger>
+        <SelectContent align="end">
+          {transitions.map((t) => (
+            <SelectItem key={t.id} value={(t.to_state as any).id}>
+              {t.name ?? (t.to_state as any)?.name ?? "Suivant"}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    )}
+  </div>
+)}
           </div>
         </SheetHeader>
 
