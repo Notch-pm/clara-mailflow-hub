@@ -18,7 +18,7 @@ type Section = "menu" | "utilisateurs" | "smtp" | "integrations" | "classificati
 
 const settingSections: { key: Section; title: string; description: string; icon: LucideIcon }[] = [
   { key: "utilisateurs", title: "Utilisateurs", description: "Gestion des utilisateurs et rôles", icon: UsersIcon },
-  { key: "smtp", title: "Notifications mail", description: "Configuration du serveur SMTP", icon: Mail },
+  { key: "smtp", title: "Emails (SMTP / IMAP)", description: "Envoi de notifications et réception automatique des courriers", icon: Mail },
   { key: "integrations", title: "Intégrations", description: "Connexions aux partenaires externes (Arpège…)", icon: Plug },
   { key: "services", title: "Services", description: "Services de l'organisation et workflows associés", icon: Briefcase },
   { key: "demarches", title: "Démarches", description: "Liste des démarches administratives (sync Arpège possible)", icon: ClipboardList },
@@ -27,7 +27,7 @@ const settingSections: { key: Section; title: string; description: string; icon:
 
 const sectionLabels: Record<string, string> = {
   utilisateurs: "Utilisateurs et rôles",
-  smtp: "Notifications mail",
+  smtp: "Emails — SMTP (envoi) & IMAP (réception)",
   integrations: "Intégrations externes",
   services: "Services",
   demarches: "Démarches administratives",
