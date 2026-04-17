@@ -335,6 +335,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
           {withTabs && (
             <TabsList className="mx-6 mt-3 self-start shrink-0">
               <TabsTrigger value="detail">Détail du courrier</TabsTrigger>
+              <TabsTrigger value="content">Contenu et intentions</TabsTrigger>
               <TabsTrigger value="actions">Actions liées</TabsTrigger>
               <TabsTrigger value="response">Réponse</TabsTrigger>
             </TabsList>
@@ -587,6 +588,14 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
 
           {withTabs && (
             <>
+              <TabsContent
+                value="content"
+                className="flex-1 overflow-y-auto px-6 py-5 mt-0"
+              >
+                <p className="text-sm text-muted-foreground italic">
+                  Description à venir.
+                </p>
+              </TabsContent>
               <TabsContent
                 value="actions"
                 className="flex-1 overflow-y-auto px-6 py-5 mt-0"
