@@ -14,6 +14,87 @@ export type Database = {
   }
   public: {
     Tables: {
+      courier_analyses: {
+        Row: {
+          courier_id: string
+          created_at: string
+          id: string
+          intents: Json
+          model: string | null
+          organization_id: string
+          sentiment: string | null
+          suggested_actions: Json
+          summary: string | null
+          tokens_used: number | null
+          updated_at: string
+        }
+        Insert: {
+          courier_id: string
+          created_at?: string
+          id?: string
+          intents?: Json
+          model?: string | null
+          organization_id: string
+          sentiment?: string | null
+          suggested_actions?: Json
+          summary?: string | null
+          tokens_used?: number | null
+          updated_at?: string
+        }
+        Update: {
+          courier_id?: string
+          created_at?: string
+          id?: string
+          intents?: Json
+          model?: string | null
+          organization_id?: string
+          sentiment?: string | null
+          suggested_actions?: Json
+          summary?: string | null
+          tokens_used?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      courier_document_extracts: {
+        Row: {
+          courier_id: string
+          created_at: string
+          document_id: string
+          id: string
+          model: string | null
+          organization_id: string
+          page_count: number | null
+          text: string
+          tokens_used: number | null
+          updated_at: string
+        }
+        Insert: {
+          courier_id: string
+          created_at?: string
+          document_id: string
+          id?: string
+          model?: string | null
+          organization_id: string
+          page_count?: number | null
+          text?: string
+          tokens_used?: number | null
+          updated_at?: string
+        }
+        Update: {
+          courier_id?: string
+          created_at?: string
+          document_id?: string
+          id?: string
+          model?: string | null
+          organization_id?: string
+          page_count?: number | null
+          text?: string
+          tokens_used?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       courier_documents: {
         Row: {
           checksum: string | null
