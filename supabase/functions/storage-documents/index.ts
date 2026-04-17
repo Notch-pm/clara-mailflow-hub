@@ -177,7 +177,8 @@ Deno.serve(async (req) => {
       const storageKey = url.searchParams.get("path");
       if (!storageKey) return jsonResponse({ error: "Missing path" }, 400);
 
-      if (!storageKey.startsWith(pathPrefix)) {
+      // Accept both new format `org_{orgId}/...` and legacy `{orgId}/...`
+      if (!storageKey.startsWith(pathPrefix) && !storageKey.startsWith(`${orgId}/`)) {
         return jsonResponse({ error: "Access denied" }, 403);
       }
 
