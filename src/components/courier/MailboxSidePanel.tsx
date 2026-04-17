@@ -676,6 +676,15 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   readOnly={isFinalState}
                 />
               </TabsContent>
+              <TabsContent
+                value="history"
+                className="flex-1 overflow-y-auto px-6 py-5 mt-0"
+              >
+                <CourierHistoryTab
+                  courierId={courier.id}
+                  organizationId={organizationId}
+                />
+              </TabsContent>
             </>
           )}
         </Tabs>
