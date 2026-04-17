@@ -158,19 +158,13 @@ function TagPill({
   canDelete: boolean;
   onDelete: () => void;
 }) {
+  const fg = tag.color ? readableTextColor(tag.color) : undefined;
   return (
     <Badge
       variant="secondary"
-      className="gap-2 pl-2 pr-1 py-1 text-sm font-medium"
-      style={tag.color ? { backgroundColor: `${tag.color}20`, color: tag.color } : undefined}
+      className="gap-2 pl-3 pr-1 py-1 text-sm font-medium border-transparent"
+      style={tag.color ? { backgroundColor: tag.color, color: fg } : undefined}
     >
-      {tag.color && (
-        <span
-          className="h-2 w-2 rounded-full"
-          style={{ backgroundColor: tag.color }}
-          aria-hidden
-        />
-      )}
       {tag.name}
       {canDelete && (
         <button
