@@ -35,6 +35,7 @@ import DocumentManager from "./DocumentManager";
 import DocumentViewer from "./DocumentViewer";
 import InlineEditField from "./InlineEditField";
 import CourierNotes from "./CourierNotes";
+import ContentIntentsTab from "./ContentIntentsTab";
 import type { CourierChannel, CourierParticipant, WorkflowTransition, WorkflowState } from "@/types/courier";
 
 const channelLabels: Record<CourierChannel, string> = {
@@ -592,9 +593,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 value="content"
                 className="flex-1 overflow-y-auto px-6 py-5 mt-0"
               >
-                <p className="text-sm text-muted-foreground italic">
-                  Description à venir.
-                </p>
+                <ContentIntentsTab courierId={courier.id} organizationId={organizationId} />
               </TabsContent>
               <TabsContent
                 value="actions"
