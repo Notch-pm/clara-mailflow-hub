@@ -1,13 +1,25 @@
 import { useState, useMemo, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Sparkles, Plus } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Search, Sparkles, Plus, Trash2 } from "lucide-react";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { supabase } from "@/integrations/supabase/client";
+import { deleteCourier } from "@/services/courierService";
+import { toast } from "@/hooks/use-toast";
 import MailboxSidePanel from "@/components/courier/MailboxSidePanel";
 import NewCourierDialog from "@/components/courier/NewCourierDialog";
 import mailboxIcon from "@/assets/icons/mailbox.svg";
@@ -24,6 +36,28 @@ export function recordLogin() {
 
 export default function BoiteAuxLettres() {
   const { organizationId } = useOrganization();
+  const queryClient = useQueryClient();
+  const [courierToDelete, setCourierToDelete] = useState<any | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleConfirmDelete() {
+    if (!organizationId || !courierToDelete) return;
+    setDeleting(true);
+    const { error } = await deleteCourier(organizationId, courierToDelete.id);
+    setDeleting(false);
+    if (error) {
+      toast({ title: "Erreur", description: error.message, variant: "destructive" });
+      return;
+    }
+    toast({ title: "Courrier supprimé" });
+    if (selectedCourier?.id === courierToDelete.id) {
+      setPanelOpen(false);
+      setSelectedCourier(null);
+    }
+    setCourierToDelete(null);
+    queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
+    queryClient.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
+  }
   const [search, setSearch] = useState("");
   const [selectedCourier, setSelectedCourier] = useState<any | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -178,6 +212,7 @@ export default function BoiteAuxLettres() {
                 <TableHead>Date de réception</TableHead>
                 <TableHead>Destinataire</TableHead>
                 <TableHead>Expéditeur</TableHead>
+                <TableHead className="w-10"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -201,6 +236,20 @@ export default function BoiteAuxLettres() {
                     </TableCell>
                     <TableCell className="text-sm font-medium">{getRecipient(c)}</TableCell>
                     <TableCell className="text-sm">{getSender(c)}</TableCell>
+                    <TableCell className="w-10">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCourierToDelete(c);
+                        }}
+                        aria-label="Supprimer le courrier"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 );
               })}
@@ -227,6 +276,33 @@ export default function BoiteAuxLettres() {
           organizationId={organizationId}
         />
       )}
+
+      {/* Delete confirmation */}
+      <AlertDialog
+        open={!!courierToDelete}
+        onOpenChange={(open) => !open && setCourierToDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer ce courrier ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Cette action est définitive. Le courrier
+              {courierToDelete?.subject ? ` « ${courierToDelete.subject} »` : ""} sera
+              supprimé de la boîte aux lettres.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDelete}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? "Suppression…" : "Supprimer"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
