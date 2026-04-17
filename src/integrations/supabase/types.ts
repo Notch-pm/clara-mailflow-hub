@@ -360,34 +360,46 @@ export type Database = {
           address: string | null
           courier_id: string
           email: string | null
+          first_name: string | null
           id: string
+          last_name: string | null
           metadata: Json | null
           name: string | null
           organization: string | null
           organization_id: string
+          phone: string | null
           role: Database["public"]["Enums"]["participant_role"]
+          usager_id: string | null
         }
         Insert: {
           address?: string | null
           courier_id: string
           email?: string | null
+          first_name?: string | null
           id?: string
+          last_name?: string | null
           metadata?: Json | null
           name?: string | null
           organization?: string | null
           organization_id: string
+          phone?: string | null
           role: Database["public"]["Enums"]["participant_role"]
+          usager_id?: string | null
         }
         Update: {
           address?: string | null
           courier_id?: string
           email?: string | null
+          first_name?: string | null
           id?: string
+          last_name?: string | null
           metadata?: Json | null
           name?: string | null
           organization?: string | null
           organization_id?: string
+          phone?: string | null
           role?: Database["public"]["Enums"]["participant_role"]
+          usager_id?: string | null
         }
         Relationships: [
           {
@@ -916,6 +928,48 @@ export type Database = {
           },
         ]
       }
+      usagers: {
+        Row: {
+          category: Database["public"]["Enums"]["usager_category"]
+          civilite: Database["public"]["Enums"]["usager_civilite"] | null
+          created_at: string
+          created_by: string | null
+          email: string | null
+          first_name: string | null
+          id: string
+          last_name: string | null
+          organization_id: string
+          phone: string | null
+          updated_at: string
+        }
+        Insert: {
+          category?: Database["public"]["Enums"]["usager_category"]
+          civilite?: Database["public"]["Enums"]["usager_civilite"] | null
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          first_name?: string | null
+          id?: string
+          last_name?: string | null
+          organization_id: string
+          phone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          category?: Database["public"]["Enums"]["usager_category"]
+          civilite?: Database["public"]["Enums"]["usager_civilite"] | null
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          first_name?: string | null
+          id?: string
+          last_name?: string | null
+          organization_id?: string
+          phone?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       users: {
         Row: {
           created_at: string
@@ -1110,6 +1164,8 @@ export type Database = {
       document_type: "original" | "response" | "attachment"
       participant_role: "sender" | "recipient" | "cc"
       sync_status: "pending" | "synced" | "error"
+      usager_category: "citoyen" | "entreprise" | "association"
+      usager_civilite: "madame" | "monsieur"
       workflow_category: "pending" | "processing" | "processed" | "archived"
     }
     CompositeTypes: {
@@ -1243,6 +1299,8 @@ export const Constants = {
       document_type: ["original", "response", "attachment"],
       participant_role: ["sender", "recipient", "cc"],
       sync_status: ["pending", "synced", "error"],
+      usager_category: ["citoyen", "entreprise", "association"],
+      usager_civilite: ["madame", "monsieur"],
       workflow_category: ["pending", "processing", "processed", "archived"],
     },
   },

@@ -40,7 +40,15 @@ import { addParticipant } from "@/services/courierParticipantService";
 import { listServices } from "@/services/orgServiceService";
 import { listTags } from "@/services/courierTagService";
 import { storage } from "@/services/storageService";
+import UsagerPicker from "@/components/courier/UsagerPicker";
+import type { Usager, UsagerCategory } from "@/services/usagerService";
 import type { CourierChannel } from "@/types/courier";
+
+const categoryLabels: Record<UsagerCategory, string> = {
+  citoyen: "Citoyen",
+  entreprise: "Entreprise",
+  association: "Association",
+};
 
 const channelOptions: { value: CourierChannel; label: string }[] = [
   { value: "paper", label: "Papier" },
@@ -52,13 +60,6 @@ const schema = z.object({
   subject: z.string().trim().min(1, "L'objet est obligatoire").max(255),
   channel: z.enum(["paper", "email", "portal"]),
   received_at: z.string().min(1, "Date obligatoire"),
-  sender_name: z.string().trim().max(150).optional(),
-  sender_email: z
-    .string()
-    .trim()
-    .email("Email invalide")
-    .optional()
-    .or(z.literal("")),
   recipient_name: z.string().trim().max(150).optional(),
   service_id: z.string().uuid("Service obligatoire"),
 });
@@ -83,8 +84,7 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId }:
   const [receivedAt, setReceivedAt] = useState(() =>
     new Date().toISOString().slice(0, 10),
   );
-  const [senderName, setSenderName] = useState("");
-  const [senderEmail, setSenderEmail] = useState("");
+  const [senderUsager, setSenderUsager] = useState<Usager | null>(null);
   const [recipientName, setRecipientName] = useState("");
   const [serviceId, setServiceId] = useState<string>("");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -99,8 +99,7 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId }:
     setSubject("");
     setChannel("paper");
     setReceivedAt(new Date().toISOString().slice(0, 10));
-    setSenderName("");
-    setSenderEmail("");
+    setSenderUsager(null);
     setRecipientName("");
     setServiceId("");
     setSelectedTags([]);
@@ -163,8 +162,6 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId }:
         subject,
         channel,
         received_at: receivedAt,
-        sender_name: senderName,
-        sender_email: senderEmail,
         recipient_name: recipientName,
         service_id: serviceId,
       });
@@ -207,13 +204,17 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId }:
       if (cErr) throw cErr;
       if (!courier) throw new Error("Création échouée");
 
-      if (senderName.trim() || senderEmail.trim()) {
+      if (senderUsager) {
         await addParticipant({
           courier_id: courier.id,
           organization_id: organizationId,
           role: "sender",
-          name: senderName.trim() || null,
-          email: senderEmail.trim() || null,
+          name: [senderUsager.first_name, senderUsager.last_name].filter(Boolean).join(" ").trim() || null,
+          first_name: senderUsager.first_name,
+          last_name: senderUsager.last_name,
+          email: senderUsager.email,
+          phone: senderUsager.phone,
+          usager_id: senderUsager.id,
         });
       }
       if (recipientName.trim()) {
@@ -222,6 +223,7 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId }:
           organization_id: organizationId,
           role: "recipient",
           name: recipientName.trim(),
+          last_name: recipientName.trim(),
         });
       }
 
@@ -333,28 +335,26 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId }:
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="nc-sender-name">Expéditeur (nom)</Label>
-                  <Input
-                    id="nc-sender-name"
-                    value={senderName}
-                    onChange={(e) => setSenderName(e.target.value)}
-                    maxLength={150}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="nc-sender-email">Expéditeur (email)</Label>
-                  <Input
-                    id="nc-sender-email"
-                    type="email"
-                    value={senderEmail}
-                    onChange={(e) => setSenderEmail(e.target.value)}
-                  />
-                  {errors.sender_email && (
-                    <p className="text-xs text-destructive">{errors.sender_email}</p>
-                  )}
-                </div>
+              <div className="space-y-2">
+                <Label>Expéditeur (usager)</Label>
+                <UsagerPicker
+                  organizationId={organizationId}
+                  value={senderUsager}
+                  onChange={setSenderUsager}
+                />
+                {senderUsager && (
+                  <div className="text-xs text-muted-foreground space-y-0.5 pt-1">
+                    <div>
+                      <span className="font-medium">Nature :</span> {categoryLabels[senderUsager.category]}
+                    </div>
+                    {senderUsager.email && (
+                      <div><span className="font-medium">Email :</span> {senderUsager.email}</div>
+                    )}
+                    {senderUsager.phone && (
+                      <div><span className="font-medium">Téléphone :</span> {senderUsager.phone}</div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2">
