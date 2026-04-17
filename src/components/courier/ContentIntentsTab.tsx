@@ -14,6 +14,7 @@ import {
   runOcr,
   runAnalysis,
 } from "@/services/courierAnalysisService";
+import SuggestedActionsCard from "./SuggestedActionsCard";
 
 interface Props {
   courierId: string;
