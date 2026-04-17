@@ -436,7 +436,6 @@ ${tagListForPrompt}`;
       ],
       tools,
       tool_choice: { type: "function", function: { name: "report_analysis" } },
-      temperature: 0.2,
     }),
   });
 
