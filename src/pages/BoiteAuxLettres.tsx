@@ -214,6 +214,7 @@ export default function BoiteAuxLettres() {
               <TableRow>
                 <TableHead className="w-10"></TableHead>
                 <TableHead>Date de réception</TableHead>
+                <TableHead>Objet</TableHead>
                 <TableHead>Destinataire</TableHead>
                 <TableHead>Nom expéditeur</TableHead>
                 <TableHead>Prénom expéditeur</TableHead>
@@ -239,6 +240,9 @@ export default function BoiteAuxLettres() {
                       {c.received_at
                         ? new Date(c.received_at).toLocaleDateString("fr-FR")
                         : "—"}
+                    </TableCell>
+                    <TableCell className="text-sm font-medium max-w-[280px] truncate">
+                      {c.subject ?? "Sans titre"}
                     </TableCell>
                     <TableCell className="text-sm font-medium">{getRecipient(c)}</TableCell>
                     <TableCell className="text-sm font-medium">{sender.last}</TableCell>
