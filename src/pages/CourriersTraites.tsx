@@ -102,6 +102,33 @@ export default function CourriersTraites() {
     enabled: !!organizationId && !!stateIds.length,
   });
 
+  // Fetch the latest "state_changed" event into a processed state for each courier
+  const courierIds = useMemo(() => (couriers ?? []).map((c) => c.id), [couriers]);
+  const { data: processedAtMap } = useQuery({
+    queryKey: ["traites-processed-at", organizationId, courierIds, stateIds],
+    queryFn: async () => {
+      if (!organizationId || !courierIds.length || !stateIds.length) return {};
+      const { data, error } = await supabase
+        .from("courier_events")
+        .select("courier_id, created_at, payload")
+        .eq("organization_id", organizationId)
+        .eq("event_type", "state_changed")
+        .in("courier_id", courierIds)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      const map: Record<string, string> = {};
+      const stateSet = new Set(stateIds);
+      for (const ev of data ?? []) {
+        const toId = (ev.payload as any)?.to_id as string | undefined;
+        if (toId && stateSet.has(toId) && !map[ev.courier_id]) {
+          map[ev.courier_id] = ev.created_at as string;
+        }
+      }
+      return map;
+    },
+    enabled: !!organizationId && courierIds.length > 0 && stateIds.length > 0,
+  });
+
   const filtered = useMemo(() => {
     let list = couriers ?? [];
     if (serviceFilter !== "all") {
