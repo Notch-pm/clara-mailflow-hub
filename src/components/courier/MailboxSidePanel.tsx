@@ -781,7 +781,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 value="content"
                 className="flex-1 overflow-y-auto px-6 py-5 mt-0"
               >
-                <ContentIntentsTab courierId={courier.id} organizationId={organizationId} />
+                <ContentIntentsTab courierId={courier.id} organizationId={organizationId} readOnly={readOnly || isFinalState} />
               </TabsContent>
               <TabsContent
                 value="actions"
@@ -790,6 +790,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 <LinkedActionsTab
                   courierId={courier.id}
                   organizationId={organizationId}
+                  readOnly={readOnly || isFinalState}
                 />
               </TabsContent>
               <TabsContent

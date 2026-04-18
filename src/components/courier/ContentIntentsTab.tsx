@@ -22,6 +22,8 @@ import SuggestedActionsCard from "./SuggestedActionsCard";
 interface Props {
   courierId: string;
   organizationId: string;
+  /** When true, disables OCR/analysis buttons and tag application. */
+  readOnly?: boolean;
 }
 
 const SENTIMENT_VARIANT: Record<string, { label: string; className: string }> = {
@@ -44,7 +46,7 @@ function formatDate(iso: string) {
   });
 }
 
-export default function ContentIntentsTab({ courierId, organizationId }: Props) {
+export default function ContentIntentsTab({ courierId, organizationId, readOnly = false }: Props) {
   const qc = useQueryClient();
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
@@ -185,8 +187,8 @@ export default function ContentIntentsTab({ courierId, organizationId }: Props) 
             size="sm"
             variant={hasExtracts ? "outline" : "default"}
             onClick={() => ocrMutation.mutate()}
-            disabled={ocrMutation.isPending || docCount === 0}
-            title={docCount === 0 ? "Aucun document à extraire" : undefined}
+            disabled={readOnly || ocrMutation.isPending || docCount === 0}
+            title={readOnly ? "Courrier archivé — actions désactivées" : docCount === 0 ? "Aucun document à extraire" : undefined}
           >
             {ocrMutation.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -283,8 +285,8 @@ export default function ContentIntentsTab({ courierId, organizationId }: Props) 
             size="sm"
             variant={analysis ? "outline" : "default"}
             onClick={() => analyzeMutation.mutate()}
-            disabled={analyzeMutation.isPending || !canAnalyze}
-            title={!canAnalyze ? "Extrayez d'abord le texte des documents ou réceptionnez un email" : undefined}
+            disabled={readOnly || analyzeMutation.isPending || !canAnalyze}
+            title={readOnly ? "Courrier archivé — actions désactivées" : !canAnalyze ? "Extrayez d'abord le texte des documents ou réceptionnez un email" : undefined}
           >
             {analyzeMutation.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -328,7 +330,7 @@ export default function ContentIntentsTab({ courierId, organizationId }: Props) 
                   size="sm"
                   variant={isDirty ? "default" : "outline"}
                   onClick={() => applyTagsMutation.mutate()}
-                  disabled={!isDirty || applyTagsMutation.isPending}
+                  disabled={readOnly || !isDirty || applyTagsMutation.isPending}
                   className="h-7 text-xs"
                 >
                   {applyTagsMutation.isPending ? (
@@ -395,7 +397,7 @@ export default function ContentIntentsTab({ courierId, organizationId }: Props) 
               </Card>
             )}
 
-            <SuggestedActionsCard courierId={courierId} />
+            <SuggestedActionsCard courierId={courierId} readOnly={readOnly} />
           </div>
         )}
       </section>
