@@ -14,6 +14,8 @@ import SuggestedActionsCard from "./SuggestedActionsCard";
 interface Props {
   courierId: string;
   organizationId: string;
+  /** When true, disables ticket creation and deletion. */
+  readOnly?: boolean;
 }
 
 function formatDate(iso: string) {
@@ -26,7 +28,7 @@ function formatDate(iso: string) {
   });
 }
 
-export default function LinkedActionsTab({ courierId, organizationId }: Props) {
+export default function LinkedActionsTab({ courierId, organizationId, readOnly = false }: Props) {
   const qc = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [initialDescription, setInitialDescription] = useState("");
@@ -68,7 +70,12 @@ export default function LinkedActionsTab({ courierId, organizationId }: Props) {
               {(tickets?.length ?? 0)} ticket(s) lié(s) à ce courrier
             </p>
           </div>
-          <Button size="sm" onClick={() => openCreate("")}>
+          <Button
+            size="sm"
+            onClick={() => openCreate("")}
+            disabled={readOnly}
+            title={readOnly ? "Courrier archivé — actions désactivées" : undefined}
+          >
             <Plus className="h-4 w-4" />
             Créer
           </Button>
@@ -129,7 +136,7 @@ export default function LinkedActionsTab({ courierId, organizationId }: Props) {
                         deleteMutation.mutate(t.id);
                       }
                     }}
-                    disabled={deleteMutation.isPending}
+                    disabled={readOnly || deleteMutation.isPending}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
@@ -144,6 +151,7 @@ export default function LinkedActionsTab({ courierId, organizationId }: Props) {
       <SuggestedActionsCard
         courierId={courierId}
         onCreateTicket={(action) => openCreate(action)}
+        readOnly={readOnly}
       />
 
       <CreateTicketDialog

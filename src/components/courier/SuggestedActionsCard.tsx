@@ -9,9 +9,11 @@ interface Props {
   courierId: string;
   /** When provided, displays a "Créer un ticket" button next to each suggested action. */
   onCreateTicket?: (action: string) => void;
+  /** When true, hides the "Créer un ticket" button. */
+  readOnly?: boolean;
 }
 
-export default function SuggestedActionsCard({ courierId, onCreateTicket }: Props) {
+export default function SuggestedActionsCard({ courierId, onCreateTicket, readOnly = false }: Props) {
   const { data: analysis, isLoading } = useQuery({
     queryKey: ["courier-analysis", courierId],
     queryFn: () => getAnalysis(courierId),
@@ -39,7 +41,7 @@ export default function SuggestedActionsCard({ courierId, onCreateTicket }: Prop
             <li key={i} className="text-sm flex gap-2 items-start group">
               <span className="text-primary shrink-0 mt-0.5">→</span>
               <span className="flex-1">{action}</span>
-              {onCreateTicket && (
+              {onCreateTicket && !readOnly && (
                 <Button
                   size="sm"
                   variant="ghost"
