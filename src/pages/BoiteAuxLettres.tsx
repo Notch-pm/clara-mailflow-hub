@@ -241,6 +241,9 @@ export default function BoiteAuxLettres() {
                         ? new Date(c.received_at).toLocaleDateString("fr-FR")
                         : "—"}
                     </TableCell>
+                    <TableCell className="text-sm font-medium max-w-[280px] truncate">
+                      {c.subject ?? "Sans titre"}
+                    </TableCell>
                     <TableCell className="text-sm font-medium">{getRecipient(c)}</TableCell>
                     <TableCell className="text-sm font-medium">{sender.last}</TableCell>
                     <TableCell className="text-sm">{sender.first}</TableCell>
