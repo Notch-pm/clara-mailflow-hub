@@ -130,10 +130,10 @@ export async function findMatchingUsager(
  * Liste des courriers envoyés par un usager (via courier_participants role=sender).
  */
 export async function listUsagerCouriers(usagerId: string) {
-  const { data, error } = await supabase
+  const { data, error } = await (supabase
     .from("courier_participants")
     .select("courier_id, role, courier:couriers(id, subject, received_at, sent_at, direction, channel, chrono, created_at)")
-    .eq("usager_id" as any, usagerId);
+    .eq("usager_id" as any, usagerId) as any);
   if (error) throw error;
   const couriers = (data ?? [])
     .map((r: any) => r.courier)
