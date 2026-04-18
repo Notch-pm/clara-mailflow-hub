@@ -501,6 +501,18 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   )}
                 </>
               )}
+              {!readOnly && onDelete && (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0"
+                  onClick={() => onDelete(courier)}
+                  title="Supprimer le courrier"
+                  aria-label="Supprimer le courrier"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              )}
             </div>
           </div>
         </SheetHeader>
