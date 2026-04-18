@@ -314,6 +314,8 @@ export default function CourriersTraites() {
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead>Date de réception</TableHead>
+                        <TableHead>Date de traitement</TableHead>
                         <TableHead>Objet</TableHead>
                         <TableHead>État</TableHead>
                         <TableHead>Service</TableHead>
@@ -326,12 +328,23 @@ export default function CourriersTraites() {
                       {g.items.map((c) => {
                         const courierTags = ((c.metadata as any)?.tags ?? []) as string[];
                         const stateName = stateById.get(c.workflow_state_id ?? "")?.name;
+                        const processedAt = processedAtMap?.[c.id];
                         return (
                           <TableRow
                             key={c.id}
                             className="cursor-pointer hover:bg-muted/50"
                             onClick={() => handleRowClick(c)}
                           >
+                            <TableCell className="text-sm whitespace-nowrap">
+                              {c.received_at
+                                ? new Date(c.received_at).toLocaleDateString("fr-FR")
+                                : "—"}
+                            </TableCell>
+                            <TableCell className="text-sm whitespace-nowrap">
+                              {processedAt
+                                ? new Date(processedAt).toLocaleDateString("fr-FR")
+                                : "—"}
+                            </TableCell>
                             <TableCell className="text-sm font-medium max-w-[260px] truncate">
                               {c.subject ?? "Sans titre"}
                             </TableCell>
