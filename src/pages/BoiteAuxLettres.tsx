@@ -214,6 +214,7 @@ export default function BoiteAuxLettres() {
               <TableRow>
                 <TableHead className="w-10"></TableHead>
                 <TableHead>Date de réception</TableHead>
+                <TableHead>Objet</TableHead>
                 <TableHead>Destinataire</TableHead>
                 <TableHead>Nom expéditeur</TableHead>
                 <TableHead>Prénom expéditeur</TableHead>
