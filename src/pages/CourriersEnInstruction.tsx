@@ -289,6 +289,7 @@ export default function CourriersEnInstruction() {
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead>Date de réception</TableHead>
                         <TableHead>Objet</TableHead>
                         <TableHead>État</TableHead>
                         <TableHead>Service</TableHead>
@@ -307,6 +308,11 @@ export default function CourriersEnInstruction() {
                             className="cursor-pointer hover:bg-muted/50"
                             onClick={() => handleRowClick(c)}
                           >
+                            <TableCell className="text-sm whitespace-nowrap">
+                              {c.received_at
+                                ? new Date(c.received_at).toLocaleDateString("fr-FR")
+                                : "—"}
+                            </TableCell>
                             <TableCell className="text-sm font-medium max-w-[260px] truncate">
                               {c.subject ?? "Sans titre"}
                             </TableCell>
