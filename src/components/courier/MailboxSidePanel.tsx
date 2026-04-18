@@ -207,10 +207,13 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
         });
       }
 
-      return { name: newService.name };
+      return { name: newService.name, initialStateId: initial?.id ?? null };
     },
     onSuccess: (result) => {
       if (result?.name) setLocalAssignedService(result.name);
+      // Also update the local workflow state so transitions become queryable
+      // immediately, without waiting for the parent's snapshot to refetch.
+      setLocalWorkflowStateId(result?.initialStateId ?? null);
       queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
       queryClient.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
       queryClient.invalidateQueries({ queryKey: ["courier-events", courier?.id] });
