@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { X, ArrowRight, Tag as TagIcon, Check, Briefcase, FileText } from "lucide-react";
+import { X, ArrowRight, Tag as TagIcon, Check, Briefcase, FileText, Trash2 } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -68,9 +68,11 @@ interface Props {
   withTabs?: boolean;
   /** When true, the panel is fully read-only: no edits, no transitions, no uploads, no notes. */
   readOnly?: boolean;
+  /** When provided, displays a delete button in the header. */
+  onDelete?: (courier: MailboxCourier) => void;
 }
 
-export default function MailboxSidePanel({ courier, open, onOpenChange, organizationId, withTabs = false, readOnly = false }: Props) {
+export default function MailboxSidePanel({ courier, open, onOpenChange, organizationId, withTabs = false, readOnly = false, onDelete }: Props) {
   const queryClient = useQueryClient();
   const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
 
@@ -111,9 +113,16 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
   const [localAssignedService, setLocalAssignedService] = useState<string | null>(
     courier?.assigned_service ?? null,
   );
+  // Same for workflow_state_id — when assigning a service we land in its initial
+  // state, and we need transitions to be queryable straight away (without waiting
+  // for the parent's snapshot to refetch and reach this component again).
+  const [localWorkflowStateId, setLocalWorkflowStateId] = useState<string | null>(
+    courier?.workflow_state_id ?? null,
+  );
   useEffect(() => {
     setLocalAssignedService(courier?.assigned_service ?? null);
-  }, [courier?.id, courier?.assigned_service]);
+    setLocalWorkflowStateId(courier?.workflow_state_id ?? null);
+  }, [courier?.id, courier?.assigned_service, courier?.workflow_state_id]);
 
   // Resolve courier's current service from its name (assigned_service)
   const currentService = useMemo(() => {
@@ -129,36 +138,36 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
   const { data: transitions } = useQuery({
     queryKey: [
       "mailbox-transitions",
-      courier?.workflow_state_id,
+      localWorkflowStateId,
       currentService?.workflow_id,
     ],
     queryFn: async () => {
-      if (!courier?.workflow_state_id || !currentService?.workflow_id) return [];
+      if (!localWorkflowStateId || !currentService?.workflow_id) return [];
       const { data, error } = await supabase
         .from("workflow_transitions")
         .select("*, to_state:workflow_states!workflow_transitions_to_state_id_fkey(id, name, category)")
         .eq("workflow_id", currentService.workflow_id)
-        .eq("from_state_id", courier.workflow_state_id);
+        .eq("from_state_id", localWorkflowStateId);
       if (error) throw error;
       return (data ?? []) as (WorkflowTransition & { to_state: WorkflowState })[];
     },
-    enabled: !!courier?.workflow_state_id && !!currentService?.workflow_id,
+    enabled: !!localWorkflowStateId && !!currentService?.workflow_id,
   });
 
   // Is the current state a final one? (used to decide if notes can be added)
   const { data: currentStateInfo } = useQuery({
-    queryKey: ["workflow-state-info", courier?.workflow_state_id],
+    queryKey: ["workflow-state-info", localWorkflowStateId],
     queryFn: async () => {
-      if (!courier?.workflow_state_id) return null;
+      if (!localWorkflowStateId) return null;
       const { data, error } = await supabase
         .from("workflow_states")
         .select("id, name, category, is_final")
-        .eq("id", courier.workflow_state_id)
+        .eq("id", localWorkflowStateId)
         .maybeSingle();
       if (error) throw error;
       return data;
     },
-    enabled: !!courier?.workflow_state_id && open,
+    enabled: !!localWorkflowStateId && open,
   });
   const isFinalState = currentStateInfo?.is_final === true;
 
@@ -198,10 +207,13 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
         });
       }
 
-      return { name: newService.name };
+      return { name: newService.name, initialStateId: initial?.id ?? null };
     },
     onSuccess: (result) => {
       if (result?.name) setLocalAssignedService(result.name);
+      // Also update the local workflow state so transitions become queryable
+      // immediately, without waiting for the parent's snapshot to refetch.
+      setLocalWorkflowStateId(result?.initialStateId ?? null);
       queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
       queryClient.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
       queryClient.invalidateQueries({ queryKey: ["courier-events", courier?.id] });
@@ -488,6 +500,18 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                     </Select>
                   )}
                 </>
+              )}
+              {!readOnly && onDelete && (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0"
+                  onClick={() => onDelete(courier)}
+                  title="Supprimer le courrier"
+                  aria-label="Supprimer le courrier"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
               )}
             </div>
           </div>
