@@ -18,6 +18,7 @@ import CourriersSortants from "@/pages/CourriersSortants";
 import CourierDetail from "@/pages/CourierDetail";
 import WorkflowDetail from "@/pages/WorkflowDetail";
 import SettingsPage from "@/pages/SettingsPage";
+import MonProfil from "@/pages/MonProfil";
 import Liens from "@/pages/Liens";
 import Usagers from "@/pages/Usagers";
 import Login from "@/pages/Login";
@@ -146,6 +147,7 @@ const App = () => (
                   <Route path="/courrier/:id" element={<CourierDetail />} />
                   <Route path="/workflows/:id" element={<WorkflowDetail />} />
                   <Route path="/parametres" element={<SettingsPage />} />
+                  <Route path="/mon-profil" element={<MonProfil />} />
                   <Route path="/liens" element={<Liens />} />
                   <Route path="/usagers" element={<Usagers />} />
                   <Route path="/usagers/:id" element={<Usagers />} />
