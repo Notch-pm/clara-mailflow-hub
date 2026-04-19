@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Users, Plus, Search, UserCog, UserX, UserCheck, Pencil, KeyRound, Loader2 } from "lucide-react";
+import { Users, Plus, Search, UserCog, UserX, UserCheck, Pencil, KeyRound, Loader2, Camera, Trash2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { toast } from "sonner";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { getOrgMembers, createOrgMember, updateOrgMember, deactivateOrgMember, reactivateOrgMember, sendPasswordReset } from "@/services/userService";
+import { uploadUserAvatar, removeUserAvatar } from "@/services/avatarService";
+import { UserAvatar } from "@/components/UserAvatar";
 import type { OrgMember } from "@/types/user";
 
 const ROLES = [
@@ -54,6 +56,7 @@ export default function UsersPage({ organizationId: propOrgId }: UsersPageProps 
   const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [editMember, setEditMember] = useState<OrgMember | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const createForm = useForm<z.infer<typeof createSchema>>({
     resolver: zodResolver(createSchema),
@@ -147,6 +150,48 @@ export default function UsersPage({ organizationId: propOrgId }: UsersPageProps 
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const uploadAvatarMutation = useMutation({
+    mutationFn: async (file: File) => {
+      if (!editMember) throw new Error("Aucun utilisateur sélectionné");
+      const url = await uploadUserAvatar(editMember.id, file);
+      return url;
+    },
+    onSuccess: (url) => {
+      toast.success("Photo mise à jour");
+      queryClient.invalidateQueries({ queryKey: ["org-members"] });
+      setEditMember((prev) => (prev ? { ...prev, avatar_url: url } : prev));
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const removeAvatarMutation = useMutation({
+    mutationFn: async () => {
+      if (!editMember) throw new Error("Aucun utilisateur sélectionné");
+      await removeUserAvatar(editMember.id);
+    },
+    onSuccess: () => {
+      toast.success("Photo supprimée");
+      queryClient.invalidateQueries({ queryKey: ["org-members"] });
+      setEditMember((prev) => (prev ? { ...prev, avatar_url: null } : prev));
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("La photo ne doit pas dépasser 5 Mo");
+      return;
+    }
+    if (!file.type.startsWith("image/")) {
+      toast.error("Format d'image non supporté");
+      return;
+    }
+    uploadAvatarMutation.mutate(file);
+    e.target.value = "";
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -186,6 +231,9 @@ export default function UsersPage({ organizationId: propOrgId }: UsersPageProps 
                     </Select><FormMessage />
                   </FormItem>
                 )} />
+                <p className="text-xs text-muted-foreground">
+                  La photo de profil pourra être ajoutée après création depuis le bouton "Modifier".
+                </p>
                 <Button type="submit" className="w-full" disabled={createMutation.isPending}>
                   {createMutation.isPending ? "Création..." : "Créer l'utilisateur"}
                 </Button>
@@ -213,6 +261,7 @@ export default function UsersPage({ organizationId: propOrgId }: UsersPageProps 
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-[60px]"></TableHead>
                 <TableHead>Nom</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Rôle</TableHead>
@@ -223,6 +272,14 @@ export default function UsersPage({ organizationId: propOrgId }: UsersPageProps 
             <TableBody>
               {filteredMembers.map((m) => (
                 <TableRow key={m.membership_id}>
+                  <TableCell>
+                    <UserAvatar
+                      firstName={m.first_name}
+                      lastName={m.last_name}
+                      email={m.email}
+                      avatarUrl={m.avatar_url}
+                    />
+                  </TableCell>
                   <TableCell className="font-medium">
                     {[m.first_name, m.last_name].filter(Boolean).join(" ") || "—"}
                   </TableCell>
@@ -303,6 +360,53 @@ export default function UsersPage({ organizationId: propOrgId }: UsersPageProps 
           <DialogHeader><DialogTitle>Modifier l'utilisateur</DialogTitle></DialogHeader>
           {editMember && (
             <div className="space-y-4">
+              {/* Avatar section */}
+              <div className="flex items-center gap-4 pb-3 border-b">
+                <UserAvatar
+                  firstName={editMember.first_name}
+                  lastName={editMember.last_name}
+                  email={editMember.email}
+                  avatarUrl={editMember.avatar_url}
+                  className="h-16 w-16 text-lg"
+                />
+                <div className="flex flex-col gap-2">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleAvatarFileChange}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadAvatarMutation.isPending}
+                  >
+                    {uploadAvatarMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+                    ) : (
+                      <Camera className="h-4 w-4 mr-1.5" />
+                    )}
+                    {editMember.avatar_url ? "Remplacer la photo" : "Ajouter une photo"}
+                  </Button>
+                  {editMember.avatar_url && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive hover:text-destructive justify-start px-2"
+                      onClick={() => removeAvatarMutation.mutate()}
+                      disabled={removeAvatarMutation.isPending}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                      Supprimer
+                    </Button>
+                  )}
+                </div>
+              </div>
+
               <p className="text-sm text-muted-foreground">{editMember.email}</p>
               <Form {...editForm}>
                 <form onSubmit={editForm.handleSubmit((v) => updateMutation.mutate(v))} className="space-y-4">

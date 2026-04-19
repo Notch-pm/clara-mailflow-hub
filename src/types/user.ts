@@ -54,6 +54,7 @@ export interface OrgMember {
   first_name: string | null;
   last_name: string | null;
   is_active: boolean | null;
+  avatar_url: string | null;
   role: string;
   membership_id: string; // organization_users.id
   membership_active: boolean | null;
