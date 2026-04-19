@@ -1,15 +1,20 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Plus, Trash2, Ticket as TicketIcon } from "lucide-react";
+import { Plus, Trash2, Pencil, Ticket as TicketIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { listTicketsForCourier, deleteTicket } from "@/services/actionTicketService";
+import {
+  listTicketsForCourier,
+  deleteTicket,
+  type ActionTicketWithProcedure,
+} from "@/services/actionTicketService";
 import { logEvent } from "@/services/courierEventService";
 import CreateTicketDialog from "./CreateTicketDialog";
 import SuggestedActionsCard from "./SuggestedActionsCard";
+import { UserAvatar } from "@/components/UserAvatar";
 
 interface Props {
   courierId: string;
@@ -28,10 +33,19 @@ function formatDate(iso: string) {
   });
 }
 
+function assigneeName(t: ActionTicketWithProcedure) {
+  if (!t.assignee) return null;
+  return (
+    [t.assignee.first_name, t.assignee.last_name].filter(Boolean).join(" ") ||
+    t.assignee.email
+  );
+}
+
 export default function LinkedActionsTab({ courierId, organizationId, readOnly = false }: Props) {
   const qc = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [initialDescription, setInitialDescription] = useState("");
+  const [editingTicket, setEditingTicket] = useState<ActionTicketWithProcedure | null>(null);
 
   const { data: tickets, isLoading } = useQuery({
     queryKey: ["action-tickets", courierId],
@@ -55,7 +69,14 @@ export default function LinkedActionsTab({ courierId, organizationId, readOnly =
   });
 
   const openCreate = (desc = "") => {
+    setEditingTicket(null);
     setInitialDescription(desc);
+    setDialogOpen(true);
+  };
+
+  const openEdit = (t: ActionTicketWithProcedure) => {
+    setEditingTicket(t);
+    setInitialDescription("");
     setDialogOpen(true);
   };
 
@@ -95,54 +116,88 @@ export default function LinkedActionsTab({ courierId, organizationId, readOnly =
           </Card>
         ) : (
           <div className="space-y-2">
-            {tickets.map((t) => (
-              <Card key={t.id} className="p-3">
-                <div className="flex items-start gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1 flex-wrap">
-                      <Badge
-                        variant="secondary"
-                        style={
-                          t.procedure?.color
-                            ? {
-                                backgroundColor: `${t.procedure.color}20`,
-                                color: t.procedure.color,
-                              }
-                            : undefined
-                        }
-                      >
-                        {t.procedure?.name ?? "Démarche"}
-                      </Badge>
-                      <span className="text-[10px] text-muted-foreground">
-                        Créé le {formatDate(t.created_at)}
-                      </span>
+            {tickets.map((t) => {
+              const aName = assigneeName(t);
+              return (
+                <Card key={t.id} className="p-3">
+                  <div className="flex items-start gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <Badge
+                          variant="secondary"
+                          style={
+                            t.procedure?.color
+                              ? {
+                                  backgroundColor: `${t.procedure.color}20`,
+                                  color: t.procedure.color,
+                                }
+                              : undefined
+                          }
+                        >
+                          {t.procedure?.name ?? "Démarche"}
+                        </Badge>
+                        {t.assignee ? (
+                          <span
+                            className="flex items-center gap-1.5 text-[11px] text-muted-foreground"
+                            title={`Affecté à ${aName}`}
+                          >
+                            <UserAvatar
+                              firstName={t.assignee.first_name}
+                              lastName={t.assignee.last_name}
+                              email={t.assignee.email}
+                              avatarUrl={t.assignee.avatar_url}
+                              className="h-5 w-5"
+                            />
+                            <span>{aName}</span>
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-muted-foreground italic">
+                            Non affecté
+                          </span>
+                        )}
+                        <span className="text-[10px] text-muted-foreground ml-auto">
+                          Créé le {formatDate(t.created_at)}
+                        </span>
+                      </div>
+                      {t.description ? (
+                        <p className="text-sm whitespace-pre-wrap break-words">
+                          {t.description}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground italic">
+                          Pas de descriptif
+                        </p>
+                      )}
                     </div>
-                    {t.description ? (
-                      <p className="text-sm whitespace-pre-wrap break-words">
-                        {t.description}
-                      </p>
-                    ) : (
-                      <p className="text-xs text-muted-foreground italic">
-                        Pas de descriptif
-                      </p>
-                    )}
+                    <div className="flex items-center gap-0.5 shrink-0">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                        onClick={() => openEdit(t)}
+                        disabled={readOnly}
+                        title={readOnly ? "Courrier archivé" : "Modifier"}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                        onClick={() => {
+                          if (confirm("Supprimer ce ticket ?")) {
+                            deleteMutation.mutate(t.id);
+                          }
+                        }}
+                        disabled={readOnly || deleteMutation.isPending}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </div>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0"
-                    onClick={() => {
-                      if (confirm("Supprimer ce ticket ?")) {
-                        deleteMutation.mutate(t.id);
-                      }
-                    }}
-                    disabled={readOnly || deleteMutation.isPending}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </Card>
-            ))}
+                </Card>
+              );
+            })}
           </div>
         )}
       </section>
@@ -160,6 +215,7 @@ export default function LinkedActionsTab({ courierId, organizationId, readOnly =
         courierId={courierId}
         organizationId={organizationId}
         initialDescription={initialDescription}
+        ticket={editingTicket}
       />
     </div>
   );
