@@ -1,4 +1,4 @@
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ChevronsUpDown, LogOut, User } from "lucide-react";
 import parametresIcon from "@/assets/icons/parametres.svg";
 import notchLogo from "@/assets/logo-notch.png";
@@ -15,6 +15,7 @@ import { useAuth } from "@/contexts/AuthContext";
 
 export function AppHeader() {
   const location = useLocation();
+  const navigate = useNavigate();
   const isSettings = location.pathname.startsWith("/parametres");
   const { profile, membership, signOut } = useAuth();
 
@@ -85,7 +86,7 @@ export function AppHeader() {
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="gap-2 cursor-pointer">
+            <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => navigate("/mon-profil")}>
               <User className="h-4 w-4" />
               Mon profil
             </DropdownMenuItem>
