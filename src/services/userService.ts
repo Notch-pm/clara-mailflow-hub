@@ -7,7 +7,7 @@ import type { OrgMember } from "@/types/user";
 export async function getOrgMembers(organizationId: string): Promise<OrgMember[]> {
   const { data, error } = await supabase
     .from("organization_users" as any)
-    .select("id, role, is_active, user_id, users:user_id(id, email, first_name, last_name, is_active)")
+    .select("id, role, is_active, user_id, users:user_id(id, email, first_name, last_name, is_active, avatar_url)")
     .eq("organization_id", organizationId);
 
   if (error) throw error;
@@ -19,6 +19,7 @@ export async function getOrgMembers(organizationId: string): Promise<OrgMember[]
     first_name: row.users.first_name,
     last_name: row.users.last_name,
     is_active: row.users.is_active,
+    avatar_url: row.users.avatar_url ?? null,
     role: row.role,
     membership_id: row.id,
     membership_active: row.is_active,
@@ -31,7 +32,7 @@ export async function getOrgMembers(organizationId: string): Promise<OrgMember[]
 export async function getOrgMember(organizationId: string, userId: string): Promise<OrgMember | null> {
   const { data, error } = await supabase
     .from("organization_users" as any)
-    .select("id, role, is_active, user_id, users:user_id(id, email, first_name, last_name, is_active)")
+    .select("id, role, is_active, user_id, users:user_id(id, email, first_name, last_name, is_active, avatar_url)")
     .eq("organization_id", organizationId)
     .eq("user_id", userId)
     .maybeSingle();
@@ -46,6 +47,7 @@ export async function getOrgMember(organizationId: string, userId: string): Prom
     first_name: row.users.first_name,
     last_name: row.users.last_name,
     is_active: row.users.is_active,
+    avatar_url: row.users.avatar_url ?? null,
     role: row.role,
     membership_id: row.id,
     membership_active: row.is_active,
