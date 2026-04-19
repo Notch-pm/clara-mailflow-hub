@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       action_tickets: {
         Row: {
+          assignee_id: string | null
           courier_id: string
           created_at: string
           created_by: string | null
@@ -27,6 +28,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          assignee_id?: string | null
           courier_id: string
           created_at?: string
           created_by?: string | null
@@ -38,6 +40,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          assignee_id?: string | null
           courier_id?: string
           created_at?: string
           created_by?: string | null
@@ -49,6 +52,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "action_tickets_assignee_id_fkey"
+            columns: ["assignee_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "action_tickets_courier_id_fkey"
             columns: ["courier_id"]
@@ -972,6 +982,7 @@ export type Database = {
       }
       users: {
         Row: {
+          avatar_url: string | null
           created_at: string
           email: string
           first_name: string | null
@@ -983,6 +994,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          avatar_url?: string | null
           created_at?: string
           email: string
           first_name?: string | null
@@ -994,6 +1006,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          avatar_url?: string | null
           created_at?: string
           email?: string
           first_name?: string | null
