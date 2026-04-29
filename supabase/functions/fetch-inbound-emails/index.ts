@@ -34,6 +34,10 @@ async function getCronSecret(admin: ReturnType<typeof createClient>): Promise<st
   }
 }
 
+const MAX_EMAILS_PER_RUN = 10;
+const MAX_EMAIL_BYTES = 2 * 1024 * 1024;       // 2 MB — emails plus lourds sont ignorés
+const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;  // 5 MB
+
 interface ImapSettings {
   id: string;
   organization_id: string;
@@ -44,6 +48,7 @@ interface ImapSettings {
   use_tls: boolean;
   folder: string;
   auto_fetch: boolean;
+  last_fetch_at?: string | null;
 }
 
 // ===================== Mini client IMAP =====================
@@ -168,13 +173,24 @@ class ImapClient {
   }
 
   /**
-   * Récupère uniquement les en-têtes (RFC822.HEADER) pour pouvoir lire le
-   * Message-ID sans télécharger tout le corps. Économise la bande passante.
+   * Récupère en un seul aller-retour la taille et le Message-ID.
+   * Permet de décider si l'email vaut la peine d'être téléchargé.
    */
-  async fetchHeaders(uid: number): Promise<string | null> {
-    const r = await this.command(`UID FETCH ${uid} BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)]`);
-    if (!r.ok || !r.literals[0]) return null;
-    return new TextDecoder("latin1").decode(r.literals[0]);
+  async fetchSizeAndMessageId(uid: number): Promise<{ size: number; messageId: string | null }> {
+    const r = await this.command(`UID FETCH ${uid} (RFC822.SIZE BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])`);
+    if (!r.ok) return { size: 0, messageId: null };
+    let size = 0;
+    for (const line of r.lines) {
+      const m = line.match(/RFC822\.SIZE\s+(\d+)/i);
+      if (m) { size = parseInt(m[1], 10); break; }
+    }
+    let messageId: string | null = null;
+    if (r.literals[0]) {
+      const header = new TextDecoder("latin1").decode(r.literals[0]);
+      const m = header.match(/Message-ID:\s*<([^>]+)>/i);
+      if (m) messageId = `<${m[1]}>`;
+    }
+    return { size, messageId };
   }
 
   async fetchMessage(uid: number): Promise<Uint8Array | null> {
@@ -239,25 +255,29 @@ async function processOrganization(
       initialStateId = initState?.id ?? null;
     }
 
-    // On scanne les emails reçus depuis 7 jours (au lieu de UNSEEN uniquement),
-    // ce qui permet de rattraper les mails déjà lus dans le webmail. La
-    // déduplication se fait sur Message-ID stocké dans couriers.metadata.
-    const sinceDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    // Utilise last_fetch_at comme point de départ (fallback : 7 jours).
+    // La déduplication par Message-ID évite les doublons.
     const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const sinceDate = s.last_fetch_at
+      ? new Date(new Date(s.last_fetch_at).getTime() - 60 * 60 * 1000) // 1h de recouvrement
+      : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const sinceStr = `${sinceDate.getUTCDate().toString().padStart(2,"0")}-${months[sinceDate.getUTCMonth()]}-${sinceDate.getUTCFullYear()}`;
 
-    const uids = await client.search(`SINCE ${sinceStr}`);
+    const allUids = await client.search(`SINCE ${sinceStr}`);
+    // On limite à MAX_EMAILS_PER_RUN en prenant les plus récents (UIDs les plus grands)
+    const uids = allUids.slice(-MAX_EMAILS_PER_RUN);
     for (const uid of uids) {
       try {
-        // 1) Lit d'abord juste l'en-tête pour récupérer Message-ID (économise la BP)
-        const headerRaw = await client.fetchHeaders(uid);
-        let earlyMessageId: string | null = null;
-        if (headerRaw) {
-          const m = headerRaw.match(/Message-ID:\s*<([^>]+)>/i);
-          if (m) earlyMessageId = `<${m[1]}>`;
+        // 1) Récupère taille + Message-ID en un seul aller-retour IMAP
+        const { size, messageId: earlyMessageId } = await client.fetchSizeAndMessageId(uid);
+
+        // 2) Email trop lourd : on le saute entièrement pour rester sous le quota mémoire
+        if (size > MAX_EMAIL_BYTES) {
+          console.error(`Email uid=${uid} ignoré (trop volumineux : ${size} bytes)`);
+          continue;
         }
 
-        // 2) Si déjà importé, on saute sans toucher au flag Seen côté serveur
+        // 3) Si déjà importé, on saute
         if (earlyMessageId) {
           const { data: dup } = await admin
             .from("couriers")
@@ -270,7 +290,6 @@ async function processOrganization(
 
         const raw = await client.fetchMessage(uid);
         if (!raw) continue;
-        // mailparser sous Deno ne supporte pas Uint8Array directement → on passe une string
         const rawStr = new TextDecoder("latin1").decode(raw);
         const parsed = await simpleParser(rawStr);
         const messageId = parsed.messageId || earlyMessageId || `imap-${s.organization_id}-${uid}`;
@@ -365,9 +384,14 @@ async function processOrganization(
           await admin.from("courier_participants").insert(participants);
         }
 
+        const ignoredAttachments: { name: string; size: number }[] = [];
         if (parsed.attachments?.length) {
           for (const att of parsed.attachments) {
             try {
+              if (att.content && (att.content as Uint8Array).byteLength > MAX_ATTACHMENT_BYTES) {
+                ignoredAttachments.push({ name: att.filename || "attachment", size: (att.content as Uint8Array).byteLength });
+                continue;
+              }
               const safeName = (att.filename || "attachment").replace(/[^\w.\-]+/g, "_");
               const storageKey = `org_${s.organization_id}/couriers/${courier.id}/${crypto.randomUUID()}-${safeName}`;
               const { error: upErr } = await admin.storage
@@ -393,6 +417,20 @@ async function processOrganization(
               console.error("Erreur traitement pièce jointe", e);
             }
           }
+        }
+
+        if (ignoredAttachments.length > 0) {
+          await admin.from("couriers").update({
+            metadata: {
+              email_message_id: messageId,
+              email_from: senderEmail,
+              email_to: s.username,
+              body_text: parsed.text || null,
+              body_html: parsed.html || null,
+              source: "imap",
+              ignored_attachments: ignoredAttachments,
+            },
+          }).eq("id", courier.id);
         }
 
         await admin.from("courier_events").insert({

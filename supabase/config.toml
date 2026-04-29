@@ -1,1 +1,4 @@
 project_id = "aullweizxcjbvtdspjli"
+
+[functions.fetch-inbound-emails]
+verify_jwt = false

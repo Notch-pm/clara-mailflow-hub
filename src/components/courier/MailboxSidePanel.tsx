@@ -52,7 +52,7 @@ interface MailboxCourier {
   subject: string | null;
   channel: CourierChannel;
   received_at: string | null;
-  metadata: any;
+  metadata: Record<string, unknown> | null;
   workflow_state_id: string | null;
   organization_id: string;
   assigned_service: string | null;
@@ -83,10 +83,10 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
   // Local copy of tags so the UI reflects mutations immediately
   // (the parent's `courier` prop is a snapshot and doesn't refetch on tag change).
   const [selectedTags, setSelectedTags] = useState<string[]>(
-    ((courier?.metadata as any)?.tags ?? []) as string[],
+    (courier?.metadata?.tags as string[] | undefined) ?? [],
   );
   useEffect(() => {
-    setSelectedTags(((courier?.metadata as any)?.tags ?? []) as string[]);
+    setSelectedTags((courier?.metadata?.tags as string[] | undefined) ?? []);
   }, [courier?.id, courier?.metadata]);
 
   // Available tags for the org
@@ -187,7 +187,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
       if (stateErr) throw stateErr;
 
       const previousService = courier.assigned_service ?? null;
-      const currentMeta = (courier.metadata as any) ?? {};
+      const currentMeta = courier.metadata ?? {};
       const { error } = await updateCourier(organizationId, courier.id, {
         assigned_service: newService.name,
         workflow_state_id: initial?.id ?? null,
@@ -235,13 +235,13 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
         .select("id, name, category")
         .eq("id", toStateId)
         .maybeSingle();
-      const { data: fromStateRow } = courier.workflow_state_id
-        ? await supabase
+      const fromStateRow = courier.workflow_state_id
+        ? (await supabase
             .from("workflow_states")
             .select("id, name, category")
             .eq("id", courier.workflow_state_id)
-            .maybeSingle()
-        : { data: null as any };
+            .maybeSingle()).data
+        : null;
 
       const { error } = await updateCourier(organizationId, courier.id, {
         workflow_state_id: toStateId,
@@ -277,7 +277,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
   const tagMutation = useMutation({
     mutationFn: async (updatedTags: string[]) => {
       if (!courier) return;
-      const currentMeta = (courier.metadata as any) ?? {};
+      const currentMeta = courier.metadata ?? {};
       const { error } = await updateCourier(organizationId, courier.id, {
         metadata: { ...currentMeta, tags: updatedTags },
       });
@@ -287,11 +287,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
       queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
       queryClient.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
     },
-    onError: (err: Error, _vars, ctx: any) => {
-      // rollback
-      if (ctx?.previous) setSelectedTags(ctx.previous);
-      toast.error(err.message);
-    },
+    onError: (err: Error) => toast.error(err.message),
   });
 
   function toggleTag(tagName: string) {
@@ -301,7 +297,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
       : [...selectedTags, tagName];
     const previous = selectedTags;
     setSelectedTags(next);
-    tagMutation.mutate(next, { onError: () => setSelectedTags(previous) } as any);
+    tagMutation.mutate(next, { onError: () => setSelectedTags(previous) });
   }
 
   function removeTag(tagName: string) {
@@ -310,7 +306,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
       (t) => t.toLowerCase() !== tagName.toLowerCase(),
     );
     setSelectedTags(next);
-    tagMutation.mutate(next, { onError: () => setSelectedTags(previous) } as any);
+    tagMutation.mutate(next, { onError: () => setSelectedTags(previous) });
   }
 
   // Documents for this courier
@@ -323,11 +319,11 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
   // If the courier metadata holds an email body (body_html / body_text), inject it as
   // a synthetic "first document" so it appears in the Aperçu just like an attachment.
   const displayDocuments = useMemo(() => {
-    const meta = (courier?.metadata as any) ?? {};
-    const html: string | null = meta.body_html ?? null;
-    const text: string | null = meta.body_text ?? null;
+    const meta = courier?.metadata ?? {};
+    const html = (meta.body_html as string | undefined) ?? null;
+    const text = (meta.body_text as string | undefined) ?? null;
     if (!html && !text) return documents;
-    const inlineDoc: any = {
+    const inlineDoc = {
       id: `inline:email-body:${courier?.id}`,
       courier_id: courier?.id,
       organization_id: organizationId,
@@ -351,7 +347,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
 
   // ── Inline edit handlers ────────────────────────────────────────────
 
-  async function persistCourierUpdate(patch: Record<string, any>, successMsg = "Modifié") {
+  async function persistCourierUpdate(patch: Record<string, unknown>, successMsg = "Modifié") {
     if (!courier) return;
     const { error } = await updateCourier(organizationId, courier.id, patch);
     if (error) {
@@ -390,8 +386,8 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
       queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
       queryClient.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
       toast.success("Modifié");
-    } catch (err: any) {
-      toast.error(err?.message ?? "Erreur lors de la modification");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erreur lors de la modification");
       throw err;
     }
   }
@@ -444,12 +440,12 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   </span>
                   {transitions.length <= 3 ? (
                     transitions.map((t) => {
-                      const category = (t.to_state as any)?.category as WorkflowCategory | undefined;
+                      const category = t.to_state?.category as WorkflowCategory | undefined;
                       return (
                         <Button
                           key={t.id}
                           size="sm"
-                          onClick={() => transitionMutation.mutate((t.to_state as any).id)}
+                          onClick={() => transitionMutation.mutate(t.to_state.id)}
                           disabled={transitionMutation.isPending}
                           className="gap-1.5"
                         >
@@ -463,7 +459,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                               !category && "bg-gray-300"
                             )}
                           />
-                          {t.name ?? (t.to_state as any)?.name ?? "Suivant"}
+                          {t.name ?? t.to_state?.name ?? "Suivant"}
                         </Button>
                       );
                     })
@@ -477,9 +473,9 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                       </SelectTrigger>
                       <SelectContent align="end">
                         {transitions.map((t) => {
-                          const category = (t.to_state as any)?.category as WorkflowCategory | undefined;
+                          const category = t.to_state?.category as WorkflowCategory | undefined;
                           return (
-                            <SelectItem key={t.id} value={(t.to_state as any).id}>
+                            <SelectItem key={t.id} value={t.to_state.id}>
                               <div className="flex items-center gap-2">
                                 <span
                                   className={cn(
@@ -491,7 +487,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                                     !category && "bg-gray-300"
                                   )}
                                 />
-                                <span>{t.name ?? (t.to_state as any)?.name ?? "Suivant"}</span>
+                                <span>{t.name ?? t.to_state?.name ?? "Suivant"}</span>
                               </div>
                             </SelectItem>
                           );
@@ -783,6 +779,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 selectedDocId={selectedDocId}
                 onSelectDoc={setSelectedDocId}
                 readOnly={readOnly}
+                ignoredAttachments={(courier.metadata?.ignored_attachments as { name: string; size: number }[] | undefined) ?? []}
               />
             </div>
 

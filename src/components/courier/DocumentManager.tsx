@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { FileUp, FileText, Trash2, Paperclip, FileOutput, Download, Upload, X, Loader2 } from "lucide-react";
+import { FileUp, FileText, Trash2, Paperclip, FileOutput, Download, Upload, X, Loader2, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -48,6 +48,11 @@ function formatFileSize(bytes?: number | null): string {
 
 // ── Component ───────────────────────────────────────────────────────────
 
+interface IgnoredAttachment {
+  name: string;
+  size: number;
+}
+
 interface DocumentManagerProps {
   courierId: string;
   organizationId: string;
@@ -55,6 +60,7 @@ interface DocumentManagerProps {
   onSelectDoc?: (id: string) => void;
   /** When true, disable upload + delete; only allow viewing/downloading. */
   readOnly?: boolean;
+  ignoredAttachments?: IgnoredAttachment[];
 }
 
 export default function DocumentManager({
@@ -63,6 +69,7 @@ export default function DocumentManager({
   selectedDocId,
   onSelectDoc,
   readOnly = false,
+  ignoredAttachments = [],
 }: DocumentManagerProps) {
   const queryClient = useQueryClient();
   const queryKey = ["courier-documents", courierId];
@@ -248,6 +255,21 @@ export default function DocumentManager({
               e.target.value = "";
             }}
           />
+        </div>
+      )}
+
+      {/* Ignored attachments warning */}
+      {ignoredAttachments.length > 0 && (
+        <div className="space-y-1.5">
+          {ignoredAttachments.map((att, i) => (
+            <div key={i} className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-500" />
+              <span>
+                Pièce jointe ignorée car trop volumineuse&nbsp;: <span className="font-medium">{att.name}</span>{" "}
+                <span className="text-amber-600">({formatFileSize(att.size)})</span>
+              </span>
+            </div>
+          ))}
         </div>
       )}
 

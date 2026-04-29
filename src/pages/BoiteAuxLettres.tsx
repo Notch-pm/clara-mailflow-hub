@@ -1,4 +1,5 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -23,6 +24,7 @@ import { toast } from "@/hooks/use-toast";
 import MailboxSidePanel from "@/components/courier/MailboxSidePanel";
 import NewCourierDialog from "@/components/courier/NewCourierDialog";
 import mailboxIcon from "@/assets/icons/mailbox.svg";
+import type { CourierWithRelations } from "@/types/courier";
 
 const LAST_LOGIN_KEY = "clara_last_login_at";
 
@@ -37,7 +39,7 @@ export function recordLogin() {
 export default function BoiteAuxLettres() {
   const { organizationId } = useOrganization();
   const queryClient = useQueryClient();
-  const [courierToDelete, setCourierToDelete] = useState<any | null>(null);
+  const [courierToDelete, setCourierToDelete] = useState<CourierWithRelations | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   async function handleConfirmDelete() {
@@ -59,11 +61,14 @@ export default function BoiteAuxLettres() {
     queryClient.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
   }
   const [search, setSearch] = useState("");
-  const [selectedCourier, setSelectedCourier] = useState<any | null>(null);
+  const [selectedCourier, setSelectedCourier] = useState<CourierWithRelations | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [newDialogOpen, setNewDialogOpen] = useState(false);
 
+  const [searchParams, setSearchParams] = useSearchParams();
   const lastLogin = useMemo(() => getLastLogin(), []);
+  // Heure d'ouverture de la page — pour détecter les courriers arrivés pendant la session
+  const pageOpenTime = useRef(new Date().toISOString());
 
   // 1. Fetch initial workflow state IDs for this org
   const { data: initialStateIds } = useQuery({
@@ -133,14 +138,50 @@ export default function BoiteAuxLettres() {
     });
   }, [couriers, unassignedCouriers]);
 
-  function isNew(courier: any): boolean {
+  // Arrivé depuis la dernière visite (ou depuis l'ouverture de la page si première visite)
+  // Ouvre automatiquement le volet si ?open=<id> est présent (ex: depuis une notification)
+  useEffect(() => {
+    const openId = searchParams.get("open");
+    if (!openId || !organizationId) return;
+
+    const fromList = allCouriers.find((c) => c.id === openId);
+    if (fromList) {
+      setSelectedCourier(fromList);
+      setPanelOpen(true);
+      setSearchParams({}, { replace: true });
+      return;
+    }
+
+    // Le courrier n'est pas dans la liste filtrée (état avancé) : on le récupère directement
+    supabase
+      .from("couriers")
+      .select("*, courier_participants(*)")
+      .eq("id", openId)
+      .eq("organization_id", organizationId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          setSelectedCourier(data as CourierWithRelations);
+          setPanelOpen(true);
+        }
+        setSearchParams({}, { replace: true });
+      });
+  }, [searchParams, allCouriers, organizationId]);
+
+  function isNew(courier: CourierWithRelations): boolean {
     if (!lastLogin) return false;
     const receivedAt = courier.received_at ?? courier.created_at;
     return new Date(receivedAt) > new Date(lastLogin);
   }
 
-  function getSender(courier: any): { last: string; first: string } {
-    const p = courier.courier_participants?.find((p: any) => p.role === "sender");
+  // Arrivé pendant que l'utilisateur est sur cette page (via cron)
+  function isNewThisSession(courier: CourierWithRelations): boolean {
+    const receivedAt = courier.received_at ?? courier.created_at;
+    return new Date(receivedAt) > new Date(pageOpenTime.current);
+  }
+
+  function getSender(courier: CourierWithRelations): { last: string; first: string } {
+    const p = courier.courier_participants?.find((p) => p.role === "sender");
     if (!p) return { last: "—", first: "—" };
     return {
       last: p.last_name ?? p.name ?? p.email ?? "—",
@@ -148,12 +189,12 @@ export default function BoiteAuxLettres() {
     };
   }
 
-  function getRecipient(courier: any): string {
-    const p = courier.courier_participants?.find((p: any) => p.role === "recipient");
+  function getRecipient(courier: CourierWithRelations): string {
+    const p = courier.courier_participants?.find((p) => p.role === "recipient");
     return p?.last_name ?? p?.name ?? p?.email ?? "—";
   }
 
-  function handleRowClick(courier: any) {
+  function handleRowClick(courier: CourierWithRelations) {
     setSelectedCourier(courier);
     setPanelOpen(true);
   }
@@ -224,16 +265,21 @@ export default function BoiteAuxLettres() {
             <TableBody>
               {allCouriers.map((c) => {
                 const isNewCourier = isNew(c);
+                const isJustArrived = isNewThisSession(c);
                 const sender = getSender(c);
                 return (
                   <TableRow
                     key={c.id}
-                    className="cursor-pointer hover:bg-muted/50"
                     onClick={() => handleRowClick(c)}
+                    className={[
+                      "cursor-pointer hover:bg-muted/50 transition-colors",
+                      isNewCourier ? "border-l-[3px] border-l-secondary" : "border-l-[3px] border-l-transparent",
+                      isJustArrived ? "bg-secondary/10" : "",
+                    ].join(" ")}
                   >
                     <TableCell className="w-10">
                       {isNewCourier && (
-                        <Sparkles className="h-4 w-4 text-amber-500" />
+                        <Sparkles className={`h-4 w-4 ${isJustArrived ? "text-secondary animate-pulse" : "text-secondary/70"}`} />
                       )}
                     </TableCell>
                     <TableCell className="text-sm">
