@@ -85,14 +85,14 @@ export default function SmtpSettings({ orgId }: { orgId: string }) {
     mutationFn: async () => {
       if (settings?.id) {
         const { error } = await supabase
-          .from("smtp_settings" as never)
-          .update({ ...form, updated_at: new Date().toISOString() })
+          .from("smtp_settings")
+          .update({ ...form, updated_at: new Date().toISOString() } as never)
           .eq("id", settings.id);
         if (error) throw error;
       } else {
         const { error } = await supabase
-          .from("smtp_settings" as never)
-          .insert({ ...form, organization_id: orgId });
+          .from("smtp_settings")
+          .insert({ ...form, organization_id: orgId } as never);
         if (error) throw error;
       }
     },

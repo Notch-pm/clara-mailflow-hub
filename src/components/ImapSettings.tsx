@@ -120,14 +120,14 @@ export default function ImapSettings({ orgId }: { orgId: string }) {
     mutationFn: async () => {
       if (editingRow) {
         const { error } = await supabase
-          .from("imap_settings" as never)
-          .update({ ...form, updated_at: new Date().toISOString() })
+          .from("imap_settings")
+          .update({ ...form, updated_at: new Date().toISOString() } as never)
           .eq("id", editingRow.id);
         if (error) throw error;
       } else {
         const { error } = await supabase
-          .from("imap_settings" as never)
-          .insert({ ...form, organization_id: orgId });
+          .from("imap_settings")
+          .insert({ ...form, organization_id: orgId } as never);
         if (error) throw error;
       }
     },

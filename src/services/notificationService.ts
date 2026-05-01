@@ -13,7 +13,7 @@ export interface Notification {
 
 export async function getNotifications(userId: string): Promise<Notification[]> {
   const { data, error } = await supabase
-    .from("notifications" as never)
+    .from("notifications")
     .select("*")
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
@@ -24,16 +24,16 @@ export async function getNotifications(userId: string): Promise<Notification[]> 
 
 export async function markNotificationRead(id: string): Promise<void> {
   const { error } = await supabase
-    .from("notifications" as never)
-    .update({ read: true })
+    .from("notifications")
+    .update({ read: true } as never)
     .eq("id", id);
   if (error) throw error;
 }
 
 export async function markAllNotificationsRead(userId: string): Promise<void> {
   const { error } = await supabase
-    .from("notifications" as never)
-    .update({ read: true })
+    .from("notifications")
+    .update({ read: true } as never)
     .eq("user_id", userId)
     .eq("read", false);
   if (error) throw error;
