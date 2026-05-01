@@ -326,7 +326,7 @@ export default function BoiteAuxLettres() {
           open={panelOpen}
           onOpenChange={setPanelOpen}
           organizationId={organizationId}
-          onDelete={(c) => setCourierToDelete(c)}
+          onDelete={(c) => setCourierToDelete(c as unknown as CourierWithRelations)}
         />
       )}
 
