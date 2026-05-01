@@ -377,7 +377,7 @@ export default function WorkflowDetail() {
       </div>
 
       <div className="flex flex-1 overflow-hidden">
-        <WorkflowToolbar onAddState={handleAddState} onSave={handleSave} saving={saving} />
+        <WorkflowToolbar onAddState={handleAddState} onSave={handleSave} saving={saving} workflowType={(workflow as any)?.type ?? null} />
 
         <div className="flex-1">
           <ReactFlow
