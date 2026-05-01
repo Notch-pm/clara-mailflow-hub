@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Mail, Send, Save, ArrowRight, Lock, PenLine } from "lucide-react";
+import { Mail, Send, Save, ArrowRight, Lock, PenLine, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -23,7 +23,10 @@ import {
   createReply,
   updateReplyContent,
   transitionReplyState,
+  signReply,
 } from "@/services/courierReplyService";
+import { getSignatureUrl } from "@/services/signatoryService";
+import { useAuth } from "@/contexts/AuthContext";
 import type { CourierChannel, CourierParticipant } from "@/types/courier";
 import { cn } from "@/lib/utils";
 
@@ -33,6 +36,7 @@ interface ServiceSignatory {
   last_name: string;
   title: string | null;
   user_id: string | null;
+  signature_storage_key: string | null;
 }
 
 interface Props {
@@ -45,7 +49,6 @@ interface Props {
   onStateChange?: (state: { name: string; category: string | null } | null) => void;
 }
 
-
 export default function ReplyComposer({
   courierId,
   organizationId,
@@ -56,6 +59,8 @@ export default function ReplyComposer({
   onStateChange,
 }: Props) {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const currentUserId = user?.id ?? null;
 
   const senderEmail = sender?.email?.trim() || null;
   const canEmail = !!senderEmail;
@@ -94,7 +99,7 @@ export default function ReplyComposer({
     queryFn: async (): Promise<ServiceSignatory[]> => {
       const { data, error } = await supabase
         .from("service_signatories")
-        .select("signatory:signatories(id, first_name, last_name, title, user_id)")
+        .select("signatory:signatories(id, first_name, last_name, title, user_id, signature_storage_key)")
         .eq("service_id", currentService!.id);
       if (error) throw error;
       return (data ?? [])
@@ -132,8 +137,16 @@ export default function ReplyComposer({
     return workflow.states.find((s) => s.id === stateId) ?? workflow.initialState ?? null;
   }, [workflow, reply]);
 
+  const replyMeta = (reply?.metadata as { signed_at?: string | null; signed_by?: string | null } | null) ?? {};
+  const isSigned = !!replyMeta.signed_at;
+  const isSignatureState = (currentState as any)?.requires_signature === true;
   const isFinal = currentState?.category === "processed" || currentState?.is_final === true;
-  const editorDisabled = !!readOnly || isFinal;
+  const editorDisabled = !!readOnly || isFinal || isSigned;
+
+  const selectedSignatory = useMemo(
+    () => serviceSignatories.find((s) => s.id === signatoryId) ?? null,
+    [serviceSignatories, signatoryId],
+  );
 
   // Bubble up the current state so the parent can show it in the tab label.
   useEffect(() => {
@@ -157,7 +170,6 @@ export default function ReplyComposer({
   async function ensureReply(): Promise<{ id: string }> {
     const sigPayload = signatoryId ? signatoryId : null;
     if (reply) {
-      // Persist current channel + body + signatory before any state change
       await updateReplyContent(organizationId, reply.id, {
         channel,
         bodyHtml: body,
@@ -206,6 +218,9 @@ export default function ReplyComposer({
       if (target.requires_signature && !signatoryId) {
         throw new Error("Veuillez sélectionner un signataire avant de passer à cet état.");
       }
+      if (isSignatureState && !isSigned) {
+        throw new Error("La signature doit être apposée avant de passer à un état suivant.");
+      }
       const ensured = await ensureReply();
       await transitionReplyState(
         organizationId,
@@ -227,7 +242,57 @@ export default function ReplyComposer({
     onError: (err: Error) => toast.error(err.message),
   });
 
-  const isBusy = saveDraft.isPending || transition.isPending;
+  const signMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedSignatory) throw new Error("Aucun signataire sélectionné.");
+      if (!selectedSignatory.signature_storage_key) {
+        throw new Error("Aucune signature manuscrite enregistrée pour ce signataire.");
+      }
+      if (!currentUserId || selectedSignatory.user_id !== currentUserId) {
+        throw new Error("Vous n'êtes pas le signataire désigné.");
+      }
+      const url = await getSignatureUrl(selectedSignatory.signature_storage_key);
+      if (!url) throw new Error("Impossible de charger l'image de signature.");
+
+      const fullName = `${selectedSignatory.first_name} ${selectedSignatory.last_name}`.trim();
+      const titleHtml = selectedSignatory.title
+        ? `<p style="margin:0;font-style:italic;color:#555;">${escapeHtml(selectedSignatory.title)}</p>`
+        : "";
+      const signatureBlock = `
+<div data-signature-block="true" style="margin-top:32px;padding-top:16px;border-top:1px solid #e5e7eb;">
+  <p style="margin:0;font-weight:600;">${escapeHtml(fullName)}</p>
+  ${titleHtml}
+  <img src="${url}" alt="Signature" style="height:80px;margin-top:8px;object-fit:contain;" />
+</div>`.trim();
+
+      const newBody = `${body}${signatureBlock}`;
+
+      const ensured = await ensureReply();
+      await signReply(organizationId, courierId, ensured.id, {
+        bodyHtml: newBody,
+        signedBy: currentUserId,
+      });
+    },
+    onSuccess: () => {
+      setDirty(false);
+      queryClient.invalidateQueries({ queryKey: ["courier-reply", courierId] });
+      queryClient.invalidateQueries({ queryKey: ["courier-events", courierId] });
+      refetchReply();
+      toast.success("Réponse signée");
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const isBusy = saveDraft.isPending || transition.isPending || signMutation.isPending;
+
+  // ─── Sign button gating ─────────────────────────────────────────────
+  let signDisabledReason: string | null = null;
+  if (!signatoryId) signDisabledReason = "Sélectionnez d'abord un signataire.";
+  else if (!selectedSignatory) signDisabledReason = "Signataire introuvable.";
+  else if (!selectedSignatory.user_id || selectedSignatory.user_id !== currentUserId)
+    signDisabledReason = "Vous n'êtes pas le signataire désigné.";
+  else if (!selectedSignatory.signature_storage_key)
+    signDisabledReason = "Aucune signature manuscrite enregistrée pour ce signataire.";
 
   // ─── Render ─────────────────────────────────────────────────────────
 
@@ -246,6 +311,26 @@ export default function ReplyComposer({
       </div>
     );
   }
+
+  const renderMaybeTooltip = (node: React.ReactNode, reason: string | null, key?: string) => {
+    if (!reason) return node;
+    return (
+      <Tooltip key={key}>
+        <TooltipTrigger asChild>
+          <span tabIndex={0} className="inline-flex">{node}</span>
+        </TooltipTrigger>
+        <TooltipContent>{reason}</TooltipContent>
+      </Tooltip>
+    );
+  };
+
+  const saveDisabledReason = isSigned
+    ? "Réponse verrouillée (signée)."
+    : isFinal
+      ? "Réponse verrouillée."
+      : !dirty && !!reply
+        ? "Aucune modification à enregistrer."
+        : null;
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
@@ -333,15 +418,43 @@ export default function ReplyComposer({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => saveDraft.mutate()}
-            disabled={isBusy || editorDisabled || (!dirty && !!reply)}
-          >
-            <Save className="mr-1.5 h-4 w-4" />
-            Enregistrer le brouillon
-          </Button>
+          {renderMaybeTooltip(
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => saveDraft.mutate()}
+              disabled={isBusy || editorDisabled || (!dirty && !!reply)}
+            >
+              <Save className="mr-1.5 h-4 w-4" />
+              Enregistrer le brouillon
+            </Button>,
+            saveDisabledReason,
+            "save-btn",
+          )}
+
+          {/* Bouton Signer (visible uniquement sur état signature non encore signé) */}
+          {isSignatureState && !isSigned && (
+            renderMaybeTooltip(
+              <Button
+                size="sm"
+                variant="default"
+                onClick={() => signMutation.mutate()}
+                disabled={isBusy || readOnly || !!signDisabledReason}
+              >
+                <PenLine className="mr-1.5 h-4 w-4" />
+                Signer
+              </Button>,
+              signDisabledReason,
+              "sign-btn",
+            )
+          )}
+
+          {isSigned && (
+            <Badge variant="secondary" className="gap-1 bg-emerald-100 text-emerald-700 border-emerald-200">
+              <CheckCircle2 className="h-3 w-3" /> Signée
+            </Badge>
+          )}
+
           {outgoingTransitions.length === 0 && !isFinal && (
             <span className="text-xs text-muted-foreground italic">
               Aucune transition définie depuis cet état.
@@ -351,7 +464,14 @@ export default function ReplyComposer({
             const isSend =
               target.category === "processed" && (channel === "email" || target.name.toLowerCase().includes("répond"));
             const requiresSig = (target as any).requires_signature === true;
-            const blocked = requiresSig && !signatoryId;
+
+            // Reasons to disable a transition button
+            let reason: string | null = null;
+            if (requiresSig && !signatoryId) reason = "Sélectionnez d'abord un signataire.";
+            else if (isSignatureState && !isSigned) reason = "En attente de la signature.";
+
+            const blocked = !!reason;
+
             const btn = (
               <Button
                 key={t.id}
@@ -372,17 +492,7 @@ export default function ReplyComposer({
                 {t.name || target.name}
               </Button>
             );
-            if (blocked) {
-              return (
-                <Tooltip key={t.id}>
-                  <TooltipTrigger asChild>
-                    <span tabIndex={0}>{btn}</span>
-                  </TooltipTrigger>
-                  <TooltipContent>Sélectionnez d'abord un signataire.</TooltipContent>
-                </Tooltip>
-              );
-            }
-            return btn;
+            return renderMaybeTooltip(btn, reason, t.id);
           })}
           {isFinal && (
             <Badge variant="secondary" className="gap-1">
@@ -410,4 +520,13 @@ export default function ReplyComposer({
       />
     </div>
   );
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
