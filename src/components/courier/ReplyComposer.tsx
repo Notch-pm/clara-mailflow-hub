@@ -29,12 +29,6 @@ interface Props {
   onStateChange?: (state: { name: string; category: string | null } | null) => void;
 }
 
-const stateColors: Record<string, string> = {
-  pending: "bg-yellow-500",
-  processing: "bg-blue-500",
-  processed: "bg-green-500",
-  archived: "bg-gray-500",
-};
 
 export default function ReplyComposer({
   courierId,
