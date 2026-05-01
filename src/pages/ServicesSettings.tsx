@@ -44,6 +44,14 @@ import {
   deleteService,
   type OrgService,
 } from "@/services/orgServiceService";
+import {
+  listSignatories,
+  listServiceSignatoryIds,
+  setServiceSignatories,
+  type Signatory,
+} from "@/services/signatoryService";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 
 interface ImapConfig {
   id: string;
