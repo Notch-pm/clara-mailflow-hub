@@ -442,13 +442,15 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
 
   const body = (
     <>
-      <SheetHeader className="px-6 pt-6 pb-3 border-b shrink-0">
+      <div className="flex flex-col space-y-2 text-center sm:text-left px-6 pt-6 pb-3 border-b shrink-0">
           <div className="flex items-start justify-between gap-4 pr-8">
             <div className="flex-1 min-w-0 flex items-center gap-3 flex-wrap">
               <div className="min-w-0 flex-1">
-                <SheetTitle className="text-lg sr-only">
-                  {courier.subject ?? "Sans titre"}
-                </SheetTitle>
+                {!fullScreen && (
+                  <SheetTitle className="text-lg sr-only">
+                    {courier.subject ?? "Sans titre"}
+                  </SheetTitle>
+                )}
                 <InlineEditField
                   label=""
                   value={courier.subject ?? ""}
