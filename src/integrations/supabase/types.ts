@@ -578,6 +578,7 @@ export type Database = {
           folder: string
           host: string
           id: string
+          label: string
           last_error: string | null
           last_fetch_at: string | null
           organization_id: string
@@ -593,6 +594,7 @@ export type Database = {
           folder?: string
           host?: string
           id?: string
+          label?: string
           last_error?: string | null
           last_fetch_at?: string | null
           organization_id: string
@@ -608,6 +610,7 @@ export type Database = {
           folder?: string
           host?: string
           id?: string
+          label?: string
           last_error?: string | null
           last_fetch_at?: string | null
           organization_id?: string
@@ -621,8 +624,56 @@ export type Database = {
           {
             foreignKeyName: "imap_settings_organization_id_fkey"
             columns: ["organization_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notifications: {
+        Row: {
+          created_at: string
+          id: string
+          organization_id: string
+          read: boolean
+          resource_id: string | null
+          title: string | null
+          type: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          organization_id: string
+          read?: boolean
+          resource_id?: string | null
+          title?: string | null
+          type?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          organization_id?: string
+          read?: boolean
+          resource_id?: string | null
+          title?: string | null
+          type?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]
@@ -722,6 +773,7 @@ export type Database = {
           id: string
           logo_url: string | null
           metadata: Json
+          multiple_imap: boolean
           name: string
           primary_color: string | null
           secondary_color: string | null
@@ -734,6 +786,7 @@ export type Database = {
           id?: string
           logo_url?: string | null
           metadata?: Json
+          multiple_imap?: boolean
           name: string
           primary_color?: string | null
           secondary_color?: string | null
@@ -746,6 +799,7 @@ export type Database = {
           id?: string
           logo_url?: string | null
           metadata?: Json
+          multiple_imap?: boolean
           name?: string
           primary_color?: string | null
           secondary_color?: string | null
@@ -846,6 +900,7 @@ export type Database = {
           created_by: string | null
           email: string | null
           id: string
+          imap_settings_id: string | null
           name: string
           organization_id: string
           updated_at: string
@@ -856,6 +911,7 @@ export type Database = {
           created_by?: string | null
           email?: string | null
           id?: string
+          imap_settings_id?: string | null
           name: string
           organization_id: string
           updated_at?: string
@@ -866,12 +922,20 @@ export type Database = {
           created_by?: string | null
           email?: string | null
           id?: string
+          imap_settings_id?: string | null
           name?: string
           organization_id?: string
           updated_at?: string
           workflow_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "services_imap_settings_id_fkey"
+            columns: ["imap_settings_id"]
+            isOneToOne: false
+            referencedRelation: "imap_settings"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "services_organization_id_fkey"
             columns: ["organization_id"]
