@@ -559,6 +559,18 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   <Maximize2 className="h-4 w-4" />
                 </Button>
               )}
+              {fullScreen && (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
+                  onClick={() => onOpenChange(false)}
+                  title="Fermer"
+                  aria-label="Fermer le courrier"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
               {!readOnly && onDelete && (
                 <Button
                   size="icon"
@@ -575,7 +587,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
           </div>
         </div>
 
-        <Tabs defaultValue="detail" className="flex-1 overflow-hidden flex flex-col mb-px">
+        <Tabs defaultValue="detail" className="flex-1 min-h-0 overflow-hidden flex flex-col mb-px">
           {withTabs && (
             <TabsList className="mx-6 self-start shrink-0 mt-[4px] mb-[4px]">
               <TabsTrigger value="detail">Détail du courrier</TabsTrigger>
@@ -962,7 +974,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
 
   if (fullScreen) {
     return (
-      <div className="flex flex-col h-[calc(100vh-3rem)] overflow-hidden bg-background">
+      <div className="flex flex-col h-full min-h-[calc(100vh-7rem)] overflow-hidden bg-background rounded-md border shadow-sm">
         {body}
       </div>
     );
