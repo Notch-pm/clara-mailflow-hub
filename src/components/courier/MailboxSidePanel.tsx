@@ -39,6 +39,7 @@ import DocumentManager from "./DocumentManager";
 import DocumentViewer from "./DocumentViewer";
 import InlineEditField from "./InlineEditField";
 import CourierNotes from "./CourierNotes";
+import ParticipantManager from "./ParticipantManager";
 import CourierHistoryTab from "./CourierHistoryTab";
 import ContentIntentsTab from "./ContentIntentsTab";
 import LinkedActionsTab from "./LinkedActionsTab";
@@ -593,6 +594,9 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 )}
               </TabsTrigger>
               <TabsTrigger value="notes">Notes internes</TabsTrigger>
+              <TabsTrigger value="participants">
+                Participants ({participants.length})
+              </TabsTrigger>
               <TabsTrigger value="history">Historique</TabsTrigger>
             </TabsList>
           )}
@@ -925,6 +929,15 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   courierId={courier.id}
                   organizationId={organizationId}
                   readOnly={readOnly || isFinalState}
+                />
+              </TabsContent>
+              <TabsContent
+                value="participants"
+                className="flex-1 overflow-y-auto px-6 py-5 mt-0"
+              >
+                <ParticipantManager
+                  courierId={courier.id}
+                  organizationId={organizationId}
                 />
               </TabsContent>
               <TabsContent
