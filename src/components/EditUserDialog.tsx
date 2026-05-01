@@ -63,7 +63,13 @@ export function EditUserDialog({ member, organizationId, onClose }: Props) {
   const updateMutation = useMutation({
     mutationFn: async (values: z.infer<typeof editSchema>) => {
       if (!member) throw new Error("Aucun utilisateur sélectionné");
-      await updateOrgMember(organizationId, member.id, member.membership_id, values);
+      await updateOrgMember(organizationId, member.id, member.membership_id, {
+        first_name: values.first_name,
+        last_name: values.last_name,
+        role: values.role,
+        is_signataire: values.is_signataire,
+        signataire_title: values.is_signataire ? (values.signataire_title?.trim() || null) : null,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["org-members"] });
