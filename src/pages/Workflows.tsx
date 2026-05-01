@@ -61,13 +61,15 @@ export default function Workflows() {
   const createMutation = useMutation({
     mutationFn: async () => {
       if (!organizationId) throw new Error("Pas d'organisation");
-      const { error } = await createWorkflow(organizationId, newName.trim());
+      if (!newType) throw new Error("Type requis");
+      const { error } = await createWorkflow(organizationId, newName.trim(), newType);
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["workflows"] });
       setCreateOpen(false);
       setNewName("");
+      setNewType("");
       toast({ title: "Workflow créé" });
     },
     onError: (err: any) => toast({ title: "Erreur", description: err.message, variant: "destructive" }),
