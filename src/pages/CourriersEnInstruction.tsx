@@ -94,6 +94,7 @@ export default function CourriersEnInstruction() {
         .from("couriers")
         .select("*, courier_participants(*)")
         .eq("organization_id", organizationId)
+        .eq("direction", "inbound")
         .in("workflow_state_id", stateIds)
         .order("updated_at", { ascending: false });
       if (search) q = q.ilike("subject", `%${search}%`);
