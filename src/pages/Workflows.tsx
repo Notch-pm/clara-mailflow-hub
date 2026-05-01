@@ -44,6 +44,7 @@ export default function Workflows() {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState("");
+  const [newType, setNewType] = useState<WorkflowType | "">("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const { data: workflows, isLoading } = useQuery({
