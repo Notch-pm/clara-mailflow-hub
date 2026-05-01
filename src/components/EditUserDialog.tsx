@@ -22,12 +22,18 @@ const ROLES = [
   { value: "consultant", label: "Consultant" },
 ] as const;
 
-const editSchema = z.object({
-  first_name: z.string().min(1, "Prénom obligatoire").max(100),
-  last_name: z.string().min(1, "Nom obligatoire").max(100),
-  role: z.enum(["administrateur", "gestionnaire", "consultant"], { required_error: "Rôle obligatoire" }),
-  is_signataire: z.boolean().default(false),
-});
+const editSchema = z
+  .object({
+    first_name: z.string().min(1, "Prénom obligatoire").max(100),
+    last_name: z.string().min(1, "Nom obligatoire").max(100),
+    role: z.enum(["administrateur", "gestionnaire", "consultant"], { required_error: "Rôle obligatoire" }),
+    is_signataire: z.boolean().default(false),
+    signataire_title: z.string().max(150, "150 caractères maximum").optional().or(z.literal("")),
+  })
+  .refine((d) => !d.is_signataire || (d.signataire_title && d.signataire_title.trim().length > 0), {
+    message: "Titre obligatoire pour un signataire",
+    path: ["signataire_title"],
+  });
 
 interface Props {
   member: OrgMember | null;
@@ -47,14 +53,23 @@ export function EditUserDialog({ member, organizationId, onClose }: Props) {
           last_name: member.last_name ?? "",
           role: member.role as "administrateur" | "gestionnaire" | "consultant",
           is_signataire: member.is_signataire ?? false,
+          signataire_title: member.signataire_title ?? "",
         }
-      : { first_name: "", last_name: "", role: "consultant" as const, is_signataire: false },
+      : { first_name: "", last_name: "", role: "consultant" as const, is_signataire: false, signataire_title: "" },
   });
+
+  const isSignataire = form.watch("is_signataire");
 
   const updateMutation = useMutation({
     mutationFn: async (values: z.infer<typeof editSchema>) => {
       if (!member) throw new Error("Aucun utilisateur sélectionné");
-      await updateOrgMember(organizationId, member.id, member.membership_id, values);
+      await updateOrgMember(organizationId, member.id, member.membership_id, {
+        first_name: values.first_name,
+        last_name: values.last_name,
+        role: values.role,
+        is_signataire: values.is_signataire,
+        signataire_title: values.is_signataire ? (values.signataire_title?.trim() || null) : null,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["org-members"] });
@@ -191,6 +206,17 @@ export function EditUserDialog({ member, organizationId, onClose }: Props) {
                     </FormControl>
                   </FormItem>
                 )} />
+                {isSignataire && (
+                  <FormField control={form.control} name="signataire_title" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Titre du signataire</FormLabel>
+                      <FormControl>
+                        <Input placeholder="ex. Maire, Directeur général…" maxLength={150} {...field} value={field.value ?? ""} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                )}
                 <Button type="submit" className="w-full" disabled={updateMutation.isPending}>
                   {updateMutation.isPending ? "Enregistrement..." : "Enregistrer"}
                 </Button>

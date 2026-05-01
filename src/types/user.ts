@@ -30,6 +30,7 @@ export interface OrganizationUser {
   role: string;
   is_active: boolean | null;
   is_signataire: boolean;
+  signataire_title: string | null;
   created_at: string;
 }
 
@@ -40,6 +41,7 @@ export interface OrganizationUserInsert {
   role: string;
   is_active?: boolean | null;
   is_signataire?: boolean;
+  signataire_title?: string | null;
 }
 
 export interface OrgRole {
@@ -59,6 +61,7 @@ export interface OrgMember {
   avatar_url: string | null;
   role: string;
   is_signataire: boolean;
+  signataire_title: string | null;
   membership_id: string; // organization_users.id
   membership_active: boolean | null;
 }
