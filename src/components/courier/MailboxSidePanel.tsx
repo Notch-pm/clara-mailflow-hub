@@ -641,24 +641,22 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 }
               />
 
-              <div className="flex items-start gap-1">
-                <div className="flex-1 min-w-0">
-                  <InlineEditField
-                    label="Expéditeur (nom)"
-                    value={sender?.name ?? ""}
-                    placeholder="Nom de l'expéditeur"
-                    maxLength={150}
-                    readOnly={readOnly}
-                    onSave={(v) => upsertParticipant("sender", { name: v.trim() || null })}
-                  />
-                </div>
+              <div className="relative">
+                <InlineEditField
+                  label="Expéditeur (nom)"
+                  value={sender?.name ?? ""}
+                  placeholder="Nom de l'expéditeur"
+                  maxLength={150}
+                  readOnly={readOnly}
+                  onSave={(v) => upsertParticipant("sender", { name: v.trim() || null })}
+                />
                 {sender?.usager_id && (
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Link
                         to={`/usagers/${sender.usager_id}`}
                         onClick={() => onOpenChange(false)}
-                        className="shrink-0 mt-0.5 inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-primary hover:bg-muted transition-colors"
+                        className="absolute right-0 top-0 inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:text-primary hover:bg-muted transition-colors bg-background"
                         aria-label="Voir tous les courriers de cet expéditeur"
                       >
                         <ExternalLink className="h-3.5 w-3.5" />
