@@ -129,6 +129,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
   useEffect(() => {
     setLocalAssignedService(courier?.assigned_service ?? null);
     setLocalWorkflowStateId(courier?.workflow_state_id ?? null);
+    setReplyState(null);
   }, [courier?.id, courier?.assigned_service, courier?.workflow_state_id]);
 
   // Si le courrier vient d'une config IMAP précise, restreindre les services proposés.
@@ -913,6 +914,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   assignedService={localAssignedService}
                   sender={sender ?? null}
                   readOnly={readOnly}
+                  onStateChange={setReplyState}
                 />
               </TabsContent>
               <TabsContent
