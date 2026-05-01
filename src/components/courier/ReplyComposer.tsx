@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Mail, Send, Save, ArrowRight, Lock } from "lucide-react";
+import { Mail, Send, Save, ArrowRight, Lock, PenLine } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -8,7 +8,15 @@ import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { listServices } from "@/services/orgServiceService";
+import { supabase } from "@/integrations/supabase/client";
 import {
   getReplyForCourier,
   getReplyWorkflow,
@@ -18,6 +26,14 @@ import {
 } from "@/services/courierReplyService";
 import type { CourierChannel, CourierParticipant } from "@/types/courier";
 import { cn } from "@/lib/utils";
+
+interface ServiceSignatory {
+  id: string;
+  first_name: string;
+  last_name: string;
+  title: string | null;
+  user_id: string | null;
+}
 
 interface Props {
   courierId: string;
