@@ -100,6 +100,7 @@ export function RichTextEditor({ value, onChange, placeholder, disabled, classNa
     extensions: [
       StarterKit.configure({ heading: { levels: [2, 3] } }),
       Link.configure({ openOnClick: false, autolink: true, HTMLAttributes: { class: "text-primary underline" } }),
+      Image.configure({ inline: false, allowBase64: true, HTMLAttributes: { class: "max-w-full h-auto" } }),
     ],
     content: value || "",
     editable: !disabled,
