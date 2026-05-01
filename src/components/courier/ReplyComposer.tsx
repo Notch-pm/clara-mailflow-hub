@@ -155,9 +155,14 @@ export default function ReplyComposer({
   // ─── Mutations ──────────────────────────────────────────────────────
 
   async function ensureReply(): Promise<{ id: string }> {
+    const sigPayload = signatoryId ? signatoryId : null;
     if (reply) {
-      // Persist current channel + body before any state change
-      await updateReplyContent(organizationId, reply.id, { channel, bodyHtml: body });
+      // Persist current channel + body + signatory before any state change
+      await updateReplyContent(organizationId, reply.id, {
+        channel,
+        bodyHtml: body,
+        signatoryId: sigPayload,
+      });
       return { id: reply.id };
     }
     const created = await createReply({
@@ -177,6 +182,9 @@ export default function ReplyComposer({
           }
         : null,
     });
+    if (sigPayload) {
+      await updateReplyContent(organizationId, created.id, { signatoryId: sigPayload });
+    }
     return { id: created.id };
   }
 
@@ -194,7 +202,10 @@ export default function ReplyComposer({
   });
 
   const transition = useMutation({
-    mutationFn: async (target: { id: string; name: string; category: string | null }) => {
+    mutationFn: async (target: { id: string; name: string; category: string | null; requires_signature: boolean }) => {
+      if (target.requires_signature && !signatoryId) {
+        throw new Error("Veuillez sélectionner un signataire avant de passer à cet état.");
+      }
       const ensured = await ensureReply();
       await transitionReplyState(
         organizationId,
