@@ -346,7 +346,8 @@ function ServiceDialog({
   open,
   onOpenChange,
   editing,
-  workflows,
+  inboundWorkflows,
+  replyWorkflows,
   imapConfigs,
   multipleImap,
   onSubmit,
@@ -355,20 +356,24 @@ function ServiceDialog({
   open: boolean;
   onOpenChange: (o: boolean) => void;
   editing: OrgService | null;
-  workflows: { id: string; name: string }[];
+  inboundWorkflows: { id: string; name: string }[];
+  replyWorkflows: { id: string; name: string }[];
   imapConfigs: ImapConfig[];
   multipleImap: boolean;
   onSubmit: (values: {
     name: string;
     email: string | null;
     workflow_id: string;
+    reply_workflow_id: string | null;
     imap_settings_id: string | null;
   }) => void;
   isSubmitting: boolean;
 }) {
+  const NONE = "__none__";
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [workflowId, setWorkflowId] = useState<string>("");
+  const [replyWorkflowId, setReplyWorkflowId] = useState<string>(NONE);
   const [imapSettingsId, setImapSettingsId] = useState<string>("");
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -377,9 +382,10 @@ function ServiceDialog({
     setName(editing?.name ?? "");
     setEmail(editing?.email ?? "");
     setWorkflowId(editing?.workflow_id ?? "");
+    setReplyWorkflowId(editing?.reply_workflow_id ?? NONE);
     setImapSettingsId(editing?.imap_settings_id ?? "");
     setErrors({});
-  }, [open, editing?.id, editing?.name, editing?.email, editing?.workflow_id, editing?.imap_settings_id]);
+  }, [open, editing?.id, editing?.name, editing?.email, editing?.workflow_id, editing?.reply_workflow_id, editing?.imap_settings_id]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -406,6 +412,7 @@ function ServiceDialog({
       name: name.trim(),
       email: multipleImap ? null : email.trim() || null,
       workflow_id: workflowId,
+      reply_workflow_id: replyWorkflowId && replyWorkflowId !== NONE ? replyWorkflowId : null,
       imap_settings_id: multipleImap ? imapSettingsId || null : null,
     });
   }
