@@ -82,14 +82,17 @@ export default function ServicesSettings({ organizationId, isAdminOverride }: Pr
     queryFn: async () => {
       const { data, error } = await supabase
         .from("workflows")
-        .select("id, name")
+        .select("id, name, type")
         .eq("organization_id", orgId)
         .order("name");
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []) as { id: string; name: string; type: "inbound" | "reply" | null }[];
     },
     enabled: !!orgId,
   });
+
+  const inboundWorkflows = (workflows ?? []).filter((w) => (w.type ?? "inbound") === "inbound");
+  const replyWorkflows = (workflows ?? []).filter((w) => w.type === "reply");
 
   const { data: org } = useQuery({
     queryKey: ["org-general", orgId],
