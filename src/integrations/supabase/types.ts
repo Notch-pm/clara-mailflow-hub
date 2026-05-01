@@ -1179,6 +1179,7 @@ export type Database = {
           is_initial: boolean | null
           name: string
           organization_id: string
+          requires_signature: boolean
           workflow_id: string
         }
         Insert: {
@@ -1189,6 +1190,7 @@ export type Database = {
           is_initial?: boolean | null
           name: string
           organization_id: string
+          requires_signature?: boolean
           workflow_id: string
         }
         Update: {
@@ -1199,6 +1201,7 @@ export type Database = {
           is_initial?: boolean | null
           name?: string
           organization_id?: string
+          requires_signature?: boolean
           workflow_id?: string
         }
         Relationships: [

@@ -75,6 +75,7 @@ function layoutNodes(states: WorkflowState[], transitions: WorkflowTransition[])
         category: s.category,
         is_initial: s.is_initial ?? false,
         is_final: s.is_final ?? false,
+        requires_signature: (s as any).requires_signature ?? false,
       } satisfies StateNodeData,
     };
   });
@@ -211,6 +212,7 @@ export default function WorkflowDetail() {
           category: data.category,
           is_initial: data.is_initial ?? false,
           is_final: data.is_final ?? false,
+          requires_signature: (data as any).requires_signature ?? false,
         } satisfies StateNodeData,
       };
       setNodes((nds) => [...nds, newNode]);
@@ -219,7 +221,7 @@ export default function WorkflowDetail() {
   );
 
   const handleUpdateNode = useCallback(
-    async (data: { name?: string; category?: WorkflowCategory; is_initial?: boolean; is_final?: boolean }) => {
+    async (data: { name?: string; category?: WorkflowCategory; is_initial?: boolean; is_final?: boolean; requires_signature?: boolean }) => {
       if (!selectedNodeId || !workflowId) return;
 
       // If setting is_initial, clear others first
@@ -252,6 +254,7 @@ export default function WorkflowDetail() {
               category: data.category ?? current.category,
               is_initial: data.is_initial ?? current.is_initial,
               is_final: data.is_final ?? current.is_final,
+              requires_signature: data.requires_signature ?? current.requires_signature,
             } satisfies StateNodeData,
           };
         })
@@ -406,6 +409,8 @@ export default function WorkflowDetail() {
             category={selectedData.category}
             isInitial={selectedData.is_initial}
             isFinal={selectedData.is_final}
+            requiresSignature={selectedData.requires_signature ?? false}
+            workflowType={(workflow as any)?.type ?? null}
             onUpdate={handleUpdateNode}
             onDelete={handleDeleteNode}
             onClose={() => setSelectedNodeId(null)}
