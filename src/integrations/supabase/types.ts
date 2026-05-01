@@ -733,6 +733,7 @@ export type Database = {
           is_signataire: boolean
           organization_id: string
           role: string
+          signataire_title: string | null
           user_id: string
         }
         Insert: {
@@ -742,6 +743,7 @@ export type Database = {
           is_signataire?: boolean
           organization_id: string
           role: string
+          signataire_title?: string | null
           user_id: string
         }
         Update: {
@@ -751,6 +753,7 @@ export type Database = {
           is_signataire?: boolean
           organization_id?: string
           role?: string
+          signataire_title?: string | null
           user_id?: string
         }
         Relationships: [
