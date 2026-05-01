@@ -559,6 +559,71 @@ function ServiceDialog({
             </Select>
           </div>
 
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label>Signataires associés</Label>
+              <div className="flex gap-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={selectAll}
+                  disabled={signatories.length === 0 || signatoryIds.length === signatories.length}
+                >
+                  Tout ajouter
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={clearAll}
+                  disabled={signatoryIds.length === 0}
+                >
+                  Tout retirer
+                </Button>
+              </div>
+            </div>
+            {signatories.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Aucun signataire défini. Ajoutez-en dans Paramètres → Signatures.
+              </p>
+            ) : (
+              <div className="rounded-md border max-h-56 overflow-y-auto divide-y">
+                {signatories.map((s) => {
+                  const checked = signatoryIds.includes(s.id);
+                  const fullName = `${s.first_name} ${s.last_name}`.trim() || "—";
+                  return (
+                    <label
+                      key={s.id}
+                      className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-muted/50"
+                    >
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={() => toggleSignatory(s.id)}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium truncate">{fullName}</div>
+                        {s.title && (
+                          <div className="text-xs text-muted-foreground truncate">
+                            {s.title}
+                          </div>
+                        )}
+                      </div>
+                      <Badge variant={s.user_id ? "secondary" : "outline"} className="text-[10px]">
+                        {s.user_id ? "Utilisateur" : "Externe"}
+                      </Badge>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground">
+              {signatoryIds.length} signataire(s) sélectionné(s)
+            </p>
+          </div>
+
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Annuler
