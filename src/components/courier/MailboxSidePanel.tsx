@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Select,
   SelectContent,
@@ -640,25 +641,33 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 }
               />
 
-              <InlineEditField
-                label="Expéditeur (nom)"
-                value={sender?.name ?? ""}
-                placeholder="Nom de l'expéditeur"
-                maxLength={150}
-                readOnly={readOnly}
-                onSave={(v) => upsertParticipant("sender", { name: v.trim() || null })}
-              />
-
-              {sender?.usager_id && (
-                <Link
-                  to={`/usagers/${sender.usager_id}`}
-                  className="inline-flex items-center gap-1 text-xs text-primary hover:underline px-1 -mt-1"
-                  onClick={() => onOpenChange(false)}
-                >
-                  <ExternalLink className="h-3 w-3" />
-                  Voir tous les courriers de cet expéditeur
-                </Link>
-              )}
+              <div className="flex items-start gap-1">
+                <div className="flex-1 min-w-0">
+                  <InlineEditField
+                    label="Expéditeur (nom)"
+                    value={sender?.name ?? ""}
+                    placeholder="Nom de l'expéditeur"
+                    maxLength={150}
+                    readOnly={readOnly}
+                    onSave={(v) => upsertParticipant("sender", { name: v.trim() || null })}
+                  />
+                </div>
+                {sender?.usager_id && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Link
+                        to={`/usagers/${sender.usager_id}`}
+                        onClick={() => onOpenChange(false)}
+                        className="shrink-0 mt-0.5 inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-primary hover:bg-muted transition-colors"
+                        aria-label="Voir tous les courriers de cet expéditeur"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </Link>
+                    </TooltipTrigger>
+                    <TooltipContent>Voir tous les courriers de cet expéditeur</TooltipContent>
+                  </Tooltip>
+                )}
+              </div>
 
               <InlineEditField
                 label="Expéditeur (email)"
