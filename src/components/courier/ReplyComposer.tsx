@@ -504,7 +504,14 @@ export default function ReplyComposer({
                 size="sm"
                 variant={target.category === "processed" ? "default" : "secondary"}
                 disabled={isBusy || readOnly || blocked}
-                onClick={() => setPendingTarget(targetPayload)}
+                onClick={() => {
+                  // Only show the confirmation modal when the transition signs or unsigns.
+                  if (action === "sign" || action === "unsign") {
+                    setPendingTarget(targetPayload);
+                  } else {
+                    transition.mutate(targetPayload);
+                  }
+                }}
               >
                 {willSign || requiresSig ? <PenLine className="mr-1.5 h-4 w-4" /> : (isSend ? <Send className="mr-1.5 h-4 w-4" /> : target.category === "processing" ? <Mail className="mr-1.5 h-4 w-4" /> : <ArrowRight className="mr-1.5 h-4 w-4" />)}
                 {t.name || target.name}
