@@ -3,7 +3,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Pencil, Trash2, UserPlus, Building2, HeartHandshake, User } from "lucide-react";
+import { Plus, Pencil, Trash2, UserPlus, Building2, HeartHandshake, User, ExternalLink } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -263,6 +265,20 @@ export default function ParticipantManager({ courierId, organizationId }: Partic
                   <TableCell className="text-sm">{p.phone ?? "—"}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1">
+                      {p.role === "sender" && p.usager_id && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Link
+                              to={`/usagers/${p.usager_id}`}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:text-primary hover:bg-muted transition-colors"
+                              aria-label="Voir tous les courriers de cet expéditeur"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </Link>
+                          </TooltipTrigger>
+                          <TooltipContent>Voir tous les courriers de cet expéditeur</TooltipContent>
+                        </Tooltip>
+                      )}
                       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(p)}>
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
