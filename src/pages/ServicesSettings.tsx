@@ -258,6 +258,16 @@ export default function ServicesSettings({ organizationId, isAdminOverride }: Pr
                           {svc.workflow?.name ?? "—"}
                         </span>
                       </TableCell>
+                      <TableCell className="text-sm">
+                        {svc.reply_workflow ? (
+                          <span className="inline-flex items-center gap-1.5">
+                            <GitBranch className="h-3.5 w-3.5 text-muted-foreground" />
+                            {svc.reply_workflow.name}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
                       {isAdmin && (
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
