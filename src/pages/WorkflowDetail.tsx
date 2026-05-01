@@ -187,7 +187,7 @@ export default function WorkflowDetail() {
       const isReply = (workflow as any)?.type === "reply";
       const name = isReply
         ? (category === "pending" ? "Non répondu"
-          : category === "processing" ? "En cours de rédaction"
+          : category === "processing" ? "En cours"
           : category === "processed" ? "Répondu"
           : "Archivé")
         : (category === "pending" ? "Nouveau - Attente"
