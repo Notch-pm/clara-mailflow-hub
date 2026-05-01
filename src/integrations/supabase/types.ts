@@ -730,6 +730,7 @@ export type Database = {
           created_at: string
           id: string
           is_active: boolean | null
+          is_signataire: boolean
           organization_id: string
           role: string
           user_id: string
@@ -738,6 +739,7 @@ export type Database = {
           created_at?: string
           id?: string
           is_active?: boolean | null
+          is_signataire?: boolean
           organization_id: string
           role: string
           user_id: string
@@ -746,6 +748,7 @@ export type Database = {
           created_at?: string
           id?: string
           is_active?: boolean | null
+          is_signataire?: boolean
           organization_id?: string
           role?: string
           user_id?: string

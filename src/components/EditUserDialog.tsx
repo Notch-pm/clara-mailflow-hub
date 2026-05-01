@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { updateOrgMember } from "@/services/userService";
 import { uploadUserAvatar, removeUserAvatar } from "@/services/avatarService";
@@ -25,6 +26,7 @@ const editSchema = z.object({
   first_name: z.string().min(1, "Prénom obligatoire").max(100),
   last_name: z.string().min(1, "Nom obligatoire").max(100),
   role: z.enum(["administrateur", "gestionnaire", "consultant"], { required_error: "Rôle obligatoire" }),
+  is_signataire: z.boolean().default(false),
 });
 
 interface Props {
@@ -44,8 +46,9 @@ export function EditUserDialog({ member, organizationId, onClose }: Props) {
           first_name: member.first_name ?? "",
           last_name: member.last_name ?? "",
           role: member.role as "administrateur" | "gestionnaire" | "consultant",
+          is_signataire: member.is_signataire ?? false,
         }
-      : { first_name: "", last_name: "", role: "consultant" as const },
+      : { first_name: "", last_name: "", role: "consultant" as const, is_signataire: false },
   });
 
   const updateMutation = useMutation({
@@ -173,6 +176,19 @@ export function EditUserDialog({ member, organizationId, onClose }: Props) {
                         {ROLES.map((r) => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}
                       </SelectContent>
                     </Select><FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="is_signataire" render={({ field }) => (
+                  <FormItem className="flex items-center justify-between rounded-md border p-3">
+                    <div className="space-y-0.5">
+                      <FormLabel className="text-sm">Signataire</FormLabel>
+                      <p className="text-xs text-muted-foreground">
+                        Autorise cet utilisateur à signer les courriers.
+                      </p>
+                    </div>
+                    <FormControl>
+                      <Switch checked={field.value} onCheckedChange={field.onChange} />
+                    </FormControl>
                   </FormItem>
                 )} />
                 <Button type="submit" className="w-full" disabled={updateMutation.isPending}>
