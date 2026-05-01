@@ -15,17 +15,18 @@ interface OrgMemberRow {
     last_name: string | null;
     is_active: boolean | null;
     avatar_url: string | null;
-  };
+  } | null;
 }
 
 function rowToMember(row: OrgMemberRow): OrgMember {
+  const u = row.users;
   return {
-    id: row.users.id,
-    email: row.users.email,
-    first_name: row.users.first_name,
-    last_name: row.users.last_name,
-    is_active: row.users.is_active,
-    avatar_url: row.users.avatar_url ?? null,
+    id: u?.id ?? row.user_id,
+    email: u?.email ?? "—",
+    first_name: u?.first_name ?? null,
+    last_name: u?.last_name ?? null,
+    is_active: u?.is_active ?? null,
+    avatar_url: u?.avatar_url ?? null,
     role: row.role,
     is_signataire: row.is_signataire ?? false,
     signataire_title: row.signataire_title ?? null,
