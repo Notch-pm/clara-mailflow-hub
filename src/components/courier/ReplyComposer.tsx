@@ -525,6 +525,54 @@ export default function ReplyComposer({
         minHeight={220}
         className="flex-1 min-h-[220px]"
       />
+
+      <AlertDialog
+        open={!!pendingTarget}
+        onOpenChange={(open) => {
+          if (!open && !transition.isPending) setPendingTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          {(() => {
+            if (!pendingTarget) return null;
+            const action = actionForTarget(pendingTarget);
+            const title =
+              action === "sign"
+                ? "Signer et passer à l'état suivant"
+                : action === "unsign"
+                  ? "Retirer la signature"
+                  : "Confirmer le changement d'état";
+            const description =
+              action === "sign"
+                ? `Votre signature manuscrite va être apposée à la réponse, puis l'état passera à « ${pendingTarget.name} ». Cette action peut être annulée en revenant à un état antérieur.`
+                : action === "unsign"
+                  ? `Le passage à l'état « ${pendingTarget.name} » va supprimer la signature actuelle de la réponse. Vous pourrez la réapposer en repassant par l'état de signature.`
+                  : `Confirmez le passage à l'état « ${pendingTarget.name} ».`;
+            const confirmLabel =
+              action === "sign" ? "Signer et continuer" : action === "unsign" ? "Retirer la signature" : "Confirmer";
+            return (
+              <>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>{title}</AlertDialogTitle>
+                  <AlertDialogDescription>{description}</AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={transition.isPending}>Annuler</AlertDialogCancel>
+                  <AlertDialogAction
+                    disabled={transition.isPending}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      transition.mutate(pendingTarget);
+                    }}
+                  >
+                    {confirmLabel}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </>
+            );
+          })()}
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
