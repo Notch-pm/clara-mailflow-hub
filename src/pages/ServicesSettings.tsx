@@ -370,6 +370,7 @@ function ServiceDialog({
   replyWorkflows,
   imapConfigs,
   multipleImap,
+  signatories,
   onSubmit,
   isSubmitting,
 }: {
@@ -380,12 +381,14 @@ function ServiceDialog({
   replyWorkflows: { id: string; name: string }[];
   imapConfigs: ImapConfig[];
   multipleImap: boolean;
+  signatories: Signatory[];
   onSubmit: (values: {
     name: string;
     email: string | null;
     workflow_id: string;
     reply_workflow_id: string | null;
     imap_settings_id: string | null;
+    signatory_ids: string[];
   }) => void;
   isSubmitting: boolean;
 }) {
@@ -395,7 +398,15 @@ function ServiceDialog({
   const [workflowId, setWorkflowId] = useState<string>("");
   const [replyWorkflowId, setReplyWorkflowId] = useState<string>(NONE);
   const [imapSettingsId, setImapSettingsId] = useState<string>("");
+  const [signatoryIds, setSignatoryIds] = useState<string[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Load existing signatories for this service when editing
+  const { data: existingSignatoryIds } = useQuery({
+    queryKey: ["service-signatories", editing?.id],
+    queryFn: () => listServiceSignatoryIds(editing!.id),
+    enabled: !!editing?.id && open,
+  });
 
   useEffect(() => {
     if (!open) return;
@@ -404,8 +415,25 @@ function ServiceDialog({
     setWorkflowId(editing?.workflow_id ?? "");
     setReplyWorkflowId(editing?.reply_workflow_id ?? NONE);
     setImapSettingsId(editing?.imap_settings_id ?? "");
+    setSignatoryIds([]);
     setErrors({});
   }, [open, editing?.id, editing?.name, editing?.email, editing?.workflow_id, editing?.reply_workflow_id, editing?.imap_settings_id]);
+
+  useEffect(() => {
+    if (existingSignatoryIds) setSignatoryIds(existingSignatoryIds);
+  }, [existingSignatoryIds]);
+
+  function toggleSignatory(id: string) {
+    setSignatoryIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  }
+  function selectAll() {
+    setSignatoryIds(signatories.map((s) => s.id));
+  }
+  function clearAll() {
+    setSignatoryIds([]);
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -434,6 +462,7 @@ function ServiceDialog({
       workflow_id: workflowId,
       reply_workflow_id: replyWorkflowId && replyWorkflowId !== NONE ? replyWorkflowId : null,
       imap_settings_id: multipleImap ? imapSettingsId || null : null,
+      signatory_ids: signatoryIds,
     });
   }
 
