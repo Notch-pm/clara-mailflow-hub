@@ -88,6 +88,17 @@ export default function Workflows() {
     onError: (err: any) => toast({ title: "Erreur", description: err.message, variant: "destructive" }),
   });
 
+  const updateTypeMutation = useMutation({
+    mutationFn: async ({ id, type }: { id: string; type: WorkflowType }) => {
+      const { error } = await updateWorkflow(id, { type });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["workflows"] });
+      toast({ title: "Type mis à jour" });
+    },
+    onError: (err: any) => toast({ title: "Erreur", description: err.message, variant: "destructive" }),
+  });
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
