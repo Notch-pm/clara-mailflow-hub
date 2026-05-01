@@ -1,22 +1,24 @@
 import { useState } from "react";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Users, ArrowLeft, GitBranch, Settings, Tags, Briefcase, ClipboardList, Mail, LucideIcon } from "lucide-react";
+import { Users, ArrowLeft, GitBranch, Settings, Tags, Briefcase, ClipboardList, Mail, PenTool, LucideIcon } from "lucide-react";
 import UsersPage from "./UsersPage";
 import Workflows from "./Workflows";
 import ClassificationSettings from "./ClassificationSettings";
 import ServicesSettings from "./ServicesSettings";
 import ProceduresSettings from "./ProceduresSettings";
+import SignaturesSettings from "./SignaturesSettings";
 
 import ImapSettings from "@/components/ImapSettings";
 import GeneralSettings from "@/components/GeneralSettings";
 import { useOrganization } from "@/contexts/OrganizationContext";
 
-type Section = "menu" | "general" | "utilisateurs" | "workflows" | "classification" | "services" | "demarches" | "emails";
+type Section = "menu" | "general" | "utilisateurs" | "workflows" | "classification" | "services" | "demarches" | "emails" | "signatures";
 
 const settingSections: { key: Section; title: string; description: string; icon: LucideIcon }[] = [
   { key: "general", title: "Configuration générale", description: "Paramètres globaux de l'organisation", icon: Settings },
   { key: "utilisateurs", title: "Utilisateurs", description: "Gestion des membres et rôles", icon: Users },
+  { key: "signatures", title: "Signatures et tampons", description: "Signataires et signatures manuscrites", icon: PenTool },
   { key: "emails", title: "Emails (IMAP)", description: "Réception automatique des emails comme courriers entrants", icon: Mail },
   { key: "workflows", title: "Workflows", description: "Processus de traitement du courrier", icon: GitBranch },
   { key: "services", title: "Services", description: "Services de l'organisation et workflows associés", icon: Briefcase },
@@ -27,6 +29,7 @@ const settingSections: { key: Section; title: string; description: string; icon:
 const sectionLabels: Record<string, string> = {
   general: "Configuration générale",
   utilisateurs: "Utilisateurs et rôles",
+  signatures: "Signatures et tampons",
   emails: "Emails — réception IMAP",
   workflows: "Workflows",
   services: "Services",
@@ -61,6 +64,7 @@ export default function SettingsPage() {
         {activeSection === "classification" && <ClassificationSettings />}
         {activeSection === "services" && <ServicesSettings />}
         {activeSection === "demarches" && <ProceduresSettings />}
+        {activeSection === "signatures" && <SignaturesSettings />}
       </div>
     );
   }
