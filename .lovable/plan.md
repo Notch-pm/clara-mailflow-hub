@@ -1,25 +1,80 @@
+## Objectif
 
-L'utilisateur a créé un agent Mistral pré-configuré (`ag_019d9b92d28872079534f45f246671ed`) et veut l'utiliser pour l'analyse, plutôt que d'appeler `mistral-large-latest` avec un prompt système défini côté code.
+Dans le panneau latéral d'un courrier en instruction, l'onglet **Réponse** devient un véritable composeur de réponse :
 
-Mistral expose les agents via l'endpoint `https://api.mistral.ai/v1/agents/completions` qui accepte `agent_id` à la place de `model`. Le reste du payload (messages, tools, tool_choice) reste compatible.
+1. Choix du canal de réponse : **courrier** (papier) ou **courriel** (option désactivée si l'expéditeur n'a pas d'email).
+2. Un grand **éditeur de texte riche** pour rédiger la réponse.
+3. Des **boutons d'action** correspondant aux transitions du workflow « Reply » du service, en démarrant à l'état initial (« Non répondu ») et progressant via les transitions définies.
 
-## Plan
+## Modèle de données
 
-**Fichier à modifier** : `supabase/functions/analyze-courier/index.ts`
+Aucune nouvelle table. On réutilise les tables existantes :
 
-1. Ajouter une constante `MISTRAL_AGENT_URL = "https://api.mistral.ai/v1/agents/completions"` et `ANALYSIS_AGENT_ID = "ag_019d9b92d28872079534f45f246671ed"`.
+- **`couriers`** : la réponse est créée comme un courrier enfant
+  - `direction = 'outbound'`
+  - `parent_courier_id = <id du courrier reçu>`
+  - `channel = 'paper' | 'email'` selon le choix
+  - `subject` = repris du courrier parent (préfixé « Re: »)
+  - `assigned_service` = celui du parent
+  - `workflow_state_id` = état initial du `reply_workflow_id` du service
+  - `metadata.body_html` (et `body_text`) pour le contenu de la réponse, comme on stocke déjà le corps des emails entrants
+- **`courier_participants`** : on copie l'expéditeur du parent en `recipient` de la réponse, et on note le service comme `sender`.
+- **`workflow_states` / `workflow_transitions`** : déjà présents — on lit ceux liés à `services.reply_workflow_id`.
+- **`courier_events`** : on logge `reply_created`, `reply_state_changed`, `reply_sent`.
 
-2. Dans `analyzeCourier`, remplacer l'appel vers `MISTRAL_CHAT_URL` par un appel vers `MISTRAL_AGENT_URL` :
-   - Body : `{ agent_id: ANALYSIS_AGENT_ID, messages, tools, tool_choice, temperature: 0.2 }` (pas de champ `model`).
-   - Conserver les `tools` (schéma `report_analysis` avec enum dynamique des tags) et le `tool_choice` forcé pour garantir la sortie structurée — l'agent peut avoir son propre prompt mais on garde le contrat de sortie.
+Une seule réponse active par courrier reçu (on cherche le child existant ; sinon on crée à la première interaction).
 
-3. Garder le `systemPrompt` côté code en tant que message `system` : utile car la liste des tags disponibles est dynamique par organisation (l'agent ne peut pas la connaître à l'avance). L'agent enrichira/dirigera l'analyse, le système injectera les tags du tenant.
+## UI / Composants
 
-4. Enregistrer `model: ANALYSIS_AGENT_ID` (ou `agent:<id>`) dans `courier_analyses.model` pour traçabilité.
+### Éditeur de texte riche
+Ajouter **Tiptap** (`@tiptap/react`, `@tiptap/starter-kit`) — léger, headless, s'intègre bien à Tailwind/shadcn.
 
-5. Conserver `OCR_MODEL` inchangé (l'agent ne fait pas d'OCR).
+Nouveau composant : `src/components/ui/rich-text-editor.tsx`
+- Toolbar minimale : gras, italique, souligné, listes, lien, titres H2/H3.
+- Props : `value`, `onChange(html)`, `placeholder`, `disabled`.
 
-## Notes techniques
-- L'API agents Mistral est compatible chat completions, donc le parsing de `tool_calls` reste identique.
-- Si l'agent refuse `tools` ou `tool_choice`, on basculera sur le format `response_format: json_object`. À tester après déploiement.
-- Aucune migration DB nécessaire.
+### Onglet Réponse
+Refonte de `TabsContent value="response"` dans `MailboxSidePanel.tsx`. Nouveau composant dédié : `src/components/courier/ReplyComposer.tsx`.
+
+Layout :
+
+```text
+┌─────────────────────────────────────────────┐
+│ Canal :  [● Courriel ] [○ Courrier ]        │  (radio)
+│   (Courriel disabled si sender.email vide)   │
+├─────────────────────────────────────────────┤
+│ [Éditeur riche pleine largeur, ~min 320px]  │
+│                                              │
+├─────────────────────────────────────────────┤
+│ État : Non répondu                          │
+│ [Enregistrer brouillon] [→ En cours] [→ Répondu] │
+└─────────────────────────────────────────────┘
+```
+
+Comportement des boutons :
+- Lus depuis `workflow_transitions` du `reply_workflow_id` du service, à partir de l'état courant de la réponse (initial = `is_initial=true` du reply workflow → « Non répondu »).
+- Chaque clic : `upsert` du child courier (création si inexistant), sauvegarde du HTML dans `metadata.body_html`, puis bascule du `workflow_state_id` vers la cible et log d'événement.
+- Si la transition cible un état dont la `category = 'processed'` (« Répondu ») : le brouillon est verrouillé en lecture seule et l'éditeur passe en mode read-only.
+
+### Service helper
+Nouveau `src/services/courierReplyService.ts` :
+- `getReplyForCourier(parentId)` → child outbound ou null
+- `upsertReply(parentId, { channel, body_html })`
+- `transitionReplyState(replyId, toStateId)`
+- `getReplyWorkflow(serviceName, orgId)` → `{ states, transitions, initialState }`
+
+## Détails techniques
+
+- Le canal par défaut est `email` si `sender.email` existe, sinon `paper`.
+- L'option « Courriel » est désactivée (avec tooltip « L'expéditeur n'a pas d'adresse email ») si pas d'email.
+- Si le service du courrier n'a pas de `reply_workflow_id` configuré : afficher un message « Aucun workflow de réponse configuré pour ce service » et cacher les boutons (l'éditeur reste accessible pour brouillon en métadonnées du parent).
+- Pas d'envoi réel d'email à ce stade : seul le bouton menant à l'état final logge `reply_sent`. L'envoi SMTP réel pourra être branché plus tard.
+- L'invalidation React Query couvre `mailbox-couriers`, `courier-events`, et la nouvelle clé `courier-reply`.
+
+## Fichiers impactés
+
+- `package.json` : ajout de `@tiptap/react`, `@tiptap/starter-kit`, `@tiptap/extension-link`.
+- **Nouveau** `src/components/ui/rich-text-editor.tsx`
+- **Nouveau** `src/components/courier/ReplyComposer.tsx`
+- **Nouveau** `src/services/courierReplyService.ts`
+- `src/components/courier/MailboxSidePanel.tsx` : remplacement du contenu de l'onglet Réponse par `<ReplyComposer />`.
