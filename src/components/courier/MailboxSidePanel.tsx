@@ -440,13 +440,9 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
 
   if (!courier) return null;
 
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className={cn(
-        "w-full overflow-hidden p-0 flex flex-col",
-        fullScreen ? "sm:max-w-none" : "sm:max-w-[95vw] lg:max-w-[1100px]",
-      )}>
-        <SheetHeader className="px-6 pt-6 pb-3 border-b shrink-0">
+  const body = (
+    <>
+      <SheetHeader className="px-6 pt-6 pb-3 border-b shrink-0">
           <div className="flex items-start justify-between gap-4 pr-8">
             <div className="flex-1 min-w-0 flex items-center gap-3 flex-wrap">
               <div className="min-w-0 flex-1">
@@ -959,6 +955,21 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
             </>
           )}
         </Tabs>
+    </>
+  );
+
+  if (fullScreen) {
+    return (
+      <div className="flex flex-col h-[calc(100vh-3rem)] overflow-hidden bg-background">
+        {body}
+      </div>
+    );
+  }
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-full sm:max-w-[95vw] lg:max-w-[1100px] overflow-hidden p-0 flex flex-col">
+        {body}
       </SheetContent>
     </Sheet>
   );
