@@ -134,11 +134,22 @@ export default function Workflows() {
                 onClick={() => navigate(`/workflows/${wf.id}`)}
               >
                 <CardHeader className="flex flex-row items-start justify-between pb-2">
-                  <div className="space-y-1">
+                  <div className="space-y-2 flex-1 min-w-0">
                     <CardTitle className="text-base">{wf.name}</CardTitle>
-                    <Badge variant="outline" className="text-xs">
-                      {wf.type === "reply" ? "Réponse" : "Courrier reçu"}
-                    </Badge>
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <Select
+                        value={wf.type ?? "inbound"}
+                        onValueChange={(v) => updateTypeMutation.mutate({ id: wf.id, type: v as WorkflowType })}
+                      >
+                        <SelectTrigger className="h-7 w-[160px] text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="inbound">Courrier reçu</SelectItem>
+                          <SelectItem value="reply">Réponse</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
                     {wf.is_default && <Badge variant="secondary">Par défaut</Badge>}
