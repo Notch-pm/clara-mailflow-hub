@@ -986,7 +986,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
 
   if (fullScreen) {
     return (
-      <div className="flex flex-col h-full min-h-[calc(100vh-7rem)] overflow-hidden bg-background rounded-md border shadow-sm">
+      <div className="flex flex-col min-h-[calc(100vh-7rem)] overflow-visible bg-background rounded-md border shadow-sm">
         {body}
       </div>
     );
