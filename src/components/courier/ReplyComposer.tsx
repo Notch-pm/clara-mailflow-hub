@@ -460,23 +460,6 @@ export default function ReplyComposer({
             "save-btn",
           )}
 
-          {/* Bouton Signer (visible uniquement sur état signature non encore signé) */}
-          {isSignatureState && !isSigned && (
-            renderMaybeTooltip(
-              <Button
-                size="sm"
-                variant="default"
-                onClick={() => signMutation.mutate()}
-                disabled={isBusy || readOnly || !!signDisabledReason}
-              >
-                <PenLine className="mr-1.5 h-4 w-4" />
-                Signer
-              </Button>,
-              signDisabledReason,
-              "sign-btn",
-            )
-          )}
-
           {isSigned && (
             <Badge variant="secondary" className="gap-1 bg-emerald-100 text-emerald-700 border-emerald-200">
               <CheckCircle2 className="h-3 w-3" /> Signée
@@ -492,13 +475,17 @@ export default function ReplyComposer({
             const isSend =
               target.category === "processed" && (channel === "email" || target.name.toLowerCase().includes("répond"));
             const requiresSig = (target as any).requires_signature === true;
+            const targetPayload: PendingTarget = {
+              id: target.id,
+              name: target.name,
+              category: target.category,
+              requires_signature: requiresSig,
+            };
 
-            // Reasons to disable a transition button
-            let reason: string | null = null;
-            if (requiresSig && !signatoryId) reason = "Sélectionnez d'abord un signataire.";
-            else if (isSignatureState && !isSigned) reason = "En attente de la signature.";
-
+            const reason = reasonForTarget(targetPayload);
             const blocked = !!reason;
+            const action = actionForTarget(targetPayload);
+            const willSign = action === "sign";
 
             const btn = (
               <Button
@@ -506,17 +493,9 @@ export default function ReplyComposer({
                 size="sm"
                 variant={target.category === "processed" ? "default" : "secondary"}
                 disabled={isBusy || readOnly || blocked}
-                onClick={() =>
-                  transition.mutate({
-                    id: target.id,
-                    name: target.name,
-                    category: target.category,
-                    requires_signature: requiresSig,
-                  })
-                }
+                onClick={() => setPendingTarget(targetPayload)}
               >
-                {requiresSig && <PenLine className="mr-1.5 h-4 w-4" />}
-                {!requiresSig && (isSend ? <Send className="mr-1.5 h-4 w-4" /> : target.category === "processing" ? <Mail className="mr-1.5 h-4 w-4" /> : <ArrowRight className="mr-1.5 h-4 w-4" />)}
+                {willSign || requiresSig ? <PenLine className="mr-1.5 h-4 w-4" /> : (isSend ? <Send className="mr-1.5 h-4 w-4" /> : target.category === "processing" ? <Mail className="mr-1.5 h-4 w-4" /> : <ArrowRight className="mr-1.5 h-4 w-4" />)}
                 {t.name || target.name}
               </Button>
             );
