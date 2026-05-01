@@ -265,6 +265,7 @@ export default function ReplyComposer({
       const signatureBlock = `
 <div data-signature-block="true" style="margin-top:32px;padding-top:16px;border-top:1px solid #e5e7eb;">
   ${titleHtml}
+  <p style="margin:0;">&nbsp;</p>
   <p style="margin:0;font-weight:600;">${escapeHtml(fullName)}</p>
   <img src="${dataUrl}" alt="Signature" style="height:80px;margin-top:8px;object-fit:contain;display:block;" />
 </div>`.trim();
