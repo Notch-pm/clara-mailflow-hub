@@ -587,7 +587,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
           </div>
         </div>
 
-        <Tabs defaultValue="detail" className="flex-1 overflow-hidden flex flex-col mb-px">
+        <Tabs defaultValue="detail" className="flex-1 min-h-0 overflow-hidden flex flex-col mb-px">
           {withTabs && (
             <TabsList className="mx-6 self-start shrink-0 mt-[4px] mb-[4px]">
               <TabsTrigger value="detail">Détail du courrier</TabsTrigger>
