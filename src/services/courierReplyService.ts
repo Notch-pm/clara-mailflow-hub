@@ -87,7 +87,11 @@ export async function createReply(args: CreateReplyArgs): Promise<ReplyRecord> {
       subject,
       assigned_service: args.assignedService,
       workflow_state_id: args.initialStateId,
-      metadata: { body_html: args.bodyHtml, body_text: stripHtml(args.bodyHtml) },
+      // sent_at is required by the check_dates constraint on outbound couriers.
+      // For drafts we use the creation timestamp as a placeholder; it gets
+      // refreshed when the reply transitions to a final/processed state.
+      sent_at: new Date().toISOString(),
+      metadata: { body_html: args.bodyHtml, body_text: stripHtml(args.bodyHtml), is_draft: true },
     } as never)
     .select("id, parent_courier_id, organization_id, channel, subject, workflow_state_id, metadata, assigned_service")
     .single();
