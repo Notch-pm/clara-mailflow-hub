@@ -75,6 +75,7 @@ function layoutNodes(states: WorkflowState[], transitions: WorkflowTransition[])
         category: s.category,
         is_initial: s.is_initial ?? false,
         is_final: s.is_final ?? false,
+        requires_signature: (s as any).requires_signature ?? false,
       } satisfies StateNodeData,
     };
   });
