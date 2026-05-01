@@ -13,14 +13,19 @@ interface Props {
 }
 
 export default function DocumentViewer({ documents, currentId, onChange, organizationId }: Props) {
+  const effectiveCurrentId =
+    currentId && documents.some((d) => d.id === currentId)
+      ? currentId
+      : documents[0]?.id ?? null;
+
   // Auto-select first document when none is selected
   useEffect(() => {
-    if (!currentId && documents.length > 0) {
-      onChange(documents[0].id);
+    if (effectiveCurrentId && currentId !== effectiveCurrentId) {
+      onChange(effectiveCurrentId);
     }
-  }, [currentId, documents, onChange]);
+  }, [currentId, effectiveCurrentId, onChange]);
 
-  const currentIndex = documents.findIndex((d) => d.id === currentId);
+  const currentIndex = documents.findIndex((d) => d.id === effectiveCurrentId);
   const current = currentIndex >= 0 ? documents[currentIndex] : null;
 
   // Synthetic inline doc (e.g. email body) carries `inline_content` in storage_key field convention,
