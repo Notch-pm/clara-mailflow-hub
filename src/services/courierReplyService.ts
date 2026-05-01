@@ -123,7 +123,13 @@ export async function createReply(args: CreateReplyArgs): Promise<ReplyRecord> {
 export async function updateReplyContent(
   organizationId: string,
   replyId: string,
-  patch: { channel?: CourierChannel; bodyHtml?: string; signatoryId?: string | null },
+  patch: {
+    channel?: CourierChannel;
+    bodyHtml?: string;
+    signatoryId?: string | null;
+    signedAt?: string | null;
+    signedBy?: string | null;
+  },
 ): Promise<void> {
   // Fetch current metadata to preserve other keys
   const { data: existing, error: fErr } = await supabase
