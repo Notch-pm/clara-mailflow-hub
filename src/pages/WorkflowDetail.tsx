@@ -212,6 +212,7 @@ export default function WorkflowDetail() {
           category: data.category,
           is_initial: data.is_initial ?? false,
           is_final: data.is_final ?? false,
+          requires_signature: (data as any).requires_signature ?? false,
         } satisfies StateNodeData,
       };
       setNodes((nds) => [...nds, newNode]);
