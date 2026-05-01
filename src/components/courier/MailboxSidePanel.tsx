@@ -546,19 +546,21 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   )}
                 </>
               )}
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
-                onClick={() => {
-                  onOpenChange(false);
-                  navigate(`/courrier/${courier.id}`);
-                }}
-                title="Ouvrir en plein écran"
-                aria-label="Ouvrir en plein écran"
-              >
-                <Maximize2 className="h-4 w-4" />
-              </Button>
+              {!fullScreen && (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
+                  onClick={() => {
+                    onOpenChange(false);
+                    navigate(`/courrier/${courier.id}`);
+                  }}
+                  title="Ouvrir en plein écran"
+                  aria-label="Ouvrir en plein écran"
+                >
+                  <Maximize2 className="h-4 w-4" />
+                </Button>
+              )}
               {!readOnly && onDelete && (
                 <Button
                   size="icon"
