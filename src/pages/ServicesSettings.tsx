@@ -475,13 +475,13 @@ function ServiceDialog({
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="svc-workflow">Workflow associé *</Label>
+            <Label htmlFor="svc-workflow">Workflow courrier reçu *</Label>
             <Select value={workflowId} onValueChange={setWorkflowId}>
               <SelectTrigger id="svc-workflow">
                 <SelectValue placeholder="Sélectionner un workflow" />
               </SelectTrigger>
               <SelectContent>
-                {workflows.map((w) => (
+                {inboundWorkflows.map((w) => (
                   <SelectItem key={w.id} value={w.id}>
                     {w.name}
                   </SelectItem>
@@ -491,6 +491,23 @@ function ServiceDialog({
             {errors.workflow_id && (
               <p className="text-xs text-destructive">{errors.workflow_id}</p>
             )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="svc-reply-workflow">Workflow réponse</Label>
+            <Select value={replyWorkflowId} onValueChange={setReplyWorkflowId}>
+              <SelectTrigger id="svc-reply-workflow">
+                <SelectValue placeholder="Aucun" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE}>Aucun</SelectItem>
+                {replyWorkflows.map((w) => (
+                  <SelectItem key={w.id} value={w.id}>
+                    {w.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <DialogFooter>
