@@ -18,10 +18,12 @@ export async function getWorkflowById(organizationId: string, workflowId: string
     .single();
 }
 
-export async function createWorkflow(organizationId: string, name: string) {
+export type WorkflowType = "inbound" | "reply";
+
+export async function createWorkflow(organizationId: string, name: string, type: WorkflowType) {
   return supabase
     .from("workflows")
-    .insert({ organization_id: organizationId, name, is_default: false })
+    .insert({ organization_id: organizationId, name, type, is_default: false })
     .select()
     .single();
 }
