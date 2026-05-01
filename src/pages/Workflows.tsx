@@ -159,19 +159,33 @@ export default function Workflows() {
           <DialogHeader>
             <DialogTitle>Nouveau workflow</DialogTitle>
           </DialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor="wf-name">Nom</Label>
-            <Input
-              id="wf-name"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="Ex: Courrier entrant standard"
-            />
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="wf-name">Nom</Label>
+              <Input
+                id="wf-name"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="Ex: Courrier entrant standard"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="wf-type">Type</Label>
+              <Select value={newType} onValueChange={(v) => setNewType(v as WorkflowType)}>
+                <SelectTrigger id="wf-type">
+                  <SelectValue placeholder="Sélectionner un type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="inbound">Courrier reçu</SelectItem>
+                  <SelectItem value="reply">Réponse</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <DialogFooter>
             <Button
               onClick={() => createMutation.mutate()}
-              disabled={!newName.trim() || createMutation.isPending}
+              disabled={!newName.trim() || !newType || createMutation.isPending}
             >
               Créer
             </Button>
