@@ -24,11 +24,23 @@ import {
   updateReplyContent,
   transitionReplyState,
   signReply,
+  unsignReply,
+  stripSignatureBlock,
 } from "@/services/courierReplyService";
 import { getSignatureUrl } from "@/services/signatoryService";
 import { useAuth } from "@/contexts/AuthContext";
 import type { CourierChannel, CourierParticipant } from "@/types/courier";
 import { cn } from "@/lib/utils";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface ServiceSignatory {
   id: string;
