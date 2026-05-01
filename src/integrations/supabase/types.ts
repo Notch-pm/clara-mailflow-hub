@@ -900,6 +900,45 @@ export type Database = {
           },
         ]
       }
+      service_signatories: {
+        Row: {
+          created_at: string
+          id: string
+          organization_id: string
+          service_id: string
+          signatory_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          organization_id: string
+          service_id: string
+          signatory_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          organization_id?: string
+          service_id?: string
+          signatory_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_signatories_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_signatories_signatory_id_fkey"
+            columns: ["signatory_id"]
+            isOneToOne: false
+            referencedRelation: "signatories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       services: {
         Row: {
           created_at: string
