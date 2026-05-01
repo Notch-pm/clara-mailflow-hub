@@ -331,6 +331,7 @@ export default function ServicesSettings({ organizationId, isAdminOverride }: Pr
         replyWorkflows={replyWorkflows}
         imapConfigs={imapConfigs}
         multipleImap={multipleImap}
+        signatories={signatories}
         onSubmit={(values) => saveMutation.mutate(values)}
         isSubmitting={saveMutation.isPending}
       />
