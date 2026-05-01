@@ -295,6 +295,43 @@ export default function ReplyComposer({
           </RadioGroup>
         </div>
 
+        <div className="space-y-1.5 min-w-[220px]">
+          <Label className="text-xs uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+            <PenLine className="h-3.5 w-3.5" /> Signataire
+          </Label>
+          <Select
+            value={signatoryId || "__none__"}
+            onValueChange={(v) => {
+              const next = v === "__none__" ? "" : v;
+              setSignatoryId(next);
+              setDirty(true);
+            }}
+            disabled={editorDisabled || serviceSignatories.length === 0}
+          >
+            <SelectTrigger className="h-9">
+              <SelectValue
+                placeholder={
+                  serviceSignatories.length === 0
+                    ? "Aucun signataire associé au service"
+                    : "Sélectionner un signataire"
+                }
+              />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">— Aucun —</SelectItem>
+              {serviceSignatories.map((s) => {
+                const fullName = `${s.first_name} ${s.last_name}`.trim() || "—";
+                return (
+                  <SelectItem key={s.id} value={s.id}>
+                    {fullName}
+                    {s.title ? ` — ${s.title}` : ""}
+                  </SelectItem>
+                );
+              })}
+            </SelectContent>
+          </Select>
+        </div>
+
         <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="outline"
