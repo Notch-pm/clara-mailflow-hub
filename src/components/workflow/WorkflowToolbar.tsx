@@ -18,7 +18,7 @@ const inboundOptions: { category: WorkflowCategory; label: string; color: string
 
 const replyOptions: { category: WorkflowCategory; label: string; color: string }[] = [
   { category: "pending", label: "Non répondu", color: "bg-yellow-500 hover:bg-yellow-600" },
-  { category: "processing", label: "En cours de rédaction", color: "bg-blue-500 hover:bg-blue-600" },
+  { category: "processing", label: "En cours", color: "bg-blue-500 hover:bg-blue-600" },
   { category: "processed", label: "Répondu", color: "bg-green-500 hover:bg-green-600" },
 ];
 
