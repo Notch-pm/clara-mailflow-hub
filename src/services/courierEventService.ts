@@ -35,9 +35,9 @@ export async function logEvent(
       organization_id: organizationId,
       courier_id: courierId,
       event_type: eventType,
-      payload: payload ?? null,
+      payload: (payload ?? null) as never,
       created_by: user?.id ?? null,
-    });
+    } as never);
   } catch (err) {
     // eslint-disable-next-line no-console
     console.warn(`[logEvent:${eventType}] failed`, err);

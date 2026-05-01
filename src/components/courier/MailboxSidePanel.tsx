@@ -54,11 +54,12 @@ interface MailboxCourier {
   subject: string | null;
   channel: CourierChannel;
   received_at: string | null;
-  metadata: Record<string, unknown> | null;
+  metadata: any;
   workflow_state_id: string | null;
   organization_id: string;
   assigned_service: string | null;
   courier_participants?: CourierParticipant[];
+  [key: string]: any;
 }
 
 interface Props {
@@ -812,7 +813,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
               </div>
               <div className="h-[70vh] min-h-[500px]">
                 <DocumentViewer
-                  documents={displayDocuments}
+                  documents={displayDocuments as any}
                   currentId={selectedDocId}
                   onChange={setSelectedDocId}
                   organizationId={organizationId}
