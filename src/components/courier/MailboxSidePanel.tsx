@@ -887,7 +887,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
               </TabsContent>
               <TabsContent
                 value="response"
-                className="flex-1 overflow-hidden px-6 py-5 mt-0 flex flex-col"
+                className="flex-1 min-h-0 overflow-hidden px-6 py-5 mt-0 flex flex-col data-[state=inactive]:hidden"
               >
                 <ReplyComposer
                   courierId={courier.id}

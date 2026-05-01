@@ -201,7 +201,7 @@ export default function ReplyComposer({
   }
 
   return (
-    <div className="flex h-full flex-col gap-4">
+    <div className="flex h-full min-h-0 flex-col gap-4">
       {/* Channel selector */}
       <div className="flex items-center justify-between gap-3">
         <div className="space-y-1.5">
@@ -281,8 +281,8 @@ export default function ReplyComposer({
             : "Rédigez le contenu du courrier de réponse…"
         }
         disabled={editorDisabled}
-        minHeight={320}
-        className="flex-1 min-h-[340px]"
+        minHeight={220}
+        className="flex-1 min-h-[220px]"
       />
 
       {/* Actions */}
