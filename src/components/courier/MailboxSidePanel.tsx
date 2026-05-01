@@ -76,9 +76,11 @@ interface Props {
   readOnly?: boolean;
   /** When provided, displays a delete button in the header. */
   onDelete?: (courier: MailboxCourier) => void;
+  /** When true, the sheet takes the full screen width (used by the detail page). */
+  fullScreen?: boolean;
 }
 
-export default function MailboxSidePanel({ courier, open, onOpenChange, organizationId, withTabs = false, readOnly = false, onDelete }: Props) {
+export default function MailboxSidePanel({ courier, open, onOpenChange, organizationId, withTabs = false, readOnly = false, onDelete, fullScreen = false }: Props) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
@@ -440,7 +442,10 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-[95vw] lg:max-w-[1100px] overflow-hidden p-0 flex flex-col">
+      <SheetContent className={cn(
+        "w-full overflow-hidden p-0 flex flex-col",
+        fullScreen ? "sm:max-w-none" : "sm:max-w-[95vw] lg:max-w-[1100px]",
+      )}>
         <SheetHeader className="px-6 pt-6 pb-3 border-b shrink-0">
           <div className="flex items-start justify-between gap-4 pr-8">
             <div className="flex-1 min-w-0 flex items-center gap-3 flex-wrap">
