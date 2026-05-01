@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { Zap, CheckCircle2 } from "lucide-react";
+import { Zap, CheckCircle2, PenLine } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { WorkflowCategory } from "@/types/courier";
 
@@ -9,6 +9,7 @@ export interface StateNodeData {
   category: WorkflowCategory;
   is_initial: boolean;
   is_final: boolean;
+  requires_signature?: boolean;
   [key: string]: unknown;
 }
 
@@ -34,6 +35,9 @@ function StateNodeComponent({ data, selected }: NodeProps) {
       <div className="flex items-center gap-2 mb-1">
         {nodeData.is_initial && <Zap className="h-3.5 w-3.5 text-primary" />}
         {nodeData.is_final && <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />}
+        {nodeData.requires_signature && (
+          <PenLine className="h-3.5 w-3.5 text-amber-600" aria-label="Signature requise" />
+        )}
         <span className="font-semibold text-sm text-foreground truncate">{nodeData.label}</span>
       </div>
 
