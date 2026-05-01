@@ -44,6 +44,14 @@ import {
   deleteService,
   type OrgService,
 } from "@/services/orgServiceService";
+import {
+  listSignatories,
+  listServiceSignatoryIds,
+  setServiceSignatories,
+  type Signatory,
+} from "@/services/signatoryService";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 
 interface ImapConfig {
   id: string;
@@ -124,6 +132,12 @@ export default function ServicesSettings({ organizationId, isAdminOverride }: Pr
 
   const multipleImap = org?.multiple_imap ?? false;
 
+  const { data: signatories = [] } = useQuery({
+    queryKey: ["signatories", orgId],
+    queryFn: () => listSignatories(orgId),
+    enabled: !!orgId,
+  });
+
   const saveMutation = useMutation({
     mutationFn: async (values: {
       name: string;
@@ -131,13 +145,18 @@ export default function ServicesSettings({ organizationId, isAdminOverride }: Pr
       workflow_id: string;
       reply_workflow_id: string | null;
       imap_settings_id: string | null;
+      signatory_ids: string[];
     }) => {
-      return editing
-        ? updateService(editing.id, values)
-        : createService(orgId, values);
+      const { signatory_ids, ...payload } = values;
+      const svc = editing
+        ? await updateService(editing.id, payload)
+        : await createService(orgId, payload);
+      await setServiceSignatories(orgId, svc.id, signatory_ids);
+      return svc;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["org-services", orgId] });
+      queryClient.invalidateQueries({ queryKey: ["service-signatories"] });
       toast.success(editing ? "Service modifié" : "Service créé");
       setDialogOpen(false);
       setEditing(null);
@@ -312,6 +331,7 @@ export default function ServicesSettings({ organizationId, isAdminOverride }: Pr
         replyWorkflows={replyWorkflows}
         imapConfigs={imapConfigs}
         multipleImap={multipleImap}
+        signatories={signatories}
         onSubmit={(values) => saveMutation.mutate(values)}
         isSubmitting={saveMutation.isPending}
       />
@@ -350,6 +370,7 @@ function ServiceDialog({
   replyWorkflows,
   imapConfigs,
   multipleImap,
+  signatories,
   onSubmit,
   isSubmitting,
 }: {
@@ -360,12 +381,14 @@ function ServiceDialog({
   replyWorkflows: { id: string; name: string }[];
   imapConfigs: ImapConfig[];
   multipleImap: boolean;
+  signatories: Signatory[];
   onSubmit: (values: {
     name: string;
     email: string | null;
     workflow_id: string;
     reply_workflow_id: string | null;
     imap_settings_id: string | null;
+    signatory_ids: string[];
   }) => void;
   isSubmitting: boolean;
 }) {
@@ -375,7 +398,15 @@ function ServiceDialog({
   const [workflowId, setWorkflowId] = useState<string>("");
   const [replyWorkflowId, setReplyWorkflowId] = useState<string>(NONE);
   const [imapSettingsId, setImapSettingsId] = useState<string>("");
+  const [signatoryIds, setSignatoryIds] = useState<string[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Load existing signatories for this service when editing
+  const { data: existingSignatoryIds } = useQuery({
+    queryKey: ["service-signatories", editing?.id],
+    queryFn: () => listServiceSignatoryIds(editing!.id),
+    enabled: !!editing?.id && open,
+  });
 
   useEffect(() => {
     if (!open) return;
@@ -384,8 +415,25 @@ function ServiceDialog({
     setWorkflowId(editing?.workflow_id ?? "");
     setReplyWorkflowId(editing?.reply_workflow_id ?? NONE);
     setImapSettingsId(editing?.imap_settings_id ?? "");
+    setSignatoryIds([]);
     setErrors({});
   }, [open, editing?.id, editing?.name, editing?.email, editing?.workflow_id, editing?.reply_workflow_id, editing?.imap_settings_id]);
+
+  useEffect(() => {
+    if (existingSignatoryIds) setSignatoryIds(existingSignatoryIds);
+  }, [existingSignatoryIds]);
+
+  function toggleSignatory(id: string) {
+    setSignatoryIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  }
+  function selectAll() {
+    setSignatoryIds(signatories.map((s) => s.id));
+  }
+  function clearAll() {
+    setSignatoryIds([]);
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -414,12 +462,13 @@ function ServiceDialog({
       workflow_id: workflowId,
       reply_workflow_id: replyWorkflowId && replyWorkflowId !== NONE ? replyWorkflowId : null,
       imap_settings_id: multipleImap ? imapSettingsId || null : null,
+      signatory_ids: signatoryIds,
     });
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{editing ? "Modifier le service" : "Nouveau service"}</DialogTitle>
           <DialogDescription>
@@ -508,6 +557,71 @@ function ServiceDialog({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label>Signataires associés</Label>
+              <div className="flex gap-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={selectAll}
+                  disabled={signatories.length === 0 || signatoryIds.length === signatories.length}
+                >
+                  Tout ajouter
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={clearAll}
+                  disabled={signatoryIds.length === 0}
+                >
+                  Tout retirer
+                </Button>
+              </div>
+            </div>
+            {signatories.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Aucun signataire défini. Ajoutez-en dans Paramètres → Signatures.
+              </p>
+            ) : (
+              <div className="rounded-md border max-h-56 overflow-y-auto divide-y">
+                {signatories.map((s) => {
+                  const checked = signatoryIds.includes(s.id);
+                  const fullName = `${s.first_name} ${s.last_name}`.trim() || "—";
+                  return (
+                    <label
+                      key={s.id}
+                      className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-muted/50"
+                    >
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={() => toggleSignatory(s.id)}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium truncate">{fullName}</div>
+                        {s.title && (
+                          <div className="text-xs text-muted-foreground truncate">
+                            {s.title}
+                          </div>
+                        )}
+                      </div>
+                      <Badge variant={s.user_id ? "secondary" : "outline"} className="text-[10px]">
+                        {s.user_id ? "Utilisateur" : "Externe"}
+                      </Badge>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground">
+              {signatoryIds.length} signataire(s) sélectionné(s)
+            </p>
           </div>
 
           <DialogFooter>
