@@ -319,10 +319,10 @@ export default function ReplyComposer({
   const isBusy = saveDraft.isPending || transition.isPending;
 
   // ─── Transition gating ──────────────────────────────────────────────
-  function reasonForTarget(target: { requires_signature: boolean }): string | null {
+  function reasonForTarget(target: PendingTarget): string | null {
     if (target.requires_signature && !signatoryId) return "Sélectionnez d'abord un signataire.";
-    if (isSignatureState && !isSigned) {
-      // Signing happens via this transition: check the user can sign.
+    // Only gate signing requirements when the transition will actually sign.
+    if (actionForTarget(target) === "sign") {
       if (!signatoryId) return "Sélectionnez d'abord un signataire.";
       if (!selectedSignatory) return "Signataire introuvable.";
       if (!selectedSignatory.user_id || selectedSignatory.user_id !== currentUserId)
