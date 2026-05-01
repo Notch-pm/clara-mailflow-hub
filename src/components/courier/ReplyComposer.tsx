@@ -229,10 +229,21 @@ export default function ReplyComposer({
   type PendingTarget = { id: string; name: string; category: string | null; requires_signature: boolean };
   const [pendingTarget, setPendingTarget] = useState<PendingTarget | null>(null);
 
+  // A target is "backwards" if a transition exists from the target back to the current state.
+  function isBackwardsTarget(targetId: string): boolean {
+    if (!workflow || !currentState) return false;
+    return workflow.transitions.some(
+      (t) => t.from_state_id === targetId && t.to_state_id === currentState.id,
+    );
+  }
+
   // Determine action implied by a transition: 'sign' | 'unsign' | 'none'
   function actionForTarget(target: PendingTarget): "sign" | "unsign" | "none" {
-    if (isSignatureState && !isSigned) return "sign";
-    if (isSigned && !target.requires_signature) return "unsign";
+    const backwards = isBackwardsTarget(target.id);
+    // Going forward from a signature state → apposer la signature (si pas déjà signée)
+    if (isSignatureState && !isSigned && !backwards) return "sign";
+    // Revenir en arrière depuis un état postérieur à la signature → effacer la signature
+    if (isSigned && backwards) return "unsign";
     return "none";
   }
 
