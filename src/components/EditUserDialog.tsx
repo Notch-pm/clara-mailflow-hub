@@ -22,12 +22,18 @@ const ROLES = [
   { value: "consultant", label: "Consultant" },
 ] as const;
 
-const editSchema = z.object({
-  first_name: z.string().min(1, "Prénom obligatoire").max(100),
-  last_name: z.string().min(1, "Nom obligatoire").max(100),
-  role: z.enum(["administrateur", "gestionnaire", "consultant"], { required_error: "Rôle obligatoire" }),
-  is_signataire: z.boolean().default(false),
-});
+const editSchema = z
+  .object({
+    first_name: z.string().min(1, "Prénom obligatoire").max(100),
+    last_name: z.string().min(1, "Nom obligatoire").max(100),
+    role: z.enum(["administrateur", "gestionnaire", "consultant"], { required_error: "Rôle obligatoire" }),
+    is_signataire: z.boolean().default(false),
+    signataire_title: z.string().max(150, "150 caractères maximum").optional().or(z.literal("")),
+  })
+  .refine((d) => !d.is_signataire || (d.signataire_title && d.signataire_title.trim().length > 0), {
+    message: "Titre obligatoire pour un signataire",
+    path: ["signataire_title"],
+  });
 
 interface Props {
   member: OrgMember | null;
@@ -47,9 +53,12 @@ export function EditUserDialog({ member, organizationId, onClose }: Props) {
           last_name: member.last_name ?? "",
           role: member.role as "administrateur" | "gestionnaire" | "consultant",
           is_signataire: member.is_signataire ?? false,
+          signataire_title: member.signataire_title ?? "",
         }
-      : { first_name: "", last_name: "", role: "consultant" as const, is_signataire: false },
+      : { first_name: "", last_name: "", role: "consultant" as const, is_signataire: false, signataire_title: "" },
   });
+
+  const isSignataire = form.watch("is_signataire");
 
   const updateMutation = useMutation({
     mutationFn: async (values: z.infer<typeof editSchema>) => {
