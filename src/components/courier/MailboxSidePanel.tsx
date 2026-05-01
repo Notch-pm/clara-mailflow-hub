@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { X, ArrowRight, Tag as TagIcon, Check, Briefcase, FileText, Trash2, Maximize2 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { X, ArrowRight, Tag as TagIcon, Check, Briefcase, FileText, Trash2, Maximize2, ExternalLink } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -648,6 +648,17 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 readOnly={readOnly}
                 onSave={(v) => upsertParticipant("sender", { name: v.trim() || null })}
               />
+
+              {sender?.usager_id && (
+                <Link
+                  to={`/usagers/${sender.usager_id}`}
+                  className="inline-flex items-center gap-1 text-xs text-primary hover:underline px-1 -mt-1"
+                  onClick={() => onOpenChange(false)}
+                >
+                  <ExternalLink className="h-3 w-3" />
+                  Voir tous les courriers de cet expéditeur
+                </Link>
+              )}
 
               <InlineEditField
                 label="Expéditeur (email)"
