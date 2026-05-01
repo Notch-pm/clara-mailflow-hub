@@ -1200,6 +1200,7 @@ export type Database = {
           is_default: boolean | null
           name: string
           organization_id: string
+          type: Database["public"]["Enums"]["workflow_type"]
         }
         Insert: {
           created_at?: string
@@ -1207,6 +1208,7 @@ export type Database = {
           is_default?: boolean | null
           name: string
           organization_id: string
+          type: Database["public"]["Enums"]["workflow_type"]
         }
         Update: {
           created_at?: string
@@ -1214,6 +1216,7 @@ export type Database = {
           is_default?: boolean | null
           name?: string
           organization_id?: string
+          type?: Database["public"]["Enums"]["workflow_type"]
         }
         Relationships: [
           {
@@ -1244,6 +1247,7 @@ export type Database = {
       usager_category: "citoyen" | "entreprise" | "association"
       usager_civilite: "madame" | "monsieur"
       workflow_category: "pending" | "processing" | "processed" | "archived"
+      workflow_type: "inbound" | "reply"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1379,6 +1383,7 @@ export const Constants = {
       usager_category: ["citoyen", "entreprise", "association"],
       usager_civilite: ["madame", "monsieur"],
       workflow_category: ["pending", "processing", "processed", "archived"],
+      workflow_type: ["inbound", "reply"],
     },
   },
 } as const

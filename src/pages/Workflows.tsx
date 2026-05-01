@@ -26,7 +26,14 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useOrganization } from "@/contexts/OrganizationContext";
-import { getWorkflows, createWorkflow, deleteWorkflow } from "@/services/workflowService";
+import { getWorkflows, createWorkflow, deleteWorkflow, type WorkflowType } from "@/services/workflowService";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { Workflow, WorkflowState } from "@/types/courier";
 
 export default function Workflows() {
@@ -37,6 +44,7 @@ export default function Workflows() {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState("");
+  const [newType, setNewType] = useState<WorkflowType | "">("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const { data: workflows, isLoading } = useQuery({
@@ -53,13 +61,15 @@ export default function Workflows() {
   const createMutation = useMutation({
     mutationFn: async () => {
       if (!organizationId) throw new Error("Pas d'organisation");
-      const { error } = await createWorkflow(organizationId, newName.trim());
+      if (!newType) throw new Error("Type requis");
+      const { error } = await createWorkflow(organizationId, newName.trim(), newType);
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["workflows"] });
       setCreateOpen(false);
       setNewName("");
+      setNewType("");
       toast({ title: "Workflow créé" });
     },
     onError: (err: any) => toast({ title: "Erreur", description: err.message, variant: "destructive" }),
@@ -113,7 +123,12 @@ export default function Workflows() {
                 onClick={() => navigate(`/workflows/${wf.id}`)}
               >
                 <CardHeader className="flex flex-row items-start justify-between pb-2">
-                  <CardTitle className="text-base">{wf.name}</CardTitle>
+                  <div className="space-y-1">
+                    <CardTitle className="text-base">{wf.name}</CardTitle>
+                    <Badge variant="outline" className="text-xs">
+                      {wf.type === "reply" ? "Réponse" : "Courrier reçu"}
+                    </Badge>
+                  </div>
                   <div className="flex items-center gap-2">
                     {wf.is_default && <Badge variant="secondary">Par défaut</Badge>}
                     <Button
@@ -144,19 +159,33 @@ export default function Workflows() {
           <DialogHeader>
             <DialogTitle>Nouveau workflow</DialogTitle>
           </DialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor="wf-name">Nom</Label>
-            <Input
-              id="wf-name"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="Ex: Courrier entrant standard"
-            />
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="wf-name">Nom</Label>
+              <Input
+                id="wf-name"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="Ex: Courrier entrant standard"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="wf-type">Type</Label>
+              <Select value={newType} onValueChange={(v) => setNewType(v as WorkflowType)}>
+                <SelectTrigger id="wf-type">
+                  <SelectValue placeholder="Sélectionner un type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="inbound">Courrier reçu</SelectItem>
+                  <SelectItem value="reply">Réponse</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <DialogFooter>
             <Button
               onClick={() => createMutation.mutate()}
-              disabled={!newName.trim() || createMutation.isPending}
+              disabled={!newName.trim() || !newType || createMutation.isPending}
             >
               Créer
             </Button>
