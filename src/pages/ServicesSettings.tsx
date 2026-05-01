@@ -82,14 +82,17 @@ export default function ServicesSettings({ organizationId, isAdminOverride }: Pr
     queryFn: async () => {
       const { data, error } = await supabase
         .from("workflows")
-        .select("id, name")
+        .select("id, name, type")
         .eq("organization_id", orgId)
         .order("name");
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []) as { id: string; name: string; type: "inbound" | "reply" | null }[];
     },
     enabled: !!orgId,
   });
+
+  const inboundWorkflows = (workflows ?? []).filter((w) => (w.type ?? "inbound") === "inbound");
+  const replyWorkflows = (workflows ?? []).filter((w) => w.type === "reply");
 
   const { data: org } = useQuery({
     queryKey: ["org-general", orgId],
@@ -126,6 +129,7 @@ export default function ServicesSettings({ organizationId, isAdminOverride }: Pr
       name: string;
       email: string | null;
       workflow_id: string;
+      reply_workflow_id: string | null;
       imap_settings_id: string | null;
     }) => {
       return editing
@@ -210,7 +214,8 @@ export default function ServicesSettings({ organizationId, isAdminOverride }: Pr
                     <TableHead>Libellé</TableHead>
                     {!multipleImap && <TableHead>Courriel</TableHead>}
                     {multipleImap && <TableHead>Email (IMAP)</TableHead>}
-                    <TableHead>Workflow</TableHead>
+                    <TableHead>Workflow courrier reçu</TableHead>
+                    <TableHead>Workflow réponse</TableHead>
                     {isAdmin && <TableHead className="w-[100px] text-right">Actions</TableHead>}
                   </TableRow>
                 </TableHeader>
@@ -253,6 +258,16 @@ export default function ServicesSettings({ organizationId, isAdminOverride }: Pr
                           {svc.workflow?.name ?? "—"}
                         </span>
                       </TableCell>
+                      <TableCell className="text-sm">
+                        {svc.reply_workflow ? (
+                          <span className="inline-flex items-center gap-1.5">
+                            <GitBranch className="h-3.5 w-3.5 text-muted-foreground" />
+                            {svc.reply_workflow.name}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
                       {isAdmin && (
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
@@ -293,7 +308,8 @@ export default function ServicesSettings({ organizationId, isAdminOverride }: Pr
           if (!o) setEditing(null);
         }}
         editing={editing}
-        workflows={workflows ?? []}
+        inboundWorkflows={inboundWorkflows}
+        replyWorkflows={replyWorkflows}
         imapConfigs={imapConfigs}
         multipleImap={multipleImap}
         onSubmit={(values) => saveMutation.mutate(values)}
@@ -330,7 +346,8 @@ function ServiceDialog({
   open,
   onOpenChange,
   editing,
-  workflows,
+  inboundWorkflows,
+  replyWorkflows,
   imapConfigs,
   multipleImap,
   onSubmit,
@@ -339,20 +356,24 @@ function ServiceDialog({
   open: boolean;
   onOpenChange: (o: boolean) => void;
   editing: OrgService | null;
-  workflows: { id: string; name: string }[];
+  inboundWorkflows: { id: string; name: string }[];
+  replyWorkflows: { id: string; name: string }[];
   imapConfigs: ImapConfig[];
   multipleImap: boolean;
   onSubmit: (values: {
     name: string;
     email: string | null;
     workflow_id: string;
+    reply_workflow_id: string | null;
     imap_settings_id: string | null;
   }) => void;
   isSubmitting: boolean;
 }) {
+  const NONE = "__none__";
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [workflowId, setWorkflowId] = useState<string>("");
+  const [replyWorkflowId, setReplyWorkflowId] = useState<string>(NONE);
   const [imapSettingsId, setImapSettingsId] = useState<string>("");
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -361,9 +382,10 @@ function ServiceDialog({
     setName(editing?.name ?? "");
     setEmail(editing?.email ?? "");
     setWorkflowId(editing?.workflow_id ?? "");
+    setReplyWorkflowId(editing?.reply_workflow_id ?? NONE);
     setImapSettingsId(editing?.imap_settings_id ?? "");
     setErrors({});
-  }, [open, editing?.id, editing?.name, editing?.email, editing?.workflow_id, editing?.imap_settings_id]);
+  }, [open, editing?.id, editing?.name, editing?.email, editing?.workflow_id, editing?.reply_workflow_id, editing?.imap_settings_id]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -390,6 +412,7 @@ function ServiceDialog({
       name: name.trim(),
       email: multipleImap ? null : email.trim() || null,
       workflow_id: workflowId,
+      reply_workflow_id: replyWorkflowId && replyWorkflowId !== NONE ? replyWorkflowId : null,
       imap_settings_id: multipleImap ? imapSettingsId || null : null,
     });
   }
@@ -452,13 +475,13 @@ function ServiceDialog({
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="svc-workflow">Workflow associé *</Label>
+            <Label htmlFor="svc-workflow">Workflow courrier reçu *</Label>
             <Select value={workflowId} onValueChange={setWorkflowId}>
               <SelectTrigger id="svc-workflow">
                 <SelectValue placeholder="Sélectionner un workflow" />
               </SelectTrigger>
               <SelectContent>
-                {workflows.map((w) => (
+                {inboundWorkflows.map((w) => (
                   <SelectItem key={w.id} value={w.id}>
                     {w.name}
                   </SelectItem>
@@ -468,6 +491,23 @@ function ServiceDialog({
             {errors.workflow_id && (
               <p className="text-xs text-destructive">{errors.workflow_id}</p>
             )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="svc-reply-workflow">Workflow réponse</Label>
+            <Select value={replyWorkflowId} onValueChange={setReplyWorkflowId}>
+              <SelectTrigger id="svc-reply-workflow">
+                <SelectValue placeholder="Aucun" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE}>Aucun</SelectItem>
+                {replyWorkflows.map((w) => (
+                  <SelectItem key={w.id} value={w.id}>
+                    {w.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <DialogFooter>

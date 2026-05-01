@@ -903,6 +903,7 @@ export type Database = {
           imap_settings_id: string | null
           name: string
           organization_id: string
+          reply_workflow_id: string | null
           updated_at: string
           workflow_id: string
         }
@@ -914,6 +915,7 @@ export type Database = {
           imap_settings_id?: string | null
           name: string
           organization_id: string
+          reply_workflow_id?: string | null
           updated_at?: string
           workflow_id: string
         }
@@ -925,6 +927,7 @@ export type Database = {
           imap_settings_id?: string | null
           name?: string
           organization_id?: string
+          reply_workflow_id?: string | null
           updated_at?: string
           workflow_id?: string
         }
