@@ -26,7 +26,14 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useOrganization } from "@/contexts/OrganizationContext";
-import { getWorkflows, createWorkflow, deleteWorkflow } from "@/services/workflowService";
+import { getWorkflows, createWorkflow, deleteWorkflow, type WorkflowType } from "@/services/workflowService";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { Workflow, WorkflowState } from "@/types/courier";
 
 export default function Workflows() {
