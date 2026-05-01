@@ -129,6 +129,7 @@ export default function ServicesSettings({ organizationId, isAdminOverride }: Pr
       name: string;
       email: string | null;
       workflow_id: string;
+      reply_workflow_id: string | null;
       imap_settings_id: string | null;
     }) => {
       return editing
