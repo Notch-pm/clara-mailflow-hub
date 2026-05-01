@@ -14,7 +14,7 @@ export function AppLayout() {
       <div className="flex-1 flex min-h-0 overflow-hidden">
         {!isMobile && <AppSidebar />}
 
-        <main className="flex-1 overflow-auto p-4 md:p-6 pb-20 md:pb-6">
+        <main className="flex-1 overflow-auto p-4 md:p-6 pb-20 md:pb-6 px-0 py-0">
           <Outlet />
         </main>
       </div>
