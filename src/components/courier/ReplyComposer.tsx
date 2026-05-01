@@ -313,20 +313,39 @@ export default function ReplyComposer({
           {outgoingTransitions.map(({ transition: t, target }) => {
             const isSend =
               target.category === "processed" && (channel === "email" || target.name.toLowerCase().includes("répond"));
-            return (
+            const requiresSig = (target as any).requires_signature === true;
+            const blocked = requiresSig && !signatoryId;
+            const btn = (
               <Button
                 key={t.id}
                 size="sm"
                 variant={target.category === "processed" ? "default" : "secondary"}
-                disabled={isBusy || readOnly}
+                disabled={isBusy || readOnly || blocked}
                 onClick={() =>
-                  transition.mutate({ id: target.id, name: target.name, category: target.category })
+                  transition.mutate({
+                    id: target.id,
+                    name: target.name,
+                    category: target.category,
+                    requires_signature: requiresSig,
+                  })
                 }
               >
-                {isSend ? <Send className="mr-1.5 h-4 w-4" /> : target.category === "processing" ? <Mail className="mr-1.5 h-4 w-4" /> : <ArrowRight className="mr-1.5 h-4 w-4" />}
+                {requiresSig && <PenLine className="mr-1.5 h-4 w-4" />}
+                {!requiresSig && (isSend ? <Send className="mr-1.5 h-4 w-4" /> : target.category === "processing" ? <Mail className="mr-1.5 h-4 w-4" /> : <ArrowRight className="mr-1.5 h-4 w-4" />)}
                 {t.name || target.name}
               </Button>
             );
+            if (blocked) {
+              return (
+                <Tooltip key={t.id}>
+                  <TooltipTrigger asChild>
+                    <span tabIndex={0}>{btn}</span>
+                  </TooltipTrigger>
+                  <TooltipContent>Sélectionnez d'abord un signataire.</TooltipContent>
+                </Tooltip>
+              );
+            }
+            return btn;
           })}
           {isFinal && (
             <Badge variant="secondary" className="gap-1">
