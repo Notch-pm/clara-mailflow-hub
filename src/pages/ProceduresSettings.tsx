@@ -3,7 +3,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   listProcedures,
-  createProcedure,
   updateProcedure,
   deleteProcedure,
   type Procedure,
@@ -12,7 +11,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -25,13 +23,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -43,24 +34,12 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Plus, Pencil, Trash2, FileText, Search, Import } from "lucide-react";
 import { toast } from "sonner";
+import { ProcedureFormDialog } from "@/components/ProcedureFormDialog";
 
 interface Props {
   organizationId?: string;
   isAdminOverride?: boolean;
 }
-
-const COLOR_OPTIONS = [
-  { value: "#0acf83", label: "Vert" },
-  { value: "#ffcd57", label: "Jaune" },
-  { value: "#2563eb", label: "Bleu" },
-  { value: "#dc2626", label: "Rouge" },
-  { value: "#9333ea", label: "Violet" },
-  { value: "#ea580c", label: "Orange" },
-  { value: "#0891b2", label: "Cyan" },
-  { value: "#db2777", label: "Rose" },
-];
-
-const emptyForm = { name: "", description: "", color: "#0acf83", icon: "" };
 
 function isUrl(v: string | null | undefined): boolean {
   return !!v && (v.startsWith("http://") || v.startsWith("https://"));
@@ -80,7 +59,6 @@ export default function ProceduresSettings({ organizationId, isAdminOverride }: 
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [editing, setEditing] = useState<Procedure | null>(null);
   const [deleting, setDeleting] = useState<Procedure | null>(null);
-  const [form, setForm] = useState(emptyForm);
 
   const { data: procedures = [], isLoading } = useQuery({
     queryKey: ["procedures", orgId],
@@ -88,29 +66,11 @@ export default function ProceduresSettings({ organizationId, isAdminOverride }: 
     enabled: !!orgId,
   });
 
-  const createMutation = useMutation({
-    mutationFn: () =>
-      createProcedure(orgId!, {
-        name: form.name,
-        description: form.description,
-        color: form.color,
-        icon: form.icon || null,
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["procedures", orgId] });
-      toast.success("Démarche créée");
-      closeDialog();
-    },
-    onError: (e: Error) => toast.error("Erreur : " + e.message),
-  });
-
   const updateMutation = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: Partial<Procedure> }) =>
       updateProcedure(id, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["procedures", orgId] });
-      toast.success("Démarche mise à jour");
-      closeDialog();
     },
     onError: (e: Error) => toast.error("Erreur : " + e.message),
   });
@@ -128,43 +88,12 @@ export default function ProceduresSettings({ organizationId, isAdminOverride }: 
 
   function openCreate() {
     setEditing(null);
-    setForm(emptyForm);
     setDialogOpen(true);
   }
 
   function openEdit(p: Procedure) {
     setEditing(p);
-    setForm({
-      name: p.name,
-      description: p.description ?? "",
-      color: p.color ?? "#0acf83",
-      icon: p.icon ?? "",
-    });
     setDialogOpen(true);
-  }
-
-  function closeDialog() {
-    setDialogOpen(false);
-    setEditing(null);
-    setForm(emptyForm);
-  }
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!form.name.trim()) return;
-    if (editing) {
-      updateMutation.mutate({
-        id: editing.id,
-        payload: {
-          name: form.name,
-          description: form.description,
-          color: form.color,
-          icon: form.icon || null,
-        },
-      });
-    } else {
-      createMutation.mutate();
-    }
   }
 
   const filtered = useMemo(() => {
@@ -313,72 +242,16 @@ export default function ProceduresSettings({ organizationId, isAdminOverride }: 
         </CardContent>
       </Card>
 
-      {/* Create / Edit dialog */}
-      <Dialog open={dialogOpen} onOpenChange={(open) => !open && closeDialog()}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editing ? "Modifier la démarche" : "Nouvelle démarche"}</DialogTitle>
-            <DialogDescription>
-              {editing
-                ? "Modifiez les informations de la démarche."
-                : "Créez une nouvelle démarche administrative."}
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="proc-name">Nom *</Label>
-              <Input
-                id="proc-name"
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="Ex. Demande de passeport"
-                required
-                maxLength={150}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="proc-desc">Description</Label>
-              <Textarea
-                id="proc-desc"
-                value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
-                placeholder="Description courte de la démarche"
-                rows={3}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Couleur</Label>
-              <div className="flex flex-wrap gap-2">
-                {COLOR_OPTIONS.map((c) => (
-                  <button
-                    key={c.value}
-                    type="button"
-                    title={c.label}
-                    onClick={() => setForm({ ...form, color: c.value })}
-                    className={`h-8 w-8 rounded-full border-2 transition ${
-                      form.color === c.value ? "border-foreground scale-110" : "border-transparent"
-                    }`}
-                    style={{ backgroundColor: c.value }}
-                  />
-                ))}
-              </div>
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="outline" onClick={closeDialog}>
-                Annuler
-              </Button>
-              <Button
-                type="submit"
-                disabled={createMutation.isPending || updateMutation.isPending}
-              >
-                Enregistrer
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <ProcedureFormDialog
+        open={dialogOpen}
+        onOpenChange={(open) => {
+          setDialogOpen(open);
+          if (!open) setEditing(null);
+        }}
+        orgId={orgId}
+        procedure={editing}
+      />
 
-      {/* Delete dialog */}
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>

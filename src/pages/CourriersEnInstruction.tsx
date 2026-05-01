@@ -26,6 +26,7 @@ import { listServices } from "@/services/orgServiceService";
 import MailboxSidePanel from "@/components/courier/MailboxSidePanel";
 import { readableTextColor } from "@/lib/tag-color";
 import { cn } from "@/lib/utils";
+import type { CourierWithRelations } from "@/types/courier";
 
 type GroupBy = "none" | "state" | "service";
 
@@ -37,7 +38,7 @@ export default function CourriersEnInstruction() {
   const [stateFilter, setStateFilter] = useState<string>("all");
   const [groupBy, setGroupBy] = useState<GroupBy>("none");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const [selectedCourier, setSelectedCourier] = useState<any | null>(null);
+  const [selectedCourier, setSelectedCourier] = useState<CourierWithRelations | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
 
   // Processing states for the org
@@ -114,7 +115,7 @@ export default function CourriersEnInstruction() {
     }
     if (tagFilter !== "all") {
       list = list.filter((c) => {
-        const t = (c.metadata as any)?.tags ?? [];
+        const t = (c.metadata as { tags?: string[] } | null)?.tags ?? [];
         return Array.isArray(t) && t.some((x: string) => x.toLowerCase() === tagFilter.toLowerCase());
       });
     }
@@ -126,7 +127,7 @@ export default function CourriersEnInstruction() {
     if (groupBy === "none") {
       return [{ key: "all", label: "", items: filtered }];
     }
-    const map = new Map<string, { label: string; items: any[] }>();
+    const map = new Map<string, { label: string; items: typeof filtered }>();
     filtered.forEach((c) => {
       let key: string;
       let label: string;
@@ -149,17 +150,19 @@ export default function CourriersEnInstruction() {
     setCollapsed((c) => ({ ...c, [key]: !c[key] }));
   }
 
-  function getSender(c: any): string {
-    const p = c.courier_participants?.find((x: any) => x.role === "sender");
+  function getSender(c: CourierWithRelations): string {
+    const p = c.courier_participants?.find((x) => x.role === "sender");
+    if (!p) return "—";
+    const full = [p.first_name, p.last_name].filter(Boolean).join(" ");
+    return full || p.name || p.email || "—";
+  }
+
+  function getRecipient(c: CourierWithRelations): string {
+    const p = c.courier_participants?.find((x) => x.role === "recipient");
     return p?.name ?? p?.email ?? "—";
   }
 
-  function getRecipient(c: any): string {
-    const p = c.courier_participants?.find((x: any) => x.role === "recipient");
-    return p?.name ?? p?.email ?? "—";
-  }
-
-  function handleRowClick(c: any) {
+  function handleRowClick(c: CourierWithRelations) {
     setSelectedCourier(c);
     setPanelOpen(true);
   }
@@ -300,7 +303,7 @@ export default function CourriersEnInstruction() {
                     </TableHeader>
                     <TableBody>
                       {g.items.map((c) => {
-                        const courierTags = ((c.metadata as any)?.tags ?? []) as string[];
+                        const courierTags = (c.metadata as { tags?: string[] } | null)?.tags ?? [];
                         const stateName = stateById.get(c.workflow_state_id ?? "")?.name;
                         return (
                           <TableRow

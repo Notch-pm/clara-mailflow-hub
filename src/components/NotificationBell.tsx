@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Bell, CheckCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { fr } from "date-fns/locale";
 export function NotificationBell() {
   const navigate = useNavigate();
   const { notifications, unreadCount, markRead, markAllRead } = useNotifications();
+  const [popoverOpen, setPopoverOpen] = useState(false);
 
   useEffect(() => {
     const base = "Clara, Gestion de courrier";
@@ -21,13 +22,14 @@ export function NotificationBell() {
 
   function handleNotificationClick(id: string, resourceId: string | null) {
     markRead(id);
+    setPopoverOpen(false);
     if (resourceId) {
       navigate(`/boite-aux-lettres?open=${resourceId}`);
     }
   }
 
   return (
-    <Popover>
+    <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
       <PopoverTrigger asChild>
         <Button
           variant="ghost"

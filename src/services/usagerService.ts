@@ -1,5 +1,4 @@
 import { supabase } from "@/integrations/supabase/client";
-import type { Database } from "@/integrations/supabase/types";
 
 export type UsagerCategory = "citoyen" | "entreprise" | "association";
 export type UsagerCivilite = "madame" | "monsieur";
@@ -27,7 +26,18 @@ export interface UsagerInput {
   phone?: string | null;
 }
 
-const TABLE = "usagers" as any;
+export interface UsagerCourier {
+  id: string;
+  subject: string | null;
+  received_at: string | null;
+  sent_at: string | null;
+  direction: string;
+  channel: string | null;
+  chrono: string | null;
+  created_at: string;
+  metadata: Record<string, unknown> | null;
+  workflow_state: { name: string; category: string } | null;
+}
 
 function normalizeEmail(e?: string | null) {
   return e?.trim().toLowerCase() || null;
@@ -37,53 +47,69 @@ function normalizePhone(p?: string | null) {
 }
 
 export async function listUsagers(organizationId: string, search?: string) {
-  let q = supabase.from(TABLE).select("*").eq("organization_id", organizationId);
+  let q = supabase.from("usagers").select("*").eq("organization_id", organizationId);
   if (search?.trim()) {
     const s = `%${search.trim()}%`;
     q = q.or(`last_name.ilike.${s},first_name.ilike.${s},email.ilike.${s},phone.ilike.${s}`);
   }
-  const { data, error } = await q.order("last_name", { ascending: true, nullsFirst: false });
+  const { data, error } = await q.order("last_name", { ascending: true, nullsFirst: false }).limit(200);
   if (error) throw error;
   return (data ?? []) as unknown as Usager[];
 }
 
 export async function getUsager(id: string) {
-  const { data, error } = await supabase.from(TABLE).select("*").eq("id", id).maybeSingle();
+  const { data, error } = await supabase.from("usagers").select("*").eq("id", id).maybeSingle();
   if (error) throw error;
   return data as unknown as Usager | null;
 }
 
+export async function getUsagersByIds(ids: string[]): Promise<Record<string, Usager>> {
+  if (!ids.length) return {};
+  const { data, error } = await supabase.from("usagers").select("*").in("id", ids);
+  if (error) throw error;
+  const result: Record<string, Usager> = {};
+  for (const u of data ?? []) result[(u as unknown as Usager).id] = u as unknown as Usager;
+  return result;
+}
+
 export async function createUsager(organizationId: string, input: UsagerInput) {
-  const payload: any = {
-    organization_id: organizationId,
-    category: input.category,
-    civilite: input.category === "citoyen" ? input.civilite ?? null : null,
-    first_name: input.category === "citoyen" ? (input.first_name?.trim() || null) : null,
-    last_name: input.last_name?.trim() || null,
-    email: normalizeEmail(input.email),
-    phone: input.phone?.trim() || null,
-  };
-  const { data, error } = await supabase.from(TABLE).insert(payload).select("*").single();
+  const { data, error } = await supabase
+    .from("usagers")
+    .insert({
+      organization_id: organizationId,
+      category: input.category,
+      civilite: input.category === "citoyen" ? (input.civilite ?? null) : null,
+      first_name: input.category === "citoyen" ? (input.first_name?.trim() || null) : null,
+      last_name: input.last_name?.trim() || null,
+      email: normalizeEmail(input.email),
+      phone: input.phone?.trim() || null,
+    } as never)
+    .select("*")
+    .single();
   if (error) throw error;
   return data as unknown as Usager;
 }
 
 export async function updateUsager(id: string, input: UsagerInput) {
-  const payload: any = {
-    category: input.category,
-    civilite: input.category === "citoyen" ? input.civilite ?? null : null,
-    first_name: input.category === "citoyen" ? (input.first_name?.trim() || null) : null,
-    last_name: input.last_name?.trim() || null,
-    email: normalizeEmail(input.email),
-    phone: input.phone?.trim() || null,
-  };
-  const { data, error } = await supabase.from(TABLE).update(payload).eq("id", id).select("*").single();
+  const { data, error } = await supabase
+    .from("usagers")
+    .update({
+      category: input.category,
+      civilite: input.category === "citoyen" ? (input.civilite ?? null) : null,
+      first_name: input.category === "citoyen" ? (input.first_name?.trim() || null) : null,
+      last_name: input.last_name?.trim() || null,
+      email: normalizeEmail(input.email),
+      phone: input.phone?.trim() || null,
+    } as never)
+    .eq("id", id)
+    .select("*")
+    .single();
   if (error) throw error;
   return data as unknown as Usager;
 }
 
 export async function deleteUsager(id: string) {
-  const { error } = await supabase.from(TABLE).delete().eq("id", id);
+  const { error } = await supabase.from("usagers").delete().eq("id", id);
   if (error) throw error;
 }
 
@@ -102,7 +128,7 @@ export async function findMatchingUsager(
 
   if (email) {
     const { data } = await supabase
-      .from(TABLE)
+      .from("usagers")
       .select("*")
       .eq("organization_id", organizationId)
       .ilike("email", email)
@@ -113,7 +139,7 @@ export async function findMatchingUsager(
 
   if (phone) {
     const { data } = await supabase
-      .from(TABLE)
+      .from("usagers")
       .select("*")
       .eq("organization_id", organizationId)
       .eq("phone", phone)
@@ -129,18 +155,22 @@ export async function findMatchingUsager(
 /**
  * Liste des courriers envoyés par un usager (via courier_participants role=sender).
  */
-export async function listUsagerCouriers(usagerId: string) {
-  const query: any = supabase.from("courier_participants");
-  const { data, error } = await query
-    .select("courier_id, role, courier:couriers(id, subject, received_at, sent_at, direction, channel, chrono, created_at)")
+export async function listUsagerCouriers(usagerId: string): Promise<UsagerCourier[]> {
+  const { data, error } = await supabase
+    .from("courier_participants")
+    .select("courier_id, role, courier:couriers(id, subject, received_at, sent_at, direction, channel, chrono, created_at, metadata, workflow_state:workflow_states(name, category))")
     .eq("usager_id", usagerId);
   if (error) throw error;
-  const couriers = (data ?? [])
-    .map((r: any) => r.courier)
-    .filter(Boolean);
-  // dédoublonnage
+
+  interface ParticipantRow {
+    courier: UsagerCourier | null;
+  }
+  const couriers = ((data ?? []) as unknown as ParticipantRow[])
+    .map((r) => r.courier)
+    .filter((c): c is UsagerCourier => c !== null);
+
   const seen = new Set<string>();
-  const out: any[] = [];
+  const out: UsagerCourier[] = [];
   for (const c of couriers) {
     if (!seen.has(c.id)) {
       seen.add(c.id);

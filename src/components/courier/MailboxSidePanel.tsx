@@ -30,6 +30,7 @@ import { listTags, type CourierTag } from "@/services/courierTagService";
 import { listServices } from "@/services/orgServiceService";
 import { getDocuments } from "@/services/courierDocumentService";
 import { addParticipant, updateParticipant } from "@/services/courierParticipantService";
+import { findMatchingUsager, createUsager } from "@/services/usagerService";
 import { cn } from "@/lib/utils";
 import { readableTextColor } from "@/lib/tag-color";
 import DocumentManager from "./DocumentManager";
@@ -123,6 +124,15 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
     setLocalAssignedService(courier?.assigned_service ?? null);
     setLocalWorkflowStateId(courier?.workflow_state_id ?? null);
   }, [courier?.id, courier?.assigned_service, courier?.workflow_state_id]);
+
+  // Si le courrier vient d'une config IMAP précise, restreindre les services proposés.
+  const imapSettingsId = (courier?.metadata?.imap_settings_id as string | null) ?? null;
+  const availableServices = useMemo(() => {
+    if (!services) return [];
+    if (!imapSettingsId) return services;
+    const linked = services.filter((s) => s.imap_settings_id === imapSettingsId);
+    return linked.length > 0 ? linked : services;
+  }, [services, imapSettingsId]);
 
   // Resolve courier's current service from its name (assigned_service)
   const currentService = useMemo(() => {
@@ -255,7 +265,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
         to_name: toStateRow?.name ?? fromState?.name ?? null,
       });
 
-      // First time entering a processing state → instruction_started.
+      // First time entering a processing state → instruction_started + usager creation.
       if (
         toStateRow?.category === "processing" &&
         fromStateRow?.category !== "processing"
@@ -263,11 +273,37 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
         await logEvent(organizationId, courier.id, "instruction_started", {
           state_name: toStateRow.name,
         });
+
+        // Créer/lier l'usager expéditeur s'il n'est pas encore rattaché.
+        const senderParticipant = courier.courier_participants?.find(
+          (p) => p.role === "sender",
+        );
+        if (senderParticipant && !senderParticipant.usager_id) {
+          const matched = await findMatchingUsager(organizationId, {
+            email: senderParticipant.email,
+            phone: senderParticipant.phone,
+          });
+          let usagerId: string | null = matched?.id ?? null;
+          if (!usagerId && (senderParticipant.last_name || senderParticipant.email)) {
+            const created = await createUsager(organizationId, {
+              category: "citoyen",
+              first_name: senderParticipant.first_name ?? null,
+              last_name: senderParticipant.last_name || senderParticipant.email || "",
+              email: senderParticipant.email ?? null,
+              phone: senderParticipant.phone ?? null,
+            });
+            usagerId = created.id;
+          }
+          if (usagerId) {
+            await updateParticipant(senderParticipant.id, { usager_id: usagerId });
+          }
+        }
       }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
       queryClient.invalidateQueries({ queryKey: ["courier-events", courier?.id] });
+      queryClient.invalidateQueries({ queryKey: ["usagers"] });
       toast.success("Courrier déplacé");
       onOpenChange(false);
     },
@@ -632,7 +668,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                       <SelectValue placeholder="Sélectionner un service" />
                     </SelectTrigger>
                     <SelectContent>
-                      {(services ?? []).map((s) => (
+                      {availableServices.map((s) => (
                         <SelectItem key={s.id} value={s.id}>
                           {s.name}
                           {s.workflow?.name && (

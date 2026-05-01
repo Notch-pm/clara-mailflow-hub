@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, lazy, Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes, Navigate, Outlet } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -16,7 +16,7 @@ import CourriersTraites from "@/pages/CourriersTraites";
 import CourriersArchives from "@/pages/CourriersArchives";
 import CourriersSortants from "@/pages/CourriersSortants";
 import CourierDetail from "@/pages/CourierDetail";
-import WorkflowDetail from "@/pages/WorkflowDetail";
+const WorkflowDetail = lazy(() => import("@/pages/WorkflowDetail"));
 import SettingsPage from "@/pages/SettingsPage";
 import MonProfil from "@/pages/MonProfil";
 import Liens from "@/pages/Liens";
@@ -145,7 +145,7 @@ const App = () => (
                   <Route path="/courriers-archives" element={<CourriersArchives />} />
                   <Route path="/courriers-sortants" element={<CourriersSortants />} />
                   <Route path="/courrier/:id" element={<CourierDetail />} />
-                  <Route path="/workflows/:id" element={<WorkflowDetail />} />
+                  <Route path="/workflows/:id" element={<Suspense fallback={<LoadingScreen />}><WorkflowDetail /></Suspense>} />
                   <Route path="/parametres" element={<SettingsPage />} />
                   <Route path="/mon-profil" element={<MonProfil />} />
                   <Route path="/liens" element={<Liens />} />

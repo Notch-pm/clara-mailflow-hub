@@ -1,9 +1,9 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Users, Plus, Search, UserCog, UserX, UserCheck, Pencil, KeyRound, Loader2, Camera, Trash2 } from "lucide-react";
+import { Plus, Search, UserCog, UserX, UserCheck, Pencil, KeyRound, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,9 +15,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { useOrganization } from "@/contexts/OrganizationContext";
-import { getOrgMembers, createOrgMember, updateOrgMember, deactivateOrgMember, reactivateOrgMember, sendPasswordReset } from "@/services/userService";
-import { uploadUserAvatar, removeUserAvatar } from "@/services/avatarService";
+import { getOrgMembers, createOrgMember, deactivateOrgMember, reactivateOrgMember, sendPasswordReset } from "@/services/userService";
 import { UserAvatar } from "@/components/UserAvatar";
+import { EditUserDialog } from "@/components/EditUserDialog";
 import type { OrgMember } from "@/types/user";
 
 const ROLES = [
@@ -39,12 +39,6 @@ const createSchema = z.object({
   role: z.enum(["administrateur", "gestionnaire", "consultant"], { required_error: "Rôle obligatoire" }),
 });
 
-const editSchema = z.object({
-  first_name: z.string().min(1, "Prénom obligatoire").max(100),
-  last_name: z.string().min(1, "Nom obligatoire").max(100),
-  role: z.enum(["administrateur", "gestionnaire", "consultant"], { required_error: "Rôle obligatoire" }),
-});
-
 interface UsersPageProps {
   organizationId?: string;
 }
@@ -56,18 +50,10 @@ export default function UsersPage({ organizationId: propOrgId }: UsersPageProps 
   const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [editMember, setEditMember] = useState<OrgMember | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const createForm = useForm<z.infer<typeof createSchema>>({
     resolver: zodResolver(createSchema),
     defaultValues: { email: "", first_name: "", last_name: "", role: undefined },
-  });
-
-  const editForm = useForm<z.infer<typeof editSchema>>({
-    resolver: zodResolver(editSchema),
-    values: editMember
-      ? { first_name: editMember.first_name ?? "", last_name: editMember.last_name ?? "", role: editMember.role as any }
-      : { first_name: "", last_name: "", role: "consultant" as const },
   });
 
   const { data: members, isLoading } = useQuery({
@@ -99,19 +85,6 @@ export default function UsersPage({ organizationId: propOrgId }: UsersPageProps 
       toast.success("Utilisateur créé");
       createForm.reset();
       setCreateOpen(false);
-    },
-    onError: (err: Error) => toast.error(err.message),
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: async (values: z.infer<typeof editSchema>) => {
-      if (!organizationId || !editMember) throw new Error("Contexte manquant");
-      await updateOrgMember(organizationId, editMember.id, editMember.membership_id, values);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["org-members"] });
-      toast.success("Utilisateur mis à jour");
-      setEditMember(null);
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -149,48 +122,6 @@ export default function UsersPage({ organizationId: propOrgId }: UsersPageProps 
     },
     onError: (err: Error) => toast.error(err.message),
   });
-
-  const uploadAvatarMutation = useMutation({
-    mutationFn: async (file: File) => {
-      if (!editMember) throw new Error("Aucun utilisateur sélectionné");
-      const url = await uploadUserAvatar(editMember.id, file);
-      return url;
-    },
-    onSuccess: (url) => {
-      toast.success("Photo mise à jour");
-      queryClient.invalidateQueries({ queryKey: ["org-members"] });
-      setEditMember((prev) => (prev ? { ...prev, avatar_url: url } : prev));
-    },
-    onError: (err: Error) => toast.error(err.message),
-  });
-
-  const removeAvatarMutation = useMutation({
-    mutationFn: async () => {
-      if (!editMember) throw new Error("Aucun utilisateur sélectionné");
-      await removeUserAvatar(editMember.id);
-    },
-    onSuccess: () => {
-      toast.success("Photo supprimée");
-      queryClient.invalidateQueries({ queryKey: ["org-members"] });
-      setEditMember((prev) => (prev ? { ...prev, avatar_url: null } : prev));
-    },
-    onError: (err: Error) => toast.error(err.message),
-  });
-
-  const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("La photo ne doit pas dépasser 5 Mo");
-      return;
-    }
-    if (!file.type.startsWith("image/")) {
-      toast.error("Format d'image non supporté");
-      return;
-    }
-    uploadAvatarMutation.mutate(file);
-    e.target.value = "";
-  };
 
   return (
     <div className="space-y-6">
@@ -354,89 +285,11 @@ export default function UsersPage({ organizationId: propOrgId }: UsersPageProps 
         </Card>
       )}
 
-      {/* Edit dialog */}
-      <Dialog open={!!editMember} onOpenChange={(open) => !open && setEditMember(null)}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Modifier l'utilisateur</DialogTitle></DialogHeader>
-          {editMember && (
-            <div className="space-y-4">
-              {/* Avatar section */}
-              <div className="flex items-center gap-4 pb-3 border-b">
-                <UserAvatar
-                  firstName={editMember.first_name}
-                  lastName={editMember.last_name}
-                  email={editMember.email}
-                  avatarUrl={editMember.avatar_url}
-                  className="h-16 w-16 text-lg"
-                />
-                <div className="flex flex-col gap-2">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={handleAvatarFileChange}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={uploadAvatarMutation.isPending}
-                  >
-                    {uploadAvatarMutation.isPending ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
-                    ) : (
-                      <Camera className="h-4 w-4 mr-1.5" />
-                    )}
-                    {editMember.avatar_url ? "Remplacer la photo" : "Ajouter une photo"}
-                  </Button>
-                  {editMember.avatar_url && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="text-destructive hover:text-destructive justify-start px-2"
-                      onClick={() => removeAvatarMutation.mutate()}
-                      disabled={removeAvatarMutation.isPending}
-                    >
-                      <Trash2 className="h-3.5 w-3.5 mr-1.5" />
-                      Supprimer
-                    </Button>
-                  )}
-                </div>
-              </div>
-
-              <p className="text-sm text-muted-foreground">{editMember.email}</p>
-              <Form {...editForm}>
-                <form onSubmit={editForm.handleSubmit((v) => updateMutation.mutate(v))} className="space-y-4">
-                  <div className="grid grid-cols-2 gap-3">
-                    <FormField control={editForm.control} name="first_name" render={({ field }) => (
-                      <FormItem><FormLabel>Prénom</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
-                    )} />
-                    <FormField control={editForm.control} name="last_name" render={({ field }) => (
-                      <FormItem><FormLabel>Nom</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
-                    )} />
-                  </div>
-                  <FormField control={editForm.control} name="role" render={({ field }) => (
-                    <FormItem><FormLabel>Rôle</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
-                        <SelectContent>
-                          {ROLES.map((r) => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}
-                        </SelectContent>
-                      </Select><FormMessage />
-                    </FormItem>
-                  )} />
-                  <Button type="submit" className="w-full" disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? "Enregistrement..." : "Enregistrer"}
-                  </Button>
-                </form>
-              </Form>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      <EditUserDialog
+        member={editMember}
+        organizationId={organizationId ?? ""}
+        onClose={() => setEditMember(null)}
+      />
     </div>
   );
 }

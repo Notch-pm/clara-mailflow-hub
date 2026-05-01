@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
-import { Plus, Pencil, Trash2, Briefcase, Mail, GitBranch } from "lucide-react";
+import { Plus, Pencil, Trash2, Briefcase, Mail, GitBranch, Inbox } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -45,23 +45,16 @@ import {
   type OrgService,
 } from "@/services/orgServiceService";
 
-const serviceSchema = z.object({
-  name: z
-    .string()
-    .trim()
-    .min(1, "Le libellé est obligatoire")
-    .max(100, "100 caractères maximum"),
-  email: z
-    .string()
-    .trim()
-    .max(255, "255 caractères maximum")
-    .email("Adresse email invalide")
-    .optional()
-    .or(z.literal("")),
+interface ImapConfig {
+  id: string;
+  label: string;
+  username: string;
+}
+
+const baseSchema = z.object({
+  name: z.string().trim().min(1, "Le libellé est obligatoire").max(100, "100 caractères maximum"),
   workflow_id: z.string().uuid("Workflow obligatoire"),
 });
-
-type ServiceFormValues = z.infer<typeof serviceSchema>;
 
 interface Props {
   organizationId?: string;
@@ -98,16 +91,46 @@ export default function ServicesSettings({ organizationId, isAdminOverride }: Pr
     enabled: !!orgId,
   });
 
+  const { data: org } = useQuery({
+    queryKey: ["org-general", orgId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("organizations" as never)
+        .select("multiple_imap")
+        .eq("id", orgId)
+        .single();
+      if (error) throw error;
+      return data as unknown as { multiple_imap: boolean };
+    },
+    enabled: !!orgId,
+  });
+
+  const { data: imapConfigs = [] } = useQuery({
+    queryKey: ["imap-settings", orgId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("imap_settings" as never)
+        .select("id, label, username")
+        .eq("organization_id", orgId)
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as ImapConfig[];
+    },
+    enabled: !!orgId && (org?.multiple_imap ?? false),
+  });
+
+  const multipleImap = org?.multiple_imap ?? false;
+
   const saveMutation = useMutation({
-    mutationFn: async (values: ServiceFormValues) => {
-      const payload = {
-        name: values.name,
-        email: values.email || null,
-        workflow_id: values.workflow_id,
-      };
+    mutationFn: async (values: {
+      name: string;
+      email: string | null;
+      workflow_id: string;
+      imap_settings_id: string | null;
+    }) => {
       return editing
-        ? updateService(editing.id, payload)
-        : createService(orgId, payload);
+        ? updateService(editing.id, values)
+        : createService(orgId, values);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["org-services", orgId] });
@@ -185,7 +208,8 @@ export default function ServicesSettings({ organizationId, isAdminOverride }: Pr
                 <TableHeader>
                   <TableRow>
                     <TableHead>Libellé</TableHead>
-                    <TableHead>Courriel</TableHead>
+                    {!multipleImap && <TableHead>Courriel</TableHead>}
+                    {multipleImap && <TableHead>Email (IMAP)</TableHead>}
                     <TableHead>Workflow</TableHead>
                     {isAdmin && <TableHead className="w-[100px] text-right">Actions</TableHead>}
                   </TableRow>
@@ -194,16 +218,35 @@ export default function ServicesSettings({ organizationId, isAdminOverride }: Pr
                   {services.map((svc) => (
                     <TableRow key={svc.id}>
                       <TableCell className="font-medium">{svc.name}</TableCell>
-                      <TableCell className="text-muted-foreground text-sm">
-                        {svc.email ? (
-                          <span className="inline-flex items-center gap-1.5">
-                            <Mail className="h-3.5 w-3.5" />
-                            {svc.email}
-                          </span>
-                        ) : (
-                          "—"
-                        )}
-                      </TableCell>
+                      {!multipleImap && (
+                        <TableCell className="text-muted-foreground text-sm">
+                          {svc.email ? (
+                            <span className="inline-flex items-center gap-1.5">
+                              <Mail className="h-3.5 w-3.5" />
+                              {svc.email}
+                            </span>
+                          ) : (
+                            "—"
+                          )}
+                        </TableCell>
+                      )}
+                      {multipleImap && (
+                        <TableCell className="text-muted-foreground text-sm">
+                          {svc.imap_config ? (
+                            <span className="inline-flex items-center gap-1.5">
+                              <Inbox className="h-3.5 w-3.5" />
+                              {svc.imap_config.username}
+                              {svc.imap_config.label && (
+                                <span className="text-xs text-muted-foreground">
+                                  ({svc.imap_config.label})
+                                </span>
+                              )}
+                            </span>
+                          ) : (
+                            "—"
+                          )}
+                        </TableCell>
+                      )}
                       <TableCell className="text-sm">
                         <span className="inline-flex items-center gap-1.5">
                           <GitBranch className="h-3.5 w-3.5 text-muted-foreground" />
@@ -251,6 +294,8 @@ export default function ServicesSettings({ organizationId, isAdminOverride }: Pr
         }}
         editing={editing}
         workflows={workflows ?? []}
+        imapConfigs={imapConfigs}
+        multipleImap={multipleImap}
         onSubmit={(values) => saveMutation.mutate(values)}
         isSubmitting={saveMutation.isPending}
       />
@@ -286,6 +331,8 @@ function ServiceDialog({
   onOpenChange,
   editing,
   workflows,
+  imapConfigs,
+  multipleImap,
   onSubmit,
   isSubmitting,
 }: {
@@ -293,12 +340,20 @@ function ServiceDialog({
   onOpenChange: (o: boolean) => void;
   editing: OrgService | null;
   workflows: { id: string; name: string }[];
-  onSubmit: (values: ServiceFormValues) => void;
+  imapConfigs: ImapConfig[];
+  multipleImap: boolean;
+  onSubmit: (values: {
+    name: string;
+    email: string | null;
+    workflow_id: string;
+    imap_settings_id: string | null;
+  }) => void;
   isSubmitting: boolean;
 }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [workflowId, setWorkflowId] = useState<string>("");
+  const [imapSettingsId, setImapSettingsId] = useState<string>("");
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -306,22 +361,37 @@ function ServiceDialog({
     setName(editing?.name ?? "");
     setEmail(editing?.email ?? "");
     setWorkflowId(editing?.workflow_id ?? "");
+    setImapSettingsId(editing?.imap_settings_id ?? "");
     setErrors({});
-  }, [open, editing?.id, editing?.name, editing?.email, editing?.workflow_id]);
+  }, [open, editing?.id, editing?.name, editing?.email, editing?.workflow_id, editing?.imap_settings_id]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const result = serviceSchema.safeParse({ name, email, workflow_id: workflowId });
-    if (!result.success) {
-      const fieldErrors: Record<string, string> = {};
-      result.error.issues.forEach((i) => {
+    const base = baseSchema.safeParse({ name, workflow_id: workflowId });
+    const fieldErrors: Record<string, string> = {};
+
+    if (!base.success) {
+      base.error.issues.forEach((i) => {
         if (i.path[0]) fieldErrors[i.path[0] as string] = i.message;
       });
+    }
+
+    if (multipleImap && !imapSettingsId) {
+      fieldErrors.imap_settings_id = "La boîte IMAP est obligatoire";
+    }
+
+    if (Object.keys(fieldErrors).length > 0) {
       setErrors(fieldErrors);
       return;
     }
+
     setErrors({});
-    onSubmit(result.data);
+    onSubmit({
+      name: name.trim(),
+      email: multipleImap ? null : email.trim() || null,
+      workflow_id: workflowId,
+      imap_settings_id: multipleImap ? imapSettingsId || null : null,
+    });
   }
 
   return (
@@ -330,7 +400,7 @@ function ServiceDialog({
         <DialogHeader>
           <DialogTitle>{editing ? "Modifier le service" : "Nouveau service"}</DialogTitle>
           <DialogDescription>
-            Le libellé et le workflow sont obligatoires.
+            Le libellé{multipleImap ? ", la boîte IMAP" : ""} et le workflow sont obligatoires.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -347,18 +417,39 @@ function ServiceDialog({
             {errors.name && <p className="text-xs text-destructive">{errors.name}</p>}
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="svc-email">Courriel</Label>
-            <Input
-              id="svc-email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              maxLength={255}
-              placeholder="service@exemple.fr (facultatif)"
-            />
-            {errors.email && <p className="text-xs text-destructive">{errors.email}</p>}
-          </div>
+          {multipleImap ? (
+            <div className="space-y-2">
+              <Label htmlFor="svc-imap">Boîte IMAP *</Label>
+              <Select value={imapSettingsId} onValueChange={setImapSettingsId}>
+                <SelectTrigger id="svc-imap">
+                  <SelectValue placeholder="Sélectionner une boîte IMAP" />
+                </SelectTrigger>
+                <SelectContent>
+                  {imapConfigs.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.label ? `${c.label} — ${c.username}` : c.username}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {errors.imap_settings_id && (
+                <p className="text-xs text-destructive">{errors.imap_settings_id}</p>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Label htmlFor="svc-email">Courriel</Label>
+              <Input
+                id="svc-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                maxLength={255}
+                placeholder="service@exemple.fr (facultatif)"
+              />
+              {errors.email && <p className="text-xs text-destructive">{errors.email}</p>}
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="svc-workflow">Workflow associé *</Label>

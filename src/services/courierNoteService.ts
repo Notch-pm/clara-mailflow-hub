@@ -18,7 +18,7 @@ function preview(text: string, max = 80): string {
 
 export async function listNotes(courierId: string): Promise<CourierNote[]> {
   const { data, error } = await supabase
-    .from("courier_notes" as any)
+    .from("courier_notes")
     .select("*")
     .eq("courier_id", courierId)
     .order("created_at", { ascending: false });
@@ -35,13 +35,13 @@ export async function createNote(
     data: { user },
   } = await supabase.auth.getUser();
   const { data, error } = await supabase
-    .from("courier_notes" as any)
+    .from("courier_notes")
     .insert({
       organization_id: orgId,
       courier_id: courierId,
       content: content.trim(),
       created_by: user?.id ?? null,
-    } as any)
+    })
     .select()
     .single();
   if (error) throw error;
@@ -51,8 +51,8 @@ export async function createNote(
 
 export async function updateNote(id: string, content: string): Promise<CourierNote> {
   const { data, error } = await supabase
-    .from("courier_notes" as any)
-    .update({ content: content.trim() } as any)
+    .from("courier_notes")
+    .update({ content: content.trim() })
     .eq("id", id)
     .select()
     .single();
@@ -65,14 +65,13 @@ export async function updateNote(id: string, content: string): Promise<CourierNo
 }
 
 export async function deleteNote(id: string): Promise<void> {
-  // Fetch the row first so we can log against its courier/org
   const { data: existing } = await supabase
-    .from("courier_notes" as any)
+    .from("courier_notes")
     .select("organization_id, courier_id")
     .eq("id", id)
     .maybeSingle();
 
-  const { error } = await supabase.from("courier_notes" as any).delete().eq("id", id);
+  const { error } = await supabase.from("courier_notes").delete().eq("id", id);
   if (error) throw error;
   if (existing) {
     const row = existing as unknown as { organization_id: string; courier_id: string };

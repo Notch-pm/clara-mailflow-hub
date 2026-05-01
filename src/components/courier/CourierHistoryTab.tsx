@@ -89,7 +89,8 @@ export default function CourierHistoryTab({ courierId, organizationId }: Props) 
         .from("courier_events")
         .select("*")
         .eq("courier_id", courierId)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .limit(200);
       if (error) throw error;
       return data ?? [];
     },

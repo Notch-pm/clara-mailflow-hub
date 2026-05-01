@@ -255,6 +255,28 @@ async function processOrganization(
       initialStateId = initState?.id ?? null;
     }
 
+    // Services liés à cette configuration IMAP.
+    const { data: linkedServices } = await admin
+      .from("services")
+      .select("id, name, workflow_id")
+      .eq("organization_id", s.organization_id)
+      .eq("imap_settings_id", s.id);
+
+    let autoService: { name: string; workflowStateId: string | null } | null = null;
+    if (linkedServices?.length === 1) {
+      const svc = linkedServices[0] as { id: string; name: string; workflow_id: string };
+      const { data: initState } = await admin
+        .from("workflow_states")
+        .select("id")
+        .eq("workflow_id", svc.workflow_id)
+        .eq("is_initial", true)
+        .maybeSingle();
+      autoService = {
+        name: svc.name,
+        workflowStateId: (initState as any)?.id ?? null,
+      };
+    }
+
     // Utilise last_fetch_at comme point de départ (fallback : 7 jours).
     // La déduplication par Message-ID évite les doublons.
     const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -318,7 +340,8 @@ async function processOrganization(
             channel: "email",
             subject,
             received_at: receivedAt,
-            workflow_state_id: initialStateId,
+            assigned_service: autoService?.name ?? null,
+            workflow_state_id: autoService?.workflowStateId ?? initialStateId,
             metadata: {
               email_message_id: messageId,
               email_from: senderEmail,
@@ -326,6 +349,7 @@ async function processOrganization(
               body_text: parsed.text || null,
               body_html: parsed.html || null,
               source: "imap",
+              imap_settings_id: s.id,
             },
           })
           .select("id")
@@ -336,42 +360,27 @@ async function processOrganization(
           continue;
         }
 
+        // Découpe "Prénom Nom" → { firstName, lastName }
+        const splitName = (full: string | null): { firstName: string | null; lastName: string | null } => {
+          if (!full?.trim()) return { firstName: null, lastName: null };
+          const parts = full.trim().split(/\s+/);
+          if (parts.length === 1) return { firstName: null, lastName: parts[0] };
+          return { firstName: parts[0], lastName: parts.slice(1).join(" ") };
+        };
+        const { firstName: senderFirstName, lastName: senderLastName } = splitName(senderName);
+
         const participants: any[] = [];
         if (senderEmail) {
-          // Matching usager : email d'abord
-          let usagerId: string | null = null;
-          const emailNorm = senderEmail.trim().toLowerCase();
-          const { data: byEmail } = await admin
-            .from("usagers" as any)
-            .select("id, first_name, last_name, phone")
-            .eq("organization_id", s.organization_id)
-            .ilike("email", emailNorm)
-            .limit(1)
-            .maybeSingle();
-          if (byEmail) {
-            usagerId = (byEmail as any).id;
-          } else {
-            // Pas de tel disponible depuis email IMAP → on crée un nouvel usager (citoyen par défaut)
-            const { data: created } = await admin
-              .from("usagers" as any)
-              .insert({
-                organization_id: s.organization_id,
-                category: "citoyen",
-                last_name: senderName || senderEmail,
-                email: senderEmail,
-              })
-              .select("id")
-              .single();
-            usagerId = (created as any)?.id ?? null;
-          }
+          // L'usager sera créé uniquement lors du passage en instruction (côté frontend).
           participants.push({
             organization_id: s.organization_id,
             courier_id: courier.id,
             role: "sender",
             name: senderName,
-            last_name: senderName || senderEmail,
+            first_name: senderFirstName,
+            last_name: senderLastName || senderEmail,
             email: senderEmail,
-            usager_id: usagerId,
+            usager_id: null,
           });
         }
         participants.push({
@@ -536,11 +545,11 @@ Deno.serve(async (req) => {
       ["admin", "administrateur"].includes((membership as any)?.role);
     if (!isAdmin) return jsonResponse(403, { ok: false, error: "Accès refusé" });
 
-    const { data: s, error: sErr } = await admin
-      .from("imap_settings")
-      .select("*")
-      .eq("organization_id", orgId)
-      .maybeSingle();
+    const settingsId = body?.settings_id;
+    const baseQuery = admin.from("imap_settings").select("*").eq("organization_id", orgId);
+    const { data: s, error: sErr } = settingsId
+      ? await baseQuery.eq("id", settingsId).maybeSingle()
+      : await (baseQuery as any).limit(1).maybeSingle();
     if (sErr || !s) return jsonResponse(404, { ok: false, error: "Configuration IMAP introuvable" });
 
     const result = await processOrganization(admin, s as ImapSettings, { onlyTest });

@@ -36,6 +36,16 @@ const defaultForm: SmtpForm = {
   use_tls: true,
 };
 
+interface SmtpSettingsRow extends SmtpForm {
+  id: string;
+  organization_id: string;
+  updated_at?: string;
+}
+
+interface InvokeErrorWithContext extends Error {
+  context?: { json?: () => Promise<{ error?: string } | null> };
+}
+
 export default function SmtpSettings({ orgId }: { orgId: string }) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<SmtpForm>(defaultForm);
@@ -47,12 +57,12 @@ export default function SmtpSettings({ orgId }: { orgId: string }) {
     queryKey: ["smtp-settings", orgId],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("smtp_settings" as any)
+        .from("smtp_settings" as never)
         .select("*")
         .eq("organization_id", orgId)
         .maybeSingle();
       if (error) throw error;
-      return data as any;
+      return data as SmtpSettingsRow | null;
     },
     enabled: !!orgId,
   });
@@ -75,14 +85,14 @@ export default function SmtpSettings({ orgId }: { orgId: string }) {
     mutationFn: async () => {
       if (settings?.id) {
         const { error } = await supabase
-          .from("smtp_settings" as any)
-          .update({ ...form, updated_at: new Date().toISOString() } as any)
+          .from("smtp_settings" as never)
+          .update({ ...form, updated_at: new Date().toISOString() })
           .eq("id", settings.id);
         if (error) throw error;
       } else {
         const { error } = await supabase
-          .from("smtp_settings" as any)
-          .insert({ ...form, organization_id: orgId } as any);
+          .from("smtp_settings" as never)
+          .insert({ ...form, organization_id: orgId });
         if (error) throw error;
       }
     },
@@ -102,7 +112,7 @@ export default function SmtpSettings({ orgId }: { orgId: string }) {
       });
       if (error) {
         const errBody = typeof error === "object" && "context" in error
-          ? await (error as any).context?.json?.().catch(() => null)
+          ? await (error as InvokeErrorWithContext).context?.json?.().catch(() => null)
           : null;
         const errMsg = errBody?.error || error.message || String(error);
         throw new Error(errMsg);
@@ -112,8 +122,8 @@ export default function SmtpSettings({ orgId }: { orgId: string }) {
       toast.success("E-mail de test envoyé avec succès !");
       setTestDialogOpen(false);
       setTestEmail("");
-    } catch (e: any) {
-      const msg = e.message || "";
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "";
       if (msg.includes("Authentication failed") || msg.includes("Invalid login") || msg.includes("EAUTH")) {
         toast.error("Authentification SMTP échouée : vérifiez l'identifiant et le mot de passe configurés.");
       } else if (msg.includes("ECONNREFUSED") || msg.includes("ETIMEDOUT") || msg.includes("getaddrinfo")) {

@@ -56,7 +56,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .eq("id", userId)
       .maybeSingle() as { data: UserProfile | null };
 
-    console.log("[AuthContext] profile fetched:", profileData?.email, "superadmin:", profileData?.is_superadmin);
     setProfile(profileData);
 
     // Fetch organization membership

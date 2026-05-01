@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/contexts/AuthContext";
+import { NotificationBell } from "@/components/NotificationBell";
 
 export function AppHeader() {
   const location = useLocation();
@@ -56,8 +57,9 @@ export function AppHeader() {
 
       <div className="flex-1" />
 
-      {/* Right: Settings + Profile */}
+      {/* Right: Notifications + Settings + Profile */}
       <div className="flex items-center gap-2 shrink-0">
+        <NotificationBell />
         <Link
           to="/parametres"
           className={`flex items-center justify-center h-9 w-9 rounded-lg transition-colors ${

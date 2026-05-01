@@ -35,7 +35,7 @@ export async function logEvent(
       organization_id: organizationId,
       courier_id: courierId,
       event_type: eventType,
-      payload: (payload ?? null) as any,
+      payload: payload ?? null,
       created_by: user?.id ?? null,
     });
   } catch (err) {

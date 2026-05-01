@@ -9,11 +9,13 @@ import ServicesSettings from "./ServicesSettings";
 import ProceduresSettings from "./ProceduresSettings";
 
 import ImapSettings from "@/components/ImapSettings";
+import GeneralSettings from "@/components/GeneralSettings";
 import { useOrganization } from "@/contexts/OrganizationContext";
 
-type Section = "menu" | "utilisateurs" | "workflows" | "classification" | "services" | "demarches" | "emails";
+type Section = "menu" | "general" | "utilisateurs" | "workflows" | "classification" | "services" | "demarches" | "emails";
 
 const settingSections: { key: Section; title: string; description: string; icon: LucideIcon }[] = [
+  { key: "general", title: "Configuration générale", description: "Paramètres globaux de l'organisation", icon: Settings },
   { key: "utilisateurs", title: "Utilisateurs", description: "Gestion des membres et rôles", icon: Users },
   { key: "emails", title: "Emails (IMAP)", description: "Réception automatique des emails comme courriers entrants", icon: Mail },
   { key: "workflows", title: "Workflows", description: "Processus de traitement du courrier", icon: GitBranch },
@@ -23,6 +25,7 @@ const settingSections: { key: Section; title: string; description: string; icon:
 ];
 
 const sectionLabels: Record<string, string> = {
+  general: "Configuration générale",
   utilisateurs: "Utilisateurs et rôles",
   emails: "Emails — réception IMAP",
   workflows: "Workflows",
@@ -47,6 +50,9 @@ export default function SettingsPage() {
             <p className="text-muted-foreground">{sectionLabels[activeSection]}</p>
           </div>
         </div>
+        {activeSection === "general" && organizationId && (
+          <GeneralSettings orgId={organizationId} />
+        )}
         {activeSection === "utilisateurs" && <UsersPage />}
         {activeSection === "emails" && organizationId && (
           <ImapSettings orgId={organizationId} />

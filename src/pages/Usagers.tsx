@@ -25,7 +25,10 @@ import {
   listUsagerCouriers,
   type Usager,
   type UsagerCategory,
+  type UsagerCourier,
 } from "@/services/usagerService";
+import { listTags, type CourierTag } from "@/services/courierTagService";
+import { readableTextColor } from "@/lib/tag-color";
 
 const categoryLabels: Record<UsagerCategory, string> = {
   citoyen: "Citoyen",
@@ -256,6 +259,16 @@ function UsagerDetail({ usagerId, organizationId, onBack }: { usagerId: string; 
     enabled: !!usagerId,
   });
 
+  const { data: orgTags = [] } = useQuery({
+    queryKey: ["courier-tags", organizationId],
+    queryFn: () => listTags(organizationId),
+    enabled: !!organizationId,
+  });
+
+  const tagByName = new Map<string, CourierTag>(
+    orgTags.map((t) => [t.name.toLowerCase(), t]),
+  );
+
   const delMut = useMutation({
     mutationFn: () => deleteUsager(usagerId),
     onSuccess: () => {
@@ -311,28 +324,58 @@ function UsagerDetail({ usagerId, organizationId, onBack }: { usagerId: string; 
                   <TableHead>Chrono</TableHead>
                   <TableHead>Sens</TableHead>
                   <TableHead>Objet</TableHead>
+                  <TableHead>Statut</TableHead>
+                  <TableHead>Tags</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {couriers.map((c: any) => (
-                  <TableRow
-                    key={c.id}
-                    className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => navigate(`/courrier/${c.id}`)}
-                  >
-                    <TableCell className="text-sm">
-                      {(() => {
-                        const d = c.received_at ?? c.sent_at ?? c.created_at;
-                        return d ? new Date(d).toLocaleDateString("fr-FR") : "—";
-                      })()}
-                    </TableCell>
-                    <TableCell className="text-sm">{c.chrono ?? "—"}</TableCell>
-                    <TableCell className="text-sm">
-                      {c.direction === "inbound" ? "Entrant" : c.direction === "outbound" ? "Sortant" : "Interne"}
-                    </TableCell>
-                    <TableCell className="text-sm font-medium">{c.subject ?? "(sans objet)"}</TableCell>
-                  </TableRow>
-                ))}
+                {couriers.map((c: UsagerCourier) => {
+                  const tags = (c.metadata?.tags as string[] | undefined) ?? [];
+                  return (
+                    <TableRow
+                      key={c.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => navigate(`/courrier/${c.id}`)}
+                    >
+                      <TableCell className="text-sm">
+                        {(() => {
+                          const d = c.received_at ?? c.sent_at ?? c.created_at;
+                          return d ? new Date(d).toLocaleDateString("fr-FR") : "—";
+                        })()}
+                      </TableCell>
+                      <TableCell className="text-sm">{c.chrono ?? "—"}</TableCell>
+                      <TableCell className="text-sm">
+                        {c.direction === "inbound" ? "Entrant" : c.direction === "outbound" ? "Sortant" : "Interne"}
+                      </TableCell>
+                      <TableCell className="text-sm font-medium">{c.subject ?? "(sans objet)"}</TableCell>
+                      <TableCell className="text-sm">
+                        {c.workflow_state ? (
+                          <Badge variant="outline">{c.workflow_state.name}</Badge>
+                        ) : "—"}
+                      </TableCell>
+                      <TableCell>
+                        {tags.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {tags.map((t) => {
+                              const meta = tagByName.get(t.toLowerCase());
+                              const fg = meta?.color ? readableTextColor(meta.color) : undefined;
+                              return (
+                                <Badge
+                                  key={t}
+                                  variant="secondary"
+                                  className="text-xs"
+                                  style={meta?.color ? { backgroundColor: meta.color, color: fg } : undefined}
+                                >
+                                  {t}
+                                </Badge>
+                              );
+                            })}
+                          </div>
+                        ) : "—"}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           )}

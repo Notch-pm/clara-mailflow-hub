@@ -66,6 +66,7 @@ export default function BoiteAuxLettres() {
   const [newDialogOpen, setNewDialogOpen] = useState(false);
 
   const [searchParams, setSearchParams] = useSearchParams();
+  const [pendingOpenId, setPendingOpenId] = useState<string | null>(null);
   const lastLogin = useMemo(() => getLastLogin(), []);
   // Heure d'ouverture de la page — pour détecter les courriers arrivés pendant la session
   const pageOpenTime = useRef(new Date().toISOString());
@@ -138,35 +139,38 @@ export default function BoiteAuxLettres() {
     });
   }, [couriers, unassignedCouriers]);
 
-  // Arrivé depuis la dernière visite (ou depuis l'ouverture de la page si première visite)
-  // Ouvre automatiquement le volet si ?open=<id> est présent (ex: depuis une notification)
+  // Étape 1 : capture le paramètre ?open= et nettoie l'URL immédiatement.
+  // Séparé du reste pour éviter que le re-déclenchement sur allCouriers
+  // ne relance la logique d'ouverture avec le même paramètre.
   useEffect(() => {
     const openId = searchParams.get("open");
-    if (!openId || !organizationId) return;
+    if (!openId) return;
+    setPendingOpenId(openId);
+    setSearchParams({}, { replace: true });
+  }, [searchParams]);
 
-    const fromList = allCouriers.find((c) => c.id === openId);
-    if (fromList) {
-      setSelectedCourier(fromList);
-      setPanelOpen(true);
-      setSearchParams({}, { replace: true });
-      return;
-    }
+  // Étape 2 : récupère directement le courrier par ID dès que pendingOpenId est défini.
+  // On ne passe pas par allCouriers pour éviter d'attendre les requêtes de la boîte.
+  useEffect(() => {
+    if (!pendingOpenId || !organizationId) return;
 
-    // Le courrier n'est pas dans la liste filtrée (état avancé) : on le récupère directement
+    let cancelled = false;
     supabase
       .from("couriers")
       .select("*, courier_participants(*)")
-      .eq("id", openId)
+      .eq("id", pendingOpenId)
       .eq("organization_id", organizationId)
       .maybeSingle()
       .then(({ data }) => {
+        if (cancelled) return;
         if (data) {
           setSelectedCourier(data as CourierWithRelations);
           setPanelOpen(true);
         }
-        setSearchParams({}, { replace: true });
+        setPendingOpenId(null);
       });
-  }, [searchParams, allCouriers, organizationId]);
+    return () => { cancelled = true; };
+  }, [pendingOpenId, organizationId]);
 
   function isNew(courier: CourierWithRelations): boolean {
     if (!lastLogin) return false;

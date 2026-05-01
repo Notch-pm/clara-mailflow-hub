@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { getParticipants, addParticipant, updateParticipant, removeParticipant } from "@/services/courierParticipantService";
-import { findMatchingUsager, createUsager, getUsager, type Usager, type UsagerCategory } from "@/services/usagerService";
+import { findMatchingUsager, getUsager, getUsagersByIds, type Usager, type UsagerCategory } from "@/services/usagerService";
 
 const ROLES = [
   { value: "sender", label: "Expéditeur" },
@@ -88,20 +88,11 @@ export default function ParticipantManager({ courierId, organizationId }: Partic
     enabled: !!courierId,
   });
 
-  // Fetch attached usagers (one query) for nature display
+  // Fetch attached usagers (batch query) for nature display
   const usagerIds = Array.from(new Set(participants.map((p: any) => p.usager_id).filter(Boolean)));
   const { data: usagersById = {} } = useQuery({
     queryKey: ["participants-usagers", courierId, usagerIds.join(",")],
-    queryFn: async () => {
-      const result: Record<string, Usager> = {};
-      await Promise.all(
-        usagerIds.map(async (id: string) => {
-          const u = await getUsager(id);
-          if (u) result[id] = u;
-        }),
-      );
-      return result;
-    },
+    queryFn: () => getUsagersByIds(usagerIds),
     enabled: usagerIds.length > 0,
   });
 
@@ -134,38 +125,12 @@ export default function ParticipantManager({ courierId, organizationId }: Partic
     setDialogOpen(true);
   };
 
-  /**
-   * Trouve ou crée un usager selon les règles métier :
-   *  - email identique → match
-   *  - tel identique sans email → match
-   *  - sinon → création
-   */
-  async function resolveUsager(values: ParticipantFormValues): Promise<string | null> {
-    const matched = await findMatchingUsager(organizationId, {
-      email: values.email,
-      phone: values.phone,
-    });
-    if (matched) return matched.id;
-    // Création auto
-    if (!values.last_name?.trim()) return null;
-    const u = await createUsager(organizationId, {
-      category: values.category,
-      civilite: values.category === "citoyen" ? values.civilite ?? null : null,
-      first_name: values.first_name || null,
-      last_name: values.last_name,
-      email: values.email || null,
-      phone: values.phone || null,
-    });
-    return u.id;
-  }
-
   function buildFullName(v: ParticipantFormValues) {
     return [v.first_name, v.last_name].filter(Boolean).join(" ").trim() || null;
   }
 
   const addMutation = useMutation({
     mutationFn: async (values: ParticipantFormValues) => {
-      const usager_id = await resolveUsager(values);
       return addParticipant({
         courier_id: courierId,
         organization_id: organizationId,
@@ -177,7 +142,7 @@ export default function ParticipantManager({ courierId, organizationId }: Partic
         phone: values.phone || null,
         address: values.address || null,
         organization: values.organization || null,
-        usager_id,
+        usager_id: null,
       });
     },
     onSuccess: () => {
@@ -193,7 +158,11 @@ export default function ParticipantManager({ courierId, organizationId }: Partic
   const updateMutation = useMutation({
     mutationFn: async (values: ParticipantFormValues) => {
       if (!editing) throw new Error("Aucun participant sélectionné");
-      const usager_id = await resolveUsager(values);
+      const matched = await findMatchingUsager(organizationId, {
+        email: values.email,
+        phone: values.phone,
+      });
+      const usager_id = matched?.id ?? editing.usager_id ?? null;
       return updateParticipant(editing.id, {
         role: values.role,
         name: buildFullName(values),

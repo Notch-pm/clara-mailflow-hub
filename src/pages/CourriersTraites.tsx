@@ -21,6 +21,7 @@ import {
 import { Search, CheckCircle2, ChevronDown, ChevronRight } from "lucide-react";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { supabase } from "@/integrations/supabase/client";
+import type { CourierWithRelations } from "@/types/courier";
 import { listTags } from "@/services/courierTagService";
 import { listServices } from "@/services/orgServiceService";
 import MailboxSidePanel from "@/components/courier/MailboxSidePanel";
@@ -37,7 +38,7 @@ export default function CourriersTraites() {
   const [stateFilter, setStateFilter] = useState<string>("all");
   const [groupBy, setGroupBy] = useState<GroupBy>("none");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const [selectedCourier, setSelectedCourier] = useState<any | null>(null);
+  const [selectedCourier, setSelectedCourier] = useState<CourierWithRelations | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
 
   // Processed states for the org (excludes archived)
@@ -93,7 +94,8 @@ export default function CourriersTraites() {
         .select("*, courier_participants(*)")
         .eq("organization_id", organizationId)
         .in("workflow_state_id", stateIds)
-        .order("updated_at", { ascending: false });
+        .order("updated_at", { ascending: false })
+        .limit(100);
       if (search) q = q.ilike("subject", `%${search}%`);
       const { data, error } = await q;
       if (error) throw error;
@@ -119,7 +121,7 @@ export default function CourriersTraites() {
       const map: Record<string, string> = {};
       const stateSet = new Set(stateIds);
       for (const ev of data ?? []) {
-        const toId = (ev.payload as any)?.to_id as string | undefined;
+        const toId = (ev.payload as Record<string, unknown> | null)?.to_id as string | undefined;
         if (toId && stateSet.has(toId) && !map[ev.courier_id]) {
           map[ev.courier_id] = ev.created_at as string;
         }
@@ -140,7 +142,7 @@ export default function CourriersTraites() {
     }
     if (tagFilter !== "all") {
       list = list.filter((c) => {
-        const t = (c.metadata as any)?.tags ?? [];
+        const t = (c.metadata as Record<string, unknown> | null)?.tags ?? [];
         return Array.isArray(t) && t.some((x: string) => x.toLowerCase() === tagFilter.toLowerCase());
       });
     }
@@ -151,7 +153,7 @@ export default function CourriersTraites() {
     if (groupBy === "none") {
       return [{ key: "all", label: "", items: filtered }];
     }
-    const map = new Map<string, { label: string; items: any[] }>();
+    const map = new Map<string, { label: string; items: CourierWithRelations[] }>();
     filtered.forEach((c) => {
       let key: string;
       let label: string;
@@ -174,17 +176,19 @@ export default function CourriersTraites() {
     setCollapsed((c) => ({ ...c, [key]: !c[key] }));
   }
 
-  function getSender(c: any): string {
-    const p = c.courier_participants?.find((x: any) => x.role === "sender");
+  function getSender(c: CourierWithRelations): string {
+    const p = c.courier_participants?.find((x) => x.role === "sender");
+    if (!p) return "—";
+    const full = [p.first_name, p.last_name].filter(Boolean).join(" ");
+    return full || p.name || p.email || "—";
+  }
+
+  function getRecipient(c: CourierWithRelations): string {
+    const p = c.courier_participants?.find((x) => x.role === "recipient");
     return p?.name ?? p?.email ?? "—";
   }
 
-  function getRecipient(c: any): string {
-    const p = c.courier_participants?.find((x: any) => x.role === "recipient");
-    return p?.name ?? p?.email ?? "—";
-  }
-
-  function handleRowClick(c: any) {
+  function handleRowClick(c: CourierWithRelations) {
     setSelectedCourier(c);
     setPanelOpen(true);
   }
