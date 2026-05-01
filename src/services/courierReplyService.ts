@@ -154,6 +154,14 @@ export async function updateReplyContent(
     nextMeta.signatory_id = patch.signatoryId;
     metaChanged = true;
   }
+  if (patch.signedAt !== undefined) {
+    nextMeta.signed_at = patch.signedAt;
+    metaChanged = true;
+  }
+  if (patch.signedBy !== undefined) {
+    nextMeta.signed_by = patch.signedBy;
+    metaChanged = true;
+  }
   if (metaChanged) update.metadata = nextMeta;
 
   if (Object.keys(update).length === 0) return;
