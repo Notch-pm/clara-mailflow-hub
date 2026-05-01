@@ -28,7 +28,10 @@ export async function createWorkflow(organizationId: string, name: string, type:
     .single();
 }
 
-export async function updateWorkflow(workflowId: string, data: { name?: string; is_default?: boolean }) {
+export async function updateWorkflow(
+  workflowId: string,
+  data: { name?: string; is_default?: boolean; type?: WorkflowType }
+) {
   return supabase
     .from("workflows")
     .update(data)
