@@ -206,6 +206,17 @@ export function EditUserDialog({ member, organizationId, onClose }: Props) {
                     </FormControl>
                   </FormItem>
                 )} />
+                {isSignataire && (
+                  <FormField control={form.control} name="signataire_title" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Titre du signataire</FormLabel>
+                      <FormControl>
+                        <Input placeholder="ex. Maire, Directeur général…" maxLength={150} {...field} value={field.value ?? ""} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                )}
                 <Button type="submit" className="w-full" disabled={updateMutation.isPending}>
                   {updateMutation.isPending ? "Enregistrement..." : "Enregistrer"}
                 </Button>
