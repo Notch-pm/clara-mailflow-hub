@@ -44,7 +44,7 @@ export async function createWorkflow(organizationId: string, name: string, type:
       {
         organization_id: organizationId,
         workflow_id: wfId,
-        name: "En cours de rédaction",
+        name: "En cours",
         category: "processing" as WorkflowCategory,
         is_initial: false,
         is_final: false,
