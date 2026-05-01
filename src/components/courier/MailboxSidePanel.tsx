@@ -42,6 +42,7 @@ import CourierNotes from "./CourierNotes";
 import CourierHistoryTab from "./CourierHistoryTab";
 import ContentIntentsTab from "./ContentIntentsTab";
 import LinkedActionsTab from "./LinkedActionsTab";
+import ReplyComposer from "./ReplyComposer";
 import type { CourierChannel, CourierParticipant, WorkflowTransition, WorkflowState, WorkflowCategory } from "@/types/courier";
 
 const channelLabels: Record<CourierChannel, string> = {
@@ -886,11 +887,16 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
               </TabsContent>
               <TabsContent
                 value="response"
-                className="flex-1 overflow-y-auto px-6 py-5 mt-0"
+                className="flex-1 overflow-hidden px-6 py-5 mt-0 flex flex-col"
               >
-                <p className="text-sm text-muted-foreground italic">
-                  Description à prévoir.
-                </p>
+                <ReplyComposer
+                  courierId={courier.id}
+                  organizationId={organizationId}
+                  parentSubject={courier.subject ?? null}
+                  assignedService={localAssignedService}
+                  sender={sender ?? null}
+                  readOnly={readOnly}
+                />
               </TabsContent>
               <TabsContent
                 value="notes"
