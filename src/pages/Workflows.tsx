@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useOrganization } from "@/contexts/OrganizationContext";
-import { getWorkflows, createWorkflow, deleteWorkflow, type WorkflowType } from "@/services/workflowService";
+import { getWorkflows, createWorkflow, deleteWorkflow, updateWorkflow, type WorkflowType } from "@/services/workflowService";
 import {
   Select,
   SelectContent,
