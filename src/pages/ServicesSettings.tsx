@@ -468,7 +468,7 @@ function ServiceDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{editing ? "Modifier le service" : "Nouveau service"}</DialogTitle>
           <DialogDescription>
