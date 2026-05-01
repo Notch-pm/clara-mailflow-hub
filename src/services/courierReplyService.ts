@@ -235,3 +235,27 @@ export async function signReply(
     signed_by: args.signedBy,
   });
 }
+
+export async function unsignReply(
+  organizationId: string,
+  parentCourierId: string,
+  replyId: string,
+  args: { bodyHtml: string },
+): Promise<void> {
+  await updateReplyContent(organizationId, replyId, {
+    bodyHtml: args.bodyHtml,
+    signedAt: null,
+    signedBy: null,
+  });
+  await logEvent(organizationId, parentCourierId, "reply_unsigned", {
+    reply_id: replyId,
+  });
+}
+
+/** Removes the signature block (data-signature-block="true") from an HTML body. */
+export function stripSignatureBlock(html: string): string {
+  return html.replace(
+    /<div[^>]*data-signature-block="true"[\s\S]*?<\/div>/gi,
+    "",
+  ).trimEnd();
+}
