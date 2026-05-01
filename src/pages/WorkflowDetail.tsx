@@ -221,7 +221,7 @@ export default function WorkflowDetail() {
   );
 
   const handleUpdateNode = useCallback(
-    async (data: { name?: string; category?: WorkflowCategory; is_initial?: boolean; is_final?: boolean }) => {
+    async (data: { name?: string; category?: WorkflowCategory; is_initial?: boolean; is_final?: boolean; requires_signature?: boolean }) => {
       if (!selectedNodeId || !workflowId) return;
 
       // If setting is_initial, clear others first
@@ -254,6 +254,7 @@ export default function WorkflowDetail() {
               category: data.category ?? current.category,
               is_initial: data.is_initial ?? current.is_initial,
               is_final: data.is_final ?? current.is_final,
+              requires_signature: data.requires_signature ?? current.requires_signature,
             } satisfies StateNodeData,
           };
         })
