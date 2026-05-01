@@ -364,7 +364,7 @@ export default function WorkflowDetail() {
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)]">
       <div className="flex items-center gap-3 p-4 border-b">
-        <Button variant="ghost" size="icon" onClick={() => navigate("/workflows")}>
+        <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <h1 className="text-xl font-bold">{workflow?.name ?? "Workflow"}</h1>
