@@ -1,25 +1,33 @@
 import { Button } from "@/components/ui/button";
-import { Plus, Save } from "lucide-react";
+import { Save } from "lucide-react";
 import type { WorkflowCategory } from "@/types/courier";
 
 interface WorkflowToolbarProps {
   onAddState: (category: WorkflowCategory) => void;
   onSave: () => void;
   saving: boolean;
+  workflowType?: "inbound" | "reply" | null;
 }
 
-const addOptions: { category: WorkflowCategory; label: string; color: string }[] = [
+const inboundOptions: { category: WorkflowCategory; label: string; color: string }[] = [
   { category: "pending", label: "Reçu", color: "bg-yellow-500 hover:bg-yellow-600" },
   { category: "processing", label: "Traitement", color: "bg-blue-500 hover:bg-blue-600" },
   { category: "processed", label: "Traité", color: "bg-green-500 hover:bg-green-600" },
   { category: "archived", label: "Archivé", color: "bg-gray-500 hover:bg-gray-600" },
 ];
 
-export function WorkflowToolbar({ onAddState, onSave, saving }: WorkflowToolbarProps) {
+const replyOptions: { category: WorkflowCategory; label: string; color: string }[] = [
+  { category: "pending", label: "Non répondu", color: "bg-yellow-500 hover:bg-yellow-600" },
+  { category: "processing", label: "En cours de rédaction", color: "bg-blue-500 hover:bg-blue-600" },
+  { category: "processed", label: "Répondu", color: "bg-green-500 hover:bg-green-600" },
+];
+
+export function WorkflowToolbar({ onAddState, onSave, saving, workflowType }: WorkflowToolbarProps) {
+  const options = workflowType === "reply" ? replyOptions : inboundOptions;
   return (
     <div className="w-48 border-r bg-card p-4 space-y-3 overflow-y-auto">
       <h3 className="font-semibold text-sm mb-2">Ajouter un état</h3>
-      {addOptions.map((opt) => (
+      {options.map((opt) => (
         <Button
           key={opt.category}
           variant="outline"
