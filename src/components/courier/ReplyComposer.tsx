@@ -88,20 +88,39 @@ export default function ReplyComposer({
     enabled: !!organizationId && !!courierId,
   });
 
+  // 4. Signataires associés au service instructeur
+  const { data: serviceSignatories = [] } = useQuery({
+    queryKey: ["service-signatories-detailed", currentService?.id],
+    queryFn: async (): Promise<ServiceSignatory[]> => {
+      const { data, error } = await supabase
+        .from("service_signatories")
+        .select("signatory:signatories(id, first_name, last_name, title, user_id)")
+        .eq("service_id", currentService!.id);
+      if (error) throw error;
+      return (data ?? [])
+        .map((r: any) => r.signatory)
+        .filter(Boolean) as ServiceSignatory[];
+    },
+    enabled: !!currentService?.id,
+  });
+
   // Local UI state
   const [channel, setChannel] = useState<CourierChannel>("paper");
   const [body, setBody] = useState<string>("");
+  const [signatoryId, setSignatoryId] = useState<string>("");
   const [dirty, setDirty] = useState(false);
 
   // Hydrate local state from reply / defaults whenever the reply or courier changes
   useEffect(() => {
     if (reply) {
       setChannel(reply.channel);
-      const html = (reply.metadata as { body_html?: string } | null)?.body_html ?? "";
-      setBody(html);
+      const meta = (reply.metadata as { body_html?: string; signatory_id?: string | null } | null) ?? {};
+      setBody(meta.body_html ?? "");
+      setSignatoryId(meta.signatory_id ?? "");
     } else {
       setChannel(canEmail ? "email" : "paper");
       setBody("");
+      setSignatoryId("");
     }
     setDirty(false);
   }, [reply, courierId, canEmail]);
