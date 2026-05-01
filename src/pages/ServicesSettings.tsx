@@ -132,6 +132,12 @@ export default function ServicesSettings({ organizationId, isAdminOverride }: Pr
 
   const multipleImap = org?.multiple_imap ?? false;
 
+  const { data: signatories = [] } = useQuery({
+    queryKey: ["signatories", orgId],
+    queryFn: () => listSignatories(orgId),
+    enabled: !!orgId,
+  });
+
   const saveMutation = useMutation({
     mutationFn: async (values: {
       name: string;
@@ -139,13 +145,18 @@ export default function ServicesSettings({ organizationId, isAdminOverride }: Pr
       workflow_id: string;
       reply_workflow_id: string | null;
       imap_settings_id: string | null;
+      signatory_ids: string[];
     }) => {
-      return editing
-        ? updateService(editing.id, values)
-        : createService(orgId, values);
+      const { signatory_ids, ...payload } = values;
+      const svc = editing
+        ? await updateService(editing.id, payload)
+        : await createService(orgId, payload);
+      await setServiceSignatories(orgId, svc.id, signatory_ids);
+      return svc;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["org-services", orgId] });
+      queryClient.invalidateQueries({ queryKey: ["service-signatories"] });
       toast.success(editing ? "Service modifié" : "Service créé");
       setDialogOpen(false);
       setEditing(null);
