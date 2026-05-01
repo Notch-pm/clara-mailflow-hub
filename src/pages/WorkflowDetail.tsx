@@ -184,10 +184,16 @@ export default function WorkflowDetail() {
   const handleAddState = useCallback(
     async (category: WorkflowCategory) => {
       if (!organizationId || !workflowId) return;
-      const name = category === "pending" ? "Nouveau - Attente"
-        : category === "processing" ? "Nouveau - Traitement"
-        : category === "processed" ? "Nouveau - Traité"
-        : "Nouveau - Archivé";
+      const isReply = (workflow as any)?.type === "reply";
+      const name = isReply
+        ? (category === "pending" ? "Non répondu"
+          : category === "processing" ? "En cours de rédaction"
+          : category === "processed" ? "Répondu"
+          : "Archivé")
+        : (category === "pending" ? "Nouveau - Attente"
+          : category === "processing" ? "Nouveau - Traitement"
+          : category === "processed" ? "Nouveau - Traité"
+          : "Nouveau - Archivé");
 
       const { data, error } = await createState(organizationId, workflowId, { name, category });
       if (error) {
@@ -209,7 +215,7 @@ export default function WorkflowDetail() {
       };
       setNodes((nds) => [...nds, newNode]);
     },
-    [organizationId, workflowId, setNodes, toast]
+    [organizationId, workflowId, workflow, setNodes, toast]
   );
 
   const handleUpdateNode = useCallback(
