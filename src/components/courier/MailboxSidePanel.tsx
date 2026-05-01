@@ -587,7 +587,13 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
           </div>
         </div>
 
-        <Tabs defaultValue="detail" className="flex-1 min-h-0 overflow-hidden flex flex-col mb-px">
+        <Tabs
+          defaultValue="detail"
+          className={cn(
+            "flex flex-col mb-px",
+            fullScreen ? "overflow-visible" : "flex-1 min-h-0 overflow-hidden",
+          )}
+        >
           {withTabs && (
             <TabsList className="mx-6 self-start shrink-0 mt-[4px] mb-[4px]">
               <TabsTrigger value="detail">Détail du courrier</TabsTrigger>
@@ -620,13 +626,13 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
           <TabsContent
             value="detail"
             className={cn(
-              "flex-1 min-h-0 overflow-hidden grid grid-cols-1 lg:grid-cols-[360px_1fr] mt-0 data-[state=inactive]:hidden",
-              fullScreen && "h-full",
+              "grid grid-cols-1 lg:grid-cols-[360px_1fr] mt-0 data-[state=inactive]:hidden",
+              fullScreen ? "overflow-visible" : "flex-1 min-h-0 overflow-hidden",
             )}
             forceMount
           >
             {/* Left: metadata + workflow */}
-            <aside className="overflow-y-auto px-6 py-5 lg:border-r space-y-5">
+            <aside className={cn("px-6 py-5 lg:border-r space-y-5", !fullScreen && "overflow-y-auto")}>
               <dl className="space-y-1 text-sm">
                 <InlineEditField
                   label="Date de réception"
@@ -867,15 +873,15 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
 
           {/* Right: viewer + documents */}
           <main className={cn(
-            "overflow-y-auto px-6 py-5 space-y-5 bg-muted/10",
-            fullScreen && "min-h-0 flex flex-col",
+            "px-6 py-5 space-y-5 bg-muted/10",
+            !fullScreen && "overflow-y-auto",
           )}>
-            <div className={cn("space-y-2", fullScreen && "min-h-0 flex-1 flex flex-col")}>
+            <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <FileText className="h-4 w-4 text-muted-foreground" />
                 <h3 className="text-sm font-medium">Aperçu</h3>
               </div>
-              <div className={cn("h-[70vh] min-h-[500px]", fullScreen && "flex-1 min-h-0 h-auto")}>
+              <div className={cn("h-[70vh] min-h-[500px]", fullScreen && "h-[82vh] min-h-[720px]")}>
                 <DocumentViewer
                   documents={displayDocuments as any}
                   currentId={selectedDocId}
@@ -980,7 +986,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
 
   if (fullScreen) {
     return (
-      <div className="flex flex-col h-full min-h-[calc(100vh-7rem)] overflow-hidden bg-background rounded-md border shadow-sm">
+      <div className="flex flex-col min-h-[calc(100vh-7rem)] overflow-visible bg-background rounded-md border shadow-sm">
         {body}
       </div>
     );
