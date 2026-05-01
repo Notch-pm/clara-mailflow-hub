@@ -281,8 +281,8 @@ export default function ReplyComposer({
             : "Rédigez le contenu du courrier de réponse…"
         }
         disabled={editorDisabled}
-        minHeight={320}
-        className="flex-1 min-h-[340px]"
+        minHeight={220}
+        className="flex-1 min-h-[220px]"
       />
 
       {/* Actions */}
