@@ -81,6 +81,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
+  const [replyState, setReplyState] = useState<{ name: string; category: string | null } | null>(null);
 
   const participants = courier?.courier_participants ?? [];
   const sender = participants.find((p) => p.role === "sender");
@@ -573,7 +574,23 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
               <TabsTrigger value="detail">Détail du courrier</TabsTrigger>
               <TabsTrigger value="content">Contenu et intentions</TabsTrigger>
               <TabsTrigger value="actions">Actions liées</TabsTrigger>
-              <TabsTrigger value="response">Réponse</TabsTrigger>
+              <TabsTrigger value="response" className="gap-2">
+                Réponse
+                {replyState && (
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none",
+                      replyState.category === "processed"
+                        ? "bg-green-500/15 text-green-700"
+                        : replyState.category === "processing"
+                        ? "bg-blue-500/15 text-blue-700"
+                        : "bg-yellow-500/15 text-yellow-700",
+                    )}
+                  >
+                    {replyState.name}
+                  </span>
+                )}
+              </TabsTrigger>
               <TabsTrigger value="notes">Notes internes</TabsTrigger>
               <TabsTrigger value="history">Historique</TabsTrigger>
             </TabsList>
