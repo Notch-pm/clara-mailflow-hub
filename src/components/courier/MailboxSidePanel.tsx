@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { X, ArrowRight, Tag as TagIcon, Check, Briefcase, FileText, Trash2 } from "lucide-react";
+import { X, ArrowRight, Tag as TagIcon, Check, Briefcase, FileText, Trash2, Maximize2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -75,6 +76,7 @@ interface Props {
 
 export default function MailboxSidePanel({ courier, open, onOpenChange, organizationId, withTabs = false, readOnly = false, onDelete }: Props) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
 
   const participants = courier?.courier_participants ?? [];
@@ -533,6 +535,19 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   )}
                 </>
               )}
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
+                onClick={() => {
+                  onOpenChange(false);
+                  navigate(`/courrier/${courier.id}`);
+                }}
+                title="Ouvrir en plein écran"
+                aria-label="Ouvrir en plein écran"
+              >
+                <Maximize2 className="h-4 w-4" />
+              </Button>
               {!readOnly && onDelete && (
                 <Button
                   size="icon"
