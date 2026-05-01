@@ -123,7 +123,7 @@ export async function createReply(args: CreateReplyArgs): Promise<ReplyRecord> {
 export async function updateReplyContent(
   organizationId: string,
   replyId: string,
-  patch: { channel?: CourierChannel; bodyHtml?: string },
+  patch: { channel?: CourierChannel; bodyHtml?: string; signatoryId?: string | null },
 ): Promise<void> {
   // Fetch current metadata to preserve other keys
   const { data: existing, error: fErr } = await supabase
@@ -136,13 +136,21 @@ export async function updateReplyContent(
 
   const update: Record<string, unknown> = {};
   if (patch.channel) update.channel = patch.channel;
+
+  const nextMeta: Record<string, unknown> = { ...currentMeta };
+  let metaChanged = false;
   if (typeof patch.bodyHtml === "string") {
-    update.metadata = {
-      ...currentMeta,
-      body_html: patch.bodyHtml,
-      body_text: stripHtml(patch.bodyHtml),
-    };
+    nextMeta.body_html = patch.bodyHtml;
+    nextMeta.body_text = stripHtml(patch.bodyHtml);
+    metaChanged = true;
   }
+  if (patch.signatoryId !== undefined) {
+    nextMeta.signatory_id = patch.signatoryId;
+    metaChanged = true;
+  }
+  if (metaChanged) update.metadata = nextMeta;
+
+  if (Object.keys(update).length === 0) return;
 
   const { error } = await supabase
     .from("couriers")

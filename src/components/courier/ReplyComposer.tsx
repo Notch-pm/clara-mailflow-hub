@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Mail, Send, Save, ArrowRight, Lock } from "lucide-react";
+import { Mail, Send, Save, ArrowRight, Lock, PenLine } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -8,7 +8,15 @@ import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { listServices } from "@/services/orgServiceService";
+import { supabase } from "@/integrations/supabase/client";
 import {
   getReplyForCourier,
   getReplyWorkflow,
@@ -18,6 +26,14 @@ import {
 } from "@/services/courierReplyService";
 import type { CourierChannel, CourierParticipant } from "@/types/courier";
 import { cn } from "@/lib/utils";
+
+interface ServiceSignatory {
+  id: string;
+  first_name: string;
+  last_name: string;
+  title: string | null;
+  user_id: string | null;
+}
 
 interface Props {
   courierId: string;
@@ -72,20 +88,39 @@ export default function ReplyComposer({
     enabled: !!organizationId && !!courierId,
   });
 
+  // 4. Signataires associés au service instructeur
+  const { data: serviceSignatories = [] } = useQuery({
+    queryKey: ["service-signatories-detailed", currentService?.id],
+    queryFn: async (): Promise<ServiceSignatory[]> => {
+      const { data, error } = await supabase
+        .from("service_signatories")
+        .select("signatory:signatories(id, first_name, last_name, title, user_id)")
+        .eq("service_id", currentService!.id);
+      if (error) throw error;
+      return (data ?? [])
+        .map((r: any) => r.signatory)
+        .filter(Boolean) as ServiceSignatory[];
+    },
+    enabled: !!currentService?.id,
+  });
+
   // Local UI state
   const [channel, setChannel] = useState<CourierChannel>("paper");
   const [body, setBody] = useState<string>("");
+  const [signatoryId, setSignatoryId] = useState<string>("");
   const [dirty, setDirty] = useState(false);
 
   // Hydrate local state from reply / defaults whenever the reply or courier changes
   useEffect(() => {
     if (reply) {
       setChannel(reply.channel);
-      const html = (reply.metadata as { body_html?: string } | null)?.body_html ?? "";
-      setBody(html);
+      const meta = (reply.metadata as { body_html?: string; signatory_id?: string | null } | null) ?? {};
+      setBody(meta.body_html ?? "");
+      setSignatoryId(meta.signatory_id ?? "");
     } else {
       setChannel(canEmail ? "email" : "paper");
       setBody("");
+      setSignatoryId("");
     }
     setDirty(false);
   }, [reply, courierId, canEmail]);
@@ -120,9 +155,14 @@ export default function ReplyComposer({
   // ─── Mutations ──────────────────────────────────────────────────────
 
   async function ensureReply(): Promise<{ id: string }> {
+    const sigPayload = signatoryId ? signatoryId : null;
     if (reply) {
-      // Persist current channel + body before any state change
-      await updateReplyContent(organizationId, reply.id, { channel, bodyHtml: body });
+      // Persist current channel + body + signatory before any state change
+      await updateReplyContent(organizationId, reply.id, {
+        channel,
+        bodyHtml: body,
+        signatoryId: sigPayload,
+      });
       return { id: reply.id };
     }
     const created = await createReply({
@@ -142,6 +182,9 @@ export default function ReplyComposer({
           }
         : null,
     });
+    if (sigPayload) {
+      await updateReplyContent(organizationId, created.id, { signatoryId: sigPayload });
+    }
     return { id: created.id };
   }
 
@@ -159,7 +202,10 @@ export default function ReplyComposer({
   });
 
   const transition = useMutation({
-    mutationFn: async (target: { id: string; name: string; category: string | null }) => {
+    mutationFn: async (target: { id: string; name: string; category: string | null; requires_signature: boolean }) => {
+      if (target.requires_signature && !signatoryId) {
+        throw new Error("Veuillez sélectionner un signataire avant de passer à cet état.");
+      }
       const ensured = await ensureReply();
       await transitionReplyState(
         organizationId,
@@ -249,6 +295,43 @@ export default function ReplyComposer({
           </RadioGroup>
         </div>
 
+        <div className="space-y-1.5 min-w-[220px]">
+          <Label className="text-xs uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+            <PenLine className="h-3.5 w-3.5" /> Signataire
+          </Label>
+          <Select
+            value={signatoryId || "__none__"}
+            onValueChange={(v) => {
+              const next = v === "__none__" ? "" : v;
+              setSignatoryId(next);
+              setDirty(true);
+            }}
+            disabled={editorDisabled || serviceSignatories.length === 0}
+          >
+            <SelectTrigger className="h-9">
+              <SelectValue
+                placeholder={
+                  serviceSignatories.length === 0
+                    ? "Aucun signataire associé au service"
+                    : "Sélectionner un signataire"
+                }
+              />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">— Aucun —</SelectItem>
+              {serviceSignatories.map((s) => {
+                const fullName = `${s.first_name} ${s.last_name}`.trim() || "—";
+                return (
+                  <SelectItem key={s.id} value={s.id}>
+                    {fullName}
+                    {s.title ? ` — ${s.title}` : ""}
+                  </SelectItem>
+                );
+              })}
+            </SelectContent>
+          </Select>
+        </div>
+
         <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="outline"
@@ -267,20 +350,39 @@ export default function ReplyComposer({
           {outgoingTransitions.map(({ transition: t, target }) => {
             const isSend =
               target.category === "processed" && (channel === "email" || target.name.toLowerCase().includes("répond"));
-            return (
+            const requiresSig = (target as any).requires_signature === true;
+            const blocked = requiresSig && !signatoryId;
+            const btn = (
               <Button
                 key={t.id}
                 size="sm"
                 variant={target.category === "processed" ? "default" : "secondary"}
-                disabled={isBusy || readOnly}
+                disabled={isBusy || readOnly || blocked}
                 onClick={() =>
-                  transition.mutate({ id: target.id, name: target.name, category: target.category })
+                  transition.mutate({
+                    id: target.id,
+                    name: target.name,
+                    category: target.category,
+                    requires_signature: requiresSig,
+                  })
                 }
               >
-                {isSend ? <Send className="mr-1.5 h-4 w-4" /> : target.category === "processing" ? <Mail className="mr-1.5 h-4 w-4" /> : <ArrowRight className="mr-1.5 h-4 w-4" />}
+                {requiresSig && <PenLine className="mr-1.5 h-4 w-4" />}
+                {!requiresSig && (isSend ? <Send className="mr-1.5 h-4 w-4" /> : target.category === "processing" ? <Mail className="mr-1.5 h-4 w-4" /> : <ArrowRight className="mr-1.5 h-4 w-4" />)}
                 {t.name || target.name}
               </Button>
             );
+            if (blocked) {
+              return (
+                <Tooltip key={t.id}>
+                  <TooltipTrigger asChild>
+                    <span tabIndex={0}>{btn}</span>
+                  </TooltipTrigger>
+                  <TooltipContent>Sélectionnez d'abord un signataire.</TooltipContent>
+                </Tooltip>
+              );
+            }
+            return btn;
           })}
           {isFinal && (
             <Badge variant="secondary" className="gap-1">
