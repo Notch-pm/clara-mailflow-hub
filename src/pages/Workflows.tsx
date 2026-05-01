@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useOrganization } from "@/contexts/OrganizationContext";
-import { getWorkflows, createWorkflow, deleteWorkflow, type WorkflowType } from "@/services/workflowService";
+import { getWorkflows, createWorkflow, deleteWorkflow, updateWorkflow, type WorkflowType } from "@/services/workflowService";
 import {
   Select,
   SelectContent,
@@ -88,6 +88,17 @@ export default function Workflows() {
     onError: (err: any) => toast({ title: "Erreur", description: err.message, variant: "destructive" }),
   });
 
+  const updateTypeMutation = useMutation({
+    mutationFn: async ({ id, type }: { id: string; type: WorkflowType }) => {
+      const { error } = await updateWorkflow(id, { type });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["workflows"] });
+      toast({ title: "Type mis à jour" });
+    },
+    onError: (err: any) => toast({ title: "Erreur", description: err.message, variant: "destructive" }),
+  });
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -123,11 +134,22 @@ export default function Workflows() {
                 onClick={() => navigate(`/workflows/${wf.id}`)}
               >
                 <CardHeader className="flex flex-row items-start justify-between pb-2">
-                  <div className="space-y-1">
+                  <div className="space-y-2 flex-1 min-w-0">
                     <CardTitle className="text-base">{wf.name}</CardTitle>
-                    <Badge variant="outline" className="text-xs">
-                      {wf.type === "reply" ? "Réponse" : "Courrier reçu"}
-                    </Badge>
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <Select
+                        value={wf.type ?? "inbound"}
+                        onValueChange={(v) => updateTypeMutation.mutate({ id: wf.id, type: v as WorkflowType })}
+                      >
+                        <SelectTrigger className="h-7 w-[160px] text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="inbound">Courrier reçu</SelectItem>
+                          <SelectItem value="reply">Réponse</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
                     {wf.is_default && <Badge variant="secondary">Par défaut</Badge>}
