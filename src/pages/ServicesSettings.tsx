@@ -214,7 +214,8 @@ export default function ServicesSettings({ organizationId, isAdminOverride }: Pr
                     <TableHead>Libellé</TableHead>
                     {!multipleImap && <TableHead>Courriel</TableHead>}
                     {multipleImap && <TableHead>Email (IMAP)</TableHead>}
-                    <TableHead>Workflow</TableHead>
+                    <TableHead>Workflow courrier reçu</TableHead>
+                    <TableHead>Workflow réponse</TableHead>
                     {isAdmin && <TableHead className="w-[100px] text-right">Actions</TableHead>}
                   </TableRow>
                 </TableHeader>
