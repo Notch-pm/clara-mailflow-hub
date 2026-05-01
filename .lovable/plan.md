@@ -1,28 +1,59 @@
-## Objectif
+## Bouton « Signer » dans la réponse + verrouillage post-signature
 
-Ajouter, sur chaque état d'un workflow de type "réponse", un booléen activable depuis le panneau d'édition d'un état, indiquant que cet état déclenche/exige la signature du courrier.
+### Comportement attendu
 
-## Modifications
+1. Quand le courrier de réponse est dans un **état avec `requires_signature = true`** :
+   - Si le **signataire sélectionné correspond à l'utilisateur connecté** (`signatories.user_id === auth.uid()`) ET qu'il dispose d'une **image de signature**, un bouton **« Signer »** apparaît dans la barre d'actions de l'onglet Réponse.
+   - Au clic, le bloc signature est ajouté en bas du corps HTML de la réponse :
+     ```
+     <p>Prénom Nom</p>
+     <p><em>Titre</em></p>          (si renseigné)
+     <img src="…signed url…" />      (image signature, hauteur ~80px)
+     ```
+   - La réponse est marquée **signée** (`metadata.signed_at`, `metadata.signed_by`) et devient **non modifiable** (éditeur + canal + signataire grisés, comme un état final).
 
-### 1. Base de données (migration)
-- Ajouter une colonne `requires_signature boolean NOT NULL DEFAULT false` à la table `workflow_states`.
+2. Tant que **la signature n'a pas été apposée** sur un état `requires_signature`, **les transitions vers un état suivant sont bloquées** (boutons grisés).
 
-### 2. Service workflow (`src/services/workflowService.ts`)
-- Ajouter `requires_signature?: boolean` dans les signatures de `addState` et `updateState`.
-- Inclure le champ dans les `insert` / `update`.
+3. **Tooltips sur tous les boutons grisés** indiquant la raison :
+   - « Sélectionnez d'abord un signataire »
+   - « En attente de signature »
+   - « Vous n'êtes pas le signataire désigné »
+   - « Aucune signature manuscrite enregistrée pour ce signataire »
+   - « Réponse verrouillée »
 
-### 3. Page WorkflowDetail (`src/pages/WorkflowDetail.tsx`)
-- Lire `requires_signature` quand on charge les états et le propager dans les `data` du nœud React Flow.
-- Le persister lors d'un update et le passer en prop au `StateEditPanel`.
-- Détecter le type du workflow (`reply` vs `inbound`) déjà chargé pour ne montrer le toggle qu'aux workflows réponse.
+### Détails techniques
 
-### 4. Composant `StateEditPanel`
-- Nouvelle prop `workflowType: "inbound" | "reply" | null` et `requiresSignature: boolean`.
-- Ajouter un `Switch` "Signature requise à cet état" affiché uniquement si `workflowType === "reply"`.
-- Émettre `onUpdate({ requires_signature })`.
+**Fichiers modifiés** :
+- `src/services/courierReplyService.ts`
+  - Étendre `updateReplyContent` pour accepter `signedAt`, `signedBy` (stockés dans `metadata`).
+  - Nouvelle fonction `signReply(orgId, parentCourierId, replyId, { bodyHtml, signedBy })` : update body + `metadata.signed_at = now`, `metadata.signed_by = userId`, log événement `reply_signed`.
+- `src/components/courier/ReplyComposer.tsx`
+  - Récupérer la **signature complète** (`first_name`, `last_name`, `title`, `user_id`, `signature_storage_key`) du signataire sélectionné (ajouter `signature_storage_key` au query `service-signatories-detailed`).
+  - Récupérer l'utilisateur courant via `useAuth()` (contexte existant).
+  - Calculer `isSigned = !!metadata.signed_at`, `isSignatureState = currentState.requires_signature === true`.
+  - `editorDisabled` devient vrai aussi si `isSigned`.
+  - Nouveau bouton **« Signer »** affiché si `isSignatureState && !isSigned` :
+    - activé uniquement si `selectedSignatory.user_id === currentUser.id` ET `signature_storage_key` présent.
+    - sinon grisé avec tooltip approprié.
+    - au clic : génère URL signée (`getSignatureUrl`), construit le HTML signature, appelle `signReply`, refetch.
+  - Boutons de transition : si l'état courant est `requires_signature` et `!isSigned`, bloquer toutes les transitions sortantes avec tooltip « En attente de signature ».
+  - Wrapper `Tooltip` autour de chaque bouton désactivé avec la raison spécifique.
+  - Badge « Signé » (icône `CheckCircle2`) affiché quand `isSigned`.
 
-### 5. Composant `StateNode` (visuel)
-- Afficher une petite icône (stylo/Pen) discrète sur le nœud quand `requires_signature` est vrai, pour repérage visuel sur le canvas.
+**Pas de migration DB** : on réutilise le champ `metadata jsonb` existant sur `couriers` pour stocker `signed_at` et `signed_by`.
 
-## Hors-périmètre (à confirmer dans une prochaine étape)
-- L'utilisation effective du flag dans le composant de réponse (`ReplyComposer`) pour exiger/insérer la signature. La présente demande ne concerne que la déclaration au niveau du workflow.
+### Diagramme de logique du bouton « Signer »
+
+```text
+état courant.requires_signature ?
+  └── non  → pas de bouton
+  └── oui  → déjà signé ?
+              └── oui → badge "Signé", éditeur verrouillé
+              └── non → signataire sélectionné ?
+                          └── non → bouton grisé "Sélectionnez un signataire"
+                          └── oui → signataire == utilisateur connecté ?
+                                      └── non → bouton grisé "Vous n'êtes pas le signataire désigné"
+                                      └── oui → image signature présente ?
+                                                  └── non → bouton grisé "Aucune signature manuscrite enregistrée"
+                                                  └── oui → bouton actif "Signer"
+```

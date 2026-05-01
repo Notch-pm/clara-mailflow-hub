@@ -123,7 +123,13 @@ export async function createReply(args: CreateReplyArgs): Promise<ReplyRecord> {
 export async function updateReplyContent(
   organizationId: string,
   replyId: string,
-  patch: { channel?: CourierChannel; bodyHtml?: string; signatoryId?: string | null },
+  patch: {
+    channel?: CourierChannel;
+    bodyHtml?: string;
+    signatoryId?: string | null;
+    signedAt?: string | null;
+    signedBy?: string | null;
+  },
 ): Promise<void> {
   // Fetch current metadata to preserve other keys
   const { data: existing, error: fErr } = await supabase
@@ -146,6 +152,14 @@ export async function updateReplyContent(
   }
   if (patch.signatoryId !== undefined) {
     nextMeta.signatory_id = patch.signatoryId;
+    metaChanged = true;
+  }
+  if (patch.signedAt !== undefined) {
+    nextMeta.signed_at = patch.signedAt;
+    metaChanged = true;
+  }
+  if (patch.signedBy !== undefined) {
+    nextMeta.signed_by = patch.signedBy;
     metaChanged = true;
   }
   if (metaChanged) update.metadata = nextMeta;
@@ -203,4 +217,21 @@ function stripHtml(html: string): string {
     .replace(/<[^>]+>/g, "")
     .replace(/\s+\n/g, "\n")
     .trim();
+}
+
+export async function signReply(
+  organizationId: string,
+  parentCourierId: string,
+  replyId: string,
+  args: { bodyHtml: string; signedBy: string },
+): Promise<void> {
+  await updateReplyContent(organizationId, replyId, {
+    bodyHtml: args.bodyHtml,
+    signedAt: new Date().toISOString(),
+    signedBy: args.signedBy,
+  });
+  await logEvent(organizationId, parentCourierId, "reply_signed", {
+    reply_id: replyId,
+    signed_by: args.signedBy,
+  });
 }
