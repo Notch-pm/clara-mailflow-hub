@@ -573,7 +573,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
               )}
             </div>
           </div>
-        </SheetHeader>
+        </div>
 
         <Tabs defaultValue="detail" className="flex-1 overflow-hidden flex flex-col mb-px">
           {withTabs && (
