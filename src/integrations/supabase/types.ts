@@ -961,6 +961,45 @@ export type Database = {
           },
         ]
       }
+      signatories: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          first_name: string
+          id: string
+          last_name: string
+          organization_id: string
+          signature_storage_key: string | null
+          title: string | null
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          first_name: string
+          id?: string
+          last_name: string
+          organization_id: string
+          signature_storage_key?: string | null
+          title?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          first_name?: string
+          id?: string
+          last_name?: string
+          organization_id?: string
+          signature_storage_key?: string | null
+          title?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       smtp_settings: {
         Row: {
           created_at: string
