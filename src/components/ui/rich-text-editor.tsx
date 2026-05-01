@@ -1,6 +1,7 @@
 import { useEditor, EditorContent, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
+import Image from "@tiptap/extension-image";
 import { useEffect } from "react";
 import { Bold, Italic, List, ListOrdered, Link as LinkIcon, Heading2, Heading3, Undo, Redo } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -99,6 +100,7 @@ export function RichTextEditor({ value, onChange, placeholder, disabled, classNa
     extensions: [
       StarterKit.configure({ heading: { levels: [2, 3] } }),
       Link.configure({ openOnClick: false, autolink: true, HTMLAttributes: { class: "text-primary underline" } }),
+      Image.configure({ inline: false, allowBase64: true, HTMLAttributes: { class: "max-w-full h-auto" } }),
     ],
     content: value || "",
     editable: !disabled,

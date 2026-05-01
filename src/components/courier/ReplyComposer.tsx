@@ -254,15 +254,19 @@ export default function ReplyComposer({
       const url = await getSignatureUrl(selectedSignatory.signature_storage_key);
       if (!url) throw new Error("Impossible de charger l'image de signature.");
 
+      // Convertit la signature en data URL (base64) pour la rendre persistante
+      // et indépendante de l'expiration des URLs signées Supabase Storage.
+      const dataUrl = await fetchAsDataUrl(url);
+
       const fullName = `${selectedSignatory.first_name} ${selectedSignatory.last_name}`.trim();
       const titleHtml = selectedSignatory.title
-        ? `<p style="margin:0;font-style:italic;color:#555;">${escapeHtml(selectedSignatory.title)}</p>`
+        ? `<p style="margin:0 0 4px 0;font-style:italic;color:#555;">${escapeHtml(selectedSignatory.title)},</p>`
         : "";
       const signatureBlock = `
 <div data-signature-block="true" style="margin-top:32px;padding-top:16px;border-top:1px solid #e5e7eb;">
-  <p style="margin:0;font-weight:600;">${escapeHtml(fullName)}</p>
   ${titleHtml}
-  <img src="${url}" alt="Signature" style="height:80px;margin-top:8px;object-fit:contain;" />
+  <p style="margin:0;font-weight:600;">${escapeHtml(fullName)}</p>
+  <img src="${dataUrl}" alt="Signature" style="height:80px;margin-top:8px;object-fit:contain;display:block;" />
 </div>`.trim();
 
       const newBody = `${body}${signatureBlock}`;
@@ -529,4 +533,16 @@ function escapeHtml(s: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+async function fetchAsDataUrl(url: string): Promise<string> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("Téléchargement de la signature échoué.");
+  const blob = await res.blob();
+  return await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error("Lecture de la signature échouée."));
+    reader.readAsDataURL(blob);
+  });
 }
