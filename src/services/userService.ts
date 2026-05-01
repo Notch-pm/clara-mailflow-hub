@@ -6,6 +6,7 @@ interface OrgMemberRow {
   role: string;
   is_active: boolean | null;
   is_signataire: boolean | null;
+  signataire_title: string | null;
   user_id: string;
   users: {
     id: string;
@@ -27,6 +28,7 @@ function rowToMember(row: OrgMemberRow): OrgMember {
     avatar_url: row.users.avatar_url ?? null,
     role: row.role,
     is_signataire: row.is_signataire ?? false,
+    signataire_title: row.signataire_title ?? null,
     membership_id: row.id,
     membership_active: row.is_active,
   };
