@@ -21,11 +21,46 @@ export async function getWorkflowById(organizationId: string, workflowId: string
 export type WorkflowType = "inbound" | "reply";
 
 export async function createWorkflow(organizationId: string, name: string, type: WorkflowType) {
-  return supabase
+  const result = await supabase
     .from("workflows")
     .insert({ organization_id: organizationId, name, type, is_default: false })
     .select()
     .single();
+
+  if (result.error || !result.data) return result;
+
+  if (type === "reply") {
+    // Seed default states for a reply workflow (no archive)
+    const wfId = (result.data as { id: string }).id;
+    await supabase.from("workflow_states").insert([
+      {
+        organization_id: organizationId,
+        workflow_id: wfId,
+        name: "Non répondu",
+        category: "pending" as WorkflowCategory,
+        is_initial: true,
+        is_final: false,
+      },
+      {
+        organization_id: organizationId,
+        workflow_id: wfId,
+        name: "En cours de rédaction",
+        category: "processing" as WorkflowCategory,
+        is_initial: false,
+        is_final: false,
+      },
+      {
+        organization_id: organizationId,
+        workflow_id: wfId,
+        name: "Répondu",
+        category: "processed" as WorkflowCategory,
+        is_initial: false,
+        is_final: true,
+      },
+    ]);
+  }
+
+  return result;
 }
 
 export async function updateWorkflow(
