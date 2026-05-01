@@ -216,7 +216,14 @@ export default function UsersPage({ organizationId: propOrgId }: UsersPageProps 
                   </TableCell>
                   <TableCell className="text-sm">{m.email}</TableCell>
                   <TableCell>
-                    <Badge variant={roleBadgeVariant[m.role] ?? "outline"}>{m.role}</Badge>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <Badge variant={roleBadgeVariant[m.role] ?? "outline"}>{m.role}</Badge>
+                      {m.is_signataire && (
+                        <Badge variant="outline" className="border-primary/40 text-primary">
+                          Signataire
+                        </Badge>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <Badge variant={m.is_active !== false ? "default" : "secondary"}>
