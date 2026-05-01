@@ -229,10 +229,21 @@ export default function ReplyComposer({
   type PendingTarget = { id: string; name: string; category: string | null; requires_signature: boolean };
   const [pendingTarget, setPendingTarget] = useState<PendingTarget | null>(null);
 
+  // A target is "backwards" if a transition exists from the target back to the current state.
+  function isBackwardsTarget(targetId: string): boolean {
+    if (!workflow || !currentState) return false;
+    return workflow.transitions.some(
+      (t) => t.from_state_id === targetId && t.to_state_id === currentState.id,
+    );
+  }
+
   // Determine action implied by a transition: 'sign' | 'unsign' | 'none'
   function actionForTarget(target: PendingTarget): "sign" | "unsign" | "none" {
-    if (isSignatureState && !isSigned) return "sign";
-    if (isSigned && !target.requires_signature) return "unsign";
+    const backwards = isBackwardsTarget(target.id);
+    // Going forward from a signature state → apposer la signature (si pas déjà signée)
+    if (isSignatureState && !isSigned && !backwards) return "sign";
+    // Revenir en arrière depuis un état postérieur à la signature → effacer la signature
+    if (isSigned && backwards) return "unsign";
     return "none";
   }
 
@@ -308,10 +319,10 @@ export default function ReplyComposer({
   const isBusy = saveDraft.isPending || transition.isPending;
 
   // ─── Transition gating ──────────────────────────────────────────────
-  function reasonForTarget(target: { requires_signature: boolean }): string | null {
+  function reasonForTarget(target: PendingTarget): string | null {
     if (target.requires_signature && !signatoryId) return "Sélectionnez d'abord un signataire.";
-    if (isSignatureState && !isSigned) {
-      // Signing happens via this transition: check the user can sign.
+    // Only gate signing requirements when the transition will actually sign.
+    if (actionForTarget(target) === "sign") {
       if (!signatoryId) return "Sélectionnez d'abord un signataire.";
       if (!selectedSignatory) return "Signataire introuvable.";
       if (!selectedSignatory.user_id || selectedSignatory.user_id !== currentUserId)
@@ -493,7 +504,14 @@ export default function ReplyComposer({
                 size="sm"
                 variant={target.category === "processed" ? "default" : "secondary"}
                 disabled={isBusy || readOnly || blocked}
-                onClick={() => setPendingTarget(targetPayload)}
+                onClick={() => {
+                  // Only show the confirmation modal when the transition signs or unsigns.
+                  if (action === "sign" || action === "unsign") {
+                    setPendingTarget(targetPayload);
+                  } else {
+                    transition.mutate(targetPayload);
+                  }
+                }}
               >
                 {willSign || requiresSig ? <PenLine className="mr-1.5 h-4 w-4" /> : (isSend ? <Send className="mr-1.5 h-4 w-4" /> : target.category === "processing" ? <Mail className="mr-1.5 h-4 w-4" /> : <ArrowRight className="mr-1.5 h-4 w-4" />)}
                 {t.name || target.name}
