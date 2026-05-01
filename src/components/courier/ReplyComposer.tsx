@@ -208,9 +208,9 @@ export default function ReplyComposer({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4">
-      {/* Channel selector */}
-      <div className="flex items-center justify-between gap-3">
+    <div className="flex h-full min-h-0 flex-col gap-3">
+      {/* Top bar: channel selector (left) + actions (right) */}
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="space-y-1.5">
           <Label className="text-xs uppercase tracking-wide text-muted-foreground">Canal de réponse</Label>
           <RadioGroup
@@ -255,18 +255,39 @@ export default function ReplyComposer({
           </RadioGroup>
         </div>
 
-        <div className="flex items-center gap-2">
-          {currentState && (
-            <Badge variant="outline" className="gap-1.5">
-              <span
-                className={cn(
-                  "inline-block h-2 w-2 rounded-full",
-                  stateColors[currentState.category] ?? "bg-muted-foreground",
-                )}
-              />
-              {currentState.name}
-            </Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => saveDraft.mutate()}
+            disabled={isBusy || editorDisabled || (!dirty && !!reply)}
+          >
+            <Save className="mr-1.5 h-4 w-4" />
+            Enregistrer le brouillon
+          </Button>
+          {outgoingTransitions.length === 0 && !isFinal && (
+            <span className="text-xs text-muted-foreground italic">
+              Aucune transition définie depuis cet état.
+            </span>
           )}
+          {outgoingTransitions.map(({ transition: t, target }) => {
+            const isSend =
+              target.category === "processed" && (channel === "email" || target.name.toLowerCase().includes("répond"));
+            return (
+              <Button
+                key={t.id}
+                size="sm"
+                variant={target.category === "processed" ? "default" : "secondary"}
+                disabled={isBusy || readOnly}
+                onClick={() =>
+                  transition.mutate({ id: target.id, name: target.name, category: target.category })
+                }
+              >
+                {isSend ? <Send className="mr-1.5 h-4 w-4" /> : target.category === "processing" ? <Mail className="mr-1.5 h-4 w-4" /> : <ArrowRight className="mr-1.5 h-4 w-4" />}
+                {t.name || target.name}
+              </Button>
+            );
+          })}
           {isFinal && (
             <Badge variant="secondary" className="gap-1">
               <Lock className="h-3 w-3" /> Verrouillé
@@ -291,45 +312,6 @@ export default function ReplyComposer({
         minHeight={220}
         className="flex-1 min-h-[220px]"
       />
-
-      {/* Actions */}
-      <div className="flex flex-wrap items-center gap-2 border-t pt-3">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => saveDraft.mutate()}
-          disabled={isBusy || editorDisabled || (!dirty && !!reply)}
-        >
-          <Save className="mr-1.5 h-4 w-4" />
-          Enregistrer le brouillon
-        </Button>
-
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          {outgoingTransitions.length === 0 && !isFinal && (
-            <span className="text-xs text-muted-foreground italic">
-              Aucune transition définie depuis cet état.
-            </span>
-          )}
-          {outgoingTransitions.map(({ transition: t, target }) => {
-            const isSend =
-              target.category === "processed" && (channel === "email" || target.name.toLowerCase().includes("répond"));
-            return (
-              <Button
-                key={t.id}
-                size="sm"
-                variant={target.category === "processed" ? "default" : "secondary"}
-                disabled={isBusy || readOnly}
-                onClick={() =>
-                  transition.mutate({ id: target.id, name: target.name, category: target.category })
-                }
-              >
-                {isSend ? <Send className="mr-1.5 h-4 w-4" /> : target.category === "processing" ? <Mail className="mr-1.5 h-4 w-4" /> : <ArrowRight className="mr-1.5 h-4 w-4" />}
-                {t.name || target.name}
-              </Button>
-            );
-          })}
-        </div>
-      </div>
     </div>
   );
 }
