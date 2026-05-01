@@ -123,7 +123,12 @@ export default function Workflows() {
                 onClick={() => navigate(`/workflows/${wf.id}`)}
               >
                 <CardHeader className="flex flex-row items-start justify-between pb-2">
-                  <CardTitle className="text-base">{wf.name}</CardTitle>
+                  <div className="space-y-1">
+                    <CardTitle className="text-base">{wf.name}</CardTitle>
+                    <Badge variant="outline" className="text-xs">
+                      {wf.type === "reply" ? "Réponse" : "Courrier reçu"}
+                    </Badge>
+                  </div>
                   <div className="flex items-center gap-2">
                     {wf.is_default && <Badge variant="secondary">Par défaut</Badge>}
                     <Button
