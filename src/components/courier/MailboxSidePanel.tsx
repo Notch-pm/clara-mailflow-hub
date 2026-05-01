@@ -619,7 +619,10 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
           )}
           <TabsContent
             value="detail"
-            className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-[360px_1fr] mt-0 data-[state=inactive]:hidden"
+            className={cn(
+              "flex-1 min-h-0 overflow-hidden grid grid-cols-1 lg:grid-cols-[360px_1fr] mt-0 data-[state=inactive]:hidden",
+              fullScreen && "h-full",
+            )}
             forceMount
           >
             {/* Left: metadata + workflow */}
@@ -863,13 +866,16 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
           </aside>
 
           {/* Right: viewer + documents */}
-          <main className="overflow-y-auto px-6 py-5 space-y-5 bg-muted/10">
-            <div className="space-y-2">
+          <main className={cn(
+            "overflow-y-auto px-6 py-5 space-y-5 bg-muted/10",
+            fullScreen && "min-h-0 flex flex-col",
+          )}>
+            <div className={cn("space-y-2", fullScreen && "min-h-0 flex-1 flex flex-col")}>
               <div className="flex items-center gap-2">
                 <FileText className="h-4 w-4 text-muted-foreground" />
                 <h3 className="text-sm font-medium">Aperçu</h3>
               </div>
-              <div className="h-[70vh] min-h-[500px]">
+              <div className={cn("h-[70vh] min-h-[500px]", fullScreen && "flex-1 min-h-0 h-auto")}>
                 <DocumentViewer
                   documents={displayDocuments as any}
                   currentId={selectedDocId}
