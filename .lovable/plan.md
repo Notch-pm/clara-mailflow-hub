@@ -1,68 +1,25 @@
-## Objectif
 
-Compléter le workflow existant avec deux nouveaux états supplémentaires (qui s'ajoutent aux états actuels Reçu / En traitement / Traité / Archivé), tous deux classés dans la catégorie **En traitement** (`processing`) :
+L'utilisateur a créé un agent Mistral pré-configuré (`ag_019d9b92d28872079534f45f246671ed`) et veut l'utiliser pour l'analyse, plutôt que d'appeler `mistral-large-latest` avec un prompt système défini côté code.
 
-- **Réponse en cours de validation**
-- **Réponse envoyée**
+Mistral expose les agents via l'endpoint `https://api.mistral.ai/v1/agents/completions` qui accepte `agent_id` à la place de `model`. Le reste du payload (messages, tools, tool_choice) reste compatible.
 
-Aucune modification de schéma ni de catégorie n'est nécessaire : la table `workflow_states` accepte déjà des états libres, et la catégorie `processing` est utilisée pour les regrouper côté UI (boîte « Courriers en instruction »).
+## Plan
 
-## État actuel constaté
+**Fichier à modifier** : `supabase/functions/analyze-courier/index.ts`
 
-Un seul workflow existe en base : **« test »** sur l'organisation **Laurentville**, avec 7 états :
+1. Ajouter une constante `MISTRAL_AGENT_URL = "https://api.mistral.ai/v1/agents/completions"` et `ANALYSIS_AGENT_ID = "ag_019d9b92d28872079534f45f246671ed"`.
 
-| Catégorie | Nom |
-|---|---|
-| pending | Reçu (initial) |
-| processing | En cours de traitement |
-| processing | En attente d'instruction par les services |
-| processing | En attente d'information |
-| processed | Traité (final) |
-| processed | Annulé (final) |
-| archived | Nouveau - Archivé (final) |
+2. Dans `analyzeCourier`, remplacer l'appel vers `MISTRAL_CHAT_URL` par un appel vers `MISTRAL_AGENT_URL` :
+   - Body : `{ agent_id: ANALYSIS_AGENT_ID, messages, tools, tool_choice, temperature: 0.2 }` (pas de champ `model`).
+   - Conserver les `tools` (schéma `report_analysis` avec enum dynamique des tags) et le `tool_choice` forcé pour garantir la sortie structurée — l'agent peut avoir son propre prompt mais on garde le contrat de sortie.
 
-## Ce qui sera fait
+3. Garder le `systemPrompt` côté code en tant que message `system` : utile car la liste des tags disponibles est dynamique par organisation (l'agent ne peut pas la connaître à l'avance). L'agent enrichira/dirigera l'analyse, le système injectera les tags du tenant.
 
-### 1. Insertion des deux nouveaux états
+4. Enregistrer `model: ANALYSIS_AGENT_ID` (ou `agent:<id>`) dans `courier_analyses.model` pour traçabilité.
 
-Insérer dans `workflow_states` deux lignes pour le workflow `6f9f71a8-acee-4ed4-83df-fa4debfea0a3` (org `55dab847-7a67-4fa2-b878-70c25338fc9e`) :
+5. Conserver `OCR_MODEL` inchangé (l'agent ne fait pas d'OCR).
 
-- `Réponse en cours de validation` — category=`processing`, is_initial=false, is_final=false
-- `Réponse envoyée` — category=`processing`, is_initial=false, is_final=false
-
-Aucune transition n'est créée automatiquement : vous pourrez les tracer visuellement ensuite dans l'éditeur (page Workflows → ouvrir le workflow → glisser une connexion d'un état à l'autre → Sauvegarder).
-
-### 2. Vérification
-
-Relire les états du workflow pour confirmer que les deux entrées sont présentes et bien rattachées à la bonne organisation.
-
-## Hors périmètre
-
-- Pas de migration de schéma (la table existe et accepte déjà des états libres).
-- Pas d'ajout de transitions automatiques — à vous de définir depuis quel(s) état(s) on peut passer à « Réponse en cours de validation » et où va « Réponse envoyée » (typiquement vers « Traité » ou « Archivé »).
-- Pas de changement d'UI : les nouveaux états apparaîtront automatiquement dans le sélecteur d'état d'un courrier et seront comptés dans la vue « Courriers en instruction ».
-
-## Détails techniques
-
-Insertions SQL équivalentes (exécutées via l'outil d'insertion de données, pas via migration) :
-
-```sql
-INSERT INTO workflow_states (organization_id, workflow_id, name, category, is_initial, is_final)
-VALUES
-  ('55dab847-7a67-4fa2-b878-70c25338fc9e',
-   '6f9f71a8-acee-4ed4-83df-fa4debfea0a3',
-   'Réponse en cours de validation', 'processing', false, false),
-  ('55dab847-7a67-4fa2-b878-70c25338fc9e',
-   '6f9f71a8-acee-4ed4-83df-fa4debfea0a3',
-   'Réponse envoyée', 'processing', false, false);
-```
-
-## Question avant exécution
-
-Souhaitez-vous que je crée aussi automatiquement des transitions de base, par exemple :
-
-```text
-En cours de traitement  ──▶  Réponse en cours de validation  ──▶  Réponse envoyée  ──▶  Traité
-```
-
-Ou préférez-vous tracer vous-même les flèches dans l'éditeur visuel après l'insertion ?
+## Notes techniques
+- L'API agents Mistral est compatible chat completions, donc le parsing de `tool_calls` reste identique.
+- Si l'agent refuse `tools` ou `tool_choice`, on basculera sur le format `response_format: json_object`. À tester après déploiement.
+- Aucune migration DB nécessaire.
