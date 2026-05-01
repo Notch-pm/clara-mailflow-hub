@@ -225,15 +225,62 @@ export default function ReplyComposer({
     onError: (err: Error) => toast.error(err.message),
   });
 
+  // Pending transition awaiting confirmation modal
+  type PendingTarget = { id: string; name: string; category: string | null; requires_signature: boolean };
+  const [pendingTarget, setPendingTarget] = useState<PendingTarget | null>(null);
+
+  // Determine action implied by a transition: 'sign' | 'unsign' | 'none'
+  function actionForTarget(target: PendingTarget): "sign" | "unsign" | "none" {
+    if (isSignatureState && !isSigned) return "sign";
+    if (isSigned && !target.requires_signature) return "unsign";
+    return "none";
+  }
+
+  async function buildSignedBody(): Promise<string> {
+    if (!selectedSignatory) throw new Error("Aucun signataire sélectionné.");
+    if (!selectedSignatory.signature_storage_key) {
+      throw new Error("Aucune signature manuscrite enregistrée pour ce signataire.");
+    }
+    if (!currentUserId || selectedSignatory.user_id !== currentUserId) {
+      throw new Error("Vous n'êtes pas le signataire désigné.");
+    }
+    const url = await getSignatureUrl(selectedSignatory.signature_storage_key);
+    if (!url) throw new Error("Impossible de charger l'image de signature.");
+    const dataUrl = await fetchAsDataUrl(url);
+    const fullName = `${selectedSignatory.first_name} ${selectedSignatory.last_name}`.trim();
+    const titleHtml = selectedSignatory.title
+      ? `<p style="margin:0 0 4px 0;font-style:italic;color:#555;">${escapeHtml(selectedSignatory.title)},</p>`
+      : "";
+    const signatureBlock = `
+<div data-signature-block="true" style="margin-top:32px;padding-top:16px;border-top:1px solid #e5e7eb;">
+  <p style="margin:0;">&nbsp;</p>
+  <p style="margin:0;font-weight:600;">${escapeHtml(fullName)}</p>
+  ${titleHtml}
+  <img src="${dataUrl}" alt="Signature" style="height:80px;margin-top:8px;object-fit:contain;display:block;" />
+</div>`.trim();
+    return `${stripSignatureBlock(body)}${signatureBlock}`;
+  }
+
   const transition = useMutation({
-    mutationFn: async (target: { id: string; name: string; category: string | null; requires_signature: boolean }) => {
+    mutationFn: async (target: PendingTarget) => {
       if (target.requires_signature && !signatoryId) {
         throw new Error("Veuillez sélectionner un signataire avant de passer à cet état.");
       }
-      if (isSignatureState && !isSigned) {
-        throw new Error("La signature doit être apposée avant de passer à un état suivant.");
-      }
+      const action = actionForTarget(target);
       const ensured = await ensureReply();
+
+      if (action === "sign") {
+        const newBody = await buildSignedBody();
+        await signReply(organizationId, courierId, ensured.id, {
+          bodyHtml: newBody,
+          signedBy: currentUserId!,
+        });
+      } else if (action === "unsign") {
+        const cleaned = stripSignatureBlock(body);
+        setBody(cleaned);
+        await unsignReply(organizationId, courierId, ensured.id, { bodyHtml: cleaned });
+      }
+
       await transitionReplyState(
         organizationId,
         courierId,
@@ -245,71 +292,35 @@ export default function ReplyComposer({
     },
     onSuccess: () => {
       setDirty(false);
+      setPendingTarget(null);
       queryClient.invalidateQueries({ queryKey: ["courier-reply", courierId] });
       queryClient.invalidateQueries({ queryKey: ["courier-events", courierId] });
       queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
       refetchReply();
       toast.success("État de la réponse mis à jour");
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => {
+      setPendingTarget(null);
+      toast.error(err.message);
+    },
   });
 
-  const signMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedSignatory) throw new Error("Aucun signataire sélectionné.");
-      if (!selectedSignatory.signature_storage_key) {
-        throw new Error("Aucune signature manuscrite enregistrée pour ce signataire.");
-      }
-      if (!currentUserId || selectedSignatory.user_id !== currentUserId) {
-        throw new Error("Vous n'êtes pas le signataire désigné.");
-      }
-      const url = await getSignatureUrl(selectedSignatory.signature_storage_key);
-      if (!url) throw new Error("Impossible de charger l'image de signature.");
+  const isBusy = saveDraft.isPending || transition.isPending;
 
-      // Convertit la signature en data URL (base64) pour la rendre persistante
-      // et indépendante de l'expiration des URLs signées Supabase Storage.
-      const dataUrl = await fetchAsDataUrl(url);
-
-      const fullName = `${selectedSignatory.first_name} ${selectedSignatory.last_name}`.trim();
-      const titleHtml = selectedSignatory.title
-        ? `<p style="margin:0 0 4px 0;font-style:italic;color:#555;">${escapeHtml(selectedSignatory.title)},</p>`
-        : "";
-      const signatureBlock = `
-<div data-signature-block="true" style="margin-top:32px;padding-top:16px;border-top:1px solid #e5e7eb;">
-  <p style="margin:0;">&nbsp;</p>
-  <p style="margin:0;font-weight:600;">${escapeHtml(fullName)}</p>
-  ${titleHtml}
-  <img src="${dataUrl}" alt="Signature" style="height:80px;margin-top:8px;object-fit:contain;display:block;" />
-</div>`.trim();
-
-      const newBody = `${body}${signatureBlock}`;
-
-      const ensured = await ensureReply();
-      await signReply(organizationId, courierId, ensured.id, {
-        bodyHtml: newBody,
-        signedBy: currentUserId,
-      });
-    },
-    onSuccess: () => {
-      setDirty(false);
-      queryClient.invalidateQueries({ queryKey: ["courier-reply", courierId] });
-      queryClient.invalidateQueries({ queryKey: ["courier-events", courierId] });
-      refetchReply();
-      toast.success("Réponse signée");
-    },
-    onError: (err: Error) => toast.error(err.message),
-  });
-
-  const isBusy = saveDraft.isPending || transition.isPending || signMutation.isPending;
-
-  // ─── Sign button gating ─────────────────────────────────────────────
-  let signDisabledReason: string | null = null;
-  if (!signatoryId) signDisabledReason = "Sélectionnez d'abord un signataire.";
-  else if (!selectedSignatory) signDisabledReason = "Signataire introuvable.";
-  else if (!selectedSignatory.user_id || selectedSignatory.user_id !== currentUserId)
-    signDisabledReason = "Vous n'êtes pas le signataire désigné.";
-  else if (!selectedSignatory.signature_storage_key)
-    signDisabledReason = "Aucune signature manuscrite enregistrée pour ce signataire.";
+  // ─── Transition gating ──────────────────────────────────────────────
+  function reasonForTarget(target: { requires_signature: boolean }): string | null {
+    if (target.requires_signature && !signatoryId) return "Sélectionnez d'abord un signataire.";
+    if (isSignatureState && !isSigned) {
+      // Signing happens via this transition: check the user can sign.
+      if (!signatoryId) return "Sélectionnez d'abord un signataire.";
+      if (!selectedSignatory) return "Signataire introuvable.";
+      if (!selectedSignatory.user_id || selectedSignatory.user_id !== currentUserId)
+        return "Vous n'êtes pas le signataire désigné.";
+      if (!selectedSignatory.signature_storage_key)
+        return "Aucune signature manuscrite enregistrée pour ce signataire.";
+    }
+    return null;
+  }
 
   // ─── Render ─────────────────────────────────────────────────────────
 
