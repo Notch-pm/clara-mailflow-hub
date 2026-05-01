@@ -26,6 +26,7 @@ interface Props {
   assignedService: string | null;
   sender: CourierParticipant | null;
   readOnly?: boolean;
+  onStateChange?: (state: { name: string; category: string | null } | null) => void;
 }
 
 const stateColors: Record<string, string> = {
@@ -42,6 +43,7 @@ export default function ReplyComposer({
   assignedService,
   sender,
   readOnly,
+  onStateChange,
 }: Props) {
   const queryClient = useQueryClient();
 
