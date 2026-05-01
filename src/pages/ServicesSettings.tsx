@@ -308,7 +308,8 @@ export default function ServicesSettings({ organizationId, isAdminOverride }: Pr
           if (!o) setEditing(null);
         }}
         editing={editing}
-        workflows={workflows ?? []}
+        inboundWorkflows={inboundWorkflows}
+        replyWorkflows={replyWorkflows}
         imapConfigs={imapConfigs}
         multipleImap={multipleImap}
         onSubmit={(values) => saveMutation.mutate(values)}
