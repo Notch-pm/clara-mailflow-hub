@@ -106,6 +106,11 @@ export default function ReplyComposer({
   const isFinal = currentState?.category === "processed" || currentState?.is_final === true;
   const editorDisabled = !!readOnly || isFinal;
 
+  // Bubble up the current state so the parent can show it in the tab label.
+  useEffect(() => {
+    onStateChange?.(currentState ? { name: currentState.name, category: currentState.category } : null);
+  }, [currentState, onStateChange]);
+
   // Available transitions from the current state
   const outgoingTransitions = useMemo(() => {
     if (!workflow || !currentState) return [];
