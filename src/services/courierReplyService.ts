@@ -218,3 +218,20 @@ function stripHtml(html: string): string {
     .replace(/\s+\n/g, "\n")
     .trim();
 }
+
+export async function signReply(
+  organizationId: string,
+  parentCourierId: string,
+  replyId: string,
+  args: { bodyHtml: string; signedBy: string },
+): Promise<void> {
+  await updateReplyContent(organizationId, replyId, {
+    bodyHtml: args.bodyHtml,
+    signedAt: new Date().toISOString(),
+    signedBy: args.signedBy,
+  });
+  await logEvent(organizationId, parentCourierId, "reply_signed", {
+    reply_id: replyId,
+    signed_by: args.signedBy,
+  });
+}
