@@ -40,7 +40,7 @@ function rowToMember(row: OrgMemberRow): OrgMember {
 export async function getOrgMembers(organizationId: string): Promise<OrgMember[]> {
   const { data, error } = await supabase
     .from("organization_users")
-    .select("id, role, is_active, is_signataire, user_id, users:user_id(id, email, first_name, last_name, is_active, avatar_url)")
+    .select("id, role, is_active, is_signataire, signataire_title, user_id, users:user_id(id, email, first_name, last_name, is_active, avatar_url)")
     .eq("organization_id", organizationId);
 
   if (error) throw error;
@@ -55,7 +55,7 @@ export async function getOrgMembers(organizationId: string): Promise<OrgMember[]
 export async function getOrgMember(organizationId: string, userId: string): Promise<OrgMember | null> {
   const { data, error } = await supabase
     .from("organization_users")
-    .select("id, role, is_active, is_signataire, user_id, users:user_id(id, email, first_name, last_name, is_active, avatar_url)")
+    .select("id, role, is_active, is_signataire, signataire_title, user_id, users:user_id(id, email, first_name, last_name, is_active, avatar_url)")
     .eq("organization_id", organizationId)
     .eq("user_id", userId)
     .maybeSingle();
@@ -104,7 +104,7 @@ export async function updateOrgMember(
   organizationId: string,
   userId: string,
   membershipId: string,
-  updates: { first_name?: string; last_name?: string; role?: string; is_active?: boolean; is_signataire?: boolean }
+  updates: { first_name?: string; last_name?: string; role?: string; is_active?: boolean; is_signataire?: boolean; signataire_title?: string | null }
 ) {
   const promises: Promise<void>[] = [];
 
@@ -122,10 +122,11 @@ export async function updateOrgMember(
     );
   }
 
-  const membershipUpdates: { role?: string; is_active?: boolean; is_signataire?: boolean } = {};
+  const membershipUpdates: { role?: string; is_active?: boolean; is_signataire?: boolean; signataire_title?: string | null } = {};
   if (updates.role !== undefined) membershipUpdates.role = updates.role;
   if (updates.is_active !== undefined) membershipUpdates.is_active = updates.is_active;
   if (updates.is_signataire !== undefined) membershipUpdates.is_signataire = updates.is_signataire;
+  if (updates.signataire_title !== undefined) membershipUpdates.signataire_title = updates.signataire_title;
 
   if (Object.keys(membershipUpdates).length > 0) {
     promises.push(
