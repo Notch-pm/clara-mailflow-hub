@@ -141,3 +141,45 @@ export async function getSignatureUrl(storageKey: string): Promise<string | null
   if (error) return null;
   return data?.signedUrl ?? null;
 }
+
+// --- Service ↔ Signatories ---
+
+export async function listServiceSignatoryIds(serviceId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("service_signatories")
+    .select("signatory_id")
+    .eq("service_id", serviceId);
+  if (error) throw error;
+  return (data ?? []).map((r: any) => r.signatory_id);
+}
+
+export async function setServiceSignatories(
+  organizationId: string,
+  serviceId: string,
+  signatoryIds: string[]
+): Promise<void> {
+  const current = await listServiceSignatoryIds(serviceId);
+  const currentSet = new Set(current);
+  const nextSet = new Set(signatoryIds);
+
+  const toAdd = signatoryIds.filter((id) => !currentSet.has(id));
+  const toRemove = current.filter((id) => !nextSet.has(id));
+
+  if (toAdd.length > 0) {
+    const rows = toAdd.map((sid) => ({
+      organization_id: organizationId,
+      service_id: serviceId,
+      signatory_id: sid,
+    }));
+    const { error } = await supabase.from("service_signatories").insert(rows);
+    if (error) throw error;
+  }
+  if (toRemove.length > 0) {
+    const { error } = await supabase
+      .from("service_signatories")
+      .delete()
+      .eq("service_id", serviceId)
+      .in("signatory_id", toRemove);
+    if (error) throw error;
+  }
+}
