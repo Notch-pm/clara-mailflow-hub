@@ -316,6 +316,7 @@ export default function ReplyComposer({
     name: string;
     category: string | null;
     requires_signature: boolean;
+    is_send: boolean;
     action: TransitionAction;
   };
   const [pendingTarget, setPendingTarget] = useState<PendingTarget | null>(null);
