@@ -39,6 +39,9 @@ function StateNodeComponent({ data, selected }: NodeProps) {
         {nodeData.requires_signature && (
           <PenLine className="h-3.5 w-3.5 text-amber-600" aria-label="Signature requise" />
         )}
+        {nodeData.is_send && (
+          <Send className="h-3.5 w-3.5 text-blue-600" aria-label="Envoyer" />
+        )}
         <span className="font-semibold text-sm text-foreground truncate">{nodeData.label}</span>
       </div>
 
