@@ -262,14 +262,17 @@ export default function ReplyComposer({
   useEffect(() => {
     logSignatureFlow("state snapshot", {
       workflowStateCount: workflow?.states.length ?? 0,
-      signatureStates: signatureStates.map((s) => ({ id: s.id, name: s.name })),
+      signatureState: signatureState ? { id: signatureState.id, name: signatureState.name } : null,
+      sendState: sendState ? { id: sendState.id, name: sendState.name } : null,
+      isSent,
       outgoingTransitions: outgoingTransitions.map(({ target }) => ({
         id: target.id,
         name: target.name,
         requires_signature: target.requires_signature,
+        is_send: (target as any).is_send === true,
       })),
     });
-  }, [currentState?.id, isSigned, signedStateId, signatoryId, selectedSignatory?.id, workflow?.states.length, outgoingTransitions.length]);
+  }, [currentState?.id, isSigned, signedStateId, signatoryId, selectedSignatory?.id, workflow?.states.length, outgoingTransitions.length, signatureState?.id, sendState?.id, isSent]);
 
   // ─── Mutations ──────────────────────────────────────────────────────
 
