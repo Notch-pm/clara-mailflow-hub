@@ -149,11 +149,13 @@ export default function ReplyComposer({
     return workflow.states.find((s) => s.id === stateId) ?? workflow.initialState ?? null;
   }, [workflow, reply]);
 
-  const replyMeta = (reply?.metadata as { signed_at?: string | null; signed_by?: string | null } | null) ?? {};
+  const replyMeta = (reply?.metadata as { signed_at?: string | null; signed_by?: string | null; sent_email_at?: string | null } | null) ?? {};
   const isSigned = !!replyMeta.signed_at;
+  const isSent = !!replyMeta.sent_email_at;
   const isSignatureState = (currentState as any)?.requires_signature === true;
   const isFinal = currentState?.category === "processed" || currentState?.is_final === true;
   const editorDisabled = !!readOnly || isFinal || isSigned;
+  const canSendEmail = channel === "email" && isFinal && !!reply && !isSent && !!senderEmail;
 
   const selectedSignatory = useMemo(
     () => serviceSignatories.find((s) => s.id === signatoryId) ?? null,
@@ -316,7 +318,26 @@ export default function ReplyComposer({
     },
   });
 
-  const isBusy = saveDraft.isPending || transition.isPending;
+  const sendEmail = useMutation({
+    mutationFn: async () => {
+      if (!reply) throw new Error("Aucune réponse à envoyer.");
+      const { data, error } = await supabase.functions.invoke("send-courier-reply", {
+        body: { reply_id: reply.id, organization_id: organizationId },
+      });
+      if (error) throw new Error(error.message);
+      if ((data as any)?.error) throw new Error((data as any).error);
+      return data;
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["courier-reply", courierId] });
+      queryClient.invalidateQueries({ queryKey: ["courier-events", courierId] });
+      refetchReply();
+      toast.success(`Courriel envoyé à ${data?.to ?? "l'usager"}`);
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const isBusy = saveDraft.isPending || transition.isPending || sendEmail.isPending;
 
   // ─── Transition gating ──────────────────────────────────────────────
   function reasonForTarget(target: PendingTarget): string | null {
@@ -519,6 +540,22 @@ export default function ReplyComposer({
             );
             return renderMaybeTooltip(btn, reason, t.id);
           })}
+          {canSendEmail && (
+            <Button
+              size="sm"
+              variant="default"
+              disabled={isBusy}
+              onClick={() => sendEmail.mutate()}
+            >
+              <Send className="mr-1.5 h-4 w-4" />
+              {sendEmail.isPending ? "Envoi…" : `Envoyer à ${senderEmail}`}
+            </Button>
+          )}
+          {isSent && (
+            <Badge variant="secondary" className="gap-1 bg-emerald-100 text-emerald-700 border-emerald-200">
+              <CheckCircle2 className="h-3 w-3" /> Envoyé
+            </Badge>
+          )}
           {isFinal && (
             <Badge variant="secondary" className="gap-1">
               <Lock className="h-3 w-3" /> Verrouillé
