@@ -301,21 +301,12 @@ export default function ReplyComposer({
   };
   const [pendingTarget, setPendingTarget] = useState<PendingTarget | null>(null);
 
-  // A target is "backwards" if a transition exists from the target back to the current state.
-  function isBackwardsTarget(targetId: string): boolean {
-    if (!workflow || !currentState) return false;
-    return workflow.transitions.some(
-      (t) => t.from_state_id === targetId && t.to_state_id === currentState.id,
-    );
-  }
-
   // Determine action implied by a transition: 'sign' | 'unsign' | 'none'
   // Computed at render time from the up-to-date currentState — embedded in the
   // target payload to avoid closure-staleness bugs at mutation time.
-  function computeAction(targetId: string): TransitionAction {
-    const backwards = isBackwardsTarget(targetId);
-    if (isSignatureState && !isSigned && !backwards) return "sign";
-    if (isSigned && backwards) return "unsign";
+  function computeAction(target: WorkflowState): TransitionAction {
+    if (isSignatureState && !isSigned && isPostSignatureTarget(target)) return "sign";
+    if (isSigned && isBeforeSignatureState(target, signedStateId)) return "unsign";
     return "none";
   }
 
