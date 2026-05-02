@@ -307,7 +307,12 @@ export default function WorkflowDetail() {
 
   const performDeleteState = useCallback(
     async (stateId: string) => {
-      const { error } = await deleteState(stateId);
+      // Find the workflow's initial state to reassign affected couriers to it.
+      const initialNode = nodes.find(
+        (n) => n.id !== stateId && (n.data as unknown as StateNodeData).is_initial,
+      );
+      const fallbackStateId = initialNode?.id ?? null;
+      const { error } = await deleteState(stateId, fallbackStateId);
       if (error) {
         toast({ title: "Erreur", description: error.message, variant: "destructive" });
         return;
@@ -316,8 +321,9 @@ export default function WorkflowDetail() {
       setEdges((eds) => eds.filter((e) => e.source !== stateId && e.target !== stateId));
       setSelectedNodeId(null);
       setDeleteConfirm(null);
+      queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
     },
-    [setNodes, setEdges, toast]
+    [nodes, setNodes, setEdges, toast, queryClient],
   );
 
   const handleSave = useCallback(async () => {
