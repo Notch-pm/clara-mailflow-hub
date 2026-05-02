@@ -14,6 +14,9 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  SelectGroup,
+  SelectLabel,
+  SelectSeparator,
 } from "@/components/ui/select";
 import { listServices } from "@/services/orgServiceService";
 import { supabase } from "@/integrations/supabase/client";
@@ -678,58 +681,185 @@ export default function ReplyComposer({
             </Badge>
           )}
 
-          {outgoingTransitions.length === 0 && !isFinal && (
-            <span className="text-xs text-muted-foreground italic">
-              Aucune transition définie depuis cet état.
-            </span>
-          )}
-          {outgoingTransitions.map(({ transition: t, target }) => {
-            const targetIsSend = (target as any).is_send === true;
-            const requiresSig = target.requires_signature === true;
-            const sigAction = computeSignatureAction(target);
-            const sendAction = computeSendAction(target);
-            const targetPayload: PendingTarget = {
-              fromStateId: currentState?.id ?? null,
-              fromStateName: currentState?.name ?? null,
-              id: target.id,
-              name: target.name,
-              category: target.category,
-              requires_signature: requiresSig,
-              is_send: targetIsSend,
-              signatureAction: sigAction,
-              sendAction,
+          {(() => {
+            if (outgoingTransitions.length === 0) {
+              return !isFinal ? (
+                <span className="text-xs text-muted-foreground italic">
+                  Aucune transition définie depuis cet état.
+                </span>
+              ) : null;
+            }
+
+            // Precompute payloads + classify each transition as forward / backward.
+            type Entry = {
+              transitionId: string;
+              label: string;
+              payload: PendingTarget;
+              reason: string | null;
+              isForward: boolean;
+              category: string | null;
+              willSign: boolean;
+              willSend: boolean;
+              needsConfirm: boolean;
+            };
+            const entries: Entry[] = outgoingTransitions.map(({ transition: t, target }) => {
+              const targetIsSend = (target as any).is_send === true;
+              const requiresSig = target.requires_signature === true;
+              const sigAction = computeSignatureAction(target);
+              const sendAction = computeSendAction(target);
+              const payload: PendingTarget = {
+                fromStateId: currentState?.id ?? null,
+                fromStateName: currentState?.name ?? null,
+                id: target.id,
+                name: target.name,
+                category: target.category,
+                requires_signature: requiresSig,
+                is_send: targetIsSend,
+                signatureAction: sigAction,
+                sendAction,
+              };
+              const reason = reasonForTarget(payload);
+              const willSign = sigAction === "sign";
+              const willSend = sendAction === "send";
+              const needsConfirm =
+                sigAction === "sign" ||
+                sigAction === "unsign" ||
+                sendAction === "send" ||
+                sendAction === "reset_send";
+
+              // Forward = target is strictly after current (current → target reachable
+              // and target cannot reach current). Final/processed targets are forward.
+              // Special states (signature/send) leaving forward are forward.
+              const forward = currentState
+                ? isAfter(target, currentState.id) ||
+                  target.is_final === true ||
+                  target.category === "processed"
+                : true;
+
+              return {
+                transitionId: t.id,
+                label: t.name || target.name,
+                payload,
+                reason,
+                isForward: forward,
+                category: target.category,
+                willSign,
+                willSend,
+                needsConfirm,
+              };
+            });
+
+            const forwards = entries.filter((e) => e.isForward);
+            const backwards = entries.filter((e) => !e.isForward);
+
+            const handleSelect = (transitionId: string) => {
+              const e = entries.find((x) => x.transitionId === transitionId);
+              if (!e || e.reason) return;
+              if (e.needsConfirm) {
+                setPendingTarget(e.payload);
+              } else {
+                transition.mutate(e.payload);
+              }
             };
 
-            const reason = reasonForTarget(targetPayload);
-            const blocked = !!reason;
-            const willSign = sigAction === "sign";
-            const willSend = sendAction === "send";
-            const needsConfirm =
-              sigAction === "sign" ||
-              sigAction === "unsign" ||
-              sendAction === "send" ||
-              sendAction === "reset_send";
-
-            const btn = (
-              <Button
-                key={t.id}
-                size="sm"
-                variant={target.category === "processed" ? "default" : "secondary"}
-                disabled={isBusy || readOnly || blocked}
-                onClick={() => {
-                  if (needsConfirm) {
-                    setPendingTarget(targetPayload);
-                  } else {
-                    transition.mutate(targetPayload);
-                  }
-                }}
+            const renderItem = (e: Entry, emphasized: boolean) => (
+              <SelectItem
+                key={e.transitionId}
+                value={e.transitionId}
+                disabled={!!e.reason}
               >
-                {willSign ? <PenLine className="mr-1.5 h-4 w-4" /> : willSend ? <Send className="mr-1.5 h-4 w-4" /> : target.category === "processing" ? <Mail className="mr-1.5 h-4 w-4" /> : <ArrowRight className="mr-1.5 h-4 w-4" />}
-                {t.name || target.name}
-              </Button>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={cn(
+                      "h-2 w-2 rounded-full shrink-0",
+                      e.category === "pending" && "bg-amber-500",
+                      e.category === "processing" && "bg-blue-500",
+                      e.category === "processed" && "bg-emerald-500",
+                      e.category === "archived" && "bg-slate-400",
+                      !e.category && "bg-gray-300",
+                    )}
+                  />
+                  {e.willSign ? (
+                    <PenLine className="h-3.5 w-3.5 text-amber-600" />
+                  ) : e.willSend ? (
+                    <Send className="h-3.5 w-3.5 text-blue-600" />
+                  ) : null}
+                  <span className={cn(emphasized ? "font-medium" : "text-muted-foreground")}>
+                    {e.label}
+                  </span>
+                  {e.reason && (
+                    <span className="ml-auto text-[10px] uppercase tracking-wide text-destructive">
+                      bloqué
+                    </span>
+                  )}
+                </div>
+              </SelectItem>
             );
-            return renderMaybeTooltip(btn, reason, t.id);
-          })}
+
+            // Pick a primary action (first forward, fallback to first backward) to
+            // surface as a dedicated, prominent button next to the select.
+            const primary = forwards[0] ?? null;
+
+            return (
+              <>
+                {primary && (
+                  <Button
+                    size="sm"
+                    variant="default"
+                    disabled={isBusy || readOnly || !!primary.reason}
+                    onClick={() => handleSelect(primary.transitionId)}
+                    className="gap-1.5"
+                  >
+                    {primary.willSign ? (
+                      <PenLine className="h-4 w-4" />
+                    ) : primary.willSend ? (
+                      <Send className="h-4 w-4" />
+                    ) : primary.category === "processing" ? (
+                      <Mail className="h-4 w-4" />
+                    ) : (
+                      <ArrowRight className="h-4 w-4" />
+                    )}
+                    {primary.label}
+                  </Button>
+                )}
+
+                {entries.length > (primary ? 1 : 0) && (
+                  <Select
+                    value=""
+                    onValueChange={handleSelect}
+                    disabled={isBusy || readOnly}
+                  >
+                    <SelectTrigger className="h-8 w-[200px] text-sm">
+                      <SelectValue placeholder="Autres transitions…" />
+                    </SelectTrigger>
+                    <SelectContent align="end">
+                      {forwards.length > (primary ? 1 : 0) && (
+                        <SelectGroup>
+                          <SelectLabel className="text-[10px] uppercase tracking-wide text-primary">
+                            Avancer
+                          </SelectLabel>
+                          {forwards
+                            .filter((e) => e.transitionId !== primary?.transitionId)
+                            .map((e) => renderItem(e, true))}
+                        </SelectGroup>
+                      )}
+                      {forwards.length > (primary ? 1 : 0) && backwards.length > 0 && (
+                        <SelectSeparator />
+                      )}
+                      {backwards.length > 0 && (
+                        <SelectGroup>
+                          <SelectLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                            Retour en arrière
+                          </SelectLabel>
+                          {backwards.map((e) => renderItem(e, false))}
+                        </SelectGroup>
+                      )}
+                    </SelectContent>
+                  </Select>
+                )}
+              </>
+            );
+          })()}
           {canSendEmail && (
             <Tooltip>
               <TooltipTrigger asChild>
