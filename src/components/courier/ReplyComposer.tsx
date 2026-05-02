@@ -681,11 +681,6 @@ export default function ReplyComposer({
             </Badge>
           )}
 
-          {outgoingTransitions.length === 0 && !isFinal && (
-            <span className="text-xs text-muted-foreground italic">
-              Aucune transition définie depuis cet état.
-            </span>
-          )}
           {(() => {
             if (outgoingTransitions.length === 0) {
               return !isFinal ? (
