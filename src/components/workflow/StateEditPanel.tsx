@@ -3,7 +3,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Trash2, X, PenLine } from "lucide-react";
+import { Trash2, X, PenLine, Send } from "lucide-react";
 import type { WorkflowCategory } from "@/types/courier";
 
 interface StateEditPanelProps {
@@ -13,6 +13,7 @@ interface StateEditPanelProps {
   isInitial: boolean;
   isFinal: boolean;
   requiresSignature?: boolean;
+  isSend?: boolean;
   workflowType?: "inbound" | "reply" | null;
   onUpdate: (data: {
     name?: string;
@@ -20,6 +21,7 @@ interface StateEditPanelProps {
     is_initial?: boolean;
     is_final?: boolean;
     requires_signature?: boolean;
+    is_send?: boolean;
   }) => void;
   onDelete: () => void;
   onClose: () => void;
