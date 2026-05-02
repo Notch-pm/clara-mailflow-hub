@@ -486,6 +486,8 @@ export default function ReplyComposer({
       refetchReply();
       if (result?.sentTo) {
         toast.success(`Courriel envoyé à ${result.sentTo}`);
+      } else if (result?.didReset) {
+        toast.success("Retour en arrière : la réponse pourra être renvoyée.");
       } else {
         toast.success("État de la réponse mis à jour");
       }
