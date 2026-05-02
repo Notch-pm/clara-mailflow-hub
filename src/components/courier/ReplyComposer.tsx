@@ -25,6 +25,7 @@ import {
   transitionReplyState,
   signReply,
   unsignReply,
+  resetSendMarker,
   stripSignatureBlock,
 } from "@/services/courierReplyService";
 import { getSignatureUrl } from "@/services/signatoryService";
