@@ -257,6 +257,7 @@ export default function WorkflowDetail() {
               is_initial: data.is_initial ?? current.is_initial,
               is_final: data.is_final ?? current.is_final,
               requires_signature: data.requires_signature ?? current.requires_signature,
+              is_send: data.is_send ?? current.is_send,
             } satisfies StateNodeData,
           };
         })
