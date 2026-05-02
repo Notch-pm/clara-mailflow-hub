@@ -242,6 +242,18 @@ export default function ReplyComposer({
     });
   }
 
+  useEffect(() => {
+    logSignatureFlow("state snapshot", {
+      workflowStateCount: workflow?.states.length ?? 0,
+      signatureStates: signatureStates.map((s) => ({ id: s.id, name: s.name })),
+      outgoingTransitions: outgoingTransitions.map(({ target }) => ({
+        id: target.id,
+        name: target.name,
+        requires_signature: (target as any).requires_signature,
+      })),
+    });
+  }, [currentState?.id, isSigned, signedStateId, signatoryId, selectedSignatory?.id, body, workflow?.states.length, outgoingTransitions.length]);
+
   // ─── Mutations ──────────────────────────────────────────────────────
 
   async function ensureReply(): Promise<{ id: string }> {
@@ -311,6 +323,7 @@ export default function ReplyComposer({
   }
 
   async function buildSignedBody(): Promise<string> {
+    logSignatureFlow("build signed body:start");
     if (!selectedSignatory) throw new Error("Aucun signataire sélectionné.");
     if (!selectedSignatory.signature_storage_key) {
       throw new Error("Aucune signature manuscrite enregistrée pour ce signataire.");
@@ -334,7 +347,13 @@ export default function ReplyComposer({
       titleP,
       `<p><img src="${dataUrl}" alt="signature-clara" style="height:80px;object-fit:contain;" /></p>`,
     ].join("");
-    return `${stripSignatureBlock(body)}${signatureBlock}`;
+    const signedBody = `${stripSignatureBlock(body)}${signatureBlock}`;
+    logSignatureFlow("build signed body:done", {
+      dataUrlLength: dataUrl.length,
+      signedBodyLength: signedBody.length,
+      signedBodyHasMarker: /signature-clara/i.test(signedBody),
+    });
+    return signedBody;
   }
 
   const transition = useMutation({
