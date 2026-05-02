@@ -459,7 +459,7 @@ export default function WorkflowDetail() {
           <AlertDialogHeader>
             <AlertDialogTitle>Supprimer cet état ?</AlertDialogTitle>
             <AlertDialogDescription>
-              {deleteConfirm?.courierCount} courrier(s) utilisent cet état. Ils seront désassociés.
+              {deleteConfirm?.courierCount} courrier(s) utilisent cet état. Ils seront réaffectés à l'état initial du workflow.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
