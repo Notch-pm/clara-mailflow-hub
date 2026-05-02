@@ -160,6 +160,7 @@ export default function ReplyComposer({
   const signedStateId = replyMeta.signed_state_id ?? null;
   const isSent = !!replyMeta.sent_email_at;
   const isSignatureState = (currentState as any)?.requires_signature === true;
+  const bodyHasSignatureMarker = /data-signature-block=["']true["']|signature-clara/i.test(body);
   const isFinal = currentState?.category === "processed" || currentState?.is_final === true;
   const editorDisabled = !!readOnly || isFinal || isSigned;
   const canSendEmail = channel === "email" && isFinal && !!reply && !isSent && !!senderEmail;
@@ -317,7 +318,7 @@ export default function ReplyComposer({
   // Computed at render time from the up-to-date currentState — embedded in the
   // target payload to avoid closure-staleness bugs at mutation time.
   function computeAction(target: WorkflowState): TransitionAction {
-    if (isSignatureState && !isSigned && isPostSignatureTarget(target)) return "sign";
+    if (isSignatureState && (!isSigned || !bodyHasSignatureMarker) && isPostSignatureTarget(target)) return "sign";
     if (isSigned && isBeforeSignatureState(target, signedStateId)) return "unsign";
     return "none";
   }
