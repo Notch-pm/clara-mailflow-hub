@@ -32,6 +32,8 @@ import {
   deleteTransition,
   getAffectedCouriers,
   clearInitialFlag,
+  clearSignatureFlag,
+  clearSendFlag,
 } from "@/services/workflowService";
 import type { WorkflowCategory, WorkflowState, WorkflowTransition } from "@/types/courier";
 import {
