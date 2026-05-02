@@ -186,6 +186,62 @@ export default function ReplyComposer({
       .filter((x): x is { transition: typeof workflow.transitions[number]; target: typeof workflow.states[number] } => !!x);
   }, [workflow, currentState]);
 
+  const signatureStates = useMemo(
+    () => (workflow?.states ?? []).filter((s) => (s as any).requires_signature === true),
+    [workflow],
+  );
+
+  function canReachState(fromStateId: string, toStateId: string): boolean {
+    if (!workflow) return false;
+    if (fromStateId === toStateId) return true;
+    const queue = [fromStateId];
+    const seen = new Set<string>();
+    while (queue.length > 0) {
+      const id = queue.shift()!;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      for (const t of workflow.transitions.filter((tr) => tr.from_state_id === id)) {
+        if (t.to_state_id === toStateId) return true;
+        queue.push(t.to_state_id);
+      }
+    }
+    return false;
+  }
+
+  function isBeforeSignatureState(target: WorkflowState, signatureStateId: string | null): boolean {
+    const sigIds = signatureStateId ? [signatureStateId] : signatureStates.map((s) => s.id);
+    return sigIds.some((sigId) => target.id !== sigId && canReachState(target.id, sigId));
+  }
+
+  function isPostSignatureTarget(target: WorkflowState): boolean {
+    if (!currentState || target.id === currentState.id) return false;
+    if (target.is_final || target.category === "processed") return true;
+    return !isBeforeSignatureState(target, currentState.id);
+  }
+
+  function logSignatureFlow(step: string, details: Record<string, unknown> = {}) {
+    console.debug("[ReplyComposer:signature]", step, {
+      courierId,
+      replyId: reply?.id ?? null,
+      currentState: currentState
+        ? { id: currentState.id, name: currentState.name, requires_signature: (currentState as any).requires_signature }
+        : null,
+      isSigned,
+      signedStateId,
+      signatoryId: signatoryId || null,
+      selectedSignatory: selectedSignatory
+        ? {
+            id: selectedSignatory.id,
+            user_id: selectedSignatory.user_id,
+            has_signature_storage_key: !!selectedSignatory.signature_storage_key,
+          }
+        : null,
+      bodyHasMarker: /data-signature-block=["']true["']|signature-clara/i.test(body),
+      replyBodyHasMarker: /data-signature-block=["']true["']|signature-clara/i.test(replyMeta.body_html ?? ""),
+      ...details,
+    });
+  }
+
   // ─── Mutations ──────────────────────────────────────────────────────
 
   async function ensureReply(): Promise<{ id: string }> {
