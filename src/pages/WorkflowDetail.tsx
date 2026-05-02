@@ -223,7 +223,7 @@ export default function WorkflowDetail() {
   );
 
   const handleUpdateNode = useCallback(
-    async (data: { name?: string; category?: WorkflowCategory; is_initial?: boolean; is_final?: boolean; requires_signature?: boolean }) => {
+    async (data: { name?: string; category?: WorkflowCategory; is_initial?: boolean; is_final?: boolean; requires_signature?: boolean; is_send?: boolean }) => {
       if (!selectedNodeId || !workflowId) return;
 
       // If setting is_initial, clear others first
