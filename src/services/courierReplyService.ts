@@ -261,6 +261,35 @@ export async function unsignReply(
 }
 
 /**
+ * Reset the sent_email_at marker on a reply, so it can be re-sent automatically
+ * the next time it transitions through a "send" state. Called when the reply
+ * moves back to a state located before the send state in the workflow.
+ */
+export async function resetSendMarker(
+  organizationId: string,
+  parentCourierId: string,
+  replyId: string,
+): Promise<void> {
+  const { data: existing, error: fErr } = await supabase
+    .from("couriers")
+    .select("metadata")
+    .eq("id", replyId)
+    .single();
+  if (fErr) throw fErr;
+  const currentMeta = ((existing as { metadata: Record<string, unknown> | null } | null)?.metadata) ?? {};
+  if (!currentMeta.sent_email_at) return;
+  const nextMeta = { ...currentMeta };
+  delete nextMeta.sent_email_at;
+  const { error } = await supabase
+    .from("couriers")
+    .update({ metadata: nextMeta } as never)
+    .eq("id", replyId)
+    .eq("organization_id", organizationId);
+  if (error) throw error;
+  await logEvent(organizationId, parentCourierId, "reply_send_reset", { reply_id: replyId });
+}
+
+/**
  * Removes the signature block from an HTML body.
  * Supports both the legacy <div data-signature-block="true"> wrapper and
  * the current marker (an <img alt="signature-clara">). For the current
