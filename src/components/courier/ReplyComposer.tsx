@@ -307,6 +307,8 @@ export default function ReplyComposer({
   // Pending transition awaiting confirmation modal
   type TransitionAction = "sign" | "unsign" | "none";
   type PendingTarget = {
+    fromStateId: string | null;
+    fromStateName: string | null;
     id: string;
     name: string;
     category: string | null;
@@ -374,11 +376,11 @@ export default function ReplyComposer({
         await signReply(organizationId, courierId, ensured.id, {
           bodyHtml: newBody,
           signedBy: currentUserId!,
-          signedStateId: currentState?.id ?? null,
+          signedStateId: target.fromStateId,
         });
         setBody(newBody);
         logSignatureFlow("transition:signed", {
-          signedStateId: currentState?.id ?? null,
+          signedStateId: target.fromStateId,
           newBodyLength: newBody.length,
           newBodyHasMarker: /signature-clara/i.test(newBody),
         });
