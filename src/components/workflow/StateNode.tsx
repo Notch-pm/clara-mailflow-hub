@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { Zap, CheckCircle2, PenLine } from "lucide-react";
+import { Zap, CheckCircle2, PenLine, Send } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { WorkflowCategory } from "@/types/courier";
 
@@ -10,6 +10,7 @@ export interface StateNodeData {
   is_initial: boolean;
   is_final: boolean;
   requires_signature?: boolean;
+  is_send?: boolean;
   [key: string]: unknown;
 }
 
