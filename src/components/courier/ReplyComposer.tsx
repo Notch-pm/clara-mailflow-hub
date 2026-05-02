@@ -228,7 +228,14 @@ export default function ReplyComposer({
   });
 
   // Pending transition awaiting confirmation modal
-  type PendingTarget = { id: string; name: string; category: string | null; requires_signature: boolean };
+  type TransitionAction = "sign" | "unsign" | "none";
+  type PendingTarget = {
+    id: string;
+    name: string;
+    category: string | null;
+    requires_signature: boolean;
+    action: TransitionAction;
+  };
   const [pendingTarget, setPendingTarget] = useState<PendingTarget | null>(null);
 
   // A target is "backwards" if a transition exists from the target back to the current state.
@@ -240,11 +247,11 @@ export default function ReplyComposer({
   }
 
   // Determine action implied by a transition: 'sign' | 'unsign' | 'none'
-  function actionForTarget(target: PendingTarget): "sign" | "unsign" | "none" {
-    const backwards = isBackwardsTarget(target.id);
-    // Going forward from a signature state → apposer la signature (si pas déjà signée)
+  // Computed at render time from the up-to-date currentState — embedded in the
+  // target payload to avoid closure-staleness bugs at mutation time.
+  function computeAction(targetId: string): TransitionAction {
+    const backwards = isBackwardsTarget(targetId);
     if (isSignatureState && !isSigned && !backwards) return "sign";
-    // Revenir en arrière depuis un état postérieur à la signature → effacer la signature
     if (isSigned && backwards) return "unsign";
     return "none";
   }
