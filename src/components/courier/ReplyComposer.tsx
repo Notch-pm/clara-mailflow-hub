@@ -685,11 +685,9 @@ export default function ReplyComposer({
           )}
           {outgoingTransitions.map(({ transition: t, target }) => {
             const targetIsSend = (target as any).is_send === true;
-            const isSend =
-              targetIsSend ||
-              (target.category === "processed" && (channel === "email" || target.name.toLowerCase().includes("répond")));
             const requiresSig = target.requires_signature === true;
-            const action = computeAction(target);
+            const sigAction = computeSignatureAction(target);
+            const sendAction = computeSendAction(target);
             const targetPayload: PendingTarget = {
               fromStateId: currentState?.id ?? null,
               fromStateName: currentState?.name ?? null,
@@ -698,12 +696,19 @@ export default function ReplyComposer({
               category: target.category,
               requires_signature: requiresSig,
               is_send: targetIsSend,
-              action,
+              signatureAction: sigAction,
+              sendAction,
             };
 
             const reason = reasonForTarget(targetPayload);
             const blocked = !!reason;
-            const willSign = action === "sign";
+            const willSign = sigAction === "sign";
+            const willSend = sendAction === "send";
+            const needsConfirm =
+              sigAction === "sign" ||
+              sigAction === "unsign" ||
+              sendAction === "send" ||
+              sendAction === "reset_send";
 
             const btn = (
               <Button
@@ -712,15 +717,14 @@ export default function ReplyComposer({
                 variant={target.category === "processed" ? "default" : "secondary"}
                 disabled={isBusy || readOnly || blocked}
                 onClick={() => {
-                  // Only show the confirmation modal when the transition signs or unsigns.
-                  if (action === "sign" || action === "unsign") {
+                  if (needsConfirm) {
                     setPendingTarget(targetPayload);
                   } else {
                     transition.mutate(targetPayload);
                   }
                 }}
               >
-                {willSign || requiresSig ? <PenLine className="mr-1.5 h-4 w-4" /> : (isSend ? <Send className="mr-1.5 h-4 w-4" /> : target.category === "processing" ? <Mail className="mr-1.5 h-4 w-4" /> : <ArrowRight className="mr-1.5 h-4 w-4" />)}
+                {willSign ? <PenLine className="mr-1.5 h-4 w-4" /> : willSend ? <Send className="mr-1.5 h-4 w-4" /> : target.category === "processing" ? <Mail className="mr-1.5 h-4 w-4" /> : <ArrowRight className="mr-1.5 h-4 w-4" />}
                 {t.name || target.name}
               </Button>
             );
