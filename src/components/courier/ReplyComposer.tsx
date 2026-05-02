@@ -612,6 +612,8 @@ export default function ReplyComposer({
             const requiresSig = (target as any).requires_signature === true;
             const action = computeAction(target);
             const targetPayload: PendingTarget = {
+              fromStateId: currentState?.id ?? null,
+              fromStateName: currentState?.name ?? null,
               id: target.id,
               name: target.name,
               category: target.category,
