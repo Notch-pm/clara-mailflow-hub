@@ -45,8 +45,8 @@ export async function getReplyForCourier(
  */
 export async function getReplyWorkflow(replyWorkflowId: string): Promise<ReplyWorkflowData> {
   const [{ data: states, error: sErr }, { data: transitions, error: tErr }] = await Promise.all([
-    supabase.from("workflow_states").select("*").eq("workflow_id", replyWorkflowId),
-    supabase.from("workflow_transitions").select("*").eq("workflow_id", replyWorkflowId),
+    supabase.from("workflow_states").select("*").eq("workflow_id", replyWorkflowId).order("created_at", { ascending: true }),
+    supabase.from("workflow_transitions").select("*").eq("workflow_id", replyWorkflowId).order("created_at", { ascending: true }),
   ]);
   if (sErr) throw sErr;
   if (tErr) throw tErr;
