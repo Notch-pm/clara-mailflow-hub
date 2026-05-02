@@ -358,22 +358,38 @@ export default function ReplyComposer({
 
   const transition = useMutation({
     mutationFn: async (target: PendingTarget) => {
+      logSignatureFlow("transition:start", { target });
       if (target.requires_signature && !signatoryId) {
+        logSignatureFlow("transition:blocked missing signatory", { target });
         throw new Error("Veuillez sélectionner un signataire avant de passer à cet état.");
       }
       const action = target.action;
       const ensured = await ensureReply();
+      logSignatureFlow("transition:reply ensured", { target, action, ensuredReplyId: ensured.id });
 
       if (action === "sign") {
         const newBody = await buildSignedBody();
         await signReply(organizationId, courierId, ensured.id, {
           bodyHtml: newBody,
           signedBy: currentUserId!,
+          signedStateId: currentState?.id ?? null,
+        });
+        setBody(newBody);
+        logSignatureFlow("transition:signed", {
+          signedStateId: currentState?.id ?? null,
+          newBodyLength: newBody.length,
+          newBodyHasMarker: /signature-clara/i.test(newBody),
         });
       } else if (action === "unsign") {
         const cleaned = stripSignatureBlock(body);
         setBody(cleaned);
         await unsignReply(organizationId, courierId, ensured.id, { bodyHtml: cleaned });
+        logSignatureFlow("transition:unsigned", {
+          cleanedLength: cleaned.length,
+          cleanedHasMarker: /data-signature-block=["']true["']|signature-clara/i.test(cleaned),
+        });
+      } else {
+        logSignatureFlow("transition:no signature action", { target });
       }
 
       await transitionReplyState(
@@ -384,6 +400,7 @@ export default function ReplyComposer({
         target.name,
         target.category,
       );
+      logSignatureFlow("transition:state changed", { target });
     },
     onSuccess: () => {
       setDirty(false);
