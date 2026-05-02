@@ -29,7 +29,7 @@ import {
 } from "@/services/courierReplyService";
 import { getSignatureUrl } from "@/services/signatoryService";
 import { useAuth } from "@/contexts/AuthContext";
-import type { CourierChannel, CourierParticipant } from "@/types/courier";
+import type { CourierChannel, CourierParticipant, WorkflowState } from "@/types/courier";
 import { cn } from "@/lib/utils";
 import {
   AlertDialog,
@@ -149,8 +149,15 @@ export default function ReplyComposer({
     return workflow.states.find((s) => s.id === stateId) ?? workflow.initialState ?? null;
   }, [workflow, reply]);
 
-  const replyMeta = (reply?.metadata as { signed_at?: string | null; signed_by?: string | null; sent_email_at?: string | null } | null) ?? {};
+  const replyMeta = (reply?.metadata as {
+    body_html?: string | null;
+    signed_at?: string | null;
+    signed_by?: string | null;
+    signed_state_id?: string | null;
+    sent_email_at?: string | null;
+  } | null) ?? {};
   const isSigned = !!replyMeta.signed_at;
+  const signedStateId = replyMeta.signed_state_id ?? null;
   const isSent = !!replyMeta.sent_email_at;
   const isSignatureState = (currentState as any)?.requires_signature === true;
   const isFinal = currentState?.category === "processed" || currentState?.is_final === true;
