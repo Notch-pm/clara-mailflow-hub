@@ -352,7 +352,7 @@ export default function ReplyComposer({
   function reasonForTarget(target: PendingTarget): string | null {
     if (target.requires_signature && !signatoryId) return "Sélectionnez d'abord un signataire.";
     // Only gate signing requirements when the transition will actually sign.
-    if (actionForTarget(target) === "sign") {
+    if (target.action === "sign") {
       if (!signatoryId) return "Sélectionnez d'abord un signataire.";
       if (!selectedSignatory) return "Signataire introuvable.";
       if (!selectedSignatory.user_id || selectedSignatory.user_id !== currentUserId)
