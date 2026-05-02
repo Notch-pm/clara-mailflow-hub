@@ -51,6 +51,9 @@ interface ServiceSignatory {
   signature_storage_key: string | null;
 }
 
+type ServiceSignatoryJoinRow = { signatory: ServiceSignatory | ServiceSignatory[] | null };
+type SendEmailResult = { error?: string; to?: string };
+
 interface Props {
   courierId: string;
   organizationId: string;
@@ -114,8 +117,8 @@ export default function ReplyComposer({
         .select("signatory:signatories(id, first_name, last_name, title, user_id, signature_storage_key)")
         .eq("service_id", currentService!.id);
       if (error) throw error;
-      return (data ?? [])
-        .map((r: any) => r.signatory)
+      return ((data ?? []) as ServiceSignatoryJoinRow[])
+        .map((r) => (Array.isArray(r.signatory) ? r.signatory[0] : r.signatory))
         .filter(Boolean) as ServiceSignatory[];
     },
     enabled: !!currentService?.id,
@@ -159,7 +162,7 @@ export default function ReplyComposer({
   const isSigned = !!replyMeta.signed_at;
   const signedStateId = replyMeta.signed_state_id ?? null;
   const isSent = !!replyMeta.sent_email_at;
-  const isSignatureState = (currentState as any)?.requires_signature === true;
+  const isSignatureState = currentState?.requires_signature === true;
   const bodyHasSignatureMarker = /data-signature-block=["']true["']|signature-clara/i.test(body);
   const isFinal = currentState?.category === "processed" || currentState?.is_final === true;
   const editorDisabled = !!readOnly || isFinal || isSigned;
@@ -188,7 +191,7 @@ export default function ReplyComposer({
   }, [workflow, currentState]);
 
   const signatureStates = useMemo(
-    () => (workflow?.states ?? []).filter((s) => (s as any).requires_signature === true),
+    () => (workflow?.states ?? []).filter((s) => s.requires_signature === true),
     [workflow],
   );
 
@@ -225,7 +228,7 @@ export default function ReplyComposer({
       courierId,
       replyId: reply?.id ?? null,
       currentState: currentState
-        ? { id: currentState.id, name: currentState.name, requires_signature: (currentState as any).requires_signature }
+        ? { id: currentState.id, name: currentState.name, requires_signature: currentState.requires_signature }
         : null,
       isSigned,
       signedStateId,
@@ -251,7 +254,7 @@ export default function ReplyComposer({
       outgoingTransitions: outgoingTransitions.map(({ target }) => ({
         id: target.id,
         name: target.name,
-        requires_signature: (target as any).requires_signature,
+        requires_signature: target.requires_signature,
       })),
     });
   }, [currentState?.id, isSigned, signedStateId, signatoryId, selectedSignatory?.id, workflow?.states.length, outgoingTransitions.length]);
