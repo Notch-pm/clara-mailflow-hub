@@ -163,7 +163,7 @@ export default function ReplyComposer({
   const isSigned = !!replyMeta.signed_at;
   const signedStateId = replyMeta.signed_state_id ?? null;
   const isSent = !!replyMeta.sent_email_at;
-  const isSignatureState = currentState?.requires_signature === true;
+  // (removed: isSignatureState — replaced by signatureState/sendState pivots below)
   const bodyHasSignatureMarker = /data-signature-block=["']true["']|signature-clara/i.test(body);
   const isFinal = currentState?.category === "processed" || currentState?.is_final === true;
   const editorDisabled = !!readOnly || isFinal || isSigned;
