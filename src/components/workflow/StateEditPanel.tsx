@@ -113,6 +113,20 @@ export function StateEditPanel({
         </div>
       )}
 
+      {isReply && (
+        <div className="flex items-center justify-between">
+          <Label htmlFor="is-send" className="flex items-center gap-2">
+            <Send className="h-4 w-4 text-blue-600" />
+            Envoyer
+          </Label>
+          <Switch
+            id="is-send"
+            checked={isSend}
+            onCheckedChange={(v) => onUpdate({ is_send: v })}
+          />
+        </div>
+      )}
+
       <Button variant="destructive" size="sm" className="w-full" onClick={onDelete}>
         <Trash2 className="h-4 w-4 mr-2" />
         Supprimer l'état
