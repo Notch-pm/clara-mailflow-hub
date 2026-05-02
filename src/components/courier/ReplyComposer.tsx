@@ -570,7 +570,7 @@ export default function ReplyComposer({
             const isSend =
               target.category === "processed" && (channel === "email" || target.name.toLowerCase().includes("répond"));
             const requiresSig = (target as any).requires_signature === true;
-            const action = computeAction(target.id);
+            const action = computeAction(target);
             const targetPayload: PendingTarget = {
               id: target.id,
               name: target.name,
