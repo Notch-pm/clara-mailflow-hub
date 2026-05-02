@@ -160,3 +160,21 @@ export async function clearInitialFlag(workflowId: string, exceptStateId: string
     .eq("workflow_id", workflowId)
     .neq("id", exceptStateId);
 }
+
+// Clear requires_signature on all other states in a workflow (only one allowed)
+export async function clearSignatureFlag(workflowId: string, exceptStateId: string) {
+  return supabase
+    .from("workflow_states")
+    .update({ requires_signature: false } as never)
+    .eq("workflow_id", workflowId)
+    .neq("id", exceptStateId);
+}
+
+// Clear is_send on all other states in a workflow (only one allowed)
+export async function clearSendFlag(workflowId: string, exceptStateId: string) {
+  return supabase
+    .from("workflow_states")
+    .update({ is_send: false } as never)
+    .eq("workflow_id", workflowId)
+    .neq("id", exceptStateId);
+}
