@@ -431,10 +431,11 @@ export default function ReplyComposer({
         body: { reply_id: reply.id, organization_id: organizationId },
       });
       if (error) throw new Error(error.message);
-      if ((data as any)?.error) throw new Error((data as any).error);
-      return data;
+      const result = data as SendEmailResult | null;
+      if (result?.error) throw new Error(result.error);
+      return result;
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["courier-reply", courierId] });
       queryClient.invalidateQueries({ queryKey: ["courier-events", courierId] });
       refetchReply();
@@ -612,7 +613,7 @@ export default function ReplyComposer({
           {outgoingTransitions.map(({ transition: t, target }) => {
             const isSend =
               target.category === "processed" && (channel === "email" || target.name.toLowerCase().includes("répond"));
-            const requiresSig = (target as any).requires_signature === true;
+            const requiresSig = target.requires_signature === true;
             const action = computeAction(target);
             const targetPayload: PendingTarget = {
               fromStateId: currentState?.id ?? null,
