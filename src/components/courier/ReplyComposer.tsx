@@ -541,15 +541,20 @@ export default function ReplyComposer({
             return renderMaybeTooltip(btn, reason, t.id);
           })}
           {canSendEmail && (
-            <Button
-              size="sm"
-              variant="default"
-              disabled={isBusy}
-              onClick={() => sendEmail.mutate()}
-            >
-              <Send className="mr-1.5 h-4 w-4" />
-              {sendEmail.isPending ? "Envoi…" : `Envoyer à ${senderEmail}`}
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="default"
+                  disabled={isBusy}
+                  onClick={() => sendEmail.mutate()}
+                >
+                  <Send className="mr-1.5 h-4 w-4" />
+                  {sendEmail.isPending ? "Envoi…" : "Envoyer"}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Envoyer à {senderEmail}</TooltipContent>
+            </Tooltip>
           )}
           {isSent && (
             <Badge variant="secondary" className="gap-1 bg-emerald-100 text-emerald-700 border-emerald-200">
