@@ -413,6 +413,7 @@ export default function WorkflowDetail() {
             isInitial={selectedData.is_initial}
             isFinal={selectedData.is_final}
             requiresSignature={selectedData.requires_signature ?? false}
+            isSend={selectedData.is_send ?? false}
             workflowType={(workflow as any)?.type ?? null}
             onUpdate={handleUpdateNode}
             onDelete={handleDeleteNode}
