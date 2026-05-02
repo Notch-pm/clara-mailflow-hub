@@ -29,7 +29,7 @@ import {
 } from "@/services/courierReplyService";
 import { getSignatureUrl } from "@/services/signatoryService";
 import { useAuth } from "@/contexts/AuthContext";
-import type { CourierChannel, CourierParticipant } from "@/types/courier";
+import type { CourierChannel, CourierParticipant, WorkflowState } from "@/types/courier";
 import { cn } from "@/lib/utils";
 import {
   AlertDialog,
@@ -50,6 +50,9 @@ interface ServiceSignatory {
   user_id: string | null;
   signature_storage_key: string | null;
 }
+
+type ServiceSignatoryJoinRow = { signatory: ServiceSignatory | ServiceSignatory[] | null };
+type SendEmailResult = { error?: string; to?: string };
 
 interface Props {
   courierId: string;
@@ -114,8 +117,8 @@ export default function ReplyComposer({
         .select("signatory:signatories(id, first_name, last_name, title, user_id, signature_storage_key)")
         .eq("service_id", currentService!.id);
       if (error) throw error;
-      return (data ?? [])
-        .map((r: any) => r.signatory)
+      return ((data ?? []) as ServiceSignatoryJoinRow[])
+        .map((r) => (Array.isArray(r.signatory) ? r.signatory[0] : r.signatory))
         .filter(Boolean) as ServiceSignatory[];
     },
     enabled: !!currentService?.id,
@@ -149,10 +152,18 @@ export default function ReplyComposer({
     return workflow.states.find((s) => s.id === stateId) ?? workflow.initialState ?? null;
   }, [workflow, reply]);
 
-  const replyMeta = (reply?.metadata as { signed_at?: string | null; signed_by?: string | null; sent_email_at?: string | null } | null) ?? {};
+  const replyMeta = (reply?.metadata as {
+    body_html?: string | null;
+    signed_at?: string | null;
+    signed_by?: string | null;
+    signed_state_id?: string | null;
+    sent_email_at?: string | null;
+  } | null) ?? {};
   const isSigned = !!replyMeta.signed_at;
+  const signedStateId = replyMeta.signed_state_id ?? null;
   const isSent = !!replyMeta.sent_email_at;
-  const isSignatureState = (currentState as any)?.requires_signature === true;
+  const isSignatureState = currentState?.requires_signature === true;
+  const bodyHasSignatureMarker = /data-signature-block=["']true["']|signature-clara/i.test(body);
   const isFinal = currentState?.category === "processed" || currentState?.is_final === true;
   const editorDisabled = !!readOnly || isFinal || isSigned;
   const canSendEmail = channel === "email" && isFinal && !!reply && !isSent && !!senderEmail;
@@ -178,6 +189,75 @@ export default function ReplyComposer({
       })
       .filter((x): x is { transition: typeof workflow.transitions[number]; target: typeof workflow.states[number] } => !!x);
   }, [workflow, currentState]);
+
+  const signatureStates = useMemo(
+    () => (workflow?.states ?? []).filter((s) => s.requires_signature === true),
+    [workflow],
+  );
+
+  function canReachState(fromStateId: string, toStateId: string): boolean {
+    if (!workflow) return false;
+    if (fromStateId === toStateId) return true;
+    const queue = [fromStateId];
+    const seen = new Set<string>();
+    while (queue.length > 0) {
+      const id = queue.shift()!;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      for (const t of workflow.transitions.filter((tr) => tr.from_state_id === id)) {
+        if (t.to_state_id === toStateId) return true;
+        queue.push(t.to_state_id);
+      }
+    }
+    return false;
+  }
+
+  function isBeforeSignatureState(target: WorkflowState, signatureStateId: string | null): boolean {
+    const sigIds = signatureStateId ? [signatureStateId] : signatureStates.map((s) => s.id);
+    return sigIds.some((sigId) => target.id !== sigId && canReachState(target.id, sigId));
+  }
+
+  function isPostSignatureTarget(target: WorkflowState): boolean {
+    if (!currentState || target.id === currentState.id) return false;
+    if (target.is_final || target.category === "processed") return true;
+    return !isBeforeSignatureState(target, currentState.id);
+  }
+
+  function logSignatureFlow(step: string, details: Record<string, unknown> = {}) {
+    console.debug("[ReplyComposer:signature]", step, {
+      courierId,
+      replyId: reply?.id ?? null,
+      currentState: currentState
+        ? { id: currentState.id, name: currentState.name, requires_signature: currentState.requires_signature }
+        : null,
+      isSigned,
+      signedStateId,
+      signatoryId: signatoryId || null,
+      selectedSignatory: selectedSignatory
+        ? {
+            id: selectedSignatory.id,
+            user_id: selectedSignatory.user_id,
+            has_signature_storage_key: !!selectedSignatory.signature_storage_key,
+          }
+        : null,
+      bodyHasMarker: /data-signature-block=["']true["']|signature-clara/i.test(body),
+      replyBodyHasMarker: /data-signature-block=["']true["']|signature-clara/i.test(replyMeta.body_html ?? ""),
+      bodyHasSignatureMarker,
+      ...details,
+    });
+  }
+
+  useEffect(() => {
+    logSignatureFlow("state snapshot", {
+      workflowStateCount: workflow?.states.length ?? 0,
+      signatureStates: signatureStates.map((s) => ({ id: s.id, name: s.name })),
+      outgoingTransitions: outgoingTransitions.map(({ target }) => ({
+        id: target.id,
+        name: target.name,
+        requires_signature: target.requires_signature,
+      })),
+    });
+  }, [currentState?.id, isSigned, signedStateId, signatoryId, selectedSignatory?.id, workflow?.states.length, outgoingTransitions.length]);
 
   // ─── Mutations ──────────────────────────────────────────────────────
 
@@ -230,6 +310,8 @@ export default function ReplyComposer({
   // Pending transition awaiting confirmation modal
   type TransitionAction = "sign" | "unsign" | "none";
   type PendingTarget = {
+    fromStateId: string | null;
+    fromStateName: string | null;
     id: string;
     name: string;
     category: string | null;
@@ -238,25 +320,17 @@ export default function ReplyComposer({
   };
   const [pendingTarget, setPendingTarget] = useState<PendingTarget | null>(null);
 
-  // A target is "backwards" if a transition exists from the target back to the current state.
-  function isBackwardsTarget(targetId: string): boolean {
-    if (!workflow || !currentState) return false;
-    return workflow.transitions.some(
-      (t) => t.from_state_id === targetId && t.to_state_id === currentState.id,
-    );
-  }
-
   // Determine action implied by a transition: 'sign' | 'unsign' | 'none'
   // Computed at render time from the up-to-date currentState — embedded in the
   // target payload to avoid closure-staleness bugs at mutation time.
-  function computeAction(targetId: string): TransitionAction {
-    const backwards = isBackwardsTarget(targetId);
-    if (isSignatureState && !isSigned && !backwards) return "sign";
-    if (isSigned && backwards) return "unsign";
+  function computeAction(target: WorkflowState): TransitionAction {
+    if (isSignatureState && (!isSigned || !bodyHasSignatureMarker) && isPostSignatureTarget(target)) return "sign";
+    if (isSigned && isBeforeSignatureState(target, signedStateId)) return "unsign";
     return "none";
   }
 
   async function buildSignedBody(): Promise<string> {
+    logSignatureFlow("build signed body:start");
     if (!selectedSignatory) throw new Error("Aucun signataire sélectionné.");
     if (!selectedSignatory.signature_storage_key) {
       throw new Error("Aucune signature manuscrite enregistrée pour ce signataire.");
@@ -280,27 +354,49 @@ export default function ReplyComposer({
       titleP,
       `<p><img src="${dataUrl}" alt="signature-clara" style="height:80px;object-fit:contain;" /></p>`,
     ].join("");
-    return `${stripSignatureBlock(body)}${signatureBlock}`;
+    const signedBody = `${stripSignatureBlock(body)}${signatureBlock}`;
+    logSignatureFlow("build signed body:done", {
+      dataUrlLength: dataUrl.length,
+      signedBodyLength: signedBody.length,
+      signedBodyHasMarker: /signature-clara/i.test(signedBody),
+    });
+    return signedBody;
   }
 
   const transition = useMutation({
     mutationFn: async (target: PendingTarget) => {
+      logSignatureFlow("transition:start", { target });
       if (target.requires_signature && !signatoryId) {
+        logSignatureFlow("transition:blocked missing signatory", { target });
         throw new Error("Veuillez sélectionner un signataire avant de passer à cet état.");
       }
       const action = target.action;
       const ensured = await ensureReply();
+      logSignatureFlow("transition:reply ensured", { target, action, ensuredReplyId: ensured.id });
 
       if (action === "sign") {
         const newBody = await buildSignedBody();
         await signReply(organizationId, courierId, ensured.id, {
           bodyHtml: newBody,
           signedBy: currentUserId!,
+          signedStateId: target.fromStateId,
+        });
+        setBody(newBody);
+        logSignatureFlow("transition:signed", {
+          signedStateId: target.fromStateId,
+          newBodyLength: newBody.length,
+          newBodyHasMarker: /signature-clara/i.test(newBody),
         });
       } else if (action === "unsign") {
         const cleaned = stripSignatureBlock(body);
         setBody(cleaned);
         await unsignReply(organizationId, courierId, ensured.id, { bodyHtml: cleaned });
+        logSignatureFlow("transition:unsigned", {
+          cleanedLength: cleaned.length,
+          cleanedHasMarker: /data-signature-block=["']true["']|signature-clara/i.test(cleaned),
+        });
+      } else {
+        logSignatureFlow("transition:no signature action", { target });
       }
 
       await transitionReplyState(
@@ -311,6 +407,7 @@ export default function ReplyComposer({
         target.name,
         target.category,
       );
+      logSignatureFlow("transition:state changed", { target });
     },
     onSuccess: () => {
       setDirty(false);
@@ -334,10 +431,11 @@ export default function ReplyComposer({
         body: { reply_id: reply.id, organization_id: organizationId },
       });
       if (error) throw new Error(error.message);
-      if ((data as any)?.error) throw new Error((data as any).error);
-      return data;
+      const result = data as SendEmailResult | null;
+      if (result?.error) throw new Error(result.error);
+      return result;
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["courier-reply", courierId] });
       queryClient.invalidateQueries({ queryKey: ["courier-events", courierId] });
       refetchReply();
@@ -515,9 +613,11 @@ export default function ReplyComposer({
           {outgoingTransitions.map(({ transition: t, target }) => {
             const isSend =
               target.category === "processed" && (channel === "email" || target.name.toLowerCase().includes("répond"));
-            const requiresSig = (target as any).requires_signature === true;
-            const action = computeAction(target.id);
+            const requiresSig = target.requires_signature === true;
+            const action = computeAction(target);
             const targetPayload: PendingTarget = {
+              fromStateId: currentState?.id ?? null,
+              fromStateName: currentState?.name ?? null,
               id: target.id,
               name: target.name,
               category: target.category,
