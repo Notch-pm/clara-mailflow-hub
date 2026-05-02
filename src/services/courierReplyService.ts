@@ -252,10 +252,32 @@ export async function unsignReply(
   });
 }
 
-/** Removes the signature block (data-signature-block="true") from an HTML body. */
+/**
+ * Removes the signature block from an HTML body.
+ * Supports both the legacy <div data-signature-block="true"> wrapper and
+ * the current marker (an <img alt="signature-clara">). For the current
+ * marker, we strip from the last preceding <hr> through the end of the doc.
+ */
 export function stripSignatureBlock(html: string): string {
-  return html.replace(
+  // Legacy wrapper
+  let out = html.replace(
     /<div[^>]*data-signature-block="true"[\s\S]*?<\/div>/gi,
     "",
-  ).trimEnd();
+  );
+  // Current marker: find <img ... alt="signature-clara" ...>
+  const imgIdx = out.search(/<img[^>]*alt=["']signature-clara["'][^>]*>/i);
+  if (imgIdx !== -1) {
+    // Find the last <hr ...> before the marker; strip from there to end.
+    const before = out.slice(0, imgIdx);
+    const hrMatches = [...before.matchAll(/<hr\b[^>]*\/?>/gi)];
+    if (hrMatches.length > 0) {
+      const lastHr = hrMatches[hrMatches.length - 1];
+      out = out.slice(0, lastHr.index);
+    } else {
+      // No hr found — fall back to stripping from the paragraph wrapping the img
+      const pStart = out.lastIndexOf("<p", imgIdx);
+      out = pStart !== -1 ? out.slice(0, pStart) : out.slice(0, imgIdx);
+    }
+  }
+  return out.trimEnd();
 }
