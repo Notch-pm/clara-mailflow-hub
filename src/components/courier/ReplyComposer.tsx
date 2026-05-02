@@ -408,15 +408,32 @@ export default function ReplyComposer({
         target.category,
       );
       logSignatureFlow("transition:state changed", { target });
+
+      // Auto-send the email when transitioning to a "send" state on an email reply.
+      if (target.is_send && channel === "email" && !isSent) {
+        console.debug("[ReplyComposer:send] auto-send triggered", { target, replyId: ensured.id });
+        const { data, error } = await supabase.functions.invoke("send-courier-reply", {
+          body: { reply_id: ensured.id, organization_id: organizationId },
+        });
+        if (error) throw new Error(error.message);
+        const result = data as SendEmailResult | null;
+        if (result?.error) throw new Error(result.error);
+        return { sentTo: result?.to ?? null };
+      }
+      return { sentTo: null };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       setDirty(false);
       setPendingTarget(null);
       queryClient.invalidateQueries({ queryKey: ["courier-reply", courierId] });
       queryClient.invalidateQueries({ queryKey: ["courier-events", courierId] });
       queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
       refetchReply();
-      toast.success("État de la réponse mis à jour");
+      if (result?.sentTo) {
+        toast.success(`Courriel envoyé à ${result.sentTo}`);
+      } else {
+        toast.success("État de la réponse mis à jour");
+      }
     },
     onError: (err: Error) => {
       setPendingTarget(null);
