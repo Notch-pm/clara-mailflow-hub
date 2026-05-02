@@ -191,11 +191,20 @@ export default function ReplyComposer({
       .filter((x): x is { transition: typeof workflow.transitions[number]; target: typeof workflow.states[number] } => !!x);
   }, [workflow, currentState]);
 
-  const signatureStates = useMemo(
-    () => (workflow?.states ?? []).filter((s) => s.requires_signature === true),
+  // ─── Unique signature & send states for this workflow ──────────────
+  const signatureState = useMemo(
+    () => (workflow?.states ?? []).find((s) => s.requires_signature === true) ?? null,
+    [workflow],
+  );
+  const sendState = useMemo(
+    () => (workflow?.states ?? []).find((s) => (s as any).is_send === true) ?? null,
     [workflow],
   );
 
+  /**
+   * Returns true if `toStateId` is reachable from `fromStateId` by following
+   * the workflow transitions. A state is considered reachable from itself.
+   */
   function canReachState(fromStateId: string, toStateId: string): boolean {
     if (!workflow) return false;
     if (fromStateId === toStateId) return true;
@@ -213,15 +222,17 @@ export default function ReplyComposer({
     return false;
   }
 
-  function isBeforeSignatureState(target: WorkflowState, signatureStateId: string | null): boolean {
-    const sigIds = signatureStateId ? [signatureStateId] : signatureStates.map((s) => s.id);
-    return sigIds.some((sigId) => target.id !== sigId && canReachState(target.id, sigId));
+  /** target is strictly AFTER pivotStateId in the graph (not equal, not before). */
+  function isAfter(target: WorkflowState, pivotStateId: string): boolean {
+    if (target.id === pivotStateId) return false;
+    // After if pivot can reach target, but target cannot reach pivot.
+    return canReachState(pivotStateId, target.id) && !canReachState(target.id, pivotStateId);
   }
 
-  function isPostSignatureTarget(target: WorkflowState): boolean {
-    if (!currentState || target.id === currentState.id) return false;
-    if (target.is_final || target.category === "processed") return true;
-    return !isBeforeSignatureState(target, currentState.id);
+  /** target is strictly BEFORE pivotStateId in the graph. */
+  function isBefore(target: WorkflowState, pivotStateId: string): boolean {
+    if (target.id === pivotStateId) return false;
+    return canReachState(target.id, pivotStateId) && !canReachState(pivotStateId, target.id);
   }
 
   function logSignatureFlow(step: string, details: Record<string, unknown> = {}) {
