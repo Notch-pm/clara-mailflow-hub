@@ -261,16 +261,18 @@ export default function ReplyComposer({
     if (!url) throw new Error("Impossible de charger l'image de signature.");
     const dataUrl = await fetchAsDataUrl(url);
     const fullName = `${selectedSignatory.first_name} ${selectedSignatory.last_name}`.trim();
-    const titleHtml = selectedSignatory.title
-      ? `<p style="margin:0 0 4px 0;font-style:italic;color:#555;">${escapeHtml(selectedSignatory.title)},</p>`
+    const titleP = selectedSignatory.title
+      ? `<p><em>${escapeHtml(selectedSignatory.title)}</em></p>`
       : "";
-    const signatureBlock = `
-<div data-signature-block="true" style="margin-top:32px;padding-top:16px;border-top:1px solid #e5e7eb;">
-  <p style="margin:0;">&nbsp;</p>
-  <p style="margin:0;font-weight:600;">${escapeHtml(fullName)}</p>
-  ${titleHtml}
-  <img src="${dataUrl}" alt="Signature" style="height:80px;margin-top:8px;object-fit:contain;display:block;" />
-</div>`.trim();
+    // Use markup that Tiptap preserves: hr + paragraphs + image.
+    // The image alt="signature-clara" acts as our marker for detection/stripping.
+    const signatureBlock = [
+      `<hr>`,
+      `<p>&nbsp;</p>`,
+      `<p><strong>${escapeHtml(fullName)}</strong></p>`,
+      titleP,
+      `<p><img src="${dataUrl}" alt="signature-clara" style="height:80px;object-fit:contain;" /></p>`,
+    ].join("");
     return `${stripSignatureBlock(body)}${signatureBlock}`;
   }
 
