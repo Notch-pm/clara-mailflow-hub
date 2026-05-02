@@ -32,6 +32,8 @@ import {
   deleteTransition,
   getAffectedCouriers,
   clearInitialFlag,
+  clearSignatureFlag,
+  clearSendFlag,
 } from "@/services/workflowService";
 import type { WorkflowCategory, WorkflowState, WorkflowTransition } from "@/types/courier";
 import {
@@ -233,6 +235,30 @@ export default function WorkflowDetail() {
           nds.map((n) =>
             n.id !== selectedNodeId
               ? { ...n, data: { ...n.data, is_initial: false } }
+              : n
+          )
+        );
+      }
+
+      // Unicity for signature: only one state may carry requires_signature
+      if (data.requires_signature === true) {
+        await clearSignatureFlag(workflowId, selectedNodeId);
+        setNodes((nds) =>
+          nds.map((n) =>
+            n.id !== selectedNodeId
+              ? { ...n, data: { ...n.data, requires_signature: false } }
+              : n
+          )
+        );
+      }
+
+      // Unicity for send: only one state may carry is_send
+      if (data.is_send === true) {
+        await clearSendFlag(workflowId, selectedNodeId);
+        setNodes((nds) =>
+          nds.map((n) =>
+            n.id !== selectedNodeId
+              ? { ...n, data: { ...n.data, is_send: false } }
               : n
           )
         );

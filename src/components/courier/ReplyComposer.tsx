@@ -25,6 +25,7 @@ import {
   transitionReplyState,
   signReply,
   unsignReply,
+  resetSendMarker,
   stripSignatureBlock,
 } from "@/services/courierReplyService";
 import { getSignatureUrl } from "@/services/signatoryService";
@@ -162,7 +163,7 @@ export default function ReplyComposer({
   const isSigned = !!replyMeta.signed_at;
   const signedStateId = replyMeta.signed_state_id ?? null;
   const isSent = !!replyMeta.sent_email_at;
-  const isSignatureState = currentState?.requires_signature === true;
+  // (removed: isSignatureState — replaced by signatureState/sendState pivots below)
   const bodyHasSignatureMarker = /data-signature-block=["']true["']|signature-clara/i.test(body);
   const isFinal = currentState?.category === "processed" || currentState?.is_final === true;
   const editorDisabled = !!readOnly || isFinal || isSigned;
@@ -190,11 +191,20 @@ export default function ReplyComposer({
       .filter((x): x is { transition: typeof workflow.transitions[number]; target: typeof workflow.states[number] } => !!x);
   }, [workflow, currentState]);
 
-  const signatureStates = useMemo(
-    () => (workflow?.states ?? []).filter((s) => s.requires_signature === true),
+  // ─── Unique signature & send states for this workflow ──────────────
+  const signatureState = useMemo(
+    () => (workflow?.states ?? []).find((s) => s.requires_signature === true) ?? null,
+    [workflow],
+  );
+  const sendState = useMemo(
+    () => (workflow?.states ?? []).find((s) => (s as any).is_send === true) ?? null,
     [workflow],
   );
 
+  /**
+   * Returns true if `toStateId` is reachable from `fromStateId` by following
+   * the workflow transitions. A state is considered reachable from itself.
+   */
   function canReachState(fromStateId: string, toStateId: string): boolean {
     if (!workflow) return false;
     if (fromStateId === toStateId) return true;
@@ -212,15 +222,17 @@ export default function ReplyComposer({
     return false;
   }
 
-  function isBeforeSignatureState(target: WorkflowState, signatureStateId: string | null): boolean {
-    const sigIds = signatureStateId ? [signatureStateId] : signatureStates.map((s) => s.id);
-    return sigIds.some((sigId) => target.id !== sigId && canReachState(target.id, sigId));
+  /** target is strictly AFTER pivotStateId in the graph (not equal, not before). */
+  function isAfter(target: WorkflowState, pivotStateId: string): boolean {
+    if (target.id === pivotStateId) return false;
+    // After if pivot can reach target, but target cannot reach pivot.
+    return canReachState(pivotStateId, target.id) && !canReachState(target.id, pivotStateId);
   }
 
-  function isPostSignatureTarget(target: WorkflowState): boolean {
-    if (!currentState || target.id === currentState.id) return false;
-    if (target.is_final || target.category === "processed") return true;
-    return !isBeforeSignatureState(target, currentState.id);
+  /** target is strictly BEFORE pivotStateId in the graph. */
+  function isBefore(target: WorkflowState, pivotStateId: string): boolean {
+    if (target.id === pivotStateId) return false;
+    return canReachState(target.id, pivotStateId) && !canReachState(pivotStateId, target.id);
   }
 
   function logSignatureFlow(step: string, details: Record<string, unknown> = {}) {
@@ -250,14 +262,17 @@ export default function ReplyComposer({
   useEffect(() => {
     logSignatureFlow("state snapshot", {
       workflowStateCount: workflow?.states.length ?? 0,
-      signatureStates: signatureStates.map((s) => ({ id: s.id, name: s.name })),
+      signatureState: signatureState ? { id: signatureState.id, name: signatureState.name } : null,
+      sendState: sendState ? { id: sendState.id, name: sendState.name } : null,
+      isSent,
       outgoingTransitions: outgoingTransitions.map(({ target }) => ({
         id: target.id,
         name: target.name,
         requires_signature: target.requires_signature,
+        is_send: (target as any).is_send === true,
       })),
     });
-  }, [currentState?.id, isSigned, signedStateId, signatoryId, selectedSignatory?.id, workflow?.states.length, outgoingTransitions.length]);
+  }, [currentState?.id, isSigned, signedStateId, signatoryId, selectedSignatory?.id, workflow?.states.length, outgoingTransitions.length, signatureState?.id, sendState?.id, isSent]);
 
   // ─── Mutations ──────────────────────────────────────────────────────
 
@@ -308,7 +323,8 @@ export default function ReplyComposer({
   });
 
   // Pending transition awaiting confirmation modal
-  type TransitionAction = "sign" | "unsign" | "none";
+  type SignatureAction = "sign" | "unsign" | "none";
+  type SendAction = "send" | "reset_send" | "none";
   type PendingTarget = {
     fromStateId: string | null;
     fromStateName: string | null;
@@ -317,16 +333,46 @@ export default function ReplyComposer({
     category: string | null;
     requires_signature: boolean;
     is_send: boolean;
-    action: TransitionAction;
+    signatureAction: SignatureAction;
+    sendAction: SendAction;
   };
   const [pendingTarget, setPendingTarget] = useState<PendingTarget | null>(null);
 
-  // Determine action implied by a transition: 'sign' | 'unsign' | 'none'
-  // Computed at render time from the up-to-date currentState — embedded in the
-  // target payload to avoid closure-staleness bugs at mutation time.
-  function computeAction(target: WorkflowState): TransitionAction {
-    if (isSignatureState && (!isSigned || !bodyHasSignatureMarker) && isPostSignatureTarget(target)) return "sign";
-    if (isSigned && isBeforeSignatureState(target, signedStateId)) return "unsign";
+  /**
+   * Signature action implied by transitioning to `target`:
+   * - "sign"   : we are leaving the signature state for a state located AFTER it,
+   *              and the reply is not currently signed.
+   * - "unsign" : the reply is signed and we are moving to a state located BEFORE
+   *              the signature state (so the signature must be removed; it can
+   *              be re-applied later by passing through the signature state again).
+   */
+  function computeSignatureAction(target: WorkflowState): SignatureAction {
+    if (!signatureState || !currentState) return "none";
+    // Signing happens when leaving the signature state going forward.
+    if (currentState.id === signatureState.id && isAfter(target, signatureState.id)) {
+      if (!isSigned || !bodyHasSignatureMarker) return "sign";
+      return "none";
+    }
+    // Unsigning happens when going to a state strictly before the signature state.
+    if (isSigned && isBefore(target, signatureState.id)) return "unsign";
+    return "none";
+  }
+
+  /**
+   * Send action implied by transitioning to `target`:
+   * - "send"       : we are leaving the send state for a state located AFTER it,
+   *                  the reply channel is email, and it has not yet been sent.
+   * - "reset_send" : we are moving to a state located BEFORE the send state on
+   *                  a reply that was previously sent — clear the sent marker
+   *                  so it can be re-sent the next time it crosses the send state.
+   */
+  function computeSendAction(target: WorkflowState): SendAction {
+    if (!sendState || !currentState) return "none";
+    if (currentState.id === sendState.id && isAfter(target, sendState.id)) {
+      if (channel === "email" && !isSent) return "send";
+      return "none";
+    }
+    if (isSent && isBefore(target, sendState.id)) return "reset_send";
     return "none";
   }
 
@@ -367,15 +413,16 @@ export default function ReplyComposer({
   const transition = useMutation({
     mutationFn: async (target: PendingTarget) => {
       logSignatureFlow("transition:start", { target });
-      if (target.requires_signature && !signatoryId) {
+      if (target.signatureAction === "sign" && !signatoryId) {
         logSignatureFlow("transition:blocked missing signatory", { target });
         throw new Error("Veuillez sélectionner un signataire avant de passer à cet état.");
       }
-      const action = target.action;
+      const sigAction = target.signatureAction;
+      const sendAction = target.sendAction;
       const ensured = await ensureReply();
-      logSignatureFlow("transition:reply ensured", { target, action, ensuredReplyId: ensured.id });
+      logSignatureFlow("transition:reply ensured", { target, sigAction, sendAction, ensuredReplyId: ensured.id });
 
-      if (action === "sign") {
+      if (sigAction === "sign") {
         const newBody = await buildSignedBody();
         await signReply(organizationId, courierId, ensured.id, {
           bodyHtml: newBody,
@@ -388,7 +435,7 @@ export default function ReplyComposer({
           newBodyLength: newBody.length,
           newBodyHasMarker: /signature-clara/i.test(newBody),
         });
-      } else if (action === "unsign") {
+      } else if (sigAction === "unsign") {
         const cleaned = stripSignatureBlock(body);
         setBody(cleaned);
         await unsignReply(organizationId, courierId, ensured.id, { bodyHtml: cleaned });
@@ -398,6 +445,13 @@ export default function ReplyComposer({
         });
       } else {
         logSignatureFlow("transition:no signature action", { target });
+      }
+
+      // Reset send marker BEFORE the state change, so the reply becomes
+      // re-sendable as soon as it crosses the send state again.
+      if (sendAction === "reset_send") {
+        console.debug("[ReplyComposer:send] reset send marker", { target, replyId: ensured.id });
+        await resetSendMarker(organizationId, courierId, ensured.id);
       }
 
       await transitionReplyState(
@@ -410,8 +464,8 @@ export default function ReplyComposer({
       );
       logSignatureFlow("transition:state changed", { target });
 
-      // Auto-send the email when transitioning to a "send" state on an email reply.
-      if (target.is_send && channel === "email" && !isSent) {
+      // Auto-send the email when LEAVING a send state for a state located after it.
+      if (sendAction === "send") {
         console.debug("[ReplyComposer:send] auto-send triggered", { target, replyId: ensured.id });
         const { data, error } = await supabase.functions.invoke("send-courier-reply", {
           body: { reply_id: ensured.id, organization_id: organizationId },
@@ -419,9 +473,9 @@ export default function ReplyComposer({
         if (error) throw new Error(error.message);
         const result = data as SendEmailResult | null;
         if (result?.error) throw new Error(result.error);
-        return { sentTo: result?.to ?? null };
+        return { sentTo: result?.to ?? null, didReset: false };
       }
-      return { sentTo: null };
+      return { sentTo: null, didReset: sendAction === "reset_send" };
     },
     onSuccess: (result) => {
       setDirty(false);
@@ -432,6 +486,8 @@ export default function ReplyComposer({
       refetchReply();
       if (result?.sentTo) {
         toast.success(`Courriel envoyé à ${result.sentTo}`);
+      } else if (result?.didReset) {
+        toast.success("Retour en arrière : la réponse pourra être renvoyée.");
       } else {
         toast.success("État de la réponse mis à jour");
       }
@@ -466,9 +522,8 @@ export default function ReplyComposer({
 
   // ─── Transition gating ──────────────────────────────────────────────
   function reasonForTarget(target: PendingTarget): string | null {
-    if (target.requires_signature && !signatoryId) return "Sélectionnez d'abord un signataire.";
     // Only gate signing requirements when the transition will actually sign.
-    if (target.action === "sign") {
+    if (target.signatureAction === "sign") {
       if (!signatoryId) return "Sélectionnez d'abord un signataire.";
       if (!selectedSignatory) return "Signataire introuvable.";
       if (!selectedSignatory.user_id || selectedSignatory.user_id !== currentUserId)
@@ -630,11 +685,9 @@ export default function ReplyComposer({
           )}
           {outgoingTransitions.map(({ transition: t, target }) => {
             const targetIsSend = (target as any).is_send === true;
-            const isSend =
-              targetIsSend ||
-              (target.category === "processed" && (channel === "email" || target.name.toLowerCase().includes("répond")));
             const requiresSig = target.requires_signature === true;
-            const action = computeAction(target);
+            const sigAction = computeSignatureAction(target);
+            const sendAction = computeSendAction(target);
             const targetPayload: PendingTarget = {
               fromStateId: currentState?.id ?? null,
               fromStateName: currentState?.name ?? null,
@@ -643,12 +696,19 @@ export default function ReplyComposer({
               category: target.category,
               requires_signature: requiresSig,
               is_send: targetIsSend,
-              action,
+              signatureAction: sigAction,
+              sendAction,
             };
 
             const reason = reasonForTarget(targetPayload);
             const blocked = !!reason;
-            const willSign = action === "sign";
+            const willSign = sigAction === "sign";
+            const willSend = sendAction === "send";
+            const needsConfirm =
+              sigAction === "sign" ||
+              sigAction === "unsign" ||
+              sendAction === "send" ||
+              sendAction === "reset_send";
 
             const btn = (
               <Button
@@ -657,15 +717,14 @@ export default function ReplyComposer({
                 variant={target.category === "processed" ? "default" : "secondary"}
                 disabled={isBusy || readOnly || blocked}
                 onClick={() => {
-                  // Only show the confirmation modal when the transition signs or unsigns.
-                  if (action === "sign" || action === "unsign") {
+                  if (needsConfirm) {
                     setPendingTarget(targetPayload);
                   } else {
                     transition.mutate(targetPayload);
                   }
                 }}
               >
-                {willSign || requiresSig ? <PenLine className="mr-1.5 h-4 w-4" /> : (isSend ? <Send className="mr-1.5 h-4 w-4" /> : target.category === "processing" ? <Mail className="mr-1.5 h-4 w-4" /> : <ArrowRight className="mr-1.5 h-4 w-4" />)}
+                {willSign ? <PenLine className="mr-1.5 h-4 w-4" /> : willSend ? <Send className="mr-1.5 h-4 w-4" /> : target.category === "processing" ? <Mail className="mr-1.5 h-4 w-4" /> : <ArrowRight className="mr-1.5 h-4 w-4" />}
                 {t.name || target.name}
               </Button>
             );
@@ -726,21 +785,30 @@ export default function ReplyComposer({
         <AlertDialogContent>
           {(() => {
             if (!pendingTarget) return null;
-            const action = pendingTarget.action;
-            const title =
-              action === "sign"
-                ? "Signer et passer à l'état suivant"
-                : action === "unsign"
-                  ? "Retirer la signature"
-                  : "Confirmer le changement d'état";
-            const description =
-              action === "sign"
-                ? `Votre signature manuscrite va être apposée à la réponse, puis l'état passera à « ${pendingTarget.name} ». Cette action peut être annulée en revenant à un état antérieur.`
-                : action === "unsign"
-                  ? `Le passage à l'état « ${pendingTarget.name} » va supprimer la signature actuelle de la réponse. Vous pourrez la réapposer en repassant par l'état de signature.`
-                  : `Confirmez le passage à l'état « ${pendingTarget.name} ».`;
-            const confirmLabel =
-              action === "sign" ? "Signer et continuer" : action === "unsign" ? "Retirer la signature" : "Confirmer";
+            const sigAction = pendingTarget.signatureAction;
+            const sendAction = pendingTarget.sendAction;
+            let title = "Confirmer le changement d'état";
+            let description = `Confirmez le passage à l'état « ${pendingTarget.name} ».`;
+            let confirmLabel = "Confirmer";
+
+            if (sigAction === "sign") {
+              title = "Signer et passer à l'état suivant";
+              description = `Votre signature manuscrite va être apposée à la réponse, puis l'état passera à « ${pendingTarget.name} ». Cette action peut être annulée en revenant à un état antérieur à l'état de signature.`;
+              confirmLabel = "Signer et continuer";
+            } else if (sigAction === "unsign") {
+              title = "Retirer la signature";
+              description = `Le passage à l'état « ${pendingTarget.name} » va supprimer la signature actuelle de la réponse. Vous pourrez la réapposer en repassant par l'état de signature.`;
+              confirmLabel = "Retirer la signature";
+            } else if (sendAction === "send") {
+              title = "Envoyer le courriel";
+              description = `Le passage à l'état « ${pendingTarget.name} » va déclencher l'envoi du courriel à ${senderEmail ?? "l'usager"}.`;
+              confirmLabel = "Envoyer et continuer";
+            } else if (sendAction === "reset_send") {
+              title = "Annuler l'envoi";
+              description = `Le passage à l'état « ${pendingTarget.name} » va réinitialiser le marqueur d'envoi de la réponse, qui pourra à nouveau être envoyée si elle repasse par l'état d'envoi.`;
+              confirmLabel = "Confirmer le retour";
+            }
+
             return (
               <>
                 <AlertDialogHeader>
