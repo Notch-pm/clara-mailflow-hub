@@ -605,7 +605,7 @@ export default function ReplyComposer({
         <AlertDialogContent>
           {(() => {
             if (!pendingTarget) return null;
-            const action = actionForTarget(pendingTarget);
+            const action = pendingTarget.action;
             const title =
               action === "sign"
                 ? "Signer et passer à l'état suivant"
