@@ -288,7 +288,7 @@ export default function ReplyComposer({
       if (target.requires_signature && !signatoryId) {
         throw new Error("Veuillez sélectionner un signataire avant de passer à cet état.");
       }
-      const action = actionForTarget(target);
+      const action = target.action;
       const ensured = await ensureReply();
 
       if (action === "sign") {
