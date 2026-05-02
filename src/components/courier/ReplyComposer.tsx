@@ -516,16 +516,17 @@ export default function ReplyComposer({
             const isSend =
               target.category === "processed" && (channel === "email" || target.name.toLowerCase().includes("répond"));
             const requiresSig = (target as any).requires_signature === true;
+            const action = computeAction(target.id);
             const targetPayload: PendingTarget = {
               id: target.id,
               name: target.name,
               category: target.category,
               requires_signature: requiresSig,
+              action,
             };
 
             const reason = reasonForTarget(targetPayload);
             const blocked = !!reason;
-            const action = actionForTarget(targetPayload);
             const willSign = action === "sign";
 
             const btn = (
