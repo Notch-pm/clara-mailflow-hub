@@ -629,8 +629,10 @@ export default function ReplyComposer({
             </span>
           )}
           {outgoingTransitions.map(({ transition: t, target }) => {
+            const targetIsSend = (target as any).is_send === true;
             const isSend =
-              target.category === "processed" && (channel === "email" || target.name.toLowerCase().includes("répond"));
+              targetIsSend ||
+              (target.category === "processed" && (channel === "email" || target.name.toLowerCase().includes("répond")));
             const requiresSig = target.requires_signature === true;
             const action = computeAction(target);
             const targetPayload: PendingTarget = {
@@ -640,6 +642,7 @@ export default function ReplyComposer({
               name: target.name,
               category: target.category,
               requires_signature: requiresSig,
+              is_send: targetIsSend,
               action,
             };
 
