@@ -129,6 +129,7 @@ export async function updateReplyContent(
     signatoryId?: string | null;
     signedAt?: string | null;
     signedBy?: string | null;
+    signedStateId?: string | null;
   },
 ): Promise<void> {
   // Fetch current metadata to preserve other keys
@@ -160,6 +161,10 @@ export async function updateReplyContent(
   }
   if (patch.signedBy !== undefined) {
     nextMeta.signed_by = patch.signedBy;
+    metaChanged = true;
+  }
+  if (patch.signedStateId !== undefined) {
+    nextMeta.signed_state_id = patch.signedStateId;
     metaChanged = true;
   }
   if (metaChanged) update.metadata = nextMeta;
@@ -223,16 +228,18 @@ export async function signReply(
   organizationId: string,
   parentCourierId: string,
   replyId: string,
-  args: { bodyHtml: string; signedBy: string },
+  args: { bodyHtml: string; signedBy: string; signedStateId?: string | null },
 ): Promise<void> {
   await updateReplyContent(organizationId, replyId, {
     bodyHtml: args.bodyHtml,
     signedAt: new Date().toISOString(),
     signedBy: args.signedBy,
+    signedStateId: args.signedStateId ?? null,
   });
   await logEvent(organizationId, parentCourierId, "reply_signed", {
     reply_id: replyId,
     signed_by: args.signedBy,
+    signed_state_id: args.signedStateId ?? null,
   });
 }
 
@@ -246,6 +253,7 @@ export async function unsignReply(
     bodyHtml: args.bodyHtml,
     signedAt: null,
     signedBy: null,
+    signedStateId: null,
   });
   await logEvent(organizationId, parentCourierId, "reply_unsigned", {
     reply_id: replyId,
