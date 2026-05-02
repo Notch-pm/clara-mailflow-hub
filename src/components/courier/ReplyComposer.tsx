@@ -261,9 +261,6 @@ export default function ReplyComposer({
     if (!url) throw new Error("Impossible de charger l'image de signature.");
     const dataUrl = await fetchAsDataUrl(url);
     const fullName = `${selectedSignatory.first_name} ${selectedSignatory.last_name}`.trim();
-    const titleHtml = selectedSignatory.title
-      ? `<p style="margin:0 0 4px 0;font-style:italic;color:#555;">${escapeHtml(selectedSignatory.title)},</p>`
-      : "";
     const titleP = selectedSignatory.title
       ? `<p><em>${escapeHtml(selectedSignatory.title)}</em></p>`
       : "";
