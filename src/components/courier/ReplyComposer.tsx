@@ -239,6 +239,7 @@ export default function ReplyComposer({
         : null,
       bodyHasMarker: /data-signature-block=["']true["']|signature-clara/i.test(body),
       replyBodyHasMarker: /data-signature-block=["']true["']|signature-clara/i.test(replyMeta.body_html ?? ""),
+      bodyHasSignatureMarker,
       ...details,
     });
   }
