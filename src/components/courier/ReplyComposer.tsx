@@ -785,21 +785,30 @@ export default function ReplyComposer({
         <AlertDialogContent>
           {(() => {
             if (!pendingTarget) return null;
-            const action = pendingTarget.action;
-            const title =
-              action === "sign"
-                ? "Signer et passer à l'état suivant"
-                : action === "unsign"
-                  ? "Retirer la signature"
-                  : "Confirmer le changement d'état";
-            const description =
-              action === "sign"
-                ? `Votre signature manuscrite va être apposée à la réponse, puis l'état passera à « ${pendingTarget.name} ». Cette action peut être annulée en revenant à un état antérieur.`
-                : action === "unsign"
-                  ? `Le passage à l'état « ${pendingTarget.name} » va supprimer la signature actuelle de la réponse. Vous pourrez la réapposer en repassant par l'état de signature.`
-                  : `Confirmez le passage à l'état « ${pendingTarget.name} ».`;
-            const confirmLabel =
-              action === "sign" ? "Signer et continuer" : action === "unsign" ? "Retirer la signature" : "Confirmer";
+            const sigAction = pendingTarget.signatureAction;
+            const sendAction = pendingTarget.sendAction;
+            let title = "Confirmer le changement d'état";
+            let description = `Confirmez le passage à l'état « ${pendingTarget.name} ».`;
+            let confirmLabel = "Confirmer";
+
+            if (sigAction === "sign") {
+              title = "Signer et passer à l'état suivant";
+              description = `Votre signature manuscrite va être apposée à la réponse, puis l'état passera à « ${pendingTarget.name} ». Cette action peut être annulée en revenant à un état antérieur à l'état de signature.`;
+              confirmLabel = "Signer et continuer";
+            } else if (sigAction === "unsign") {
+              title = "Retirer la signature";
+              description = `Le passage à l'état « ${pendingTarget.name} » va supprimer la signature actuelle de la réponse. Vous pourrez la réapposer en repassant par l'état de signature.`;
+              confirmLabel = "Retirer la signature";
+            } else if (sendAction === "send") {
+              title = "Envoyer le courriel";
+              description = `Le passage à l'état « ${pendingTarget.name} » va déclencher l'envoi du courriel à ${senderEmail ?? "l'usager"}.`;
+              confirmLabel = "Envoyer et continuer";
+            } else if (sendAction === "reset_send") {
+              title = "Annuler l'envoi";
+              description = `Le passage à l'état « ${pendingTarget.name} » va réinitialiser le marqueur d'envoi de la réponse, qui pourra à nouveau être envoyée si elle repasse par l'état d'envoi.`;
+              confirmLabel = "Confirmer le retour";
+            }
+
             return (
               <>
                 <AlertDialogHeader>
