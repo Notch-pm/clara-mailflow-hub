@@ -413,15 +413,16 @@ export default function ReplyComposer({
   const transition = useMutation({
     mutationFn: async (target: PendingTarget) => {
       logSignatureFlow("transition:start", { target });
-      if (target.requires_signature && !signatoryId) {
+      if (target.signatureAction === "sign" && !signatoryId) {
         logSignatureFlow("transition:blocked missing signatory", { target });
         throw new Error("Veuillez sélectionner un signataire avant de passer à cet état.");
       }
-      const action = target.action;
+      const sigAction = target.signatureAction;
+      const sendAction = target.sendAction;
       const ensured = await ensureReply();
-      logSignatureFlow("transition:reply ensured", { target, action, ensuredReplyId: ensured.id });
+      logSignatureFlow("transition:reply ensured", { target, sigAction, sendAction, ensuredReplyId: ensured.id });
 
-      if (action === "sign") {
+      if (sigAction === "sign") {
         const newBody = await buildSignedBody();
         await signReply(organizationId, courierId, ensured.id, {
           bodyHtml: newBody,
@@ -434,7 +435,7 @@ export default function ReplyComposer({
           newBodyLength: newBody.length,
           newBodyHasMarker: /signature-clara/i.test(newBody),
         });
-      } else if (action === "unsign") {
+      } else if (sigAction === "unsign") {
         const cleaned = stripSignatureBlock(body);
         setBody(cleaned);
         await unsignReply(organizationId, courierId, ensured.id, { bodyHtml: cleaned });
@@ -444,6 +445,13 @@ export default function ReplyComposer({
         });
       } else {
         logSignatureFlow("transition:no signature action", { target });
+      }
+
+      // Reset send marker BEFORE the state change, so the reply becomes
+      // re-sendable as soon as it crosses the send state again.
+      if (sendAction === "reset_send") {
+        console.debug("[ReplyComposer:send] reset send marker", { target, replyId: ensured.id });
+        await resetSendMarker(organizationId, courierId, ensured.id);
       }
 
       await transitionReplyState(
@@ -456,8 +464,8 @@ export default function ReplyComposer({
       );
       logSignatureFlow("transition:state changed", { target });
 
-      // Auto-send the email when transitioning to a "send" state on an email reply.
-      if (target.is_send && channel === "email" && !isSent) {
+      // Auto-send the email when LEAVING a send state for a state located after it.
+      if (sendAction === "send") {
         console.debug("[ReplyComposer:send] auto-send triggered", { target, replyId: ensured.id });
         const { data, error } = await supabase.functions.invoke("send-courier-reply", {
           body: { reply_id: ensured.id, organization_id: organizationId },
@@ -465,9 +473,9 @@ export default function ReplyComposer({
         if (error) throw new Error(error.message);
         const result = data as SendEmailResult | null;
         if (result?.error) throw new Error(result.error);
-        return { sentTo: result?.to ?? null };
+        return { sentTo: result?.to ?? null, didReset: false };
       }
-      return { sentTo: null };
+      return { sentTo: null, didReset: sendAction === "reset_send" };
     },
     onSuccess: (result) => {
       setDirty(false);
