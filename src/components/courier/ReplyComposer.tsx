@@ -149,11 +149,13 @@ export default function ReplyComposer({
     return workflow.states.find((s) => s.id === stateId) ?? workflow.initialState ?? null;
   }, [workflow, reply]);
 
-  const replyMeta = (reply?.metadata as { signed_at?: string | null; signed_by?: string | null } | null) ?? {};
+  const replyMeta = (reply?.metadata as { signed_at?: string | null; signed_by?: string | null; sent_email_at?: string | null } | null) ?? {};
   const isSigned = !!replyMeta.signed_at;
+  const isSent = !!replyMeta.sent_email_at;
   const isSignatureState = (currentState as any)?.requires_signature === true;
   const isFinal = currentState?.category === "processed" || currentState?.is_final === true;
   const editorDisabled = !!readOnly || isFinal || isSigned;
+  const canSendEmail = channel === "email" && isFinal && !!reply && !isSent && !!senderEmail;
 
   const selectedSignatory = useMemo(
     () => serviceSignatories.find((s) => s.id === signatoryId) ?? null,
