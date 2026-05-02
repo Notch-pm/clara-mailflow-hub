@@ -228,7 +228,14 @@ export default function ReplyComposer({
   });
 
   // Pending transition awaiting confirmation modal
-  type PendingTarget = { id: string; name: string; category: string | null; requires_signature: boolean };
+  type TransitionAction = "sign" | "unsign" | "none";
+  type PendingTarget = {
+    id: string;
+    name: string;
+    category: string | null;
+    requires_signature: boolean;
+    action: TransitionAction;
+  };
   const [pendingTarget, setPendingTarget] = useState<PendingTarget | null>(null);
 
   // A target is "backwards" if a transition exists from the target back to the current state.
@@ -240,11 +247,11 @@ export default function ReplyComposer({
   }
 
   // Determine action implied by a transition: 'sign' | 'unsign' | 'none'
-  function actionForTarget(target: PendingTarget): "sign" | "unsign" | "none" {
-    const backwards = isBackwardsTarget(target.id);
-    // Going forward from a signature state → apposer la signature (si pas déjà signée)
+  // Computed at render time from the up-to-date currentState — embedded in the
+  // target payload to avoid closure-staleness bugs at mutation time.
+  function computeAction(targetId: string): TransitionAction {
+    const backwards = isBackwardsTarget(targetId);
     if (isSignatureState && !isSigned && !backwards) return "sign";
-    // Revenir en arrière depuis un état postérieur à la signature → effacer la signature
     if (isSigned && backwards) return "unsign";
     return "none";
   }
@@ -281,7 +288,7 @@ export default function ReplyComposer({
       if (target.requires_signature && !signatoryId) {
         throw new Error("Veuillez sélectionner un signataire avant de passer à cet état.");
       }
-      const action = actionForTarget(target);
+      const action = target.action;
       const ensured = await ensureReply();
 
       if (action === "sign") {
@@ -345,7 +352,7 @@ export default function ReplyComposer({
   function reasonForTarget(target: PendingTarget): string | null {
     if (target.requires_signature && !signatoryId) return "Sélectionnez d'abord un signataire.";
     // Only gate signing requirements when the transition will actually sign.
-    if (actionForTarget(target) === "sign") {
+    if (target.action === "sign") {
       if (!signatoryId) return "Sélectionnez d'abord un signataire.";
       if (!selectedSignatory) return "Signataire introuvable.";
       if (!selectedSignatory.user_id || selectedSignatory.user_id !== currentUserId)
@@ -509,16 +516,17 @@ export default function ReplyComposer({
             const isSend =
               target.category === "processed" && (channel === "email" || target.name.toLowerCase().includes("répond"));
             const requiresSig = (target as any).requires_signature === true;
+            const action = computeAction(target.id);
             const targetPayload: PendingTarget = {
               id: target.id,
               name: target.name,
               category: target.category,
               requires_signature: requiresSig,
+              action,
             };
 
             const reason = reasonForTarget(targetPayload);
             const blocked = !!reason;
-            const action = actionForTarget(targetPayload);
             const willSign = action === "sign";
 
             const btn = (
@@ -597,7 +605,7 @@ export default function ReplyComposer({
         <AlertDialogContent>
           {(() => {
             if (!pendingTarget) return null;
-            const action = actionForTarget(pendingTarget);
+            const action = pendingTarget.action;
             const title =
               action === "sign"
                 ? "Signer et passer à l'état suivant"
