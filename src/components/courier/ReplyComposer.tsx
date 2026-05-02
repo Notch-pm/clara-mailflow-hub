@@ -318,7 +318,26 @@ export default function ReplyComposer({
     },
   });
 
-  const isBusy = saveDraft.isPending || transition.isPending;
+  const sendEmail = useMutation({
+    mutationFn: async () => {
+      if (!reply) throw new Error("Aucune réponse à envoyer.");
+      const { data, error } = await supabase.functions.invoke("send-courier-reply", {
+        body: { reply_id: reply.id, organization_id: organizationId },
+      });
+      if (error) throw new Error(error.message);
+      if ((data as any)?.error) throw new Error((data as any).error);
+      return data;
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["courier-reply", courierId] });
+      queryClient.invalidateQueries({ queryKey: ["courier-events", courierId] });
+      refetchReply();
+      toast.success(`Courriel envoyé à ${data?.to ?? "l'usager"}`);
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const isBusy = saveDraft.isPending || transition.isPending || sendEmail.isPending;
 
   // ─── Transition gating ──────────────────────────────────────────────
   function reasonForTarget(target: PendingTarget): string | null {
