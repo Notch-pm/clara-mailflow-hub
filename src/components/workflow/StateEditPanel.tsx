@@ -40,6 +40,7 @@ export function StateEditPanel({
   isInitial,
   isFinal,
   requiresSignature = false,
+  isSend = false,
   workflowType = null,
   onUpdate,
   onDelete,
