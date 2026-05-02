@@ -252,7 +252,7 @@ export default function ReplyComposer({
         requires_signature: (target as any).requires_signature,
       })),
     });
-  }, [currentState?.id, isSigned, signedStateId, signatoryId, selectedSignatory?.id, body, workflow?.states.length, outgoingTransitions.length]);
+  }, [currentState?.id, isSigned, signedStateId, signatoryId, selectedSignatory?.id, workflow?.states.length, outgoingTransitions.length]);
 
   // ─── Mutations ──────────────────────────────────────────────────────
 
