@@ -76,6 +76,7 @@ function layoutNodes(states: WorkflowState[], transitions: WorkflowTransition[])
         is_initial: s.is_initial ?? false,
         is_final: s.is_final ?? false,
         requires_signature: (s as any).requires_signature ?? false,
+        is_send: (s as any).is_send ?? false,
       } satisfies StateNodeData,
     };
   });
@@ -213,6 +214,7 @@ export default function WorkflowDetail() {
           is_initial: data.is_initial ?? false,
           is_final: data.is_final ?? false,
           requires_signature: (data as any).requires_signature ?? false,
+          is_send: (data as any).is_send ?? false,
         } satisfies StateNodeData,
       };
       setNodes((nds) => [...nds, newNode]);
@@ -221,7 +223,7 @@ export default function WorkflowDetail() {
   );
 
   const handleUpdateNode = useCallback(
-    async (data: { name?: string; category?: WorkflowCategory; is_initial?: boolean; is_final?: boolean; requires_signature?: boolean }) => {
+    async (data: { name?: string; category?: WorkflowCategory; is_initial?: boolean; is_final?: boolean; requires_signature?: boolean; is_send?: boolean }) => {
       if (!selectedNodeId || !workflowId) return;
 
       // If setting is_initial, clear others first
@@ -255,6 +257,7 @@ export default function WorkflowDetail() {
               is_initial: data.is_initial ?? current.is_initial,
               is_final: data.is_final ?? current.is_final,
               requires_signature: data.requires_signature ?? current.requires_signature,
+              is_send: data.is_send ?? current.is_send,
             } satisfies StateNodeData,
           };
         })
@@ -410,6 +413,7 @@ export default function WorkflowDetail() {
             isInitial={selectedData.is_initial}
             isFinal={selectedData.is_final}
             requiresSignature={selectedData.requires_signature ?? false}
+            isSend={selectedData.is_send ?? false}
             workflowType={(workflow as any)?.type ?? null}
             onUpdate={handleUpdateNode}
             onDelete={handleDeleteNode}

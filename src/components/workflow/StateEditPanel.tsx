@@ -3,7 +3,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Trash2, X, PenLine } from "lucide-react";
+import { Trash2, X, PenLine, Send } from "lucide-react";
 import type { WorkflowCategory } from "@/types/courier";
 
 interface StateEditPanelProps {
@@ -13,6 +13,7 @@ interface StateEditPanelProps {
   isInitial: boolean;
   isFinal: boolean;
   requiresSignature?: boolean;
+  isSend?: boolean;
   workflowType?: "inbound" | "reply" | null;
   onUpdate: (data: {
     name?: string;
@@ -20,6 +21,7 @@ interface StateEditPanelProps {
     is_initial?: boolean;
     is_final?: boolean;
     requires_signature?: boolean;
+    is_send?: boolean;
   }) => void;
   onDelete: () => void;
   onClose: () => void;
@@ -38,6 +40,7 @@ export function StateEditPanel({
   isInitial,
   isFinal,
   requiresSignature = false,
+  isSend = false,
   workflowType = null,
   onUpdate,
   onDelete,
@@ -106,6 +109,20 @@ export function StateEditPanel({
             id="requires-signature"
             checked={requiresSignature}
             onCheckedChange={(v) => onUpdate({ requires_signature: v })}
+          />
+        </div>
+      )}
+
+      {isReply && (
+        <div className="flex items-center justify-between">
+          <Label htmlFor="is-send" className="flex items-center gap-2">
+            <Send className="h-4 w-4 text-blue-600" />
+            Envoyer
+          </Label>
+          <Switch
+            id="is-send"
+            checked={isSend}
+            onCheckedChange={(v) => onUpdate({ is_send: v })}
           />
         </div>
       )}

@@ -1177,6 +1177,7 @@ export type Database = {
           id: string
           is_final: boolean | null
           is_initial: boolean | null
+          is_send: boolean
           name: string
           organization_id: string
           requires_signature: boolean
@@ -1188,6 +1189,7 @@ export type Database = {
           id?: string
           is_final?: boolean | null
           is_initial?: boolean | null
+          is_send?: boolean
           name: string
           organization_id: string
           requires_signature?: boolean
@@ -1199,6 +1201,7 @@ export type Database = {
           id?: string
           is_final?: boolean | null
           is_initial?: boolean | null
+          is_send?: boolean
           name?: string
           organization_id?: string
           requires_signature?: boolean

@@ -85,7 +85,7 @@ export async function deleteWorkflow(workflowId: string) {
 export async function createState(
   organizationId: string,
   workflowId: string,
-  data: { name: string; category: WorkflowCategory; is_initial?: boolean; is_final?: boolean; requires_signature?: boolean }
+  data: { name: string; category: WorkflowCategory; is_initial?: boolean; is_final?: boolean; requires_signature?: boolean; is_send?: boolean }
 ) {
   return supabase
     .from("workflow_states")
@@ -97,6 +97,7 @@ export async function createState(
       is_initial: data.is_initial ?? false,
       is_final: data.is_final ?? false,
       requires_signature: data.requires_signature ?? false,
+      is_send: data.is_send ?? false,
     })
     .select()
     .single();
@@ -104,7 +105,7 @@ export async function createState(
 
 export async function updateState(
   stateId: string,
-  data: { name?: string; category?: WorkflowCategory; is_initial?: boolean; is_final?: boolean; requires_signature?: boolean }
+  data: { name?: string; category?: WorkflowCategory; is_initial?: boolean; is_final?: boolean; requires_signature?: boolean; is_send?: boolean }
 ) {
   return supabase
     .from("workflow_states")
