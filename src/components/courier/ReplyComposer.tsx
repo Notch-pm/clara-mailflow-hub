@@ -323,7 +323,8 @@ export default function ReplyComposer({
   });
 
   // Pending transition awaiting confirmation modal
-  type TransitionAction = "sign" | "unsign" | "none";
+  type SignatureAction = "sign" | "unsign" | "none";
+  type SendAction = "send" | "reset_send" | "none";
   type PendingTarget = {
     fromStateId: string | null;
     fromStateName: string | null;
@@ -332,16 +333,46 @@ export default function ReplyComposer({
     category: string | null;
     requires_signature: boolean;
     is_send: boolean;
-    action: TransitionAction;
+    signatureAction: SignatureAction;
+    sendAction: SendAction;
   };
   const [pendingTarget, setPendingTarget] = useState<PendingTarget | null>(null);
 
-  // Determine action implied by a transition: 'sign' | 'unsign' | 'none'
-  // Computed at render time from the up-to-date currentState — embedded in the
-  // target payload to avoid closure-staleness bugs at mutation time.
-  function computeAction(target: WorkflowState): TransitionAction {
-    if (isSignatureState && (!isSigned || !bodyHasSignatureMarker) && isPostSignatureTarget(target)) return "sign";
-    if (isSigned && isBeforeSignatureState(target, signedStateId)) return "unsign";
+  /**
+   * Signature action implied by transitioning to `target`:
+   * - "sign"   : we are leaving the signature state for a state located AFTER it,
+   *              and the reply is not currently signed.
+   * - "unsign" : the reply is signed and we are moving to a state located BEFORE
+   *              the signature state (so the signature must be removed; it can
+   *              be re-applied later by passing through the signature state again).
+   */
+  function computeSignatureAction(target: WorkflowState): SignatureAction {
+    if (!signatureState || !currentState) return "none";
+    // Signing happens when leaving the signature state going forward.
+    if (currentState.id === signatureState.id && isAfter(target, signatureState.id)) {
+      if (!isSigned || !bodyHasSignatureMarker) return "sign";
+      return "none";
+    }
+    // Unsigning happens when going to a state strictly before the signature state.
+    if (isSigned && isBefore(target, signatureState.id)) return "unsign";
+    return "none";
+  }
+
+  /**
+   * Send action implied by transitioning to `target`:
+   * - "send"       : we are leaving the send state for a state located AFTER it,
+   *                  the reply channel is email, and it has not yet been sent.
+   * - "reset_send" : we are moving to a state located BEFORE the send state on
+   *                  a reply that was previously sent — clear the sent marker
+   *                  so it can be re-sent the next time it crosses the send state.
+   */
+  function computeSendAction(target: WorkflowState): SendAction {
+    if (!sendState || !currentState) return "none";
+    if (currentState.id === sendState.id && isAfter(target, sendState.id)) {
+      if (channel === "email" && !isSent) return "send";
+      return "none";
+    }
+    if (isSent && isBefore(target, sendState.id)) return "reset_send";
     return "none";
   }
 
