@@ -115,7 +115,20 @@ export async function updateState(
     .single();
 }
 
-export async function deleteState(stateId: string) {
+export async function deleteState(stateId: string, reassignToStateId?: string | null) {
+  // Reassign couriers currently using this state to the fallback state (typically the workflow's initial state).
+  if (reassignToStateId) {
+    await supabase
+      .from("couriers")
+      .update({ workflow_state_id: reassignToStateId } as never)
+      .eq("workflow_state_id", stateId);
+  } else {
+    // Detach to avoid FK violations if no fallback was provided.
+    await supabase
+      .from("couriers")
+      .update({ workflow_state_id: null } as never)
+      .eq("workflow_state_id", stateId);
+  }
   await supabase.from("workflow_transitions").delete().or(`from_state_id.eq.${stateId},to_state_id.eq.${stateId}`);
   return supabase.from("workflow_states").delete().eq("id", stateId);
 }
