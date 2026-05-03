@@ -11,6 +11,7 @@ export interface ReplyRecord {
   workflow_state_id: string | null;
   metadata: Record<string, unknown> | null;
   assigned_service: string | null;
+  created_at?: string;
 }
 
 export interface ReplyWorkflowData {
@@ -20,24 +21,33 @@ export interface ReplyWorkflowData {
   initialState: WorkflowState | null;
 }
 
-/**
- * Returns the (single) outbound child courier acting as reply for the given parent.
- */
-export async function getReplyForCourier(
+export async function listRepliesForCourier(
   organizationId: string,
   parentCourierId: string,
-): Promise<ReplyRecord | null> {
+): Promise<ReplyRecord[]> {
   const { data, error } = await supabase
     .from("couriers")
-    .select("id, parent_courier_id, organization_id, channel, subject, workflow_state_id, metadata, assigned_service")
+    .select("id, parent_courier_id, organization_id, channel, subject, workflow_state_id, metadata, assigned_service, created_at")
     .eq("organization_id", organizationId)
     .eq("parent_courier_id", parentCourierId)
     .eq("direction", "outbound")
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+    .order("created_at", { ascending: true });
   if (error) throw error;
-  return (data as ReplyRecord | null) ?? null;
+  return (data ?? []) as ReplyRecord[];
+}
+
+export async function deleteReply(
+  organizationId: string,
+  parentCourierId: string,
+  replyId: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from("couriers")
+    .delete()
+    .eq("id", replyId)
+    .eq("organization_id", organizationId);
+  if (error) throw error;
+  await logEvent(organizationId, parentCourierId, "reply_deleted", { reply_id: replyId });
 }
 
 /**
@@ -309,7 +319,13 @@ export function stripSignatureBlock(html: string): string {
     const hrMatches = [...before.matchAll(/<hr\b[^>]*\/?>/gi)];
     if (hrMatches.length > 0) {
       const lastHr = hrMatches[hrMatches.length - 1];
-      out = out.slice(0, lastHr.index);
+      let cutAt = lastHr.index!;
+      // Strip the blank paragraph immediately before <hr> if present
+      const beforeHr = out.slice(0, cutAt).trimEnd();
+      if (beforeHr.match(/<p[^>]*>&nbsp;<\/p>$/i)) {
+        cutAt = beforeHr.length - beforeHr.match(/<p[^>]*>&nbsp;<\/p>$/i)![0].length;
+      }
+      out = out.slice(0, cutAt);
     } else {
       // No hr found — fall back to stripping from the paragraph wrapping the img
       const pStart = out.lastIndexOf("<p", imgIdx);

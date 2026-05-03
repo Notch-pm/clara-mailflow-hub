@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Mail, Send, Save, ArrowRight, Lock, PenLine, CheckCircle2 } from "lucide-react";
+import { Send, Save, Lock, PenLine, X, Plus, Pencil, Trash2, ArrowLeft, Printer, ChevronDown, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -18,23 +18,12 @@ import {
   SelectLabel,
   SelectSeparator,
 } from "@/components/ui/select";
-import { listServices } from "@/services/orgServiceService";
-import { supabase } from "@/integrations/supabase/client";
 import {
-  getReplyForCourier,
-  getReplyWorkflow,
-  createReply,
-  updateReplyContent,
-  transitionReplyState,
-  signReply,
-  unsignReply,
-  resetSendMarker,
-  stripSignatureBlock,
-} from "@/services/courierReplyService";
-import { getSignatureUrl } from "@/services/signatoryService";
-import { useAuth } from "@/contexts/AuthContext";
-import type { CourierChannel, CourierParticipant, WorkflowState } from "@/types/courier";
-import { cn } from "@/lib/utils";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -45,6 +34,30 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { listServices } from "@/services/orgServiceService";
+import { supabase } from "@/integrations/supabase/client";
+import {
+  listRepliesForCourier,
+  deleteReply,
+  getReplyWorkflow,
+  createReply,
+  updateReplyContent,
+  transitionReplyState,
+  signReply,
+  unsignReply,
+  stripSignatureBlock,
+  type ReplyRecord,
+} from "@/services/courierReplyService";
+import { getSignatureUrl } from "@/services/signatoryService";
+import { useAuth } from "@/contexts/AuthContext";
+import { printReply } from "@/utils/printReply";
+import { getOrgHtmlTemplate } from "@/services/templateService";
+import { draftReply } from "@/services/courierDraftService";
+import { Textarea } from "@/components/ui/textarea";
+import type { CourierChannel, CourierParticipant } from "@/types/courier";
+import { cn } from "@/lib/utils";
+
+type SendEmailResult = { error?: string; to?: string };
 
 interface ServiceSignatory {
   id: string;
@@ -54,9 +67,7 @@ interface ServiceSignatory {
   user_id: string | null;
   signature_storage_key: string | null;
 }
-
 type ServiceSignatoryJoinRow = { signatory: ServiceSignatory | ServiceSignatory[] | null };
-type SendEmailResult = { error?: string; to?: string };
 
 interface Props {
   courierId: string;
@@ -67,6 +78,10 @@ interface Props {
   readOnly?: boolean;
   onStateChange?: (state: { name: string; category: string | null } | null) => void;
 }
+
+const CATEGORY_ORDER: Record<string, number> = { pending: 0, processing: 1, processed: 2, archived: 3 };
+
+const CHANNEL_LABELS: Record<string, string> = { email: "Courriel", paper: "Courrier", fax: "Fax" };
 
 export default function ReplyComposer({
   courierId,
@@ -80,11 +95,10 @@ export default function ReplyComposer({
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const currentUserId = user?.id ?? null;
-
   const senderEmail = sender?.email?.trim() || null;
   const canEmail = !!senderEmail;
 
-  // 1. Service of the courier (to get reply_workflow_id)
+  // ─── Services & workflow ────────────────────────────────────────────
   const { data: services } = useQuery({
     queryKey: ["org-services", organizationId],
     queryFn: () => listServices(organizationId),
@@ -98,21 +112,41 @@ export default function ReplyComposer({
 
   const replyWorkflowId = currentService?.reply_workflow_id ?? null;
 
-  // 2. Reply workflow definition
   const { data: workflow } = useQuery({
     queryKey: ["reply-workflow", replyWorkflowId],
     queryFn: () => getReplyWorkflow(replyWorkflowId!),
     enabled: !!replyWorkflowId,
   });
 
-  // 3. Existing reply for this courier (if any)
-  const { data: reply, refetch: refetchReply } = useQuery({
-    queryKey: ["courier-reply", courierId],
-    queryFn: () => getReplyForCourier(organizationId, courierId),
+  // ─── Replies list ───────────────────────────────────────────────────
+  const { data: replies = [], refetch: refetchReplies } = useQuery({
+    queryKey: ["courier-replies", courierId],
+    queryFn: () => listRepliesForCourier(organizationId, courierId),
     enabled: !!organizationId && !!courierId,
   });
 
-  // 4. Signataires associés au service instructeur
+  // ─── Template ───────────────────────────────────────────────────────
+  const { data: templateData } = useQuery({
+    queryKey: ["org-html-template", organizationId],
+    queryFn: () => getOrgHtmlTemplate(organizationId),
+    enabled: !!organizationId,
+  });
+  const hasTemplate = !!templateData?.html;
+
+  // ─── View state ─────────────────────────────────────────────────────
+  // "list" = liste des réponses | "editor" = éditeur pour activeReplyId (null = nouvelle)
+  const [view, setView] = useState<"list" | "editor">("list");
+  const [activeReplyId, setActiveReplyId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ReplyRecord | null>(null);
+  const [proposeFinal, setProposeFinal] = useState(false);
+  const [isPrintingWithTemplate, setIsPrintingWithTemplate] = useState(false);
+
+  const reply = useMemo(
+    () => (activeReplyId ? replies.find((r) => r.id === activeReplyId) ?? null : null),
+    [replies, activeReplyId],
+  );
+
+  // ─── Signatories ────────────────────────────────────────────────────
   const { data: serviceSignatories = [] } = useQuery({
     queryKey: ["service-signatories-detailed", currentService?.id],
     queryFn: async (): Promise<ServiceSignatory[]> => {
@@ -128,14 +162,20 @@ export default function ReplyComposer({
     enabled: !!currentService?.id,
   });
 
-  // Local UI state
+  // ─── Editor local state ─────────────────────────────────────────────
   const [channel, setChannel] = useState<CourierChannel>("paper");
   const [body, setBody] = useState<string>("");
   const [signatoryId, setSignatoryId] = useState<string>("");
   const [dirty, setDirty] = useState(false);
 
-  // Hydrate local state from reply / defaults whenever the reply or courier changes
+  // ─── AI assistant state ─────────────────────────────────────────────
+  const [aiPanelOpen, setAiPanelOpen] = useState(false);
+  const [aiResponseType, setAiResponseType] = useState<string>("");
+  const [aiInstructions, setAiInstructions] = useState<string>("");
+  const [isDrafting, setIsDrafting] = useState(false);
+
   useEffect(() => {
+    if (view !== "editor") return;
     if (reply) {
       setChannel(reply.channel);
       const meta = (reply.metadata as { body_html?: string; signatory_id?: string | null } | null) ?? {};
@@ -147,9 +187,15 @@ export default function ReplyComposer({
       setSignatoryId("");
     }
     setDirty(false);
-  }, [reply, courierId, canEmail]);
+  }, [reply?.id, view, canEmail]);
 
-  // Resolve current state of the reply
+  useEffect(() => {
+    if (signatoryId || !currentUserId || view !== "editor") return;
+    const self = serviceSignatories.find((s) => s.user_id === currentUserId);
+    if (self) setSignatoryId(self.id);
+  }, [serviceSignatories, currentUserId, signatoryId, view]);
+
+  // ─── Derived state (editor) ─────────────────────────────────────────
   const currentState = useMemo(() => {
     if (!workflow) return null;
     const stateId = reply?.workflow_state_id ?? workflow.initialState?.id ?? null;
@@ -157,32 +203,34 @@ export default function ReplyComposer({
   }, [workflow, reply]);
 
   const replyMeta = (reply?.metadata as {
-    body_html?: string | null;
     signed_at?: string | null;
-    signed_by?: string | null;
-    signed_state_id?: string | null;
     sent_email_at?: string | null;
   } | null) ?? {};
+
   const isSigned = !!replyMeta.signed_at;
-  const signedStateId = replyMeta.signed_state_id ?? null;
   const isSent = !!replyMeta.sent_email_at;
-  // (removed: isSignatureState — replaced by signatureState/sendState pivots below)
-  const bodyHasSignatureMarker = /data-signature-block=["']true["']|signature-clara/i.test(body);
   const isFinal = currentState?.category === "processed" || currentState?.is_final === true;
+  const isSignatureState = (currentState as any)?.requires_signature === true;
+  const isSendState = (currentState as any)?.is_send === true;
   const editorDisabled = !!readOnly || isFinal || isSigned;
-  const canSendEmail = channel === "email" && isFinal && !!reply && !isSent && !!senderEmail;
 
   const selectedSignatory = useMemo(
     () => serviceSignatories.find((s) => s.id === signatoryId) ?? null,
     [serviceSignatories, signatoryId],
   );
+  const currentUserIsSignatory = useMemo(
+    () => serviceSignatories.some((s) => s.user_id === currentUserId),
+    [serviceSignatories, currentUserId],
+  );
 
-  // Bubble up the current state so the parent can show it in the tab label.
   useEffect(() => {
-    onStateChange?.(currentState ? { name: currentState.name, category: currentState.category } : null);
-  }, [currentState, onStateChange]);
+    if (view === "editor") {
+      onStateChange?.(currentState ? { name: currentState.name, category: currentState.category } : null);
+    } else {
+      onStateChange?.(null);
+    }
+  }, [currentState, view, onStateChange]);
 
-  // Available transitions from the current state
   const outgoingTransitions = useMemo(() => {
     if (!workflow || !currentState) return [];
     return workflow.transitions
@@ -194,98 +242,34 @@ export default function ReplyComposer({
       .filter((x): x is { transition: typeof workflow.transitions[number]; target: typeof workflow.states[number] } => !!x);
   }, [workflow, currentState]);
 
-  // ─── Unique signature & send states for this workflow ──────────────
-  const signatureState = useMemo(
-    () => (workflow?.states ?? []).find((s) => s.requires_signature === true) ?? null,
-    [workflow],
-  );
-  const sendState = useMemo(
-    () => (workflow?.states ?? []).find((s) => (s as any).is_send === true) ?? null,
-    [workflow],
+  const finalTransition = useMemo(
+    () => outgoingTransitions.find((x) => x.target.is_final === true || x.target.category === "processed") ?? null,
+    [outgoingTransitions],
   );
 
-  /**
-   * Returns true if `toStateId` is reachable from `fromStateId` by following
-   * the workflow transitions. A state is considered reachable from itself.
-   */
-  function canReachState(fromStateId: string, toStateId: string): boolean {
-    if (!workflow) return false;
-    if (fromStateId === toStateId) return true;
-    const queue = [fromStateId];
-    const seen = new Set<string>();
-    while (queue.length > 0) {
-      const id = queue.shift()!;
-      if (seen.has(id)) continue;
-      seen.add(id);
-      for (const t of workflow.transitions.filter((tr) => tr.from_state_id === id)) {
-        if (t.to_state_id === toStateId) return true;
-        queue.push(t.to_state_id);
-      }
-    }
-    return false;
+  // ─── Helpers ────────────────────────────────────────────────────────
+  function isReplyFinal(r: ReplyRecord): boolean {
+    if (!r.workflow_state_id || !workflow) return false;
+    const s = workflow.states.find((st) => st.id === r.workflow_state_id);
+    return s?.category === "processed" || s?.is_final === true;
   }
 
-  /** target is strictly AFTER pivotStateId in the graph (not equal, not before). */
-  function isAfter(target: WorkflowState, pivotStateId: string): boolean {
-    if (target.id === pivotStateId) return false;
-    // After if pivot can reach target, but target cannot reach pivot.
-    return canReachState(pivotStateId, target.id) && !canReachState(target.id, pivotStateId);
+  function replyStateName(r: ReplyRecord): string {
+    if (!r.workflow_state_id || !workflow) return "Brouillon";
+    return workflow.states.find((s) => s.id === r.workflow_state_id)?.name ?? "Brouillon";
   }
 
-  /** target is strictly BEFORE pivotStateId in the graph. */
-  function isBefore(target: WorkflowState, pivotStateId: string): boolean {
-    if (target.id === pivotStateId) return false;
-    return canReachState(target.id, pivotStateId) && !canReachState(pivotStateId, target.id);
+  function replyStateCategory(r: ReplyRecord): string | null {
+    if (!r.workflow_state_id || !workflow) return null;
+    return workflow.states.find((s) => s.id === r.workflow_state_id)?.category ?? null;
   }
-
-  function logSignatureFlow(step: string, details: Record<string, unknown> = {}) {
-    console.debug("[ReplyComposer:signature]", step, {
-      courierId,
-      replyId: reply?.id ?? null,
-      currentState: currentState
-        ? { id: currentState.id, name: currentState.name, requires_signature: currentState.requires_signature }
-        : null,
-      isSigned,
-      signedStateId,
-      signatoryId: signatoryId || null,
-      selectedSignatory: selectedSignatory
-        ? {
-            id: selectedSignatory.id,
-            user_id: selectedSignatory.user_id,
-            has_signature_storage_key: !!selectedSignatory.signature_storage_key,
-          }
-        : null,
-      bodyHasMarker: /data-signature-block=["']true["']|signature-clara/i.test(body),
-      replyBodyHasMarker: /data-signature-block=["']true["']|signature-clara/i.test(replyMeta.body_html ?? ""),
-      bodyHasSignatureMarker,
-      ...details,
-    });
-  }
-
-  useEffect(() => {
-    logSignatureFlow("state snapshot", {
-      workflowStateCount: workflow?.states.length ?? 0,
-      signatureState: signatureState ? { id: signatureState.id, name: signatureState.name } : null,
-      sendState: sendState ? { id: sendState.id, name: sendState.name } : null,
-      isSent,
-      outgoingTransitions: outgoingTransitions.map(({ target }) => ({
-        id: target.id,
-        name: target.name,
-        requires_signature: target.requires_signature,
-        is_send: (target as any).is_send === true,
-      })),
-    });
-  }, [currentState?.id, isSigned, signedStateId, signatoryId, selectedSignatory?.id, workflow?.states.length, outgoingTransitions.length, signatureState?.id, sendState?.id, isSent]);
-
-  // ─── Mutations ──────────────────────────────────────────────────────
 
   async function ensureReply(): Promise<{ id: string }> {
-    const sigPayload = signatoryId ? signatoryId : null;
     if (reply) {
       await updateReplyContent(organizationId, reply.id, {
         channel,
         bodyHtml: body,
-        signatoryId: sigPayload,
+        signatoryId: signatoryId || null,
       });
       return { id: reply.id };
     }
@@ -298,207 +282,85 @@ export default function ReplyComposer({
       assignedService,
       initialStateId: workflow?.initialState?.id ?? null,
       recipient: sender
-        ? {
-            name: sender.name,
-            email: sender.email,
-            first_name: sender.first_name,
-            last_name: sender.last_name,
-          }
+        ? { name: sender.name, email: sender.email, first_name: sender.first_name, last_name: sender.last_name }
         : null,
     });
-    if (sigPayload) {
-      await updateReplyContent(organizationId, created.id, { signatoryId: sigPayload });
+    if (signatoryId) {
+      await updateReplyContent(organizationId, created.id, { signatoryId });
     }
+    setActiveReplyId(created.id);
     return { id: created.id };
   }
 
-  const saveDraft = useMutation({
-    mutationFn: async () => {
-      await ensureReply();
-    },
-    onSuccess: () => {
-      setDirty(false);
-      queryClient.invalidateQueries({ queryKey: ["courier-reply", courierId] });
-      queryClient.invalidateQueries({ queryKey: ["courier-events", courierId] });
-      toast.success("Brouillon enregistré");
-    },
-    onError: (err: Error) => toast.error(err.message),
-  });
-
-  // Pending transition awaiting confirmation modal
-  type SignatureAction = "sign" | "unsign" | "none";
-  type SendAction = "send" | "reset_send" | "none";
-  type PendingTarget = {
-    fromStateId: string | null;
-    fromStateName: string | null;
-    id: string;
-    name: string;
-    category: string | null;
-    requires_signature: boolean;
-    is_send: boolean;
-    signatureAction: SignatureAction;
-    sendAction: SendAction;
-  };
-  const [pendingTarget, setPendingTarget] = useState<PendingTarget | null>(null);
-
-  /**
-   * Signature action implied by transitioning to `target`:
-   * - "sign"   : we are leaving the signature state for a state located AFTER it,
-   *              and the reply is not currently signed.
-   * - "unsign" : the reply is signed and we are moving to a state located BEFORE
-   *              the signature state (so the signature must be removed; it can
-   *              be re-applied later by passing through the signature state again).
-   */
-  function computeSignatureAction(target: WorkflowState): SignatureAction {
-    if (!signatureState || !currentState) return "none";
-    // Signing happens when leaving the signature state going forward.
-    if (currentState.id === signatureState.id && isAfter(target, signatureState.id)) {
-      if (!isSigned || !bodyHasSignatureMarker) return "sign";
-      return "none";
-    }
-    // Unsigning happens when going to a state strictly before the signature state.
-    if (isSigned && isBefore(target, signatureState.id)) return "unsign";
-    return "none";
-  }
-
-  /**
-   * Send action implied by transitioning to `target`:
-   * - "send"       : we are leaving the send state for a state located AFTER it,
-   *                  the reply channel is email, and it has not yet been sent.
-   * - "reset_send" : we are moving to a state located BEFORE the send state on
-   *                  a reply that was previously sent — clear the sent marker
-   *                  so it can be re-sent the next time it crosses the send state.
-   */
-  function computeSendAction(target: WorkflowState): SendAction {
-    if (!sendState || !currentState) return "none";
-    if (currentState.id === sendState.id && isAfter(target, sendState.id)) {
-      if (channel === "email" && !isSent) return "send";
-      return "none";
-    }
-    if (isSent && isBefore(target, sendState.id)) return "reset_send";
-    return "none";
-  }
-
   async function buildSignedBody(): Promise<string> {
-    logSignatureFlow("build signed body:start");
     if (!selectedSignatory) throw new Error("Aucun signataire sélectionné.");
-    if (!selectedSignatory.signature_storage_key) {
+    if (!selectedSignatory.signature_storage_key)
       throw new Error("Aucune signature manuscrite enregistrée pour ce signataire.");
-    }
-    if (!currentUserId || selectedSignatory.user_id !== currentUserId) {
+    if (!currentUserId || selectedSignatory.user_id !== currentUserId)
       throw new Error("Vous n'êtes pas le signataire désigné.");
-    }
     const url = await getSignatureUrl(selectedSignatory.signature_storage_key);
     if (!url) throw new Error("Impossible de charger l'image de signature.");
     const dataUrl = await fetchAsDataUrl(url);
     const fullName = `${selectedSignatory.first_name} ${selectedSignatory.last_name}`.trim();
-    const titleP = selectedSignatory.title
-      ? `<p><em>${escapeHtml(selectedSignatory.title)}</em></p>`
-      : "";
-    // Use markup that Tiptap preserves: hr + paragraphs + image.
-    // The image alt="signature-clara" acts as our marker for detection/stripping.
+    const titleP = selectedSignatory.title ? `<p><em>${escapeHtml(selectedSignatory.title)}</em></p>` : "";
     const signatureBlock = [
-      `<hr>`,
-      `<p>&nbsp;</p>`,
+      `<p>&nbsp;</p>`, `<hr>`,
       `<p><strong>${escapeHtml(fullName)}</strong></p>`,
       titleP,
       `<p><img src="${dataUrl}" alt="signature-clara" style="height:80px;object-fit:contain;" /></p>`,
     ].join("");
-    const signedBody = `${stripSignatureBlock(body)}${signatureBlock}`;
-    logSignatureFlow("build signed body:done", {
-      dataUrlLength: dataUrl.length,
-      signedBodyLength: signedBody.length,
-      signedBodyHasMarker: /signature-clara/i.test(signedBody),
-    });
-    return signedBody;
+    return `${stripSignatureBlock(body)}${signatureBlock}`;
   }
 
-  const transition = useMutation({
-    mutationFn: async (target: PendingTarget) => {
-      logSignatureFlow("transition:start", { target });
-      if (target.signatureAction === "sign" && !signatoryId) {
-        logSignatureFlow("transition:blocked missing signatory", { target });
-        throw new Error("Veuillez sélectionner un signataire avant de passer à cet état.");
-      }
-      const sigAction = target.signatureAction;
-      const sendAction = target.sendAction;
+  // ─── Mutations ──────────────────────────────────────────────────────
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["courier-replies", courierId] });
+    queryClient.invalidateQueries({ queryKey: ["courier-events", courierId] });
+  };
+
+  const saveDraft = useMutation({
+    mutationFn: async () => { await ensureReply(); },
+    onSuccess: () => { setDirty(false); invalidate(); toast.success("Brouillon enregistré"); },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const doSign = useMutation({
+    mutationFn: async () => {
       const ensured = await ensureReply();
-      logSignatureFlow("transition:reply ensured", { target, sigAction, sendAction, ensuredReplyId: ensured.id });
-
-      if (sigAction === "sign") {
-        const newBody = await buildSignedBody();
-        await signReply(organizationId, courierId, ensured.id, {
-          bodyHtml: newBody,
-          signedBy: currentUserId!,
-          signedStateId: target.fromStateId,
-        });
-        setBody(newBody);
-        logSignatureFlow("transition:signed", {
-          signedStateId: target.fromStateId,
-          newBodyLength: newBody.length,
-          newBodyHasMarker: /signature-clara/i.test(newBody),
-        });
-      } else if (sigAction === "unsign") {
-        const cleaned = stripSignatureBlock(body);
-        setBody(cleaned);
-        await unsignReply(organizationId, courierId, ensured.id, { bodyHtml: cleaned });
-        logSignatureFlow("transition:unsigned", {
-          cleanedLength: cleaned.length,
-          cleanedHasMarker: /data-signature-block=["']true["']|signature-clara/i.test(cleaned),
-        });
-      } else {
-        logSignatureFlow("transition:no signature action", { target });
-      }
-
-      // Reset send marker BEFORE the state change, so the reply becomes
-      // re-sendable as soon as it crosses the send state again.
-      if (sendAction === "reset_send") {
-        console.debug("[ReplyComposer:send] reset send marker", { target, replyId: ensured.id });
-        await resetSendMarker(organizationId, courierId, ensured.id);
-      }
-
-      await transitionReplyState(
-        organizationId,
-        courierId,
-        ensured.id,
-        target.id,
-        target.name,
-        target.category,
-      );
-      logSignatureFlow("transition:state changed", { target });
-
-      // Auto-send the email when LEAVING a send state for a state located after it.
-      if (sendAction === "send") {
-        console.debug("[ReplyComposer:send] auto-send triggered", { target, replyId: ensured.id });
-        const { data, error } = await supabase.functions.invoke("send-courier-reply", {
-          body: { reply_id: ensured.id, organization_id: organizationId },
-        });
-        if (error) throw new Error(error.message);
-        const result = data as SendEmailResult | null;
-        if (result?.error) throw new Error(result.error);
-        return { sentTo: result?.to ?? null, didReset: false };
-      }
-      return { sentTo: null, didReset: sendAction === "reset_send" };
+      const newBody = await buildSignedBody();
+      await signReply(organizationId, courierId, ensured.id, {
+        bodyHtml: newBody, signedBy: currentUserId!, signedStateId: currentState?.id ?? null,
+      });
+      setBody(newBody);
     },
-    onSuccess: (result) => {
+    onSuccess: () => { setDirty(false); invalidate(); refetchReplies(); toast.success("Réponse signée"); },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const doUnsign = useMutation({
+    mutationFn: async () => {
+      if (!reply) throw new Error("Aucune réponse.");
+      const cleaned = stripSignatureBlock(body);
+      setBody(cleaned);
+      await unsignReply(organizationId, courierId, reply.id, { bodyHtml: cleaned });
+    },
+    onSuccess: () => { invalidate(); refetchReplies(); toast.success("Signature retirée"); },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const doTransition = useMutation({
+    mutationFn: async (target: { id: string; name: string; category: string | null }) => {
+      const ensured = await ensureReply();
+      await transitionReplyState(organizationId, courierId, ensured.id, target.id, target.name, target.category);
+    },
+    onSuccess: () => {
       setDirty(false);
-      setPendingTarget(null);
-      queryClient.invalidateQueries({ queryKey: ["courier-reply", courierId] });
-      queryClient.invalidateQueries({ queryKey: ["courier-events", courierId] });
+      invalidate();
       queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
-      refetchReply();
-      if (result?.sentTo) {
-        toast.success(`Courriel envoyé à ${result.sentTo}`);
-      } else if (result?.didReset) {
-        toast.success("Retour en arrière : la réponse pourra être renvoyée.");
-      } else {
-        toast.success("État de la réponse mis à jour");
-      }
+      refetchReplies();
+      toast.success("État mis à jour");
     },
-    onError: (err: Error) => {
-      setPendingTarget(null);
-      toast.error(err.message);
-    },
+    onError: (err: Error) => toast.error(err.message),
   });
 
   const sendEmail = useMutation({
@@ -513,32 +375,30 @@ export default function ReplyComposer({
       return result;
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["courier-reply", courierId] });
-      queryClient.invalidateQueries({ queryKey: ["courier-events", courierId] });
-      refetchReply();
+      invalidate(); refetchReplies();
       toast.success(`Courriel envoyé à ${data?.to ?? "l'usager"}`);
+      if (finalTransition) setProposeFinal(true);
     },
     onError: (err: Error) => toast.error(err.message),
   });
 
-  const isBusy = saveDraft.isPending || transition.isPending || sendEmail.isPending;
+  const doDelete = useMutation({
+    mutationFn: async (r: ReplyRecord) => {
+      await deleteReply(organizationId, courierId, r.id);
+    },
+    onSuccess: (_, deleted) => {
+      invalidate(); refetchReplies();
+      if (activeReplyId === deleted.id) { setActiveReplyId(null); setView("list"); }
+      setDeleteTarget(null);
+      toast.success("Réponse supprimée");
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
 
-  // ─── Transition gating ──────────────────────────────────────────────
-  function reasonForTarget(target: PendingTarget): string | null {
-    // Only gate signing requirements when the transition will actually sign.
-    if (target.signatureAction === "sign") {
-      if (!signatoryId) return "Sélectionnez d'abord un signataire.";
-      if (!selectedSignatory) return "Signataire introuvable.";
-      if (!selectedSignatory.user_id || selectedSignatory.user_id !== currentUserId)
-        return "Vous n'êtes pas le signataire désigné.";
-      if (!selectedSignatory.signature_storage_key)
-        return "Aucune signature manuscrite enregistrée pour ce signataire.";
-    }
-    return null;
-  }
+  const isBusy = saveDraft.isPending || doSign.isPending || doUnsign.isPending ||
+    doTransition.isPending || sendEmail.isPending || doDelete.isPending || isPrintingWithTemplate;
 
-  // ─── Render ─────────────────────────────────────────────────────────
-
+  // ─── Early exits (no service / no workflow) ─────────────────────────
   if (!currentService) {
     return (
       <div className="text-sm text-muted-foreground italic">
@@ -546,41 +406,297 @@ export default function ReplyComposer({
       </div>
     );
   }
-
   if (!replyWorkflowId) {
     return (
       <div className="text-sm text-muted-foreground italic">
-        Aucun workflow de réponse n'est configuré pour le service « {currentService.name} ». Configurez-le dans les paramètres du service.
+        Aucun workflow de réponse n'est configuré pour le service « {currentService.name} ».
       </div>
     );
   }
 
+  // ─── Helpers UI ─────────────────────────────────────────────────────
   const renderMaybeTooltip = (node: React.ReactNode, reason: string | null, key?: string) => {
     if (!reason) return node;
     return (
       <Tooltip key={key}>
-        <TooltipTrigger asChild>
-          <span tabIndex={0} className="inline-flex">{node}</span>
-        </TooltipTrigger>
+        <TooltipTrigger asChild><span tabIndex={0} className="inline-flex">{node}</span></TooltipTrigger>
         <TooltipContent>{reason}</TooltipContent>
       </Tooltip>
     );
   };
 
+  const dotColor = (cat: string | null) => cn(
+    "h-2 w-2 rounded-full shrink-0",
+    cat === "pending" && "bg-amber-500",
+    cat === "processing" && "bg-blue-500",
+    cat === "processed" && "bg-emerald-500",
+    cat === "archived" && "bg-slate-400",
+    !cat && "bg-gray-300",
+  );
+
+  // ════════════════════════════════════════════════════════════════════
+  // LIST VIEW
+  // ════════════════════════════════════════════════════════════════════
+  if (view === "list") {
+    return (
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium text-muted-foreground">
+            {replies.length === 0 ? "Aucune réponse" : `${replies.length} réponse${replies.length > 1 ? "s" : ""}`}
+          </span>
+          {!readOnly && (
+            <Button
+              size="sm"
+              onClick={() => { setActiveReplyId(null); setView("editor"); }}
+            >
+              <Plus className="h-4 w-4 mr-1.5" />
+              Créer une réponse
+            </Button>
+          )}
+        </div>
+
+        {replies.length === 0 ? (
+          <p className="text-sm text-muted-foreground italic">
+            Aucune réponse rédigée pour ce courrier.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {replies.map((r, i) => {
+              const cat = replyStateCategory(r);
+              const final = isReplyFinal(r);
+              return (
+                <div
+                  key={r.id}
+                  className="flex items-center gap-3 rounded-lg border bg-card px-4 py-3"
+                >
+                  <span className={dotColor(cat)} />
+                  <div className="flex-1 min-w-0">
+                    <span className="text-sm font-medium">Réponse n°{i + 1}</span>
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      {CHANNEL_LABELS[r.channel] ?? r.channel}
+                    </span>
+                    {r.created_at && (
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        — {new Date(r.created_at).toLocaleDateString("fr-FR")}
+                      </span>
+                    )}
+                  </div>
+                  <Badge variant="outline" className="text-xs shrink-0">{replyStateName(r)}</Badge>
+                  {!readOnly && (
+                    <div className="flex items-center gap-1 shrink-0">
+                      {renderMaybeTooltip(
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          disabled={final}
+                          onClick={() => { setActiveReplyId(r.id); setView("editor"); }}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>,
+                        final ? "Réponse verrouillée (état final)." : null,
+                        `edit-${r.id}`,
+                      )}
+                      {renderMaybeTooltip(
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-destructive hover:text-destructive"
+                          disabled={final}
+                          onClick={() => setDeleteTarget(r)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>,
+                        final ? "Réponse verrouillée (état final)." : null,
+                        `del-${r.id}`,
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Confirmation suppression */}
+        <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Supprimer cette réponse ?</AlertDialogTitle>
+              <AlertDialogDescription>Cette action est définitive.</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isBusy}>Annuler</AlertDialogCancel>
+              <AlertDialogAction
+                disabled={isBusy}
+                onClick={() => deleteTarget && doDelete.mutate(deleteTarget)}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Supprimer
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+    );
+  }
+
+  // ════════════════════════════════════════════════════════════════════
+  // EDITOR VIEW
+  // ════════════════════════════════════════════════════════════════════
+
+  const printArgs = {
+    bodyHtml: body,
+    subject: reply?.subject ?? parentSubject,
+    senderName: sender
+      ? `${sender.first_name ?? ""} ${sender.last_name ?? ""}`.trim() || sender.name || null
+      : null,
+    date: reply?.created_at ?? new Date().toISOString(),
+    organizationName: currentService?.name ?? null,
+  };
+
+  async function handleDraft() {
+    if (!aiResponseType) { toast.error("Sélectionnez un type de réponse."); return; }
+    setIsDrafting(true);
+    try {
+      const html = await draftReply({
+        courierId,
+        orgId: organizationId,
+        responseType: aiResponseType,
+        additionalInstructions: aiInstructions.trim() || undefined,
+      });
+      setBody(html);
+      setDirty(true);
+      setAiPanelOpen(false);
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setIsDrafting(false);
+    }
+  }
+
+  async function handlePrintPdf(useTemplate: boolean) {
+    if (useTemplate && hasTemplate) {
+      setIsPrintingWithTemplate(true);
+      try {
+        const { html } = await getOrgHtmlTemplate(organizationId);
+        printReply({ ...printArgs, templateHtml: html });
+      } catch (err: any) {
+        toast.error(err.message);
+      } finally {
+        setIsPrintingWithTemplate(false);
+      }
+    } else {
+      try {
+        printReply({ ...printArgs });
+      } catch (err: any) {
+        toast.error(err.message);
+      }
+    }
+  }
+
   const saveDisabledReason = isSigned
-    ? "Réponse verrouillée (signée)."
+    ? "Réponse verrouillée (signée). Retirez la signature pour modifier."
     : isFinal
       ? "Réponse verrouillée."
       : !dirty && !!reply
         ? "Aucune modification à enregistrer."
         : null;
 
+  const renderTransitions = () => {
+    if (outgoingTransitions.length === 0) {
+      return !isFinal
+        ? <span className="text-xs text-muted-foreground italic">Aucune transition définie.</span>
+        : null;
+    }
+
+    type Entry = {
+      transitionId: string;
+      label: string;
+      target: { id: string; name: string; category: string | null; is_final?: boolean | null };
+      isForward: boolean;
+    };
+
+    const entries: Entry[] = outgoingTransitions.map(({ transition: t, target }) => {
+      const currentOrder = CATEGORY_ORDER[currentState?.category ?? ""] ?? 0;
+      const targetOrder = CATEGORY_ORDER[target.category ?? ""] ?? 0;
+      return {
+        transitionId: t.id,
+        label: t.name || target.name,
+        target: { id: target.id, name: target.name, category: target.category, is_final: target.is_final },
+        isForward: targetOrder >= currentOrder || target.is_final === true,
+      };
+    });
+
+    const forwards = entries.filter((e) => e.isForward);
+    const backwards = entries.filter((e) => !e.isForward);
+
+    return (
+      <Select
+        value=""
+        onValueChange={(id) => {
+          const e = entries.find((x) => x.transitionId === id);
+          if (e) doTransition.mutate(e.target);
+        }}
+        disabled={isBusy || !!readOnly}
+      >
+        <SelectTrigger className="h-8 w-[200px] text-sm">
+          <SelectValue placeholder="Déplacer vers…" />
+        </SelectTrigger>
+        <SelectContent align="end">
+          {forwards.length > 0 && (
+            <SelectGroup>
+              <SelectLabel className="text-[10px] uppercase tracking-wide text-primary">Avancer</SelectLabel>
+              {forwards.map((e) => (
+                <SelectItem key={e.transitionId} value={e.transitionId}>
+                  <div className="flex items-center gap-2">
+                    <span className={dotColor(e.target.category)} />
+                    <span>{e.label}</span>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          )}
+          {forwards.length > 0 && backwards.length > 0 && <SelectSeparator />}
+          {backwards.length > 0 && (
+            <SelectGroup>
+              <SelectLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">Retour en arrière</SelectLabel>
+              {backwards.map((e) => (
+                <SelectItem key={e.transitionId} value={e.transitionId}>
+                  <div className="flex items-center gap-2">
+                    <span className={dotColor(e.target.category)} />
+                    <span>{e.label}</span>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          )}
+        </SelectContent>
+      </Select>
+    );
+  };
+
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
-      {/* Top bar: channel selector (left) + actions (right) */}
+      {/* Retour à la liste */}
+      <div className="flex items-center gap-2">
+        <Button variant="ghost" size="sm" className="gap-1.5 px-2" onClick={() => setView("list")}>
+          <ArrowLeft className="h-4 w-4" />
+          Retour
+        </Button>
+        {reply && (
+          <span className="text-sm text-muted-foreground">
+            Réponse n°{replies.indexOf(reply) + 1}
+          </span>
+        )}
+        {!reply && <span className="text-sm text-muted-foreground">Nouvelle réponse</span>}
+      </div>
+
+      {/* Barre d'actions */}
       <div className="flex flex-wrap items-end justify-between gap-3">
+        {/* Canal */}
         <div className="space-y-1.5">
-          <Label className="text-xs uppercase tracking-wide text-muted-foreground">Canal de réponse</Label>
+          <Label className="text-xs uppercase tracking-wide text-muted-foreground">Canal</Label>
           <RadioGroup
             value={channel}
             onValueChange={(v) => {
@@ -592,310 +708,212 @@ export default function ReplyComposer({
             className="flex items-center gap-4"
           >
             <div className="flex items-center gap-2">
-              <RadioGroupItem id="reply-channel-paper" value="paper" disabled={editorDisabled} />
-              <Label htmlFor="reply-channel-paper" className="cursor-pointer text-sm font-normal">
-                Courrier
-              </Label>
+              <RadioGroupItem id="rc-paper" value="paper" disabled={editorDisabled} />
+              <Label htmlFor="rc-paper" className="cursor-pointer text-sm font-normal">Courrier</Label>
             </div>
             <Tooltip>
               <TooltipTrigger asChild>
                 <div className="flex items-center gap-2">
-                  <RadioGroupItem
-                    id="reply-channel-email"
-                    value="email"
-                    disabled={editorDisabled || !canEmail}
-                  />
+                  <RadioGroupItem id="rc-email" value="email" disabled={editorDisabled || !canEmail} />
                   <Label
-                    htmlFor="reply-channel-email"
-                    className={cn(
-                      "cursor-pointer text-sm font-normal",
-                      !canEmail && "text-muted-foreground cursor-not-allowed",
-                    )}
+                    htmlFor="rc-email"
+                    className={cn("cursor-pointer text-sm font-normal", !canEmail && "text-muted-foreground cursor-not-allowed")}
                   >
                     Courriel
                   </Label>
                 </div>
               </TooltipTrigger>
-              {!canEmail && (
-                <TooltipContent>L'expéditeur n'a pas d'adresse email renseignée.</TooltipContent>
-              )}
+              {!canEmail && <TooltipContent>L'expéditeur n'a pas d'adresse email.</TooltipContent>}
             </Tooltip>
           </RadioGroup>
         </div>
 
-        <div className="space-y-1.5 min-w-[220px]">
-          <Label className="text-xs uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
-            <PenLine className="h-3.5 w-3.5" /> Signataire
-          </Label>
-          <Select
-            value={signatoryId || "__none__"}
-            onValueChange={(v) => {
-              const next = v === "__none__" ? "" : v;
-              setSignatoryId(next);
-              setDirty(true);
-            }}
-            disabled={editorDisabled || serviceSignatories.length === 0}
-          >
-            <SelectTrigger className="h-9">
-              <SelectValue
-                placeholder={
-                  serviceSignatories.length === 0
-                    ? "Aucun signataire associé au service"
-                    : "Sélectionner un signataire"
-                }
-              />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__none__">— Aucun —</SelectItem>
-              {serviceSignatories.map((s) => {
-                const fullName = `${s.first_name} ${s.last_name}`.trim() || "—";
-                return (
-                  <SelectItem key={s.id} value={s.id}>
-                    {fullName}
-                    {s.title ? ` — ${s.title}` : ""}
-                  </SelectItem>
-                );
-              })}
-            </SelectContent>
-          </Select>
-        </div>
-
+        {/* Boutons */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* Enregistrer */}
           {renderMaybeTooltip(
             <Button
-              variant="outline"
-              size="sm"
+              variant="outline" size="sm"
               onClick={() => saveDraft.mutate()}
               disabled={isBusy || editorDisabled || (!dirty && !!reply)}
             >
-              <Save className="mr-1.5 h-4 w-4" />
-              Enregistrer le brouillon
+              <Save className="mr-1.5 h-4 w-4" />Enregistrer
             </Button>,
-            saveDisabledReason,
-            "save-btn",
+            saveDisabledReason, "save-btn",
           )}
 
-          {isSigned && (
-            <Badge variant="secondary" className="gap-1 bg-emerald-100 text-emerald-700 border-emerald-200">
-              <CheckCircle2 className="h-3 w-3" /> Signée
-            </Badge>
-          )}
-
-          {(() => {
-            if (outgoingTransitions.length === 0) {
-              return !isFinal ? (
-                <span className="text-xs text-muted-foreground italic">
-                  Aucune transition définie depuis cet état.
-                </span>
-              ) : null;
-            }
-
-            // Precompute payloads + classify each transition as forward / backward.
-            type Entry = {
-              transitionId: string;
-              label: string;
-              payload: PendingTarget;
-              reason: string | null;
-              isForward: boolean;
-              category: string | null;
-              willSign: boolean;
-              willSend: boolean;
-              needsConfirm: boolean;
-            };
-            const entries: Entry[] = outgoingTransitions.map(({ transition: t, target }) => {
-              const targetIsSend = (target as any).is_send === true;
-              const requiresSig = target.requires_signature === true;
-              const sigAction = computeSignatureAction(target);
-              const sendAction = computeSendAction(target);
-              const payload: PendingTarget = {
-                fromStateId: currentState?.id ?? null,
-                fromStateName: currentState?.name ?? null,
-                id: target.id,
-                name: target.name,
-                category: target.category,
-                requires_signature: requiresSig,
-                is_send: targetIsSend,
-                signatureAction: sigAction,
-                sendAction,
-              };
-              const reason = reasonForTarget(payload);
-              const willSign = sigAction === "sign";
-              const willSend = sendAction === "send";
-              const needsConfirm =
-                sigAction === "sign" ||
-                sigAction === "unsign" ||
-                sendAction === "send" ||
-                sendAction === "reset_send";
-
-              // Forward = target is strictly after current (current → target reachable
-              // and target cannot reach current). Final/processed targets are forward.
-              // Special states (signature/send) leaving forward are forward.
-              const forward = currentState
-                ? isAfter(target, currentState.id) ||
-                  target.is_final === true ||
-                  target.category === "processed"
-                : true;
-
-              return {
-                transitionId: t.id,
-                label: t.name || target.name,
-                payload,
-                reason,
-                isForward: forward,
-                category: target.category,
-                willSign,
-                willSend,
-                needsConfirm,
-              };
-            });
-
-            const forwards = entries.filter((e) => e.isForward);
-            const backwards = entries.filter((e) => !e.isForward);
-
-            const handleSelect = (transitionId: string) => {
-              const e = entries.find((x) => x.transitionId === transitionId);
-              if (!e || e.reason) return;
-              if (e.needsConfirm) {
-                setPendingTarget(e.payload);
-              } else {
-                transition.mutate(e.payload);
-              }
-            };
-
-            const renderItem = (e: Entry, emphasized: boolean) => (
-              <SelectItem
-                key={e.transitionId}
-                value={e.transitionId}
-                disabled={!!e.reason}
+          {/* Exporter en PDF — canal courrier uniquement */}
+          {channel === "paper" && (
+            !hasTemplate ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handlePrintPdf(false)}
+                disabled={!body}
+                className="gap-1.5"
               >
-                <div className="flex items-center gap-2">
-                  <span
-                    className={cn(
-                      "h-2 w-2 rounded-full shrink-0",
-                      e.category === "pending" && "bg-amber-500",
-                      e.category === "processing" && "bg-blue-500",
-                      e.category === "processed" && "bg-emerald-500",
-                      e.category === "archived" && "bg-slate-400",
-                      !e.category && "bg-gray-300",
-                    )}
-                  />
-                  {e.willSign ? (
-                    <PenLine className="h-3.5 w-3.5 text-amber-600" />
-                  ) : e.willSend ? (
-                    <Send className="h-3.5 w-3.5 text-blue-600" />
-                  ) : null}
-                  <span className={cn(emphasized ? "font-medium" : "text-muted-foreground")}>
-                    {e.label}
-                  </span>
-                  {e.reason && (
-                    <span className="ml-auto text-[10px] uppercase tracking-wide text-destructive">
-                      bloqué
-                    </span>
-                  )}
-                </div>
-              </SelectItem>
-            );
-
-            // Pick a primary action (first forward, fallback to first backward) to
-            // surface as a dedicated, prominent button next to the select.
-            const primary = forwards[0] ?? null;
-
-            return (
-              <>
-                {primary && (
+                <Printer className="h-4 w-4" />
+                Exporter en PDF
+              </Button>
+            ) : (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
                   <Button
+                    variant="outline"
                     size="sm"
-                    variant="default"
-                    disabled={isBusy || readOnly || !!primary.reason}
-                    onClick={() => handleSelect(primary.transitionId)}
+                    disabled={!body || isPrintingWithTemplate}
                     className="gap-1.5"
                   >
-                    {primary.willSign ? (
-                      <PenLine className="h-4 w-4" />
-                    ) : primary.willSend ? (
-                      <Send className="h-4 w-4" />
-                    ) : primary.category === "processing" ? (
-                      <Mail className="h-4 w-4" />
-                    ) : (
-                      <ArrowRight className="h-4 w-4" />
-                    )}
-                    {primary.label}
+                    <Printer className="h-4 w-4" />
+                    {isPrintingWithTemplate ? "Chargement…" : "Exporter en PDF"}
+                    <ChevronDown className="h-3 w-3" />
                   </Button>
-                )}
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => handlePrintPdf(false)}>
+                    Mise en page standard
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handlePrintPdf(true)}>
+                    Utiliser le modèle de l'organisation
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )
+          )}
 
-                {entries.length > (primary ? 1 : 0) && (
-                  <Select
-                    value=""
-                    onValueChange={handleSelect}
-                    disabled={isBusy || readOnly}
-                  >
-                    <SelectTrigger className="h-8 w-[200px] text-sm">
-                      <SelectValue placeholder="Autres transitions…" />
-                    </SelectTrigger>
-                    <SelectContent align="end">
-                      {forwards.length > (primary ? 1 : 0) && (
-                        <SelectGroup>
-                          <SelectLabel className="text-[10px] uppercase tracking-wide text-primary">
-                            Avancer
-                          </SelectLabel>
-                          {forwards
-                            .filter((e) => e.transitionId !== primary?.transitionId)
-                            .map((e) => renderItem(e, true))}
-                        </SelectGroup>
-                      )}
-                      {forwards.length > (primary ? 1 : 0) && backwards.length > 0 && (
-                        <SelectSeparator />
-                      )}
-                      {backwards.length > 0 && (
-                        <SelectGroup>
-                          <SelectLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                            Retour en arrière
-                          </SelectLabel>
-                          {backwards.map((e) => renderItem(e, false))}
-                        </SelectGroup>
-                      )}
-                    </SelectContent>
-                  </Select>
-                )}
-              </>
-            );
-          })()}
-          {canSendEmail && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="sm"
-                  variant="default"
-                  disabled={isBusy}
-                  onClick={() => sendEmail.mutate()}
-                >
-                  <Send className="mr-1.5 h-4 w-4" />
-                  {sendEmail.isPending ? "Envoi…" : "Envoyer"}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Envoyer à {senderEmail}</TooltipContent>
-            </Tooltip>
+          {/* Signer */}
+          {isSignatureState && currentUserIsSignatory && !isSigned && (
+            <div className="flex items-center gap-2">
+              {serviceSignatories.length > 1 && (
+                <Select value={signatoryId || "__none__"} onValueChange={(v) => setSignatoryId(v === "__none__" ? "" : v)} disabled={isBusy}>
+                  <SelectTrigger className="h-8 w-[180px] text-sm"><SelectValue placeholder="Signataire…" /></SelectTrigger>
+                  <SelectContent>
+                    {serviceSignatories.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {`${s.first_name} ${s.last_name}`.trim()}{s.title ? ` — ${s.title}` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {renderMaybeTooltip(
+                <Button size="sm" disabled={isBusy || !signatoryId || !!readOnly} onClick={() => doSign.mutate()} className="gap-1.5">
+                  <PenLine className="h-4 w-4" />Signer
+                </Button>,
+                !signatoryId ? "Sélectionnez un signataire." : null, "sign-btn",
+              )}
+            </div>
+          )}
+
+          {/* Retirer la signature */}
+          {isSigned && currentUserIsSignatory && (
+            <Button
+              size="sm" variant="outline"
+              disabled={isBusy || !!readOnly}
+              onClick={() => doUnsign.mutate()}
+              className="gap-1.5 text-destructive border-destructive/40 hover:bg-destructive/5"
+            >
+              <X className="h-4 w-4" />Retirer la signature
+            </Button>
+          )}
+
+          {/* Envoyer */}
+          {isSendState && renderMaybeTooltip(
+            <Button
+              size="sm" disabled={isBusy || !!readOnly || !canEmail || isSent}
+              onClick={() => sendEmail.mutate()} className="gap-1.5"
+            >
+              <Send className="h-4 w-4" />
+              {sendEmail.isPending ? "Envoi…" : isSent ? "Déjà envoyé" : "Envoyer"}
+            </Button>,
+            !canEmail ? "L'expéditeur n'a pas d'adresse email." : null, "send-btn",
+          )}
+
+          {/* Badges */}
+          {isSigned && (
+            <Badge variant="secondary" className="gap-1 bg-amber-50 text-amber-700 border-amber-200">
+              <PenLine className="h-3 w-3" />Signée
+            </Badge>
           )}
           {isSent && (
             <Badge variant="secondary" className="gap-1 bg-emerald-100 text-emerald-700 border-emerald-200">
-              <CheckCircle2 className="h-3 w-3" /> Envoyé
+              Envoyé
             </Badge>
           )}
           {isFinal && (
             <Badge variant="secondary" className="gap-1">
-              <Lock className="h-3 w-3" /> Verrouillé
+              <Lock className="h-3 w-3" />Verrouillé
             </Badge>
           )}
+
+          {renderTransitions()}
         </div>
       </div>
 
-      {/* Editor */}
+      {/* Assistant IA */}
+      {!body && !editorDisabled && (
+        <div className="border rounded-md overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setAiPanelOpen((o) => !o)}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-violet-700 bg-violet-50 hover:bg-violet-100 transition-colors"
+          >
+            <Sparkles className="h-4 w-4 shrink-0" />
+            Assistant IA
+            <span className="ml-auto text-xs text-violet-500">{aiPanelOpen ? "▲" : "▼"}</span>
+          </button>
+
+          {aiPanelOpen && (
+            <div className="p-3 space-y-3 bg-white border-t">
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-2">Type de réponse</p>
+                <div className="flex flex-wrap gap-2">
+                  {["Accusé de réception", "Suivi", "Clôture"].map((type) => (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => setAiResponseType(type)}
+                      className={cn(
+                        "px-3 py-1 rounded-full text-xs font-medium border transition-colors",
+                        aiResponseType === type
+                          ? "bg-violet-600 text-white border-violet-600"
+                          : "border-border text-muted-foreground hover:border-violet-400 hover:text-violet-700",
+                      )}
+                    >
+                      {type}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-1">Instructions complémentaires</p>
+                <Textarea
+                  value={aiInstructions}
+                  onChange={(e) => setAiInstructions(e.target.value)}
+                  placeholder="Ex : Mentionner le délai de traitement de 15 jours, ton formel…"
+                  className="text-sm min-h-[80px] resize-none"
+                />
+              </div>
+
+              <Button
+                size="sm"
+                onClick={handleDraft}
+                disabled={isDrafting || !aiResponseType}
+                className="gap-1.5 bg-violet-600 hover:bg-violet-700 text-white"
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                {isDrafting ? "Génération en cours…" : "Générer la réponse"}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Éditeur */}
       <RichTextEditor
         value={body}
-        onChange={(html) => {
-          setBody(html);
-          setDirty(true);
-        }}
+        onChange={(html) => { setBody(html); setDirty(true); }}
         placeholder={
           channel === "email"
             ? `Rédigez la réponse à envoyer à ${senderEmail ?? "l'expéditeur"}…`
@@ -906,60 +924,25 @@ export default function ReplyComposer({
         className="flex-1 min-h-[220px]"
       />
 
-      <AlertDialog
-        open={!!pendingTarget}
-        onOpenChange={(open) => {
-          if (!open && !transition.isPending) setPendingTarget(null);
-        }}
-      >
+      {/* Proposition état final après envoi */}
+      <AlertDialog open={proposeFinal} onOpenChange={setProposeFinal}>
         <AlertDialogContent>
-          {(() => {
-            if (!pendingTarget) return null;
-            const sigAction = pendingTarget.signatureAction;
-            const sendAction = pendingTarget.sendAction;
-            let title = "Confirmer le changement d'état";
-            let description = `Confirmez le passage à l'état « ${pendingTarget.name} ».`;
-            let confirmLabel = "Confirmer";
-
-            if (sigAction === "sign") {
-              title = "Signer et passer à l'état suivant";
-              description = `Votre signature manuscrite va être apposée à la réponse, puis l'état passera à « ${pendingTarget.name} ». Cette action peut être annulée en revenant à un état antérieur à l'état de signature.`;
-              confirmLabel = "Signer et continuer";
-            } else if (sigAction === "unsign") {
-              title = "Retirer la signature";
-              description = `Le passage à l'état « ${pendingTarget.name} » va supprimer la signature actuelle de la réponse. Vous pourrez la réapposer en repassant par l'état de signature.`;
-              confirmLabel = "Retirer la signature";
-            } else if (sendAction === "send") {
-              title = "Envoyer le courriel";
-              description = `Le passage à l'état « ${pendingTarget.name} » va déclencher l'envoi du courriel à ${senderEmail ?? "l'usager"}.`;
-              confirmLabel = "Envoyer et continuer";
-            } else if (sendAction === "reset_send") {
-              title = "Annuler l'envoi";
-              description = `Le passage à l'état « ${pendingTarget.name} » va réinitialiser le marqueur d'envoi de la réponse, qui pourra à nouveau être envoyée si elle repasse par l'état d'envoi.`;
-              confirmLabel = "Confirmer le retour";
-            }
-
-            return (
-              <>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>{title}</AlertDialogTitle>
-                  <AlertDialogDescription>{description}</AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel disabled={transition.isPending}>Annuler</AlertDialogCancel>
-                  <AlertDialogAction
-                    disabled={transition.isPending}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      transition.mutate(pendingTarget);
-                    }}
-                  >
-                    {confirmLabel}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </>
-            );
-          })()}
+          <AlertDialogHeader>
+            <AlertDialogTitle>Courriel envoyé</AlertDialogTitle>
+            <AlertDialogDescription>
+              Souhaitez-vous passer la réponse à l'état
+              {finalTransition ? ` « ${finalTransition.target.name} »` : " final"} ?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Plus tard</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              setProposeFinal(false);
+              if (finalTransition) doTransition.mutate(finalTransition.target);
+            }}>
+              Passer à l'état final
+            </AlertDialogAction>
+          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </div>
@@ -967,19 +950,15 @@ export default function ReplyComposer({
 }
 
 function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 async function fetchAsDataUrl(url: string): Promise<string> {
   const res = await fetch(url);
   if (!res.ok) throw new Error("Téléchargement de la signature échoué.");
   const blob = await res.blob();
-  return await new Promise<string>((resolve, reject) => {
+  return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);
     reader.onerror = () => reject(new Error("Lecture de la signature échouée."));

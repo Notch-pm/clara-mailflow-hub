@@ -39,11 +39,14 @@ import DocumentManager from "./DocumentManager";
 import DocumentViewer from "./DocumentViewer";
 import InlineEditField from "./InlineEditField";
 import CourierNotes from "./CourierNotes";
+import NotesInlineSidebar from "./NotesInlineSidebar";
+import { listNotes, type CourierNote } from "@/services/courierNoteService";
 import ParticipantManager from "./ParticipantManager";
 import CourierHistoryTab from "./CourierHistoryTab";
 import ContentIntentsTab from "./ContentIntentsTab";
 import LinkedActionsTab from "./LinkedActionsTab";
 import ReplyComposer from "./ReplyComposer";
+import { listRepliesForCourier } from "@/services/courierReplyService";
 import type { CourierChannel, CourierParticipant, WorkflowTransition, WorkflowState, WorkflowCategory } from "@/types/courier";
 
 const channelLabels: Record<CourierChannel, string> = {
@@ -78,13 +81,39 @@ interface Props {
   onDelete?: (courier: MailboxCourier) => void;
   /** When true, the sheet takes the full screen width (used by the detail page). */
   fullScreen?: boolean;
+  /** When true, hides the full-screen navigation button. */
+  disableFullScreen?: boolean;
 }
 
-export default function MailboxSidePanel({ courier, open, onOpenChange, organizationId, withTabs = false, readOnly = false, onDelete, fullScreen = false }: Props) {
+export default function MailboxSidePanel({ courier, open, onOpenChange, organizationId, withTabs = false, readOnly = false, onDelete, fullScreen = false, disableFullScreen = false }: Props) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
   const [replyState, setReplyState] = useState<{ name: string; category: string | null } | null>(null);
+
+  const { data: replyList = [] } = useQuery({
+    queryKey: ["courier-replies", courier?.id],
+    queryFn: () => listRepliesForCourier(organizationId, courier!.id),
+    enabled: !!courier?.id && !!organizationId,
+  });
+
+  const { data: notesList = [] } = useQuery<CourierNote[]>({
+    queryKey: ["courier-notes", courier?.id],
+    queryFn: () => listNotes(courier!.id),
+    enabled: !!courier?.id,
+  });
+
+  const { data: ticketsList = [] } = useQuery({
+    queryKey: ["action-tickets", courier?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("action_tickets")
+        .select("id")
+        .eq("courier_id", courier!.id);
+      return data ?? [];
+    },
+    enabled: !!courier?.id,
+  });
 
   const participants = courier?.courier_participants ?? [];
   const sender = participants.find((p) => p.role === "sender");
@@ -181,7 +210,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
       if (!localWorkflowStateId) return null;
       const { data, error } = await supabase
         .from("workflow_states")
-        .select("id, name, category, is_final")
+        .select("id, name, category, is_final, is_initial")
         .eq("id", localWorkflowStateId)
         .maybeSingle();
       if (error) throw error;
@@ -442,8 +471,8 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
 
   const body = (
     <>
-      <div className="flex flex-col space-y-2 text-center sm:text-left border-b shrink-0 px-[12px] py-[12px] pl-0 pt-0 pr-0 pb-0">
-          <div className="flex items-start justify-between gap-4 pr-8 px-[12px] py-[12px]">
+      <div className="flex flex-col text-center sm:text-left border-b shrink-0">
+          <div className={cn("flex items-start justify-between gap-4 px-4", fullScreen ? "py-2 pr-4" : "py-3 pr-8")}>
             <div className="flex-1 min-w-0 flex items-center gap-3 flex-wrap">
               <div className="min-w-0 flex-1">
                 {!fullScreen && (
@@ -544,7 +573,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   )}
                 </>
               )}
-              {!fullScreen && (
+              {!fullScreen && !disableFullScreen && (
                 <Button
                   size="icon"
                   variant="ghost"
@@ -589,18 +618,27 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
 
         <Tabs
           defaultValue="detail"
-          className={cn(
-            "flex flex-col mb-px",
-            fullScreen ? "overflow-visible" : "flex-1 min-h-0 overflow-hidden",
-          )}
+          className="flex flex-col mb-px flex-1 min-h-0 overflow-hidden"
         >
           {withTabs && (
-            <TabsList className="mx-6 self-start shrink-0 mt-[4px] mb-[4px]">
+            <TabsList className={cn("self-start shrink-0", fullScreen ? "mx-4 mt-1 mb-1" : "mx-6 mt-[4px] mb-[4px]")}>
               <TabsTrigger value="detail">Détail du courrier</TabsTrigger>
               <TabsTrigger value="content">Contenu et intentions</TabsTrigger>
-              <TabsTrigger value="actions">Actions liées</TabsTrigger>
+              <TabsTrigger value="actions" className="gap-2">
+                Actions liées
+                {ticketsList.length > 0 && (
+                  <span className="inline-flex items-center justify-center rounded-full bg-green-500/20 text-green-700 px-1.5 text-[10px] font-medium leading-none min-w-[18px] h-[18px]">
+                    {ticketsList.length}
+                  </span>
+                )}
+              </TabsTrigger>
               <TabsTrigger value="response" className="gap-2">
-                Réponse
+                {replyList.length > 1 ? "Réponses" : "Réponse"}
+                {replyList.length > 0 && (
+                  <span className="inline-flex items-center justify-center rounded-full bg-green-500/20 text-green-700 px-1.5 text-[10px] font-medium leading-none min-w-[18px] h-[18px]">
+                    {replyList.length}
+                  </span>
+                )}
                 {replyState && (
                   <span
                     className={cn(
@@ -616,9 +654,23 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   </span>
                 )}
               </TabsTrigger>
-              <TabsTrigger value="notes">Notes internes</TabsTrigger>
-              <TabsTrigger value="participants">
-                Participants ({participants.length})
+              {!fullScreen && (
+                <TabsTrigger value="notes" className="gap-2">
+                  Notes internes
+                  {notesList.length > 0 && (
+                    <span className="inline-flex items-center justify-center rounded-full bg-green-500/20 text-green-700 px-1.5 text-[10px] font-medium leading-none min-w-[18px] h-[18px]">
+                      {notesList.length}
+                    </span>
+                  )}
+                </TabsTrigger>
+              )}
+              <TabsTrigger value="participants" className="gap-2">
+                Participants
+                {participants.length > 0 && (
+                  <span className="inline-flex items-center justify-center rounded-full bg-green-500/20 text-green-700 px-1.5 text-[10px] font-medium leading-none min-w-[18px] h-[18px]">
+                    {participants.length}
+                  </span>
+                )}
               </TabsTrigger>
               <TabsTrigger value="history">Historique</TabsTrigger>
             </TabsList>
@@ -626,13 +678,15 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
           <TabsContent
             value="detail"
             className={cn(
-              "grid grid-cols-1 lg:grid-cols-[360px_1fr] mt-0 data-[state=inactive]:hidden",
-              fullScreen ? "overflow-visible" : "flex-1 min-h-0 overflow-hidden",
+              "mt-0 data-[state=inactive]:hidden flex-1 min-h-0 overflow-hidden grid grid-cols-1",
+              fullScreen
+                ? "lg:grid-cols-[300px_1fr_260px]"
+                : "lg:grid-cols-[360px_1fr]",
             )}
             forceMount
           >
             {/* Left: metadata + workflow */}
-            <aside className={cn("px-6 py-5 lg:border-r space-y-5", !fullScreen && "overflow-y-auto")}>
+            <aside className="px-6 py-5 lg:border-r space-y-5 overflow-y-auto">
               <dl className="space-y-1 text-sm">
                 <InlineEditField
                   label="Date de réception"
@@ -742,27 +796,43 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 </p>
               ) : (
                 <>
-                  <Select
-                    value={currentService?.id ?? ""}
-                    onValueChange={(v) => serviceMutation.mutate(v)}
-                    disabled={serviceMutation.isPending}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Sélectionner un service" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableServices.map((s) => (
-                        <SelectItem key={s.id} value={s.id}>
-                          {s.name}
-                          {s.workflow?.name && (
-                            <span className="text-muted-foreground text-xs ml-2">
-                              — {s.workflow.name}
-                            </span>
-                          )}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {(() => {
+                    const isInitialState = !localWorkflowStateId || currentStateInfo?.is_initial === true;
+                    const serviceSelectDisabled = serviceMutation.isPending || !isInitialState;
+                    const select = (
+                      <Select
+                        value={currentService?.id ?? ""}
+                        onValueChange={(v) => serviceMutation.mutate(v)}
+                        disabled={serviceSelectDisabled}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Sélectionner un service" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableServices.map((s) => (
+                            <SelectItem key={s.id} value={s.id}>
+                              {s.name}
+                              {s.workflow?.name && (
+                                <span className="text-muted-foreground text-xs ml-2">
+                                  — {s.workflow.name}
+                                </span>
+                              )}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    );
+                    return !isInitialState ? (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="w-full">{select}</div>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          Remettez le courrier dans la boite de réception pour changer le service gestionnaire.
+                        </TooltipContent>
+                      </Tooltip>
+                    ) : select;
+                  })()}
                   {courier.assigned_service && !currentService && (
                     <p className="text-xs text-muted-foreground italic">
                       Service actuel « {courier.assigned_service} » introuvable.
@@ -872,16 +942,13 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
           </aside>
 
           {/* Right: viewer + documents */}
-          <main className={cn(
-            "px-6 py-5 space-y-5 bg-muted/10",
-            !fullScreen && "overflow-y-auto",
-          )}>
+          <main className="px-6 py-5 space-y-5 bg-muted/10 overflow-y-auto">
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <FileText className="h-4 w-4 text-muted-foreground" />
                 <h3 className="text-sm font-medium">Aperçu</h3>
               </div>
-              <div className={cn("h-[70vh] min-h-[500px]", fullScreen && "h-[82vh] min-h-[720px]")}>
+              <div className="h-[60vh] min-h-[400px]">
                 <DocumentViewer
                   documents={displayDocuments as any}
                   currentId={selectedDocId}
@@ -916,6 +983,16 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
               </>
             )}
           </main>
+
+          {/* Notes inline sidebar — fullScreen only */}
+          {fullScreen && withTabs && (
+            <NotesInlineSidebar
+              courierId={courier.id}
+              organizationId={organizationId}
+              notes={notesList}
+              readOnly={readOnly || isFinalState}
+            />
+          )}
           </TabsContent>
 
           {withTabs && (
@@ -950,16 +1027,18 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   onStateChange={setReplyState}
                 />
               </TabsContent>
-              <TabsContent
-                value="notes"
-                className="flex-1 overflow-y-auto px-6 py-5 mt-0"
-              >
-                <CourierNotes
-                  courierId={courier.id}
-                  organizationId={organizationId}
-                  readOnly={readOnly || isFinalState}
-                />
-              </TabsContent>
+              {!fullScreen && (
+                <TabsContent
+                  value="notes"
+                  className="flex-1 overflow-y-auto px-6 py-5 mt-0"
+                >
+                  <CourierNotes
+                    courierId={courier.id}
+                    organizationId={organizationId}
+                    readOnly={readOnly || isFinalState}
+                  />
+                </TabsContent>
+              )}
               <TabsContent
                 value="participants"
                 className="flex-1 overflow-y-auto px-6 py-5 mt-0"
@@ -986,7 +1065,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
 
   if (fullScreen) {
     return (
-      <div className="flex flex-col min-h-[calc(100vh-7rem)] overflow-visible">
+      <div className="flex flex-col h-full overflow-hidden">
         {body}
       </div>
     );
