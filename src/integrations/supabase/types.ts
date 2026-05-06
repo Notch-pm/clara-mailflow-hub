@@ -782,6 +782,10 @@ export type Database = {
           multiple_imap: boolean
           name: string
           primary_color: string | null
+          reply_template_data: string | null
+          reply_template_design: Json | null
+          reply_template_html: string | null
+          reply_template_storage_key: string | null
           secondary_color: string | null
           slug: string
           status: string
@@ -795,6 +799,10 @@ export type Database = {
           multiple_imap?: boolean
           name: string
           primary_color?: string | null
+          reply_template_data?: string | null
+          reply_template_design?: Json | null
+          reply_template_html?: string | null
+          reply_template_storage_key?: string | null
           secondary_color?: string | null
           slug: string
           status?: string
@@ -808,6 +816,10 @@ export type Database = {
           multiple_imap?: boolean
           name?: string
           primary_color?: string | null
+          reply_template_data?: string | null
+          reply_template_design?: Json | null
+          reply_template_html?: string | null
+          reply_template_storage_key?: string | null
           secondary_color?: string | null
           slug?: string
           status?: string
