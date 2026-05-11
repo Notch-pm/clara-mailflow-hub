@@ -775,12 +775,18 @@ export type Database = {
       }
       organizations: {
         Row: {
+          address_city: string | null
+          address_complement: string | null
+          address_postal_code: string | null
+          address_street: string | null
+          contact_email: string | null
           created_at: string
           id: string
           logo_url: string | null
           metadata: Json
           multiple_imap: boolean
           name: string
+          phone: string | null
           primary_color: string | null
           reply_template_data: string | null
           reply_template_design: Json | null
@@ -790,14 +796,21 @@ export type Database = {
           slug: string
           status: string
           updated_at: string
+          website: string | null
         }
         Insert: {
+          address_city?: string | null
+          address_complement?: string | null
+          address_postal_code?: string | null
+          address_street?: string | null
+          contact_email?: string | null
           created_at?: string
           id?: string
           logo_url?: string | null
           metadata?: Json
           multiple_imap?: boolean
           name: string
+          phone?: string | null
           primary_color?: string | null
           reply_template_data?: string | null
           reply_template_design?: Json | null
@@ -807,14 +820,21 @@ export type Database = {
           slug: string
           status?: string
           updated_at?: string
+          website?: string | null
         }
         Update: {
+          address_city?: string | null
+          address_complement?: string | null
+          address_postal_code?: string | null
+          address_street?: string | null
+          contact_email?: string | null
           created_at?: string
           id?: string
           logo_url?: string | null
           metadata?: Json
           multiple_imap?: boolean
           name?: string
+          phone?: string | null
           primary_color?: string | null
           reply_template_data?: string | null
           reply_template_design?: Json | null
@@ -824,6 +844,7 @@ export type Database = {
           slug?: string
           status?: string
           updated_at?: string
+          website?: string | null
         }
         Relationships: []
       }
@@ -953,6 +974,11 @@ export type Database = {
       }
       services: {
         Row: {
+          address_city: string | null
+          address_complement: string | null
+          address_postal_code: string | null
+          address_street: string | null
+          contact_email: string | null
           created_at: string
           created_by: string | null
           email: string | null
@@ -960,11 +986,18 @@ export type Database = {
           imap_settings_id: string | null
           name: string
           organization_id: string
+          phone: string | null
           reply_workflow_id: string | null
           updated_at: string
+          website: string | null
           workflow_id: string
         }
         Insert: {
+          address_city?: string | null
+          address_complement?: string | null
+          address_postal_code?: string | null
+          address_street?: string | null
+          contact_email?: string | null
           created_at?: string
           created_by?: string | null
           email?: string | null
@@ -972,11 +1005,18 @@ export type Database = {
           imap_settings_id?: string | null
           name: string
           organization_id: string
+          phone?: string | null
           reply_workflow_id?: string | null
           updated_at?: string
+          website?: string | null
           workflow_id: string
         }
         Update: {
+          address_city?: string | null
+          address_complement?: string | null
+          address_postal_code?: string | null
+          address_street?: string | null
+          contact_email?: string | null
           created_at?: string
           created_by?: string | null
           email?: string | null
@@ -984,8 +1024,10 @@ export type Database = {
           imap_settings_id?: string | null
           name?: string
           organization_id?: string
+          phone?: string | null
           reply_workflow_id?: string | null
           updated_at?: string
+          website?: string | null
           workflow_id?: string
         }
         Relationships: [
