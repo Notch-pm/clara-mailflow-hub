@@ -429,9 +429,16 @@ function ServiceDialog({
     setWorkflowId(editing?.workflow_id ?? "");
     setReplyWorkflowId(editing?.reply_workflow_id ?? NONE);
     setImapSettingsId(editing?.imap_settings_id ?? "");
+    setAddressStreet(editing?.address_street ?? "");
+    setAddressComplement(editing?.address_complement ?? "");
+    setAddressPostalCode(editing?.address_postal_code ?? "");
+    setAddressCity(editing?.address_city ?? "");
+    setPhone(editing?.phone ?? "");
+    setWebsite(editing?.website ?? "");
+    setContactEmail(editing?.contact_email ?? "");
     setSignatoryIds([]);
     setErrors({});
-  }, [open, editing?.id, editing?.name, editing?.email, editing?.workflow_id, editing?.reply_workflow_id, editing?.imap_settings_id]);
+  }, [open, editing?.id]);
 
   useEffect(() => {
     if (existingSignatoryIds) setSignatoryIds(existingSignatoryIds);
