@@ -51,6 +51,7 @@ import {
   type Signatory,
 } from "@/services/signatoryService";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 
 interface ImapConfig {
