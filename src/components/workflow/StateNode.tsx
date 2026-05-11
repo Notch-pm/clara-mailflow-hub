@@ -36,12 +36,8 @@ function StateNodeComponent({ data, selected }: NodeProps) {
       <div className="flex items-center gap-2 mb-1">
         {nodeData.is_initial && <Zap className="h-3.5 w-3.5 text-primary" />}
         {nodeData.is_final && <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />}
-        {nodeData.requires_signature && (
-          <PenLine className="h-3.5 w-3.5 text-amber-600" aria-label="Signature requise" />
-        )}
-        {nodeData.is_send && (
-          <Send className="h-3.5 w-3.5 text-blue-600" aria-label="Envoyer" />
-        )}
+        {nodeData.requires_signature && <PenLine className="h-3.5 w-3.5 text-amber-600" aria-label="État de signature" />}
+        {nodeData.is_send && <Send className="h-3.5 w-3.5 text-blue-600" aria-label="État d'envoi" />}
         <span className="font-semibold text-sm text-foreground truncate">{nodeData.label}</span>
       </div>
 

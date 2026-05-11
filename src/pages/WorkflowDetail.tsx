@@ -228,38 +228,29 @@ export default function WorkflowDetail() {
     async (data: { name?: string; category?: WorkflowCategory; is_initial?: boolean; is_final?: boolean; requires_signature?: boolean; is_send?: boolean }) => {
       if (!selectedNodeId || !workflowId) return;
 
-      // If setting is_initial, clear others first
       if (data.is_initial === true) {
         await clearInitialFlag(workflowId, selectedNodeId);
         setNodes((nds) =>
           nds.map((n) =>
-            n.id !== selectedNodeId
-              ? { ...n, data: { ...n.data, is_initial: false } }
-              : n
+            n.id !== selectedNodeId ? { ...n, data: { ...n.data, is_initial: false } } : n
           )
         );
       }
 
-      // Unicity for signature: only one state may carry requires_signature
       if (data.requires_signature === true) {
         await clearSignatureFlag(workflowId, selectedNodeId);
         setNodes((nds) =>
           nds.map((n) =>
-            n.id !== selectedNodeId
-              ? { ...n, data: { ...n.data, requires_signature: false } }
-              : n
+            n.id !== selectedNodeId ? { ...n, data: { ...n.data, requires_signature: false } } : n
           )
         );
       }
 
-      // Unicity for send: only one state may carry is_send
       if (data.is_send === true) {
         await clearSendFlag(workflowId, selectedNodeId);
         setNodes((nds) =>
           nds.map((n) =>
-            n.id !== selectedNodeId
-              ? { ...n, data: { ...n.data, is_send: false } }
-              : n
+            n.id !== selectedNodeId ? { ...n, data: { ...n.data, is_send: false } } : n
           )
         );
       }

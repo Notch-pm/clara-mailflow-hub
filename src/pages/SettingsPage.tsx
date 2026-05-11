@@ -1,19 +1,20 @@
 import { useState } from "react";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Users, ArrowLeft, GitBranch, Settings, Tags, Briefcase, ClipboardList, Mail, PenTool, LucideIcon } from "lucide-react";
+import { Users, ArrowLeft, GitBranch, Settings, Tags, Briefcase, ClipboardList, Mail, PenTool, FileText, LucideIcon } from "lucide-react";
 import UsersPage from "./UsersPage";
 import Workflows from "./Workflows";
 import ClassificationSettings from "./ClassificationSettings";
 import ServicesSettings from "./ServicesSettings";
 import ProceduresSettings from "./ProceduresSettings";
 import SignaturesSettings from "./SignaturesSettings";
+import ModeleSettings from "./ModeleSettings";
 
 import ImapSettings from "@/components/ImapSettings";
 import GeneralSettings from "@/components/GeneralSettings";
 import { useOrganization } from "@/contexts/OrganizationContext";
 
-type Section = "menu" | "general" | "utilisateurs" | "workflows" | "classification" | "services" | "demarches" | "emails" | "signatures";
+type Section = "menu" | "general" | "utilisateurs" | "workflows" | "classification" | "services" | "demarches" | "emails" | "signatures" | "modeles";
 
 const settingSections: { key: Section; title: string; description: string; icon: LucideIcon }[] = [
   { key: "general", title: "Configuration générale", description: "Paramètres globaux de l'organisation", icon: Settings },
@@ -24,6 +25,7 @@ const settingSections: { key: Section; title: string; description: string; icon:
   { key: "services", title: "Services", description: "Services de l'organisation et workflows associés", icon: Briefcase },
   { key: "demarches", title: "Démarches", description: "Liste des démarches administratives proposées", icon: ClipboardList },
   { key: "classification", title: "Classification", description: "Tags de classement des courriers", icon: Tags },
+  { key: "modeles", title: "Modèles de documents", description: "Modèle Word pour les courriers papier", icon: FileText },
 ];
 
 const sectionLabels: Record<string, string> = {
@@ -35,6 +37,7 @@ const sectionLabels: Record<string, string> = {
   services: "Services",
   demarches: "Démarches administratives",
   classification: "Classification (tags)",
+  modeles: "Modèles de documents",
 };
 
 export default function SettingsPage() {
@@ -65,6 +68,9 @@ export default function SettingsPage() {
         {activeSection === "services" && <ServicesSettings />}
         {activeSection === "demarches" && <ProceduresSettings />}
         {activeSection === "signatures" && <SignaturesSettings />}
+        {activeSection === "modeles" && organizationId && (
+          <ModeleSettings orgId={organizationId} />
+        )}
       </div>
     );
   }

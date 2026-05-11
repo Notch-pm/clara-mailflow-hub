@@ -86,7 +86,6 @@ export function StateEditPanel({
         <Switch
           id="is-initial"
           checked={isInitial}
-          disabled={isReply && (requiresSignature || isSend)}
           onCheckedChange={(v) => onUpdate({ is_initial: v })}
         />
       </div>
@@ -96,45 +95,42 @@ export function StateEditPanel({
         <Switch
           id="is-final"
           checked={isFinal}
-          disabled={isReply && (requiresSignature || isSend)}
           onCheckedChange={(v) => onUpdate({ is_final: v })}
         />
       </div>
 
       {isReply && (
-        <div className="flex items-center justify-between border-t pt-3">
-          <Label htmlFor="requires-signature" className="flex items-center gap-2">
-            <PenLine className="h-4 w-4 text-amber-600" />
-            Signature
-          </Label>
-          <Switch
-            id="requires-signature"
-            checked={requiresSignature}
-            disabled={isInitial || isFinal || isSend}
-            onCheckedChange={(v) => onUpdate({ requires_signature: v })}
-          />
-        </div>
-      )}
+        <>
+          <div className="flex items-center justify-between border-t pt-3">
+            <Label htmlFor="requires-signature" className="flex items-center gap-2">
+              <PenLine className="h-4 w-4 text-amber-600" />
+              État de signature
+            </Label>
+            <Switch
+              id="requires-signature"
+              checked={requiresSignature}
+              disabled={isInitial || isFinal || isSend}
+              onCheckedChange={(v) => onUpdate({ requires_signature: v })}
+            />
+          </div>
 
-      {isReply && (
-        <div className="flex items-center justify-between">
-          <Label htmlFor="is-send" className="flex items-center gap-2">
-            <Send className="h-4 w-4 text-blue-600" />
-            Envoi
-          </Label>
-          <Switch
-            id="is-send"
-            checked={isSend}
-            disabled={isInitial || isFinal || requiresSignature}
-            onCheckedChange={(v) => onUpdate({ is_send: v })}
-          />
-        </div>
-      )}
+          <div className="flex items-center justify-between">
+            <Label htmlFor="is-send" className="flex items-center gap-2">
+              <Send className="h-4 w-4 text-blue-600" />
+              État d'envoi
+            </Label>
+            <Switch
+              id="is-send"
+              checked={isSend}
+              disabled={isInitial || isFinal || requiresSignature}
+              onCheckedChange={(v) => onUpdate({ is_send: v })}
+            />
+          </div>
 
-      {isReply && (
-        <p className="text-xs text-muted-foreground italic">
-          La signature et l'envoi ne peuvent être affectés qu'à un seul état du workflow, et ne peuvent pas être initiaux ou finaux.
-        </p>
+          <p className="text-xs text-muted-foreground italic">
+            Un seul état peut être marqué "signature" ou "envoi". Ces marqueurs ne peuvent être combinés avec initial ou final.
+          </p>
+        </>
       )}
 
       <Button variant="destructive" size="sm" className="w-full" onClick={onDelete}>
