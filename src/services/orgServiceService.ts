@@ -139,7 +139,6 @@ export async function updateService(
       imap_settings_id: payload.imap_settings_id ?? null,
       ...pickContactFields(payload),
     } as never)
-    })
     .eq("id", id)
     .select(SELECT_BASIC)
     .single();
