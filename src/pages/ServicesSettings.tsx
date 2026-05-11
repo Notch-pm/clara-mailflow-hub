@@ -523,13 +523,13 @@ function ServiceDialog({
       reply_workflow_id: replyWorkflowId && replyWorkflowId !== NONE ? replyWorkflowId : null,
       imap_settings_id: multipleImap ? imapSettingsId || null : null,
       signatory_ids: signatoryIds,
-      address_street: addressStreet.trim() || null,
-      address_complement: addressComplement.trim() || null,
-      address_postal_code: addressPostalCode.trim() || null,
-      address_city: addressCity.trim() || null,
-      phone: phone.trim() || null,
-      website: website.trim() || null,
-      contact_email: contactEmail.trim() || null,
+      address_street: customCoords ? (addressStreet.trim() || null) : orgContact.address_street,
+      address_complement: customCoords ? (addressComplement.trim() || null) : orgContact.address_complement,
+      address_postal_code: customCoords ? (addressPostalCode.trim() || null) : orgContact.address_postal_code,
+      address_city: customCoords ? (addressCity.trim() || null) : orgContact.address_city,
+      phone: customCoords ? (phone.trim() || null) : orgContact.phone,
+      website: customCoords ? (website.trim() || null) : orgContact.website,
+      contact_email: customCoords ? (contactEmail.trim() || null) : orgContact.contact_email,
     });
   }
 
