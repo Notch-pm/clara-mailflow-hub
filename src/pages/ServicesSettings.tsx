@@ -465,6 +465,16 @@ function ServiceDialog({
     setPhone(editing?.phone ?? "");
     setWebsite(editing?.website ?? "");
     setContactEmail(editing?.contact_email ?? "");
+    // Default toggle: ON if any service contact field differs from org's
+    const matchesOrg =
+      (editing?.address_street ?? "") === (orgContact.address_street ?? "") &&
+      (editing?.address_complement ?? "") === (orgContact.address_complement ?? "") &&
+      (editing?.address_postal_code ?? "") === (orgContact.address_postal_code ?? "") &&
+      (editing?.address_city ?? "") === (orgContact.address_city ?? "") &&
+      (editing?.phone ?? "") === (orgContact.phone ?? "") &&
+      (editing?.website ?? "") === (orgContact.website ?? "") &&
+      (editing?.contact_email ?? "") === (orgContact.contact_email ?? "");
+    setCustomCoords(editing ? !matchesOrg : false);
     setSignatoryIds([]);
     setErrors({});
   }, [open, editing?.id]);
