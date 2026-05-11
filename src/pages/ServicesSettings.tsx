@@ -389,6 +389,7 @@ function ServiceDialog({
   imapConfigs,
   multipleImap,
   signatories,
+  orgContact,
   onSubmit,
   isSubmitting,
 }: {
@@ -400,6 +401,15 @@ function ServiceDialog({
   imapConfigs: ImapConfig[];
   multipleImap: boolean;
   signatories: Signatory[];
+  orgContact: {
+    address_street: string | null;
+    address_complement: string | null;
+    address_postal_code: string | null;
+    address_city: string | null;
+    phone: string | null;
+    website: string | null;
+    contact_email: string | null;
+  };
   onSubmit: (values: {
     name: string;
     email: string | null;
