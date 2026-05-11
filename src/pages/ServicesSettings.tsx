@@ -389,6 +389,13 @@ function ServiceDialog({
     reply_workflow_id: string | null;
     imap_settings_id: string | null;
     signatory_ids: string[];
+    address_street: string | null;
+    address_complement: string | null;
+    address_postal_code: string | null;
+    address_city: string | null;
+    phone: string | null;
+    website: string | null;
+    contact_email: string | null;
   }) => void;
   isSubmitting: boolean;
 }) {
