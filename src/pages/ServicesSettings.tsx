@@ -484,6 +484,13 @@ function ServiceDialog({
       reply_workflow_id: replyWorkflowId && replyWorkflowId !== NONE ? replyWorkflowId : null,
       imap_settings_id: multipleImap ? imapSettingsId || null : null,
       signatory_ids: signatoryIds,
+      address_street: addressStreet.trim() || null,
+      address_complement: addressComplement.trim() || null,
+      address_postal_code: addressPostalCode.trim() || null,
+      address_city: addressCity.trim() || null,
+      phone: phone.trim() || null,
+      website: website.trim() || null,
+      contact_email: contactEmail.trim() || null,
     });
   }
 
