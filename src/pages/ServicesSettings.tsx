@@ -406,6 +406,13 @@ function ServiceDialog({
   const [replyWorkflowId, setReplyWorkflowId] = useState<string>(NONE);
   const [imapSettingsId, setImapSettingsId] = useState<string>("");
   const [signatoryIds, setSignatoryIds] = useState<string[]>([]);
+  const [addressStreet, setAddressStreet] = useState("");
+  const [addressComplement, setAddressComplement] = useState("");
+  const [addressPostalCode, setAddressPostalCode] = useState("");
+  const [addressCity, setAddressCity] = useState("");
+  const [phone, setPhone] = useState("");
+  const [website, setWebsite] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Load existing signatories for this service when editing
