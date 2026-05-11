@@ -441,6 +441,7 @@ function ServiceDialog({
   const [phone, setPhone] = useState("");
   const [website, setWebsite] = useState("");
   const [contactEmail, setContactEmail] = useState("");
+  const [customCoords, setCustomCoords] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Load existing signatories for this service when editing
