@@ -8,12 +8,29 @@ export interface OrgService {
   imap_settings_id: string | null;
   workflow_id: string;
   reply_workflow_id: string | null;
+  address_street: string | null;
+  address_complement: string | null;
+  address_postal_code: string | null;
+  address_city: string | null;
+  phone: string | null;
+  website: string | null;
+  contact_email: string | null;
   created_at: string;
   updated_at: string;
   created_by: string | null;
   workflow?: { id: string; name: string } | null;
   reply_workflow?: { id: string; name: string } | null;
   imap_config?: { id: string; label: string; username: string } | null;
+}
+
+export interface ServiceContactPayload {
+  address_street?: string | null;
+  address_complement?: string | null;
+  address_postal_code?: string | null;
+  address_city?: string | null;
+  phone?: string | null;
+  website?: string | null;
+  contact_email?: string | null;
 }
 
 const SELECT_FRAGMENT =
