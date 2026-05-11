@@ -341,6 +341,15 @@ export default function ServicesSettings({ organizationId, isAdminOverride }: Pr
         imapConfigs={imapConfigs}
         multipleImap={multipleImap}
         signatories={signatories}
+        orgContact={{
+          address_street: org?.address_street ?? null,
+          address_complement: org?.address_complement ?? null,
+          address_postal_code: org?.address_postal_code ?? null,
+          address_city: org?.address_city ?? null,
+          phone: org?.phone ?? null,
+          website: org?.website ?? null,
+          contact_email: org?.contact_email ?? null,
+        }}
         onSubmit={(values) => saveMutation.mutate(values)}
         isSubmitting={saveMutation.isPending}
       />
