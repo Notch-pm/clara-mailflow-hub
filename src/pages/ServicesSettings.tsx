@@ -107,11 +107,20 @@ export default function ServicesSettings({ organizationId, isAdminOverride }: Pr
     queryFn: async () => {
       const { data, error } = await supabase
         .from("organizations" as never)
-        .select("multiple_imap")
+        .select("multiple_imap, address_street, address_complement, address_postal_code, address_city, phone, website, contact_email")
         .eq("id", orgId)
         .single();
       if (error) throw error;
-      return data as unknown as { multiple_imap: boolean };
+      return data as unknown as {
+        multiple_imap: boolean;
+        address_street: string | null;
+        address_complement: string | null;
+        address_postal_code: string | null;
+        address_city: string | null;
+        phone: string | null;
+        website: string | null;
+        contact_email: string | null;
+      };
     },
     enabled: !!orgId,
   });
