@@ -628,37 +628,84 @@ function ServiceDialog({
           </div>
 
           <div className="space-y-3 rounded-lg border p-3 bg-muted/30">
-            <div className="text-sm font-medium">Coordonnées</div>
-            <div className="space-y-2">
-              <Label htmlFor="svc-street" className="text-xs">Numéro et voie</Label>
-              <Input id="svc-street" value={addressStreet} onChange={(e) => setAddressStreet(e.target.value)} maxLength={200} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="svc-complement" className="text-xs">Complément d'adresse</Label>
-              <Input id="svc-complement" value={addressComplement} onChange={(e) => setAddressComplement(e.target.value)} maxLength={200} />
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              <div className="space-y-2">
-                <Label htmlFor="svc-postal" className="text-xs">Code postal</Label>
-                <Input id="svc-postal" value={addressPostalCode} onChange={(e) => setAddressPostalCode(e.target.value)} maxLength={20} />
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-medium">Coordonnées</div>
+                <p className="text-xs text-muted-foreground">
+                  {customCoords
+                    ? "Coordonnées propres à ce service."
+                    : "Les coordonnées de l'organisation seront utilisées."}
+                </p>
               </div>
-              <div className="space-y-2 col-span-2">
-                <Label htmlFor="svc-city" className="text-xs">Ville</Label>
-                <Input id="svc-city" value={addressCity} onChange={(e) => setAddressCity(e.target.value)} maxLength={100} />
+              <div className="flex items-center gap-2 shrink-0">
+                <Label htmlFor="svc-custom-coords" className="text-xs cursor-pointer">
+                  Différentes de l'organisation
+                </Label>
+                <Switch
+                  id="svc-custom-coords"
+                  checked={customCoords}
+                  onCheckedChange={(v) => {
+                    setCustomCoords(v);
+                    if (v) {
+                      // Pré-remplir avec les valeurs de l'organisation pour faciliter l'édition
+                      if (!addressStreet) setAddressStreet(orgContact.address_street ?? "");
+                      if (!addressComplement) setAddressComplement(orgContact.address_complement ?? "");
+                      if (!addressPostalCode) setAddressPostalCode(orgContact.address_postal_code ?? "");
+                      if (!addressCity) setAddressCity(orgContact.address_city ?? "");
+                      if (!phone) setPhone(orgContact.phone ?? "");
+                      if (!website) setWebsite(orgContact.website ?? "");
+                      if (!contactEmail) setContactEmail(orgContact.contact_email ?? "");
+                    }
+                  }}
+                />
               </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="svc-phone" className="text-xs">Téléphone</Label>
-              <Input id="svc-phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={50} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="svc-website" className="text-xs">Site internet</Label>
-              <Input id="svc-website" type="url" value={website} onChange={(e) => setWebsite(e.target.value)} maxLength={255} placeholder="https://…" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="svc-contact-email" className="text-xs">Courriel de contact</Label>
-              <Input id="svc-contact-email" type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} maxLength={255} />
-            </div>
+
+            {customCoords ? (
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label htmlFor="svc-street" className="text-xs">Numéro et voie</Label>
+                  <Input id="svc-street" value={addressStreet} onChange={(e) => setAddressStreet(e.target.value)} maxLength={200} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="svc-complement" className="text-xs">Complément d'adresse</Label>
+                  <Input id="svc-complement" value={addressComplement} onChange={(e) => setAddressComplement(e.target.value)} maxLength={200} />
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="svc-postal" className="text-xs">Code postal</Label>
+                    <Input id="svc-postal" value={addressPostalCode} onChange={(e) => setAddressPostalCode(e.target.value)} maxLength={20} />
+                  </div>
+                  <div className="space-y-2 col-span-2">
+                    <Label htmlFor="svc-city" className="text-xs">Ville</Label>
+                    <Input id="svc-city" value={addressCity} onChange={(e) => setAddressCity(e.target.value)} maxLength={100} />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="svc-phone" className="text-xs">Téléphone</Label>
+                  <Input id="svc-phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={50} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="svc-website" className="text-xs">Site internet</Label>
+                  <Input id="svc-website" type="url" value={website} onChange={(e) => setWebsite(e.target.value)} maxLength={255} placeholder="https://…" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="svc-contact-email" className="text-xs">Courriel de contact</Label>
+                  <Input id="svc-contact-email" type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} maxLength={255} />
+                </div>
+              </div>
+            ) : (
+              <div className="text-xs text-muted-foreground space-y-1 rounded-md bg-background/60 border p-3">
+                <div>{orgContact.address_street || <span className="italic">Adresse non renseignée</span>}</div>
+                {orgContact.address_complement && <div>{orgContact.address_complement}</div>}
+                <div>
+                  {[orgContact.address_postal_code, orgContact.address_city].filter(Boolean).join(" ") || <span className="italic">Ville non renseignée</span>}
+                </div>
+                {orgContact.phone && <div>Tél. {orgContact.phone}</div>}
+                {orgContact.contact_email && <div>{orgContact.contact_email}</div>}
+                {orgContact.website && <div>{orgContact.website}</div>}
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">
