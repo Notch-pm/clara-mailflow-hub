@@ -80,15 +80,29 @@ export async function listServices(orgId: string): Promise<OrgService[]> {
   return services;
 }
 
+type ServiceMutationPayload = {
+  name: string;
+  email: string | null;
+  workflow_id: string;
+  reply_workflow_id?: string | null;
+  imap_settings_id?: string | null;
+} & ServiceContactPayload;
+
+function pickContactFields(p: ServiceContactPayload) {
+  return {
+    address_street: p.address_street?.toString().trim() || null,
+    address_complement: p.address_complement?.toString().trim() || null,
+    address_postal_code: p.address_postal_code?.toString().trim() || null,
+    address_city: p.address_city?.toString().trim() || null,
+    phone: p.phone?.toString().trim() || null,
+    website: p.website?.toString().trim() || null,
+    contact_email: p.contact_email?.toString().trim() || null,
+  };
+}
+
 export async function createService(
   orgId: string,
-  payload: {
-    name: string;
-    email: string | null;
-    workflow_id: string;
-    reply_workflow_id?: string | null;
-    imap_settings_id?: string | null;
-  },
+  payload: ServiceMutationPayload,
 ): Promise<OrgService> {
   const {
     data: { user },
@@ -103,7 +117,8 @@ export async function createService(
       reply_workflow_id: payload.reply_workflow_id ?? null,
       imap_settings_id: payload.imap_settings_id ?? null,
       created_by: user?.id ?? null,
-    })
+      ...pickContactFields(payload),
+    } as never)
     .select(SELECT_BASIC)
     .single();
   if (error) throw error;
@@ -112,13 +127,7 @@ export async function createService(
 
 export async function updateService(
   id: string,
-  payload: {
-    name: string;
-    email: string | null;
-    workflow_id: string;
-    reply_workflow_id?: string | null;
-    imap_settings_id?: string | null;
-  },
+  payload: ServiceMutationPayload,
 ): Promise<OrgService> {
   const { data, error } = await supabase
     .from("services")
@@ -128,6 +137,8 @@ export async function updateService(
       workflow_id: payload.workflow_id,
       reply_workflow_id: payload.reply_workflow_id ?? null,
       imap_settings_id: payload.imap_settings_id ?? null,
+      ...pickContactFields(payload),
+    } as never)
     })
     .eq("id", id)
     .select(SELECT_BASIC)
