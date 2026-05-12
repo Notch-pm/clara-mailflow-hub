@@ -118,6 +118,30 @@ export default function ReplyComposer({
     enabled: !!replyWorkflowId,
   });
 
+  // ─── Organization (for merge tags) ──────────────────────────────────
+  const { data: organization } = useQuery({
+    queryKey: ["org-coordinates", organizationId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("organizations")
+        .select("name, address_street, address_complement, address_postal_code, address_city, phone, website, contact_email")
+        .eq("id", organizationId)
+        .single();
+      if (error) throw error;
+      return data as {
+        name: string;
+        address_street: string | null;
+        address_complement: string | null;
+        address_postal_code: string | null;
+        address_city: string | null;
+        phone: string | null;
+        website: string | null;
+        contact_email: string | null;
+      };
+    },
+    enabled: !!organizationId,
+  });
+
   // ─── Replies list ───────────────────────────────────────────────────
   const { data: replies = [], refetch: refetchReplies } = useQuery({
     queryKey: ["courier-replies", courierId],
