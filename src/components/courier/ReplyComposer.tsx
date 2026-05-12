@@ -50,7 +50,7 @@ import {
 } from "@/services/courierReplyService";
 import { getSignatureUrl } from "@/services/signatoryService";
 import { useAuth } from "@/contexts/AuthContext";
-import { printReply } from "@/utils/printReply";
+import { printReply, buildContactBlock } from "@/utils/printReply";
 import { getOrgHtmlTemplate } from "@/services/templateService";
 import { draftReply } from "@/services/courierDraftService";
 import { Textarea } from "@/components/ui/textarea";
