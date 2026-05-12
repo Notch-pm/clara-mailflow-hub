@@ -6,7 +6,37 @@ export interface PrintReplyOptions {
   senderName: string | null;
   date: string | null;
   organizationName?: string | null;
+  organizationCompleteHtml?: string | null;
+  serviceName?: string | null;
+  serviceCompleteHtml?: string | null;
   templateHtml?: string | null;
+}
+
+export interface ContactInfo {
+  address_street?: string | null;
+  address_complement?: string | null;
+  address_postal_code?: string | null;
+  address_city?: string | null;
+  phone?: string | null;
+  website?: string | null;
+  contact_email?: string | null;
+}
+
+export function buildContactBlock(name: string | null | undefined, info: ContactInfo | null | undefined): string {
+  const esc = (s: string | null | undefined) =>
+    (s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const lines: string[] = [];
+  if (name) lines.push(`<strong>${esc(name)}</strong>`);
+  if (info) {
+    if (info.address_street) lines.push(esc(info.address_street));
+    if (info.address_complement) lines.push(esc(info.address_complement));
+    const cityLine = [info.address_postal_code, info.address_city].filter(Boolean).join(" ").trim();
+    if (cityLine) lines.push(esc(cityLine));
+    if (info.phone) lines.push(`Tél : ${esc(info.phone)}`);
+    if (info.website) lines.push(`Web : ${esc(info.website)}`);
+    if (info.contact_email) lines.push(`Email : ${esc(info.contact_email)}`);
+  }
+  return lines.join("<br>");
 }
 
 const LETTER_BODY_CSS = `
@@ -55,6 +85,9 @@ export function printReply(options: PrintReplyOptions): void {
       contenu: new Handlebars.SafeString(options.bodyHtml),
       expediteur: options.senderName ?? "",
       organisation: options.organizationName ?? "",
+      organisation_complete: new Handlebars.SafeString(options.organizationCompleteHtml ?? ""),
+      service: options.serviceName ?? "",
+      service_complete: new Handlebars.SafeString(options.serviceCompleteHtml ?? ""),
     });
     openAndPrint(printWin, merged);
     return;

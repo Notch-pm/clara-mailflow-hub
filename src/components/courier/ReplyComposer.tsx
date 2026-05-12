@@ -50,7 +50,7 @@ import {
 } from "@/services/courierReplyService";
 import { getSignatureUrl } from "@/services/signatoryService";
 import { useAuth } from "@/contexts/AuthContext";
-import { printReply } from "@/utils/printReply";
+import { printReply, buildContactBlock } from "@/utils/printReply";
 import { getOrgHtmlTemplate } from "@/services/templateService";
 import { draftReply } from "@/services/courierDraftService";
 import { Textarea } from "@/components/ui/textarea";
@@ -116,6 +116,30 @@ export default function ReplyComposer({
     queryKey: ["reply-workflow", replyWorkflowId],
     queryFn: () => getReplyWorkflow(replyWorkflowId!),
     enabled: !!replyWorkflowId,
+  });
+
+  // ─── Organization (for merge tags) ──────────────────────────────────
+  const { data: organization } = useQuery({
+    queryKey: ["org-coordinates", organizationId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("organizations")
+        .select("name, address_street, address_complement, address_postal_code, address_city, phone, website, contact_email")
+        .eq("id", organizationId)
+        .single();
+      if (error) throw error;
+      return data as {
+        name: string;
+        address_street: string | null;
+        address_complement: string | null;
+        address_postal_code: string | null;
+        address_city: string | null;
+        phone: string | null;
+        website: string | null;
+        contact_email: string | null;
+      };
+    },
+    enabled: !!organizationId,
   });
 
   // ─── Replies list ───────────────────────────────────────────────────
@@ -552,7 +576,10 @@ export default function ReplyComposer({
       ? `${sender.first_name ?? ""} ${sender.last_name ?? ""}`.trim() || sender.name || null
       : null,
     date: reply?.created_at ?? new Date().toISOString(),
-    organizationName: currentService?.name ?? null,
+    organizationName: organization?.name ?? null,
+    organizationCompleteHtml: organization ? buildContactBlock(organization.name, organization) : null,
+    serviceName: currentService?.name ?? null,
+    serviceCompleteHtml: currentService ? buildContactBlock(currentService.name, currentService) : null,
   };
 
   async function handleDraft() {

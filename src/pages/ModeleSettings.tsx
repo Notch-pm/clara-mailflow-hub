@@ -66,8 +66,15 @@ export default function ModeleSettings({ orgId }: Props) {
         <h2 className="text-lg font-semibold">Modèle de document</h2>
         <p className="text-sm text-muted-foreground mt-1">
           Créez ou modifiez le modèle visuel utilisé lors de l'export PDF des réponses courrier.
-          Positionnez les variables <code className="text-xs">{"{{contenu}}"}</code>,{" "}
-          <code className="text-xs">{"{{date}}"}</code>, etc. dans le modèle.
+          Variables disponibles via le menu « Variables » de l'éditeur :{" "}
+          <code className="text-xs">{"{{date}}"}</code>,{" "}
+          <code className="text-xs">{"{{objet}}"}</code>,{" "}
+          <code className="text-xs">{"{{contenu}}"}</code>,{" "}
+          <code className="text-xs">{"{{expediteur}}"}</code>,{" "}
+          <code className="text-xs">{"{{organisation}}"}</code>,{" "}
+          <code className="text-xs">{"{{{organisation_complete}}}"}</code>,{" "}
+          <code className="text-xs">{"{{service}}"}</code>,{" "}
+          <code className="text-xs">{"{{{service_complete}}}"}</code>.
         </p>
       </div>
 
