@@ -576,7 +576,10 @@ export default function ReplyComposer({
       ? `${sender.first_name ?? ""} ${sender.last_name ?? ""}`.trim() || sender.name || null
       : null,
     date: reply?.created_at ?? new Date().toISOString(),
-    organizationName: currentService?.name ?? null,
+    organizationName: organization?.name ?? null,
+    organizationCompleteHtml: organization ? buildContactBlock(organization.name, organization) : null,
+    serviceName: currentService?.name ?? null,
+    serviceCompleteHtml: currentService ? buildContactBlock(currentService.name, currentService) : null,
   };
 
   async function handleDraft() {
