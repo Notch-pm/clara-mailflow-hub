@@ -58,6 +58,9 @@ export function printReply(options: PrintReplyOptions): void {
       contenu: new Handlebars.SafeString(options.bodyHtml),
       expediteur: options.senderName ?? "",
       organisation: options.organizationName ?? "",
+      organisation_complete: new Handlebars.SafeString(options.organizationCompleteHtml ?? ""),
+      service: options.serviceName ?? "",
+      service_complete: new Handlebars.SafeString(options.serviceCompleteHtml ?? ""),
     });
     openAndPrint(printWin, merged);
     return;
