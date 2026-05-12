@@ -64,10 +64,8 @@ export default function TemplateEditor({ initialDesign, onSave, onClose, isSavin
     <div ref={containerRef} className="flex flex-col" style={{ height: "100%" }}>
       <div className="flex items-center justify-between px-4 py-2 border-b bg-background shrink-0" style={{ height: TOOLBAR_HEIGHT }}>
         <div className="text-sm font-medium">
-          Éditeur de modèle — variables :{" "}
-          <span className="font-mono text-xs text-muted-foreground">
-            {"{{"} date {"}}"}  {"{{"} objet {"}}"}  {"{{"} contenu {"}}"}  {"{{"} expediteur {"}}"}  {"{{"} organisation {"}}"}
-          </span>
+          Éditeur de modèle — utilisez le menu « Variables » de l'éditeur pour insérer :
+          date, objet, contenu, expéditeur, organisation (nom / avec adresse), service (nom / avec adresse).
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={onClose} disabled={isSaving}>
