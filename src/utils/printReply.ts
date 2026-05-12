@@ -6,6 +6,9 @@ export interface PrintReplyOptions {
   senderName: string | null;
   date: string | null;
   organizationName?: string | null;
+  organizationCompleteHtml?: string | null;
+  serviceName?: string | null;
+  serviceCompleteHtml?: string | null;
   templateHtml?: string | null;
 }
 
