@@ -1195,7 +1195,6 @@ export type Database = {
           is_active: boolean | null
           is_superadmin: boolean
           last_name: string | null
-          password_hash: string | null
           updated_at: string
         }
         Insert: {
@@ -1207,7 +1206,6 @@ export type Database = {
           is_active?: boolean | null
           is_superadmin?: boolean
           last_name?: string | null
-          password_hash?: string | null
           updated_at?: string
         }
         Update: {
@@ -1219,7 +1217,6 @@ export type Database = {
           is_active?: boolean | null
           is_superadmin?: boolean
           last_name?: string | null
-          password_hash?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -1380,7 +1377,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      current_user_orgs: { Args: never; Returns: string[] }
       get_cron_secret: { Args: never; Returns: string }
+      is_admin_of: { Args: { _org: string }; Returns: boolean }
+      is_member_of: { Args: { _org: string }; Returns: boolean }
       is_superadmin: { Args: { _user_id: string }; Returns: boolean }
       trigger_arpege_sync: { Args: never; Returns: number }
       trigger_fetch_inbound_emails: { Args: never; Returns: number }
