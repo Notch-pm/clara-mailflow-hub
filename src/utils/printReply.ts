@@ -62,13 +62,44 @@ function escape(str: string | null | undefined): string {
 }
 
 function openAndPrint(printWin: Window, html: string): void {
+  const triggerPrint = () => {
+    try {
+      printWin.focus();
+      printWin.print();
+      printWin.addEventListener("afterprint", () => printWin.close());
+    } catch {
+      /* popup may have been closed manually */
+    }
+  };
+
+  // Register before writing so we don't miss the load event
+  printWin.addEventListener("load", triggerPrint, { once: true });
+
+  printWin.document.open();
   printWin.document.write(html);
   printWin.document.close();
-  printWin.addEventListener("load", () => {
-    printWin.focus();
-    printWin.print();
-    printWin.addEventListener("afterprint", () => printWin.close());
-  });
+
+  // Fallback: if the document is already complete (synchronous content with no
+  // external resources), the load event may not fire — trigger after images settle.
+  const fallback = () => {
+    if (printWin.closed) return;
+    const imgs = Array.from(printWin.document.images || []);
+    const pending = imgs.filter((img) => !img.complete);
+    if (pending.length === 0) {
+      triggerPrint();
+      return;
+    }
+    let remaining = pending.length;
+    const done = () => {
+      remaining -= 1;
+      if (remaining <= 0) triggerPrint();
+    };
+    pending.forEach((img) => {
+      img.addEventListener("load", done, { once: true });
+      img.addEventListener("error", done, { once: true });
+    });
+  };
+  setTimeout(fallback, 100);
 }
 
 export function printReply(options: PrintReplyOptions): void {
