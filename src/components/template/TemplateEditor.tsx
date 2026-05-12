@@ -15,7 +15,18 @@ const MERGE_TAGS = {
   objet: { name: "Objet", value: "{{objet}}", sample: "Re: Votre demande" },
   contenu: { name: "Contenu du courrier", value: "{{contenu}}", sample: "<p>Corps du message...</p>" },
   expediteur: { name: "Expéditeur", value: "{{expediteur}}", sample: "Jean Dupont" },
-  organisation: { name: "Organisation", value: "{{organisation}}", sample: "Mairie de Paris" },
+  organisation: { name: "Organisation (nom)", value: "{{organisation}}", sample: "Mairie de Paris" },
+  organisation_complete: {
+    name: "Organisation (avec adresse)",
+    value: "{{{organisation_complete}}}",
+    sample: "<strong>Mairie de Paris</strong><br>1 rue de Rivoli<br>75001 Paris<br>Tél : 01 23 45 67 89",
+  },
+  service: { name: "Service (nom)", value: "{{service}}", sample: "Service État civil" },
+  service_complete: {
+    name: "Service (avec adresse)",
+    value: "{{{service_complete}}}",
+    sample: "<strong>Service État civil</strong><br>1 rue de Rivoli<br>75001 Paris<br>Tél : 01 23 45 67 89",
+  },
 };
 
 const TOOLBAR_HEIGHT = 49; // px — barre du haut
