@@ -397,15 +397,6 @@ export default function CourriersTraites() {
         </div>
       )}
 
-      {organizationId && (
-        <MailboxSidePanel
-          courier={selectedCourier}
-          open={panelOpen}
-          onOpenChange={setPanelOpen}
-          organizationId={organizationId}
-          withTabs
-        />
-      )}
     </div>
   );
 }
