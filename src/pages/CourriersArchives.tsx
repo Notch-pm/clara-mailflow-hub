@@ -179,8 +179,7 @@ export default function CourriersArchives() {
   }
 
   function handleRowClick(c: CourierWithRelations) {
-    setSelectedCourier(c);
-    setPanelOpen(true);
+    navigate(`/courrier/${c.id}`);
   }
 
   return (
