@@ -164,8 +164,7 @@ export default function CourriersEnInstruction() {
   }
 
   function handleRowClick(c: CourierWithRelations) {
-    setSelectedCourier(c);
-    setPanelOpen(true);
+    navigate(`/courrier/${c.id}`);
   }
 
   return (
