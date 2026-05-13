@@ -24,7 +24,7 @@ import { useOrganization } from "@/contexts/OrganizationContext";
 import { supabase } from "@/integrations/supabase/client";
 import { listTags } from "@/services/courierTagService";
 import { listServices } from "@/services/orgServiceService";
-import MailboxSidePanel from "@/components/courier/MailboxSidePanel";
+
 import { readableTextColor } from "@/lib/tag-color";
 import { cn } from "@/lib/utils";
 import type { CourierWithRelations } from "@/types/courier";
