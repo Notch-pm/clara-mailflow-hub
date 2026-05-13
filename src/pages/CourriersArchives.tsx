@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -24,7 +25,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { CourierWithRelations } from "@/types/courier";
 import { listTags } from "@/services/courierTagService";
 import { listServices } from "@/services/orgServiceService";
-import MailboxSidePanel from "@/components/courier/MailboxSidePanel";
+
 import { readableTextColor } from "@/lib/tag-color";
 import { cn } from "@/lib/utils";
 
@@ -32,13 +33,12 @@ type GroupBy = "none" | "service";
 
 export default function CourriersArchives() {
   const { organizationId } = useOrganization();
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [serviceFilter, setServiceFilter] = useState<string>("all");
   const [tagFilter, setTagFilter] = useState<string>("all");
   const [groupBy, setGroupBy] = useState<GroupBy>("none");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const [selectedCourier, setSelectedCourier] = useState<CourierWithRelations | null>(null);
-  const [panelOpen, setPanelOpen] = useState(false);
 
   // Archived states for the org
   const { data: archivedStates } = useQuery({
@@ -179,8 +179,7 @@ export default function CourriersArchives() {
   }
 
   function handleRowClick(c: CourierWithRelations) {
-    setSelectedCourier(c);
-    setPanelOpen(true);
+    navigate(`/courrier/${c.id}`);
   }
 
   return (
@@ -372,16 +371,6 @@ export default function CourriersArchives() {
         </div>
       )}
 
-      {organizationId && (
-        <MailboxSidePanel
-          courier={selectedCourier}
-          open={panelOpen}
-          onOpenChange={setPanelOpen}
-          organizationId={organizationId}
-          withTabs
-          readOnly
-        />
-      )}
     </div>
   );
 }

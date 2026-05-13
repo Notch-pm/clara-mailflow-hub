@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -23,7 +24,7 @@ import { useOrganization } from "@/contexts/OrganizationContext";
 import { supabase } from "@/integrations/supabase/client";
 import { listTags } from "@/services/courierTagService";
 import { listServices } from "@/services/orgServiceService";
-import MailboxSidePanel from "@/components/courier/MailboxSidePanel";
+
 import { readableTextColor } from "@/lib/tag-color";
 import { cn } from "@/lib/utils";
 import type { CourierWithRelations } from "@/types/courier";
@@ -32,14 +33,13 @@ type GroupBy = "none" | "state" | "service";
 
 export default function CourriersEnInstruction() {
   const { organizationId } = useOrganization();
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [serviceFilter, setServiceFilter] = useState<string>("all");
   const [tagFilter, setTagFilter] = useState<string>("all");
   const [stateFilter, setStateFilter] = useState<string>("all");
   const [groupBy, setGroupBy] = useState<GroupBy>("none");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const [selectedCourier, setSelectedCourier] = useState<CourierWithRelations | null>(null);
-  const [panelOpen, setPanelOpen] = useState(false);
 
   // Processing states for the org
   const { data: processingStates } = useQuery({
@@ -164,8 +164,7 @@ export default function CourriersEnInstruction() {
   }
 
   function handleRowClick(c: CourierWithRelations) {
-    setSelectedCourier(c);
-    setPanelOpen(true);
+    navigate(`/courrier/${c.id}`);
   }
 
   return (
@@ -365,15 +364,6 @@ export default function CourriersEnInstruction() {
         </div>
       )}
 
-      {organizationId && (
-        <MailboxSidePanel
-          courier={selectedCourier}
-          open={panelOpen}
-          onOpenChange={setPanelOpen}
-          organizationId={organizationId}
-          withTabs
-        />
-      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { X, ArrowRight, Tag as TagIcon, Check, Briefcase, FileText, Trash2, Maximize2, ExternalLink } from "lucide-react";
+import { X, ArrowRight, ArrowLeft, Tag as TagIcon, Check, Briefcase, FileText, Trash2, Maximize2, ExternalLink } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -474,6 +474,18 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
       <div className="flex flex-col text-center sm:text-left border-b shrink-0">
           <div className={cn("flex items-start justify-between gap-4 px-4", fullScreen ? "py-2 pr-4" : "py-3 pr-8")}>
             <div className="flex-1 min-w-0 flex items-center gap-3 flex-wrap">
+              {fullScreen && (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8 -ml-1 text-muted-foreground hover:text-foreground shrink-0"
+                  onClick={() => navigate(-1)}
+                  title="Retour"
+                  aria-label="Retour à la liste"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </Button>
+              )}
               <div className="min-w-0 flex-1">
                 {!fullScreen && (
                   <SheetTitle className="text-lg sr-only">
