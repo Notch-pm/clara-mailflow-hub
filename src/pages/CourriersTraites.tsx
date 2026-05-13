@@ -190,8 +190,7 @@ export default function CourriersTraites() {
   }
 
   function handleRowClick(c: CourierWithRelations) {
-    setSelectedCourier(c);
-    setPanelOpen(true);
+    navigate(`/courrier/${c.id}`);
   }
 
   return (
