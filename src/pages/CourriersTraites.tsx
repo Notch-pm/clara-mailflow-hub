@@ -33,7 +33,6 @@ type GroupBy = "none" | "state" | "service";
 
 export default function CourriersTraites() {
   const { organizationId } = useOrganization();
-  const { organizationId } = useOrganization();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [serviceFilter, setServiceFilter] = useState<string>("all");
