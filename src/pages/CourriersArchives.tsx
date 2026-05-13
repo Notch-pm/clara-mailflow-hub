@@ -371,16 +371,6 @@ export default function CourriersArchives() {
         </div>
       )}
 
-      {organizationId && (
-        <MailboxSidePanel
-          courier={selectedCourier}
-          open={panelOpen}
-          onOpenChange={setPanelOpen}
-          organizationId={organizationId}
-          withTabs
-          readOnly
-        />
-      )}
     </div>
   );
 }
