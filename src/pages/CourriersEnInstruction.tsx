@@ -33,14 +33,13 @@ type GroupBy = "none" | "state" | "service";
 
 export default function CourriersEnInstruction() {
   const { organizationId } = useOrganization();
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [serviceFilter, setServiceFilter] = useState<string>("all");
   const [tagFilter, setTagFilter] = useState<string>("all");
   const [stateFilter, setStateFilter] = useState<string>("all");
   const [groupBy, setGroupBy] = useState<GroupBy>("none");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const [selectedCourier, setSelectedCourier] = useState<CourierWithRelations | null>(null);
-  const [panelOpen, setPanelOpen] = useState(false);
 
   // Processing states for the org
   const { data: processingStates } = useQuery({
