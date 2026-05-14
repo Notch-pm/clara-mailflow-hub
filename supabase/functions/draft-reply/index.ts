@@ -78,6 +78,7 @@ Deno.serve(async (req) => {
       .from("couriers")
       .select("subject, metadata, received_at, courier_participants(role, name, email, first_name, last_name, organization)")
       .eq("id", courierId)
+      .eq("organization_id", orgId)
       .single();
     if (cErr || !courier) return jsonResponse({ error: "Courrier introuvable" }, 404);
 
