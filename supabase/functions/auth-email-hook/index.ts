@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { Webhook } from "https://esm.sh/standardwebhooks@1.0.0";
 import nodemailer from "npm:nodemailer@6";
 
 const corsHeaders = {
