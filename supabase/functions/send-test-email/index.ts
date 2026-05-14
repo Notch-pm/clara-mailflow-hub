@@ -13,10 +13,25 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Authenticate caller
+    const authHeader = req.headers.get("authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const { to, organization_id } = await req.json();
     if (!to || !organization_id) {
       return new Response(
         JSON.stringify({ error: "Paramètres manquants (to, organization_id)" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    // Basic email format check
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(to))) {
+      return new Response(
+        JSON.stringify({ error: "Adresse email invalide" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
