@@ -146,6 +146,29 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Verify shared secret to prevent unauthorized invocation.
+    // Configure the same value in Supabase Dashboard → Auth → Hooks
+    // (Send Email hook → "HTTP Headers") and as the AUTH_HOOK_SECRET edge
+    // function secret.
+    const expectedSecret = Deno.env.get("AUTH_HOOK_SECRET");
+    if (!expectedSecret) {
+      console.error("AUTH_HOOK_SECRET not configured");
+      return new Response(JSON.stringify({ error: "Hook not configured" }), {
+        status: 503,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const provided =
+      req.headers.get("x-auth-hook-secret") ??
+      req.headers.get("webhook-secret") ??
+      "";
+    if (provided !== expectedSecret) {
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, serviceRoleKey);
