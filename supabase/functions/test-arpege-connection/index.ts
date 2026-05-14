@@ -85,14 +85,7 @@ Deno.serve(async (req) => {
 
     // Check admin via users table + organization_users
     const { data: userProfile } = await supabaseAdmin.from("users").select("is_superadmin").eq("id", user.id).single();
-    const { data: orgUser } = await supabaseAdmin.from("organization_users").select("role").eq("user_id", user.id).limit(1).maybeSingle();
-
-    const isAdmin = userProfile?.is_superadmin || orgUser?.role === "admin";
-    if (!isAdmin) {
-      return new Response(JSON.stringify({ status: "error", message: "Accès réservé aux administrateurs" }), {
-        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const isSuperAdmin = userProfile?.is_superadmin === true;
 
     const { organization_id } = await req.json();
     if (!organization_id) {
@@ -100,6 +93,22 @@ Deno.serve(async (req) => {
         JSON.stringify({ status: "error", message: "organization_id requis" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    // Verify caller is admin of the SPECIFIC organization being targeted
+    if (!isSuperAdmin) {
+      const { data: targetOrgUser } = await supabaseAdmin
+        .from("organization_users")
+        .select("role")
+        .eq("user_id", user.id)
+        .eq("organization_id", organization_id)
+        .maybeSingle();
+      const isOrgAdmin = targetOrgUser?.role === "admin" || targetOrgUser?.role === "administrateur";
+      if (!isOrgAdmin) {
+        return new Response(JSON.stringify({ status: "error", message: "Accès refusé" }), {
+          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
     const { data: integration, error } = await supabaseAdmin
