@@ -44,7 +44,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    await verifyAuth(req);
+    const user = await verifyAuth(req);
     const admin = getAdminClient();
 
     const { courierId, orgId, responseType, additionalInstructions } = await req.json() as {
@@ -58,6 +58,18 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "Paramètres manquants" }, 400);
     }
 
+    // Verify the caller is a member of the requested organization
+    const { data: membership, error: memErr } = await admin
+      .from("organization_users")
+      .select("user_id")
+      .eq("user_id", user.id)
+      .eq("organization_id", orgId)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (memErr || !membership) {
+      return jsonResponse({ error: "Accès refusé" }, 403);
+    }
+
     const mistralKey = Deno.env.get("MISTRAL_API_KEY");
     if (!mistralKey) return jsonResponse({ error: "Clé API Mistral manquante" }, 500);
 
@@ -66,6 +78,7 @@ Deno.serve(async (req) => {
       .from("couriers")
       .select("subject, metadata, received_at, courier_participants(role, name, email, first_name, last_name, organization)")
       .eq("id", courierId)
+      .eq("organization_id", orgId)
       .single();
     if (cErr || !courier) return jsonResponse({ error: "Courrier introuvable" }, 404);
 

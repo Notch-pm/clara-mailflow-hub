@@ -13,10 +13,25 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Authenticate caller
+    const authHeader = req.headers.get("authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const { to, organization_id } = await req.json();
     if (!to || !organization_id) {
       return new Response(
         JSON.stringify({ error: "Paramètres manquants (to, organization_id)" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    // Basic email format check
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(to))) {
+      return new Response(
+        JSON.stringify({ error: "Adresse email invalide" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -31,6 +46,29 @@ Deno.serve(async (req) => {
     }
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+    // Verify caller is admin of the org
+    const anonClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!);
+    const { data: userData, error: userErr } = await anonClient.auth.getUser(
+      authHeader.replace("Bearer ", ""),
+    );
+    if (userErr || !userData.user) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const { data: membership } = await supabase
+      .from("organization_users")
+      .select("role")
+      .eq("user_id", userData.user.id)
+      .eq("organization_id", organization_id)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (!membership || !["admin", "administrateur"].includes(String(membership.role))) {
+      return new Response(JSON.stringify({ error: "Accès refusé" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const { data: smtp, error } = await supabase
       .from("smtp_settings")
