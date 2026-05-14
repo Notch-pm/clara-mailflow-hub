@@ -2,3 +2,6 @@ project_id = "aullweizxcjbvtdspjli"
 
 [functions.fetch-inbound-emails]
 verify_jwt = false
+
+[functions.auth-email-hook]
+verify_jwt = false
