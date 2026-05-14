@@ -80,14 +80,16 @@ function extractArray(data: any): any[] {
 
 // ── Auth helper ──
 
-async function checkAuth(req: Request, supabaseAdmin: any, supabaseUrl: string, anonKey: string): Promise<boolean> {
-  // 1) Cron secret header — lit la valeur partagée directement depuis le Vault Postgres
+type AuthContext = { authorized: boolean; isPrivileged: boolean; userId?: string };
+
+async function checkAuth(req: Request, supabaseAdmin: any, supabaseUrl: string, anonKey: string): Promise<AuthContext> {
+  // 1) Cron secret header — privileged
   const providedCronSecret = req.headers.get("x-cron-secret");
   if (providedCronSecret) {
     try {
       const { data: vaultSecret, error: rpcErr } = await supabaseAdmin.rpc("get_cron_secret");
       if (!rpcErr && vaultSecret && providedCronSecret === vaultSecret) {
-        return true;
+        return { authorized: true, isPrivileged: true };
       }
       if (rpcErr) console.error("get_cron_secret RPC error:", rpcErr.message);
     } catch (e) {
@@ -96,28 +98,22 @@ async function checkAuth(req: Request, supabaseAdmin: any, supabaseUrl: string, 
   }
 
   const authHeader = req.headers.get("Authorization");
-  if (!authHeader) return false;
+  if (!authHeader) return { authorized: false, isPrivileged: false };
   const token = authHeader.replace("Bearer ", "").trim();
 
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  if (token === serviceRoleKey) return true;
+  if (token === serviceRoleKey) return { authorized: true, isPrivileged: true };
 
   const callerClient = createClient(supabaseUrl, anonKey, {
     global: { headers: { Authorization: authHeader } },
   });
   const { data: { user }, error } = await callerClient.auth.getUser();
-  if (error || !user) return false;
+  if (error || !user) return { authorized: false, isPrivileged: false };
 
   const { data: userProfile } = await supabaseAdmin.from("users").select("is_superadmin").eq("id", user.id).single();
-  if (userProfile?.is_superadmin) return true;
+  if (userProfile?.is_superadmin) return { authorized: true, isPrivileged: true, userId: user.id };
 
-  const { data: orgUser } = await supabaseAdmin
-    .from("organization_users")
-    .select("role")
-    .eq("user_id", user.id)
-    .limit(1)
-    .maybeSingle();
-  return orgUser?.role === "admin" || orgUser?.role === "administrateur";
+  return { authorized: true, isPrivileged: false, userId: user.id };
 }
 
 // ── Main handler ──
@@ -133,16 +129,37 @@ Deno.serve(async (req) => {
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
 
-    const isAuthorized = await checkAuth(req, supabaseAdmin, supabaseUrl, anonKey);
-    if (!isAuthorized) {
+    const auth = await checkAuth(req, supabaseAdmin, supabaseUrl, anonKey);
+    if (!auth.authorized) {
       return new Response(JSON.stringify({ error: "Non autorisé" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const body = await req.json().catch(() => ({}));
-    const filterOrgId = body.organization_id || null;
+    let filterOrgId = body.organization_id || null;
     const runInBackground = body.background !== false; // default true
+
+    // Non-privileged users must operate on their own org only
+    if (!auth.isPrivileged) {
+      if (!filterOrgId) {
+        return new Response(JSON.stringify({ error: "organization_id requis" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const { data: targetOrgUser } = await supabaseAdmin
+        .from("organization_users")
+        .select("role")
+        .eq("user_id", auth.userId)
+        .eq("organization_id", filterOrgId)
+        .maybeSingle();
+      const isOrgAdmin = targetOrgUser?.role === "admin" || targetOrgUser?.role === "administrateur";
+      if (!isOrgAdmin) {
+        return new Response(JSON.stringify({ error: "Accès refusé" }), {
+          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
 
     let query = supabaseAdmin
       .from("organization_integrations")

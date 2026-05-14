@@ -155,13 +155,23 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Get target user's org
+    // Get target user's org and verify caller authority
     const { data: targetOrgUser } = await adminClient
       .from("organization_users")
       .select("organization_id")
       .eq("user_id", user_id)
       .limit(1)
       .maybeSingle();
+
+    // Authorization: caller must be admin of the target user's org (or superadmin)
+    if (!isSuperAdmin) {
+      if (!targetOrgUser?.organization_id || targetOrgUser.organization_id !== callerOrgUser?.organization_id) {
+        return new Response(JSON.stringify({ error: "Accès refusé" }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
 
     const origin = Deno.env.get("APP_ORIGIN") || supabaseUrl.replace(".supabase.co", ".lovableproject.com");
     const redirectTo = `${origin}/reset-password`;
