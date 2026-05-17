@@ -1,5 +1,31 @@
 import { supabase } from "@/integrations/supabase/client";
 
+export interface ArpegeConfigField {
+  Code: string;
+  Intitule: string;
+  Etat: string;
+  Obligatoire: boolean;
+  AuMoinsUne: boolean;
+  Systeme: boolean;
+}
+
+export interface ArpegeFormComponent {
+  DataId: string;
+  Order: number;
+  Code: string;
+  Type: string;
+  Libelle: string;
+  LibelleAide: string;
+  Value: unknown[];
+  Components: ArpegeFormComponent[];
+}
+
+export interface ArpegeConfigFields {
+  CodeQualificationMetier: string | null;
+  ConfigInfoUsagerObligs: ArpegeConfigField[];
+  FormComponents: ArpegeFormComponent[] | null;
+}
+
 export interface Procedure {
   id: string;
   organization_id: string;
@@ -14,6 +40,7 @@ export interface Procedure {
   created_at: string;
   updated_at: string;
   created_by: string | null;
+  arpege_config_fields: ArpegeConfigFields | null;
 }
 
 export async function listProcedures(orgId: string): Promise<Procedure[]> {

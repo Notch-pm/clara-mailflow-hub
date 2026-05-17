@@ -338,6 +338,15 @@ async function analyzeCourier(
     .map((t: { name: string }) => t.name)
     .filter((n) => typeof n === "string" && n.trim().length > 0);
 
+  // Procédures disponibles — pour suggérer un préremplissage ciblé
+  const { data: orgProcedures } = await admin
+    .from("procedures")
+    .select("id, name, external_source")
+    .eq("organization_id", orgId)
+    .eq("is_displayed", true)
+    .order("display_order", { ascending: true });
+  const procedureList = (orgProcedures ?? []) as Array<{ id: string; name: string; external_source: string | null }>;
+
   // Corps de l'email (si présent dans metadata)
   const meta = (courier.metadata ?? {}) as Record<string, unknown>;
   const bodyText = typeof meta.body_text === "string" ? meta.body_text.trim() : "";
@@ -374,15 +383,25 @@ async function analyzeCourier(
     ? availableTagNames.map((n) => `- ${n}`).join("\n")
     : "(aucun tag défini — laisse intents vide)";
 
+  const procedureListForPrompt = procedureList.length > 0
+    ? procedureList.map((p) => `- [id: ${p.id}] ${p.name}${p.external_source === "arpege" ? " (Arpège)" : ""}`).join("\n")
+    : "(aucune procédure définie)";
+
   const systemPrompt = `Tu es un assistant expert en gestion de courrier administratif. Analyse le contenu fourni et restitue UNIQUEMENT via l'outil "report_analysis" :
 - summary: résumé concis (2-3 phrases) du contenu
 - intents: liste des tags qui qualifient ce courrier, choisis EXCLUSIVEMENT dans la liste des tags disponibles ci-dessous (copie exacte du nom, sensible à la casse). N'invente AUCUN tag. Si aucun tag ne s'applique, renvoie une liste vide.
 - sentiment: ton/état d'esprit du rédacteur, parmi: neutre, courtois, urgent, mécontent, agressif, satisfait, inquiet
-- suggested_actions: 2 à 5 actions concrètes que l'organisation devrait entreprendre
+- suggested_actions: 2 à 5 actions concrètes que l'organisation devrait entreprendre. Pour chaque action :
+  • label: description courte de l'action
+  • procedure_id: si une procédure de la liste correspond à l'action, indique son id exact. Sinon null.
+  • prefill: si des données personnelles sont identifiables dans le courrier (nom, prénom, email, téléphone, date de naissance, civilité), extrais-les ici pour pré-remplir le formulaire. N'invente aucune donnée absente du courrier.
 Sois factuel, en français. Si le corps de l'email et les pièces jointes coexistent, traite-les comme un tout cohérent.
 
 Tags disponibles pour intents :
-${tagListForPrompt}`;
+${tagListForPrompt}
+
+Procédures disponibles (utilise l'id exact pour procedure_id) :
+${procedureListForPrompt}`;
 
   const sections: string[] = [`Sujet du courrier : ${courier.subject ?? "(aucun)"}`];
   if (emailBody.trim()) {
@@ -413,7 +432,33 @@ ${tagListForPrompt}`;
               type: "string",
               enum: ["neutre", "courtois", "urgent", "mécontent", "agressif", "satisfait", "inquiet"],
             },
-            suggested_actions: { type: "array", items: { type: "string" } },
+            suggested_actions: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  label: { type: "string", description: "Action concrète à entreprendre" },
+                  procedure_id: { type: ["string", "null"], description: "ID exact de la procédure correspondante, ou null" },
+                  prefill: {
+                    type: "object",
+                    description: "Données extractibles du courrier pour pré-remplir le formulaire demandeur",
+                    properties: {
+                      CIVILITE: { type: "string", enum: ["M", "MME", "MLLE"] },
+                      NOM_USUEL: { type: "string" },
+                      NOM_NAISSANCE: { type: "string" },
+                      PRENOMS: { type: "string" },
+                      DATE_NAISSANCE: { type: "string", description: "Format YYYY-MM-DD" },
+                      EMAIL: { type: "string" },
+                      TEL_FIXE: { type: "string" },
+                      TEL_MOBILE: { type: "string" },
+                    },
+                    additionalProperties: false,
+                  },
+                },
+                required: ["label"],
+                additionalProperties: false,
+              },
+            },
           },
           required: ["summary", "intents", "sentiment", "suggested_actions"],
           additionalProperties: false,
@@ -454,7 +499,7 @@ ${tagListForPrompt}`;
     summary: string;
     intents: string[];
     sentiment: string;
-    suggested_actions: string[];
+    suggested_actions: Array<{ label: string; procedure_id?: string | null; prefill?: Record<string, string> }>;
   };
   try {
     parsed = JSON.parse(toolCall.function.arguments);
@@ -471,6 +516,21 @@ ${tagListForPrompt}`;
     ? parsed.intents.filter((i) => typeof i === "string" && allowed.has(i.toLowerCase()))
     : [];
 
+  // Sécurité : s'assurer que les procedure_id retournés par le LLM appartiennent bien à l'org
+  const validProcedureIds = new Set(procedureList.map((p) => p.id));
+  const procedureById = new Map(procedureList.map((p) => [p.id, p.name]));
+  const safeActions = Array.isArray(parsed.suggested_actions)
+    ? parsed.suggested_actions.map((a) => {
+        const validId = a.procedure_id && validProcedureIds.has(a.procedure_id) ? a.procedure_id : null;
+        return {
+          label: a.label ?? "",
+          procedure_id: validId,
+          procedure_name: validId ? (procedureById.get(validId) ?? null) : null,
+          prefill: a.prefill ?? {},
+        };
+      })
+    : [];
+
   const { data: row, error: upErr } = await admin
     .from("courier_analyses")
     .upsert(
@@ -480,7 +540,7 @@ ${tagListForPrompt}`;
         summary: parsed.summary,
         intents: safeIntents,
         sentiment: parsed.sentiment,
-        suggested_actions: parsed.suggested_actions ?? [],
+        suggested_actions: safeActions,
         model: `agent:${ANALYSIS_AGENT_ID}`,
         tokens_used: tokensUsed,
       },

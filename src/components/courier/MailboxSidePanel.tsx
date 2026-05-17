@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/command";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { updateCourier } from "@/services/courierService";
+import { updateCourier, getCourierById } from "@/services/courierService";
 import { logEvent } from "@/services/courierEventService";
 import { listTags, type CourierTag } from "@/services/courierTagService";
 import { listServices } from "@/services/orgServiceService";
@@ -115,9 +115,23 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
     enabled: !!courier?.id,
   });
 
+  const isOutbound = courier?.direction === "outbound";
+
   const participants = courier?.courier_participants ?? [];
   const sender = participants.find((p) => p.role === "sender");
   const recipient = participants.find((p) => p.role === "recipient");
+
+  // For outbound couriers, fetch the linked parent inbound courier
+  const { data: parentCourier } = useQuery({
+    queryKey: ["courier", courier?.parent_courier_id, organizationId],
+    queryFn: async () => {
+      const { data, error } = await getCourierById(organizationId, courier!.parent_courier_id!);
+      if (error) throw error;
+      return data;
+    },
+    enabled: isOutbound && !!courier?.parent_courier_id && !!organizationId,
+  });
+  const parentSender = parentCourier?.courier_participants?.find((p: CourierParticipant) => p.role === "sender");
 
   // Local copy of tags so the UI reflects mutations immediately
   // (the parent's `courier` prop is a snapshot and doesn't refetch on tag change).
@@ -635,38 +649,44 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
           {withTabs && (
             <TabsList className={cn("self-start shrink-0", fullScreen ? "mx-4 mt-1 mb-1" : "mx-6 mt-[4px] mb-[4px]")}>
               <TabsTrigger value="detail">Détail du courrier</TabsTrigger>
-              <TabsTrigger value="content">Contenu et intentions</TabsTrigger>
-              <TabsTrigger value="actions" className="gap-2">
-                Actions liées
-                {ticketsList.length > 0 && (
-                  <span className="inline-flex items-center justify-center rounded-full bg-green-500/20 text-green-700 px-1.5 text-[10px] font-medium leading-none min-w-[18px] h-[18px]">
-                    {ticketsList.length}
-                  </span>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="response" className="gap-2">
-                {replyList.length > 1 ? "Réponses" : "Réponse"}
-                {replyList.length > 0 && (
-                  <span className="inline-flex items-center justify-center rounded-full bg-green-500/20 text-green-700 px-1.5 text-[10px] font-medium leading-none min-w-[18px] h-[18px]">
-                    {replyList.length}
-                  </span>
-                )}
-                {replyState && (
-                  <span
-                    className={cn(
-                      "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none",
-                      replyState.category === "processed"
-                        ? "bg-green-500/15 text-green-700"
-                        : replyState.category === "processing"
-                        ? "bg-blue-500/15 text-blue-700"
-                        : "bg-yellow-500/15 text-yellow-700",
-                    )}
-                  >
-                    {replyState.name}
-                  </span>
-                )}
-              </TabsTrigger>
-              {!fullScreen && (
+              {!isOutbound && (
+                <TabsTrigger value="content">Contenu et intentions</TabsTrigger>
+              )}
+              {!isOutbound && (
+                <TabsTrigger value="actions" className="gap-2">
+                  Actions liées
+                  {ticketsList.length > 0 && (
+                    <span className="inline-flex items-center justify-center rounded-full bg-green-500/20 text-green-700 px-1.5 text-[10px] font-medium leading-none min-w-[18px] h-[18px]">
+                      {ticketsList.length}
+                    </span>
+                  )}
+                </TabsTrigger>
+              )}
+              {!isOutbound && (
+                <TabsTrigger value="response" className="gap-2">
+                  {replyList.length > 1 ? "Réponses" : "Réponse"}
+                  {replyList.length > 0 && (
+                    <span className="inline-flex items-center justify-center rounded-full bg-green-500/20 text-green-700 px-1.5 text-[10px] font-medium leading-none min-w-[18px] h-[18px]">
+                      {replyList.length}
+                    </span>
+                  )}
+                  {replyState && (
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none",
+                        replyState.category === "processed"
+                          ? "bg-green-500/15 text-green-700"
+                          : replyState.category === "processing"
+                          ? "bg-blue-500/15 text-blue-700"
+                          : "bg-yellow-500/15 text-yellow-700",
+                      )}
+                    >
+                      {replyState.name}
+                    </span>
+                  )}
+                </TabsTrigger>
+              )}
+              {!isOutbound && !fullScreen && (
                 <TabsTrigger value="notes" className="gap-2">
                   Notes internes
                   {notesList.length > 0 && (
@@ -700,99 +720,160 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
             {/* Left: metadata + workflow */}
             <aside className="px-6 py-5 lg:border-r space-y-5 overflow-y-auto">
               <dl className="space-y-1 text-sm">
-                <InlineEditField
-                  label="Date de réception"
-                type="date"
-                value={courier.received_at ? courier.received_at.slice(0, 10) : ""}
-                readOnly={readOnly}
-                onSave={(v) =>
-                  persistCourierUpdate(
-                    { received_at: v ? new Date(v).toISOString() : null },
-                    "Date modifiée",
-                  )
-                }
-                renderDisplay={(v) =>
-                  new Date(v).toLocaleDateString("fr-FR", {
-                    day: "2-digit",
-                    month: "2-digit",
-                    year: "numeric",
-                  })
-                }
-              />
+                {/* Lien vers le courrier entrant lié (sortants seulement) */}
+                {isOutbound && courier.parent_courier_id && (
+                  <div className="flex items-center justify-between gap-2 py-1">
+                    <span className="text-muted-foreground text-sm">Courrier entrant lié</span>
+                    <Link
+                      to={`/courrier/${courier.parent_courier_id}`}
+                      className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+                      Voir le courrier
+                    </Link>
+                  </div>
+                )}
 
-              <div className="flex items-center justify-between gap-2 py-1">
-                <span className="text-muted-foreground text-sm">Canal de réception</span>
-                {readOnly ? (
-                  <span className="text-sm font-medium px-2">{channelLabels[courier.channel]}</span>
-                ) : (
-                  <Select
-                    value={courier.channel}
-                    onValueChange={(v) =>
-                      persistCourierUpdate({ channel: v }, "Canal modifié")
+                {/* Date : réception pour entrants, envoi pour sortants */}
+                {isOutbound ? (
+                  <InlineEditField
+                    label="Date d'envoi"
+                    type="date"
+                    value={courier.sent_at ? courier.sent_at.slice(0, 10) : ""}
+                    readOnly={readOnly}
+                    onSave={(v) =>
+                      persistCourierUpdate(
+                        { sent_at: v ? new Date(v).toISOString() : null },
+                        "Date modifiée",
+                      )
                     }
-                  >
-                    <SelectTrigger className="h-7 w-auto text-sm border-0 bg-transparent hover:bg-muted px-2 gap-1.5 [&>span]:font-medium">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent align="end">
-                      {(Object.keys(channelLabels) as CourierChannel[]).map((c) => (
-                        <SelectItem key={c} value={c}>
-                          {channelLabels[c]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    renderDisplay={(v) =>
+                      new Date(v).toLocaleDateString("fr-FR", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "numeric",
+                      })
+                    }
+                  />
+                ) : (
+                  <InlineEditField
+                    label="Date de réception"
+                    type="date"
+                    value={courier.received_at ? courier.received_at.slice(0, 10) : ""}
+                    readOnly={readOnly}
+                    onSave={(v) =>
+                      persistCourierUpdate(
+                        { received_at: v ? new Date(v).toISOString() : null },
+                        "Date modifiée",
+                      )
+                    }
+                    renderDisplay={(v) =>
+                      new Date(v).toLocaleDateString("fr-FR", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "numeric",
+                      })
+                    }
+                  />
                 )}
-              </div>
 
-              <InlineEditField
-                label="Destinataire (nom)"
-                value={recipient?.name ?? ""}
-                placeholder="Nom du destinataire"
-                maxLength={150}
-                readOnly={readOnly}
-                onSave={(v) =>
-                  upsertParticipant("recipient", { name: v.trim() || null })
-                }
-              />
-
-              <div className="relative">
-                <InlineEditField
-                  label="Expéditeur (nom)"
-                  value={sender?.name ?? ""}
-                  placeholder="Nom de l'expéditeur"
-                  maxLength={150}
-                  readOnly={readOnly}
-                  onSave={(v) => upsertParticipant("sender", { name: v.trim() || null })}
-                />
-                {sender?.usager_id && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Link
-                        to={`/usagers/${sender.usager_id}`}
-                        onClick={() => onOpenChange(false)}
-                        className="absolute right-0 top-0 inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:text-primary hover:bg-muted transition-colors bg-background"
-                        aria-label="Voir tous les courriers de cet expéditeur"
+                {/* Canal de réception : entrants seulement */}
+                {!isOutbound && (
+                  <div className="flex items-center justify-between gap-2 py-1">
+                    <span className="text-muted-foreground text-sm">Canal de réception</span>
+                    {readOnly ? (
+                      <span className="text-sm font-medium px-2">{channelLabels[courier.channel]}</span>
+                    ) : (
+                      <Select
+                        value={courier.channel}
+                        onValueChange={(v) =>
+                          persistCourierUpdate({ channel: v }, "Canal modifié")
+                        }
                       >
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </Link>
-                    </TooltipTrigger>
-                    <TooltipContent>Voir tous les courriers de cet expéditeur</TooltipContent>
-                  </Tooltip>
+                        <SelectTrigger className="h-7 w-auto text-sm border-0 bg-transparent hover:bg-muted px-2 gap-1.5 [&>span]:font-medium">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent align="end">
+                          {(Object.keys(channelLabels) as CourierChannel[]).map((c) => (
+                            <SelectItem key={c} value={c}>
+                              {channelLabels[c]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
                 )}
-              </div>
 
-              <InlineEditField
-                label="Expéditeur (email)"
-                type="email"
-                value={sender?.email ?? ""}
-                placeholder="email@exemple.com"
-                readOnly={readOnly}
-                onSave={(v) =>
-                  upsertParticipant("sender", { email: v.trim() || null })
-                }
-              />
-            </dl>
+                {/* Destinataire */}
+                {isOutbound ? (
+                  <div className="flex items-center justify-between gap-2 py-1">
+                    <span className="text-muted-foreground text-sm">Destinataire (nom)</span>
+                    <span className="text-sm font-medium px-2">
+                      {parentSender?.name ?? <span className="text-muted-foreground italic font-normal">—</span>}
+                    </span>
+                  </div>
+                ) : (
+                  <InlineEditField
+                    label="Destinataire (nom)"
+                    value={recipient?.name ?? ""}
+                    placeholder="Nom du destinataire"
+                    maxLength={150}
+                    readOnly={readOnly}
+                    onSave={(v) =>
+                      upsertParticipant("recipient", { name: v.trim() || null })
+                    }
+                  />
+                )}
+
+                {/* Expéditeur */}
+                {isOutbound ? (
+                  <div className="flex items-center justify-between gap-2 py-1">
+                    <span className="text-muted-foreground text-sm">Expéditeur</span>
+                    <span className="text-sm font-medium px-2">
+                      {parentCourier?.assigned_service ?? <span className="text-muted-foreground italic font-normal">—</span>}
+                    </span>
+                  </div>
+                ) : (
+                  <>
+                    <div className="relative">
+                      <InlineEditField
+                        label="Expéditeur (nom)"
+                        value={sender?.name ?? ""}
+                        placeholder="Nom de l'expéditeur"
+                        maxLength={150}
+                        readOnly={readOnly}
+                        onSave={(v) => upsertParticipant("sender", { name: v.trim() || null })}
+                      />
+                      {sender?.usager_id && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Link
+                              to={`/usagers/${sender.usager_id}`}
+                              onClick={() => onOpenChange(false)}
+                              className="absolute right-0 top-0 inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:text-primary hover:bg-muted transition-colors bg-background"
+                              aria-label="Voir tous les courriers de cet expéditeur"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </Link>
+                          </TooltipTrigger>
+                          <TooltipContent>Voir tous les courriers de cet expéditeur</TooltipContent>
+                        </Tooltip>
+                      )}
+                    </div>
+                    <InlineEditField
+                      label="Expéditeur (email)"
+                      type="email"
+                      value={sender?.email ?? ""}
+                      placeholder="email@exemple.com"
+                      readOnly={readOnly}
+                      onSave={(v) =>
+                        upsertParticipant("sender", { email: v.trim() || null })
+                      }
+                    />
+                  </>
+                )}
+              </dl>
 
             <Separator />
 
@@ -996,8 +1077,8 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
             )}
           </main>
 
-          {/* Notes inline sidebar — fullScreen only */}
-          {fullScreen && withTabs && (
+          {/* Notes inline sidebar — fullScreen + inbound only */}
+          {fullScreen && withTabs && !isOutbound && (
             <NotesInlineSidebar
               courierId={courier.id}
               organizationId={organizationId}
@@ -1009,37 +1090,43 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
 
           {withTabs && (
             <>
-              <TabsContent
-                value="content"
-                className="flex-1 overflow-y-auto px-6 py-5 mt-0"
-              >
-                <ContentIntentsTab courierId={courier.id} organizationId={organizationId} readOnly={readOnly || isFinalState} />
-              </TabsContent>
-              <TabsContent
-                value="actions"
-                className="flex-1 overflow-y-auto px-6 py-5 mt-0"
-              >
-                <LinkedActionsTab
-                  courierId={courier.id}
-                  organizationId={organizationId}
-                  readOnly={readOnly || isFinalState}
-                />
-              </TabsContent>
-              <TabsContent
-                value="response"
-                className="flex-1 min-h-0 overflow-hidden px-6 py-5 mt-0 flex flex-col data-[state=inactive]:hidden"
-              >
-                <ReplyComposer
-                  courierId={courier.id}
-                  organizationId={organizationId}
-                  parentSubject={courier.subject ?? null}
-                  assignedService={localAssignedService}
-                  sender={sender ?? null}
-                  readOnly={readOnly}
-                  onStateChange={setReplyState}
-                />
-              </TabsContent>
-              {!fullScreen && (
+              {!isOutbound && (
+                <TabsContent
+                  value="content"
+                  className="flex-1 overflow-y-auto px-6 py-5 mt-0"
+                >
+                  <ContentIntentsTab courierId={courier.id} organizationId={organizationId} readOnly={readOnly || isFinalState} />
+                </TabsContent>
+              )}
+              {!isOutbound && (
+                <TabsContent
+                  value="actions"
+                  className="flex-1 overflow-y-auto px-6 py-5 mt-0"
+                >
+                  <LinkedActionsTab
+                    courierId={courier.id}
+                    organizationId={organizationId}
+                    readOnly={readOnly || isFinalState}
+                  />
+                </TabsContent>
+              )}
+              {!isOutbound && (
+                <TabsContent
+                  value="response"
+                  className="flex-1 min-h-0 overflow-hidden px-6 py-5 mt-0 flex flex-col data-[state=inactive]:hidden"
+                >
+                  <ReplyComposer
+                    courierId={courier.id}
+                    organizationId={organizationId}
+                    parentSubject={courier.subject ?? null}
+                    assignedService={localAssignedService}
+                    sender={sender ?? null}
+                    readOnly={readOnly}
+                    onStateChange={setReplyState}
+                  />
+                </TabsContent>
+              )}
+              {!isOutbound && !fullScreen && (
                 <TabsContent
                   value="notes"
                   className="flex-1 overflow-y-auto px-6 py-5 mt-0"

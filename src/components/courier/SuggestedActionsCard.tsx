@@ -3,13 +3,11 @@ import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getAnalysis } from "@/services/courierAnalysisService";
+import { getAnalysis, type SuggestedAction } from "@/services/courierAnalysisService";
 
 interface Props {
   courierId: string;
-  /** When provided, displays a "Créer un ticket" button next to each suggested action. */
-  onCreateTicket?: (action: string) => void;
-  /** When true, hides the "Créer un ticket" button. */
+  onCreateTicket?: (action: SuggestedAction) => void;
   readOnly?: boolean;
 }
 
@@ -40,7 +38,14 @@ export default function SuggestedActionsCard({ courierId, onCreateTicket, readOn
           {analysis.suggested_actions.map((action, i) => (
             <li key={i} className="text-sm flex gap-2 items-start group">
               <span className="text-primary shrink-0 mt-0.5">→</span>
-              <span className="flex-1">{action}</span>
+              <span className="flex-1">
+                {action.label}
+                {action.procedure_name && (
+                  <span className="ml-1.5 text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full">
+                    {action.procedure_name}
+                  </span>
+                )}
+              </span>
               {onCreateTicket && !readOnly && (
                 <Button
                   size="sm"

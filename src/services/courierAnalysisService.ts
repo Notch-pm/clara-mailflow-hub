@@ -13,6 +13,22 @@ export interface CourierDocumentExtract {
   updated_at: string;
 }
 
+export interface SuggestedAction {
+  label: string;
+  procedure_id?: string | null;
+  procedure_name?: string | null;
+  prefill?: {
+    CIVILITE?: string;
+    NOM_USUEL?: string;
+    NOM_NAISSANCE?: string;
+    PRENOMS?: string;
+    DATE_NAISSANCE?: string;
+    EMAIL?: string;
+    TEL_FIXE?: string;
+    TEL_MOBILE?: string;
+  };
+}
+
 export interface CourierAnalysis {
   id: string;
   courier_id: string;
@@ -20,11 +36,19 @@ export interface CourierAnalysis {
   summary: string | null;
   intents: string[];
   sentiment: string | null;
-  suggested_actions: string[];
+  suggested_actions: SuggestedAction[];
   model: string | null;
   tokens_used: number | null;
   created_at: string;
   updated_at: string;
+}
+
+/** Normalize suggested_actions: handles both legacy string[] and new SuggestedAction[] */
+function normalizeSuggestedActions(raw: unknown): SuggestedAction[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((item) =>
+    typeof item === "string" ? { label: item } : (item as SuggestedAction),
+  );
 }
 
 /** Read cached extracts for the courier's documents. */
@@ -46,7 +70,9 @@ export async function getAnalysis(courierId: string): Promise<CourierAnalysis | 
     .eq("courier_id", courierId)
     .maybeSingle();
   if (error) throw error;
-  return (data as unknown as CourierAnalysis) ?? null;
+  if (!data) return null;
+  const row = data as unknown as CourierAnalysis;
+  return { ...row, suggested_actions: normalizeSuggestedActions(row.suggested_actions) };
 }
 
 /** Trigger OCR extraction for every document of the courier. */

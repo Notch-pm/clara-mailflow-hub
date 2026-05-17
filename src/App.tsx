@@ -21,6 +21,7 @@ import SettingsPage from "@/pages/SettingsPage";
 import MonProfil from "@/pages/MonProfil";
 import Liens from "@/pages/Liens";
 import Usagers from "@/pages/Usagers";
+import RechercheCourrierPage from "@/pages/RechercheCourrierPage";
 import Login from "@/pages/Login";
 import ResetPassword from "@/pages/ResetPassword";
 import ActivateAccount from "@/pages/ActivateAccount";
@@ -151,6 +152,7 @@ const App = () => (
                   <Route path="/liens" element={<Liens />} />
                   <Route path="/usagers" element={<Usagers />} />
                   <Route path="/usagers/:id" element={<Usagers />} />
+                  <Route path="/recherche" element={<RechercheCourrierPage />} />
                 </Route>
               </Route>
               <Route path="*" element={<NotFound />} />

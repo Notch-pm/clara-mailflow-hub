@@ -1,5 +1,37 @@
 import { supabase } from "@/integrations/supabase/client";
 
+export async function createArpegeTicket(payload: {
+  organizationId: string;
+  courierId: string;
+  procedureId: string;
+  description?: string | null;
+  assigneeId?: string | null;
+  demandeur: Record<string, string>;
+  formValues?: Array<{ id: string; valeur: unknown }>;
+  pieceJointes?: Record<string, string[]>;
+}): Promise<ActionTicket> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error("Non authentifié");
+
+  const res = await supabase.functions.invoke("create-arpege-demande", {
+    body: {
+      organization_id: payload.organizationId,
+      courier_id: payload.courierId,
+      procedure_id: payload.procedureId,
+      description: payload.description?.trim() || null,
+      assignee_id: payload.assigneeId ?? null,
+      demandeur: payload.demandeur,
+      form_values: payload.formValues ?? [],
+      pieces_jointes: payload.pieceJointes ?? {},
+    },
+  });
+
+  if (res.error) throw new Error(res.error.message);
+  const data = res.data as { ticket: ActionTicket; arpege_ref: string };
+  if (!data?.ticket) throw new Error("Réponse invalide de l'edge function");
+  return data.ticket;
+}
+
 export interface ActionTicket {
   id: string;
   organization_id: string;
@@ -8,6 +40,8 @@ export interface ActionTicket {
   description: string | null;
   status: string;
   assignee_id: string | null;
+  arpege_demande_ref: string | null;
+  arpege_demande_status: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -37,7 +71,7 @@ export async function listTicketsForCourier(
   const { data, error } = await supabase
     .from("action_tickets" as any)
     .select(
-      "*, procedure:procedures(id, name, color, icon), assignee:users!action_tickets_assignee_id_fkey(id, first_name, last_name, email, avatar_url)",
+      "*, procedure:procedures!action_tickets_procedure_id_fkey(id, name, color, icon), assignee:users!action_tickets_assignee_id_fkey(id, first_name, last_name, email, avatar_url)",
     )
     .eq("courier_id", courierId)
     .order("created_at", { ascending: false });

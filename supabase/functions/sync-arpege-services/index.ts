@@ -227,6 +227,23 @@ async function runSync(supabaseAdmin: any, integrations: any[]) {
       const hawkKey = integration.client_secret || integration.access_token || "";
       if (!hawkId || !hawkKey) continue;
 
+      // Récupérer les schémas de formulaire depuis les demandes existantes (une par type)
+      const formSchemaByType = new Map<string, any[]>();
+      const formData = await fetchWithHawk(
+        `${apiBase}/v2/Demandes?scope=data_formulaire,data_administratives&TypeDemarches=DEMANDE&pageSize=200`,
+        hawkId, hawkKey,
+      );
+      if (formData) {
+        for (const item of extractArray(formData)) {
+          const typeCode = item.data_administratives?.CodeQualificationTypeDemande;
+          const components = item.data_formulaire?.Components;
+          if (typeCode && Array.isArray(components) && !formSchemaByType.has(typeCode)) {
+            formSchemaByType.set(typeCode, components);
+          }
+        }
+      }
+      console.log(`Org ${organization_id}: form schemas retrieved for ${formSchemaByType.size} types`);
+
       // Try /v2/TypesDemandes
       let typesDemandes: any[] = [];
       const tdData = await fetchWithHawk(`${apiBase}/v2/TypesDemandes`, hawkId, hawkKey);
@@ -271,9 +288,18 @@ async function runSync(supabaseAdmin: any, integrations: any[]) {
         const vignetteUrl =
           td.UrlVignetteQualificationTypeDemande || td.UrlVignette || null;
 
+        // Config formulaire : champs demandeur + code métier + formulaire métier
+        const arpegeConfigFields = {
+          CodeQualificationMetier: td.CodeQualificationMetier || null,
+          ConfigInfoUsagerObligs: (td.ConfigInfoUsagerObligs || []).filter(
+            (f: any) => f.Etat === "ENLIGNE",
+          ),
+          FormComponents: formSchemaByType.get(externalRef) ?? null,
+        };
+
         const { data: existing } = await supabaseAdmin
           .from("procedures")
-          .select("id, name, description, icon")
+          .select("id, name, description, icon, arpege_config_fields")
           .eq("organization_id", organization_id)
           .eq("external_source", "arpege")
           .eq("external_reference_id", externalRef)
@@ -283,9 +309,11 @@ async function runSync(supabaseAdmin: any, integrations: any[]) {
           const nameChanged = existing.name !== name;
           const descChanged = (existing.description || null) !== (description || null);
           const shouldUpdateIcon = vignetteUrl && existing.icon !== vignetteUrl;
+          const configChanged =
+            JSON.stringify(existing.arpege_config_fields) !== JSON.stringify(arpegeConfigFields);
 
-          if (nameChanged || descChanged || shouldUpdateIcon) {
-            const updateData: Record<string, unknown> = { name, description };
+          if (nameChanged || descChanged || shouldUpdateIcon || configChanged) {
+            const updateData: Record<string, unknown> = { name, description, arpege_config_fields: arpegeConfigFields };
             if (shouldUpdateIcon) updateData.icon = vignetteUrl;
             const { error: updErr } = await supabaseAdmin
               .from("procedures")
@@ -308,6 +336,7 @@ async function runSync(supabaseAdmin: any, integrations: any[]) {
             external_reference_id: externalRef,
             external_source: "arpege",
             is_displayed: true,
+            arpege_config_fields: arpegeConfigFields,
           });
           if (insertErr) {
             console.error(`Insert failed for "${name}": ${insertErr.message}`);
