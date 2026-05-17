@@ -16,6 +16,8 @@ export type Database = {
     Tables: {
       action_tickets: {
         Row: {
+          arpege_demande_ref: string | null
+          arpege_demande_status: string | null
           assignee_id: string | null
           courier_id: string
           created_at: string
@@ -28,6 +30,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          arpege_demande_ref?: string | null
+          arpege_demande_status?: string | null
           assignee_id?: string | null
           courier_id: string
           created_at?: string
@@ -40,6 +44,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          arpege_demande_ref?: string | null
+          arpege_demande_status?: string | null
           assignee_id?: string | null
           courier_id?: string
           created_at?: string
@@ -850,6 +856,7 @@ export type Database = {
       }
       procedures: {
         Row: {
+          arpege_config_fields: Json | null
           color: string | null
           created_at: string
           created_by: string | null
@@ -865,6 +872,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          arpege_config_fields?: Json | null
           color?: string | null
           created_at?: string
           created_by?: string | null
@@ -880,6 +888,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          arpege_config_fields?: Json | null
           color?: string | null
           created_at?: string
           created_by?: string | null
