@@ -15,7 +15,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { title: "Tableau de bord", url: "/", icon: LayoutDashboard },
-  { title: "Boîte aux lettres", url: "/boite-aux-lettres", svgIcon: mailboxIcon },
+  { title: "Boîte aux lettres", url: "/boite-aux-lettres", icon: Inbox },
   { title: "Courriers en instruction", url: "/courriers-en-instruction", icon: FileClock },
   { title: "Courriers traités", url: "/courriers-traites", icon: CheckCircle2 },
   { title: "Courriers archivés", url: "/courriers-archives", icon: Archive },
