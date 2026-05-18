@@ -1,6 +1,5 @@
 import { NavLink } from "@/components/NavLink";
-import { LayoutDashboard, Send, Link2, FileClock, Users, CheckCircle2, Archive, Search, LucideIcon } from "lucide-react";
-import mailboxIcon from "@/assets/icons/mailbox.svg";
+import { LayoutDashboard, Inbox, Send, Link2, FileClock, Users, CheckCircle2, Archive, Search, LucideIcon } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -11,8 +10,7 @@ import {
 interface NavItem {
   title: string;
   url: string;
-  icon?: LucideIcon;
-  svgIcon?: string;
+  icon: LucideIcon;
 }
 
 const navItems: NavItem[] = [
