@@ -142,6 +142,7 @@ export type Database = {
           courier_id: string
           created_at: string
           document_id: string
+          fts_extract: unknown
           id: string
           model: string | null
           organization_id: string
@@ -154,6 +155,7 @@ export type Database = {
           courier_id: string
           created_at?: string
           document_id: string
+          fts_extract?: unknown
           id?: string
           model?: string | null
           organization_id: string
@@ -166,6 +168,7 @@ export type Database = {
           courier_id?: string
           created_at?: string
           document_id?: string
+          fts_extract?: unknown
           id?: string
           model?: string | null
           organization_id?: string
@@ -377,6 +380,7 @@ export type Database = {
           courier_id: string
           email: string | null
           first_name: string | null
+          fts_participant: unknown
           id: string
           last_name: string | null
           metadata: Json | null
@@ -392,6 +396,7 @@ export type Database = {
           courier_id: string
           email?: string | null
           first_name?: string | null
+          fts_participant?: unknown
           id?: string
           last_name?: string | null
           metadata?: Json | null
@@ -407,6 +412,7 @@ export type Database = {
           courier_id?: string
           email?: string | null
           first_name?: string | null
+          fts_participant?: unknown
           id?: string
           last_name?: string | null
           metadata?: Json | null
@@ -509,6 +515,8 @@ export type Database = {
           created_at: string
           created_by: string | null
           direction: Database["public"]["Enums"]["courier_direction"]
+          fts_body: unknown
+          fts_subject: unknown
           id: string
           metadata: Json | null
           organization_id: string
@@ -526,6 +534,8 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           direction: Database["public"]["Enums"]["courier_direction"]
+          fts_body?: unknown
+          fts_subject?: unknown
           id?: string
           metadata?: Json | null
           organization_id: string
@@ -543,6 +553,8 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           direction?: Database["public"]["Enums"]["courier_direction"]
+          fts_body?: unknown
+          fts_subject?: unknown
           id?: string
           metadata?: Json | null
           organization_id?: string
@@ -1391,6 +1403,31 @@ export type Database = {
       is_admin_of: { Args: { _org: string }; Returns: boolean }
       is_member_of: { Args: { _org: string }; Returns: boolean }
       is_superadmin: { Args: { _user_id: string }; Returns: boolean }
+      search_couriers: {
+        Args: {
+          p_date_from?: string
+          p_date_to?: string
+          p_direction?: string
+          p_keywords?: string
+          p_limit?: number
+          p_offset?: number
+          p_organization_id: string
+          p_service?: string
+          p_tag_names?: string[]
+          p_workflow_state_id?: string
+        }
+        Returns: {
+          assigned_service: string
+          direction: string
+          id: string
+          match_in: string[]
+          organization_id: string
+          received_at: string
+          subject: string
+          total_count: number
+          workflow_state_id: string
+        }[]
+      }
       trigger_arpege_sync: { Args: never; Returns: number }
       trigger_fetch_inbound_emails: { Args: never; Returns: number }
     }
