@@ -19,13 +19,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Search, CheckCircle2, ChevronDown, ChevronRight } from "lucide-react";
+import { Search, CheckCircle2, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { supabase } from "@/integrations/supabase/client";
 import type { CourierWithRelations } from "@/types/courier";
 import { listTags } from "@/services/courierTagService";
 import { listServices } from "@/services/orgServiceService";
-
+import { useUserServiceFilter, applyServiceFilter } from "@/hooks/useUserServiceFilter";
 import { readableTextColor } from "@/lib/tag-color";
 import { cn } from "@/lib/utils";
 
@@ -40,6 +40,7 @@ export default function CourriersTraites() {
   const [stateFilter, setStateFilter] = useState<string>("all");
   const [groupBy, setGroupBy] = useState<GroupBy>("none");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [limit, setLimit] = useState(50);
 
   // Processed states for the org (excludes archived)
   const { data: processedStates } = useQuery({
@@ -86,21 +87,21 @@ export default function CourriersTraites() {
   );
 
   const { data: couriers, isLoading } = useQuery({
-    queryKey: ["traites-couriers", organizationId, stateIds, search],
+    queryKey: ["traites-couriers", organizationId, stateIds, search, limit],
     queryFn: async () => {
       if (!organizationId || !stateIds.length) return [];
       let q = supabase
         .from("couriers")
-        .select("*, courier_participants(*)")
+        .select("id, subject, direction, channel, received_at, sent_at, workflow_state_id, assigned_service, metadata, chrono, created_at, updated_at, courier_participants(id, role, name, email, usager_id)")
         .eq("organization_id", organizationId)
         .eq("direction", "inbound")
         .in("workflow_state_id", stateIds)
         .order("updated_at", { ascending: false })
-        .limit(100);
+        .limit(limit);
       if (search) q = q.ilike("subject", `%${search}%`);
       const { data, error } = await q;
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []) as unknown as CourierWithRelations[];
     },
     enabled: !!organizationId && !!stateIds.length,
   });
@@ -132,8 +133,10 @@ export default function CourriersTraites() {
     enabled: !!organizationId && courierIds.length > 0 && stateIds.length > 0,
   });
 
+  const userServiceFilter = useUserServiceFilter();
+
   const filtered = useMemo(() => {
-    let list = couriers ?? [];
+    let list = applyServiceFilter(couriers ?? [], userServiceFilter);
     if (serviceFilter !== "all") {
       const svc = services?.find((s) => s.id === serviceFilter);
       if (svc) list = list.filter((c) => c.assigned_service === svc.name);
@@ -148,7 +151,7 @@ export default function CourriersTraites() {
       });
     }
     return list;
-  }, [couriers, serviceFilter, stateFilter, tagFilter, services]);
+  }, [couriers, serviceFilter, stateFilter, tagFilter, services, userServiceFilter]);
 
   const groups = useMemo(() => {
     if (groupBy === "none") {
@@ -397,6 +400,14 @@ export default function CourriersTraites() {
         </div>
       )}
 
+      {(couriers?.length ?? 0) >= limit && (
+        <div className="flex justify-center pt-2">
+          <Button variant="outline" onClick={() => setLimit((l) => l + 50)} disabled={isLoading}>
+            {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+            Charger 50 de plus
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

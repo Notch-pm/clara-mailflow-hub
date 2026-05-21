@@ -1,9 +1,19 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { X, ArrowRight, ArrowLeft, Tag as TagIcon, Check, Briefcase, FileText, Trash2, Maximize2, ExternalLink } from "lucide-react";
+import { X, ArrowRight, ArrowLeft, ArrowRightLeft, Tag as TagIcon, Check, Briefcase, FileText, Trash2, Maximize2, ExternalLink } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -30,6 +40,7 @@ import { updateCourier, getCourierById } from "@/services/courierService";
 import { logEvent } from "@/services/courierEventService";
 import { listTags, type CourierTag } from "@/services/courierTagService";
 import { listServices } from "@/services/orgServiceService";
+import { useUserServiceFilter } from "@/hooks/useUserServiceFilter";
 import { getDocuments } from "@/services/courierDocumentService";
 import { addParticipant, updateParticipant } from "@/services/courierParticipantService";
 import { findMatchingUsager, createUsager } from "@/services/usagerService";
@@ -90,6 +101,8 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
   const navigate = useNavigate();
   const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
   const [replyState, setReplyState] = useState<{ name: string; category: string | null } | null>(null);
+  const [transferTargetServiceId, setTransferTargetServiceId] = useState<string>("");
+  const [transferConfirmOpen, setTransferConfirmOpen] = useState(false);
 
   const { data: replyList = [] } = useQuery({
     queryKey: ["courier-replies", courier?.id],
@@ -178,14 +191,32 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
     setReplyState(null);
   }, [courier?.id, courier?.assigned_service, courier?.workflow_state_id]);
 
+  const userServiceFilter = useUserServiceFilter();
+
   // Si le courrier vient d'une config IMAP précise, restreindre les services proposés.
   const imapSettingsId = (courier?.metadata?.imap_settings_id as string | null) ?? null;
   const availableServices = useMemo(() => {
     if (!services) return [];
-    if (!imapSettingsId) return services;
-    const linked = services.filter((s) => s.imap_settings_id === imapSettingsId);
-    return linked.length > 0 ? linked : services;
-  }, [services, imapSettingsId]);
+    let list = services;
+    if (imapSettingsId) {
+      const linked = list.filter((s) => s.imap_settings_id === imapSettingsId);
+      if (linked.length > 0) list = linked;
+    }
+    if (userServiceFilter !== null) {
+      list = list.filter((s) => userServiceFilter.includes(s.name));
+    }
+    // Always include the currently assigned service so the Select can display it,
+    // even if it was filtered out (e.g. different IMAP or service filter).
+    if (localAssignedService) {
+      const current = services.find(
+        (s) => s.name.toLowerCase() === localAssignedService.toLowerCase(),
+      );
+      if (current && !list.find((s) => s.id === current.id)) {
+        list = [current, ...list];
+      }
+    }
+    return list;
+  }, [services, imapSettingsId, userServiceFilter, localAssignedService]);
 
   // Resolve courier's current service from its name (assigned_service)
   const currentService = useMemo(() => {
@@ -233,6 +264,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
     enabled: !!localWorkflowStateId && open,
   });
   const isFinalState = currentStateInfo?.is_final === true;
+  const isInitialState = !localWorkflowStateId || currentStateInfo?.is_initial === true;
 
   const serviceMutation = useMutation({
     mutationFn: async (newServiceId: string) => {
@@ -285,6 +317,66 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const transferMutation = useMutation({
+    mutationFn: async ({ targetServiceId, loseAccess }: { targetServiceId: string; loseAccess: boolean }) => {
+      if (!courier) return null;
+      const targetService = services?.find((s) => s.id === targetServiceId);
+      if (!targetService) throw new Error("Service introuvable");
+
+      // Fetch initial state of target service's workflow
+      const { data: initial, error: stateErr } = await supabase
+        .from("workflow_states")
+        .select("id, name, category")
+        .eq("workflow_id", targetService.workflow_id)
+        .eq("is_initial", true)
+        .maybeSingle();
+      if (stateErr) throw stateErr;
+
+      const previousService = courier.assigned_service ?? null;
+      const currentMeta = courier.metadata ?? {};
+      const { error: updateErr } = await updateCourier(organizationId, courier.id, {
+        assigned_service: targetService.name,
+        workflow_state_id: initial?.id ?? null,
+        metadata: { ...currentMeta, service_id: targetService.id },
+      });
+      if (updateErr) throw updateErr;
+
+      await logEvent(organizationId, courier.id, "service_transferred", {
+        from: previousService,
+        to: targetService.name,
+      });
+
+      // Notify all members of the target service
+      const { data: members } = await supabase
+        .from("service_members" as never)
+        .select("user_id")
+        .eq("service_id", targetService.id);
+      if (members && (members as { user_id: string }[]).length > 0) {
+        const subject = (courier as any).subject ?? "(sans objet)";
+        const notifs = (members as { user_id: string }[]).map((m) => ({
+          organization_id: organizationId,
+          user_id: m.user_id,
+          type: "courier_transferred",
+          title: `Transféré : ${subject}`,
+          resource_id: courier.id,
+        }));
+        await supabase.from("notifications" as never).insert(notifs);
+      }
+
+      return { name: targetService.name, initialStateId: initial?.id ?? null, loseAccess };
+    },
+    onSuccess: (result) => {
+      setTransferConfirmOpen(false);
+      setTransferTargetServiceId("");
+      queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
+      queryClient.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
+      queryClient.invalidateQueries({ queryKey: ["instruction-couriers"] });
+      toast.success("Courrier transféré");
+      onOpenChange(false);
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   const transitionMutation = useMutation({
     mutationFn: async (toStateId: string) => {
       if (!courier) return;
@@ -295,7 +387,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
       );
       const { data: toStateRow } = await supabase
         .from("workflow_states")
-        .select("id, name, category")
+        .select("id, name, category, is_initial")
         .eq("id", toStateId)
         .maybeSingle();
       const fromStateRow = courier.workflow_state_id
@@ -352,13 +444,21 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
           }
         }
       }
+      return { toStateId, isInitial: toStateRow?.is_initial === true };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
+      if (!result) return;
       queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
+      queryClient.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
+      queryClient.invalidateQueries({ queryKey: ["instruction-couriers"] });
       queryClient.invalidateQueries({ queryKey: ["courier-events", courier?.id] });
       queryClient.invalidateQueries({ queryKey: ["usagers"] });
       toast.success("Courrier déplacé");
-      onOpenChange(false);
+      if (!fullScreen && !result.isInitial) {
+        navigate(`/courrier/${courier?.id}`);
+      } else {
+        setLocalWorkflowStateId(result.toStateId);
+      }
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -890,7 +990,6 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
               ) : (
                 <>
                   {(() => {
-                    const isInitialState = !localWorkflowStateId || currentStateInfo?.is_initial === true;
                     const serviceSelectDisabled = serviceMutation.isPending || !isInitialState;
                     const select = (
                       <Select
@@ -934,6 +1033,74 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 </>
               )}
             </div>
+
+            {/* Inline transfer select — only when assigned to a service and NOT in initial state */}
+            {!readOnly && !!localAssignedService && !isInitialState && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <ArrowRightLeft className="h-4 w-4 text-muted-foreground" />
+                  <h3 className="text-sm font-medium">Transférer à un autre service</h3>
+                </div>
+                <Select
+                  value=""
+                  onValueChange={(serviceId) => {
+                    const target = services?.find((s) => s.id === serviceId);
+                    if (!target) return;
+                    setTransferTargetServiceId(serviceId);
+                    setTransferConfirmOpen(true);
+                  }}
+                  disabled={transferMutation.isPending}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choisir un service…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(services ?? [])
+                      .filter((s) => s.name !== localAssignedService)
+                      .map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Confirmation modal — only when user loses access to the target service */}
+            <AlertDialog
+              open={transferConfirmOpen}
+              onOpenChange={(o) => {
+                setTransferConfirmOpen(o);
+                if (!o) setTransferTargetServiceId("");
+              }}
+            >
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Transférer la demande</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Vous allez transférer ce courrier à :{" "}
+                    <strong>
+                      {services?.find((s) => s.id === transferTargetServiceId)?.name ?? ""}
+                    </strong>
+                    . Elle sera alors remise à l'état initial. En fonction de la configuration des droits, elle pourrait vous être rendue inaccessible.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Annuler</AlertDialogCancel>
+                  <AlertDialogAction
+                    disabled={transferMutation.isPending}
+                    onClick={() => {
+                      const targetName = services?.find((s) => s.id === transferTargetServiceId)?.name ?? "";
+                      const loseAccess = userServiceFilter !== null && !userServiceFilter.includes(targetName);
+                      transferMutation.mutate({ targetServiceId: transferTargetServiceId, loseAccess  });
+                    }}
+                  >
+                    Valider
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
 
             <Separator />
             <div className="space-y-3">

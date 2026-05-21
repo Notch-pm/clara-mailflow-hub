@@ -42,6 +42,8 @@ import {
   createService,
   updateService,
   deleteService,
+  listServiceMemberIds,
+  setServiceMembers,
   type OrgService,
 } from "@/services/orgServiceService";
 import {
@@ -50,6 +52,7 @@ import {
   setServiceSignatories,
   type Signatory,
 } from "@/services/signatoryService";
+import { getOrgMembers, type OrgMember } from "@/services/userService";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
@@ -148,6 +151,12 @@ export default function ServicesSettings({ organizationId, isAdminOverride }: Pr
     enabled: !!orgId,
   });
 
+  const { data: orgMembers = [] } = useQuery({
+    queryKey: ["org-members", orgId],
+    queryFn: () => getOrgMembers(orgId),
+    enabled: !!orgId,
+  });
+
   const saveMutation = useMutation({
     mutationFn: async (values: {
       name: string;
@@ -156,17 +165,22 @@ export default function ServicesSettings({ organizationId, isAdminOverride }: Pr
       reply_workflow_id: string | null;
       imap_settings_id: string | null;
       signatory_ids: string[];
+      member_ids: string[];
     }) => {
-      const { signatory_ids, ...payload } = values;
+      const { signatory_ids, member_ids, ...payload } = values;
       const svc = editing
         ? await updateService(editing.id, payload)
         : await createService(orgId, payload);
-      await setServiceSignatories(orgId, svc.id, signatory_ids);
+      await Promise.all([
+        setServiceSignatories(orgId, svc.id, signatory_ids),
+        setServiceMembers(orgId, svc.id, member_ids),
+      ]);
       return svc;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["org-services", orgId] });
       queryClient.invalidateQueries({ queryKey: ["service-signatories"] });
+      queryClient.invalidateQueries({ queryKey: ["service-members"] });
       toast.success(editing ? "Service modifié" : "Service créé");
       setDialogOpen(false);
       setEditing(null);
@@ -342,6 +356,7 @@ export default function ServicesSettings({ organizationId, isAdminOverride }: Pr
         imapConfigs={imapConfigs}
         multipleImap={multipleImap}
         signatories={signatories}
+        orgMembers={orgMembers}
         orgContact={{
           address_street: org?.address_street ?? null,
           address_complement: org?.address_complement ?? null,
@@ -351,7 +366,7 @@ export default function ServicesSettings({ organizationId, isAdminOverride }: Pr
           website: org?.website ?? null,
           contact_email: org?.contact_email ?? null,
         }}
-        onSubmit={(values) => saveMutation.mutate(values)}
+        onSubmit={(values: Parameters<typeof saveMutation.mutate>[0]) => saveMutation.mutate(values)}
         isSubmitting={saveMutation.isPending}
       />
 
@@ -390,6 +405,7 @@ function ServiceDialog({
   imapConfigs,
   multipleImap,
   signatories,
+  orgMembers,
   orgContact,
   onSubmit,
   isSubmitting,
@@ -402,6 +418,7 @@ function ServiceDialog({
   imapConfigs: ImapConfig[];
   multipleImap: boolean;
   signatories: Signatory[];
+  orgMembers: OrgMember[];
   orgContact: {
     address_street: string | null;
     address_complement: string | null;
@@ -418,6 +435,7 @@ function ServiceDialog({
     reply_workflow_id: string | null;
     imap_settings_id: string | null;
     signatory_ids: string[];
+    member_ids: string[];
     address_street: string | null;
     address_complement: string | null;
     address_postal_code: string | null;
@@ -435,6 +453,7 @@ function ServiceDialog({
   const [replyWorkflowId, setReplyWorkflowId] = useState<string>(NONE);
   const [imapSettingsId, setImapSettingsId] = useState<string>("");
   const [signatoryIds, setSignatoryIds] = useState<string[]>([]);
+  const [memberIds, setMemberIds] = useState<string[]>([]);
   const [addressStreet, setAddressStreet] = useState("");
   const [addressComplement, setAddressComplement] = useState("");
   const [addressPostalCode, setAddressPostalCode] = useState("");
@@ -449,6 +468,12 @@ function ServiceDialog({
   const { data: existingSignatoryIds } = useQuery({
     queryKey: ["service-signatories", editing?.id],
     queryFn: () => listServiceSignatoryIds(editing!.id),
+    enabled: !!editing?.id && open,
+  });
+
+  const { data: existingMemberIds } = useQuery({
+    queryKey: ["service-members", editing?.id],
+    queryFn: () => listServiceMemberIds(editing!.id),
     enabled: !!editing?.id && open,
   });
 
@@ -477,12 +502,17 @@ function ServiceDialog({
       (editing?.contact_email ?? "") === (orgContact.contact_email ?? "");
     setCustomCoords(editing ? !matchesOrg : false);
     setSignatoryIds([]);
+    setMemberIds([]);
     setErrors({});
   }, [open, editing?.id]);
 
   useEffect(() => {
     if (existingSignatoryIds) setSignatoryIds(existingSignatoryIds);
   }, [existingSignatoryIds]);
+
+  useEffect(() => {
+    if (existingMemberIds) setMemberIds(existingMemberIds);
+  }, [existingMemberIds]);
 
   function toggleSignatory(id: string) {
     setSignatoryIds((prev) =>
@@ -494,6 +524,18 @@ function ServiceDialog({
   }
   function clearAll() {
     setSignatoryIds([]);
+  }
+
+  function toggleMember(id: string) {
+    setMemberIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  }
+  function selectAllMembers() {
+    setMemberIds(orgMembers.filter((m) => m.membership_active !== false).map((m) => m.id));
+  }
+  function clearAllMembers() {
+    setMemberIds([]);
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -524,6 +566,7 @@ function ServiceDialog({
       reply_workflow_id: replyWorkflowId && replyWorkflowId !== NONE ? replyWorkflowId : null,
       imap_settings_id: multipleImap ? imapSettingsId || null : null,
       signatory_ids: signatoryIds,
+      member_ids: memberIds,
       address_street: customCoords ? (addressStreet.trim() || null) : orgContact.address_street,
       address_complement: customCoords ? (addressComplement.trim() || null) : orgContact.address_complement,
       address_postal_code: customCoords ? (addressPostalCode.trim() || null) : orgContact.address_postal_code,
@@ -770,6 +813,69 @@ function ServiceDialog({
             )}
             <p className="text-xs text-muted-foreground">
               {signatoryIds.length} signataire(s) sélectionné(s)
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label>Membres associés</Label>
+              <div className="flex gap-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={selectAllMembers}
+                  disabled={orgMembers.length === 0 || memberIds.length === orgMembers.length}
+                >
+                  Tout ajouter
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={clearAllMembers}
+                  disabled={memberIds.length === 0}
+                >
+                  Tout retirer
+                </Button>
+              </div>
+            </div>
+            {orgMembers.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Aucun utilisateur dans l'organisation.
+              </p>
+            ) : (
+              <div className="rounded-md border max-h-48 overflow-y-auto divide-y">
+                {orgMembers
+                  .filter((m) => m.membership_active !== false)
+                  .map((m) => {
+                    const checked = memberIds.includes(m.id);
+                    const fullName = [m.first_name, m.last_name].filter(Boolean).join(" ") || m.email;
+                    return (
+                      <label
+                        key={m.id}
+                        className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-muted/50"
+                      >
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={() => toggleMember(m.id)}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium truncate">{fullName}</div>
+                          <div className="text-xs text-muted-foreground truncate">{m.email}</div>
+                        </div>
+                        <Badge variant="outline" className="text-[10px] capitalize shrink-0">
+                          {m.role}
+                        </Badge>
+                      </label>
+                    );
+                  })}
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground">
+              {memberIds.length} membre(s) sélectionné(s)
             </p>
           </div>
 

@@ -20,6 +20,7 @@ import { listServices } from "@/services/orgServiceService";
 import { listTags, type CourierTag } from "@/services/courierTagService";
 import { searchCouriers, type CourierSearchResult } from "@/services/courierSearchService";
 import { readableTextColor } from "@/lib/tag-color";
+import { useUserServiceFilter, applyServiceFilter } from "@/hooks/useUserServiceFilter";
 
 const PAGE_SIZE = 20;
 
@@ -133,11 +134,7 @@ function TagFilter({ tags, selectedTags, onChange }: TagFilterProps) {
               key={tag.id}
               onClick={() => toggle(tag.name)}
               className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium transition-opacity border"
-              style={
-                active
-                  ? { backgroundColor: bg, color: readableTextColor(bg), borderColor: bg }
-                  : { backgroundColor: "transparent", color: bg, borderColor: bg, opacity: 0.6 }
-              }
+              style={{ backgroundColor: bg, color: readableTextColor(bg), borderColor: bg, opacity: active ? 1 : 0.45 }}
             >
               {tag.name}
             </button>
@@ -372,7 +369,9 @@ export default function RechercheCourrierPage() {
     enabled: !!organizationId,
   });
 
-  const results: CourierSearchResult[] = data?.pages.flatMap((p) => p.results) ?? [];
+  const userServiceFilter = useUserServiceFilter();
+  const rawResults: CourierSearchResult[] = data?.pages.flatMap((p) => p.results) ?? [];
+  const results = applyServiceFilter(rawResults, userServiceFilter);
   const totalCount = data?.pages[0]?.totalCount ?? 0;
 
   const loadMoreRef = useRef<HTMLDivElement>(null);

@@ -19,7 +19,6 @@ import CourierDetail from "@/pages/CourierDetail";
 const WorkflowDetail = lazy(() => import("@/pages/WorkflowDetail"));
 import SettingsPage from "@/pages/SettingsPage";
 import MonProfil from "@/pages/MonProfil";
-import Liens from "@/pages/Liens";
 import Usagers from "@/pages/Usagers";
 import RechercheCourrierPage from "@/pages/RechercheCourrierPage";
 import Login from "@/pages/Login";
@@ -28,6 +27,7 @@ import ActivateAccount from "@/pages/ActivateAccount";
 import SuperAdminDashboard from "@/pages/SuperAdminDashboard";
 import OrganizationsAdmin from "@/pages/OrganizationsAdmin";
 import OrgSettings from "@/pages/OrgSettings";
+import BulkImport from "@/pages/BulkImport";
 import NotFound from "@/pages/NotFound";
 import { Loader2 } from "lucide-react";
 
@@ -149,10 +149,10 @@ const App = () => (
                   <Route path="/workflows/:id" element={<Suspense fallback={<LoadingScreen />}><WorkflowDetail /></Suspense>} />
                   <Route path="/parametres" element={<SettingsPage />} />
                   <Route path="/mon-profil" element={<MonProfil />} />
-                  <Route path="/liens" element={<Liens />} />
                   <Route path="/usagers" element={<Usagers />} />
                   <Route path="/usagers/:id" element={<Usagers />} />
                   <Route path="/recherche" element={<RechercheCourrierPage />} />
+                  <Route path="/import-en-masse" element={<BulkImport />} />
                 </Route>
               </Route>
               <Route path="*" element={<NotFound />} />

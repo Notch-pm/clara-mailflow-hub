@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
-import { Check, FileUp, Tag as TagIcon, Upload, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, FileText, FileUp, Loader2, ScanSearch, Tag as TagIcon, Upload, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -35,6 +35,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { readableTextColor } from "@/lib/tag-color";
 import { supabase } from "@/integrations/supabase/client";
+import { createUsager } from "@/services/usagerService";
 import { createCourier } from "@/services/courierService";
 import { addParticipant } from "@/services/courierParticipantService";
 import { listServices } from "@/services/orgServiceService";
@@ -93,6 +94,14 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId }:
   const [bodyText, setBodyText] = useState("");
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [dragOver, setDragOver] = useState(false);
+  const [previewIndex, setPreviewIndex] = useState(0);
+  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
+  const [extractedSender, setExtractedSender] = useState<{
+    first_name: string | null;
+    last_name: string | null;
+    email: string | null;
+    phone: string | null;
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -107,7 +116,23 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId }:
     setErrors({});
     setBodyText("");
     setPendingFiles([]);
+    setPreviewIndex(0);
+    setExtractedSender(null);
   }, [open]);
+
+  // Maintain previewIndex in bounds when files are removed
+  useEffect(() => {
+    if (pendingFiles.length > 0 && previewIndex >= pendingFiles.length) {
+      setPreviewIndex(pendingFiles.length - 1);
+    }
+  }, [pendingFiles.length]);
+
+  // Create and revoke object URLs for local file preview
+  useEffect(() => {
+    const urls = pendingFiles.map((f) => URL.createObjectURL(f));
+    setPreviewUrls(urls);
+    return () => urls.forEach((u) => URL.revokeObjectURL(u));
+  }, [pendingFiles]);
 
   const { data: services } = useQuery({
     queryKey: ["org-services", organizationId],
@@ -272,6 +297,96 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId }:
     },
   });
 
+  const analyzeMutation = useMutation({
+    mutationFn: async () => {
+      if (!pendingFiles.length) throw new Error("Aucun document à analyser");
+
+      // Read files as base64
+      const filePayloads = await Promise.all(
+        pendingFiles.slice(0, 5).map(async (f) => {
+          const buf = await f.arrayBuffer();
+          const bytes = new Uint8Array(buf);
+          let binary = "";
+          for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+          return {
+            name: f.name,
+            mime_type: f.type || "application/octet-stream",
+            content_base64: btoa(binary),
+          };
+        }),
+      );
+
+      const { data, error } = await supabase.functions.invoke("extract-courier-info", {
+        body: { files: filePayloads },
+      });
+      if (error) throw new Error((error as { message?: string }).message ?? "Analyse échouée");
+      if (data?.error) throw new Error(data.error);
+      return data as {
+        sender: { first_name: string | null; last_name: string | null; email: string | null; phone: string | null };
+        recipient_name: string | null;
+        suggested_service_name: string | null;
+        suggested_tag_names: string[];
+        matched_usager: { id: string; first_name: string | null; last_name: string | null; email: string | null; phone: string | null; category: string; civilite: string | null } | null;
+        extracted_text: string | null;
+      };
+    },
+    onSuccess: (result) => {
+      const filled: string[] = [];
+
+      // Pre-fill body text from OCR
+      if (result.extracted_text?.trim() && !bodyText.trim()) {
+        setBodyText(result.extracted_text.trim());
+        filled.push("contenu");
+      }
+
+      // Pre-fill sender
+      if (result.matched_usager) {
+        setSenderUsager(result.matched_usager as any);
+        setExtractedSender(null);
+        filled.push("expéditeur reconnu");
+      } else if (result.sender.first_name || result.sender.last_name) {
+        setExtractedSender(result.sender);
+        filled.push("expéditeur extrait");
+      }
+
+      // Pre-fill recipient
+      if (result.recipient_name && !recipientName.trim()) {
+        setRecipientName(result.recipient_name);
+        filled.push("destinataire");
+      }
+
+      // Pre-fill service
+      if (result.suggested_service_name) {
+        const match = services?.find(
+          (s) => s.name.toLowerCase() === result.suggested_service_name!.toLowerCase(),
+        );
+        if (match && !serviceId) {
+          setServiceId(match.id);
+          filled.push("service gestionnaire");
+        }
+      }
+
+      // Pre-fill tags (compute toAdd outside the state updater to track filled)
+      if (result.suggested_tag_names.length) {
+        const existing = new Set(selectedTags.map((t) => t.toLowerCase()));
+        const toAdd = result.suggested_tag_names.filter((t) => !existing.has(t.toLowerCase()));
+        if (toAdd.length) {
+          setSelectedTags((curr) => [...curr, ...toAdd]);
+          filled.push(`${toAdd.length} tag(s)`);
+        }
+      }
+
+      if (filled.length) {
+        toast.success(`OCR : ${filled.join(", ")} pré-rempli(s)`);
+      } else {
+        toast.info("OCR terminé — aucune information extraite");
+      }
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+
   function toggleTag(name: string) {
     setSelectedTags((curr) =>
       curr.some((t) => t.toLowerCase() === name.toLowerCase())
@@ -299,56 +414,246 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId }:
             e.preventDefault();
             createMutation.mutate();
           }}
+          className="space-y-4"
         >
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Left column — form */}
+          {/* Ligne 1 — Titre (pleine largeur) */}
+          <div className="space-y-2">
+            <Label htmlFor="nc-subject">Titre *</Label>
+            <Input
+              id="nc-subject"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              maxLength={255}
+              placeholder="Titre du courrier"
+            />
+            {errors.subject && (
+              <p className="text-xs text-destructive">{errors.subject}</p>
+            )}
+          </div>
+
+          {/* Ligne 2 — Canal + Date (même ligne) */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="nc-channel">Canal *</Label>
+              <Select value={channel} onValueChange={(v) => setChannel(v as CourierChannel)}>
+                <SelectTrigger id="nc-channel"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {channelOptions.map((c) => (
+                    <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="nc-date">Date de réception *</Label>
+              <Input
+                id="nc-date"
+                type="date"
+                value={receivedAt}
+                onChange={(e) => setReceivedAt(e.target.value)}
+              />
+              {errors.received_at && (
+                <p className="text-xs text-destructive">{errors.received_at}</p>
+              )}
+            </div>
+          </div>
+
+          {/* Deux colonnes */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+
+            {/* Colonne gauche — Documents puis Contenu */}
             <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="nc-subject">Titre *</Label>
-                <Input
-                  id="nc-subject"
-                  value={subject}
-                  onChange={(e) => setSubject(e.target.value)}
-                  maxLength={255}
-                  placeholder="Titre du courrier"
-                />
-                {errors.subject && (
-                  <p className="text-xs text-destructive">{errors.subject}</p>
+              <div className="space-y-3">
+                <Label>Documents (facultatif)</Label>
+
+                {/* Drop zone — compact when files are present */}
+                <div
+                  onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                  onDragLeave={() => setDragOver(false)}
+                  onDrop={onDrop}
+                  className={cn(
+                    "border-2 border-dashed rounded-lg text-center transition-colors",
+                    pendingFiles.length > 0 ? "py-3 px-4" : "p-6",
+                    dragOver ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-muted-foreground/50",
+                  )}
+                >
+                  {pendingFiles.length === 0 && (
+                    <Upload className="h-8 w-8 mx-auto text-muted-foreground/50 mb-2" />
+                  )}
+                  <p className="text-sm text-muted-foreground mb-2">
+                    {pendingFiles.length > 0 ? "Ajouter d'autres fichiers ou" : "Glissez-déposez vos fichiers ici ou"}
+                  </p>
+                  <Button type="button" size="sm" className="gap-1.5" onClick={() => fileInputRef.current?.click()}>
+                    <FileUp className="h-4 w-4" /> Parcourir
+                  </Button>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Max {(maxFileSize / (1024 * 1024)).toFixed(0)} Mo par fichier
+                  </p>
+                  <input ref={fileInputRef} type="file" multiple className="hidden"
+                    onChange={(e) => { if (e.target.files?.length) addFiles(e.target.files); e.target.value = ""; }}
+                  />
+                </div>
+
+                {/* OCR analysis button */}
+                {pendingFiles.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full gap-2"
+                    onClick={() => analyzeMutation.mutate()}
+                    disabled={analyzeMutation.isPending}
+                  >
+                    {analyzeMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <ScanSearch className="h-4 w-4" />
+                    )}
+                    {analyzeMutation.isPending ? "Analyse en cours…" : "Analyser avec l'OCR"}
+                  </Button>
+                )}
+
+                {/* Carousel de prévisualisation */}
+                {pendingFiles.length > 0 && (
+                  <div className="rounded-lg border overflow-hidden">
+                    {/* Zone de prévisualisation */}
+                    <div className="relative bg-muted/30 h-[260px] flex items-center justify-center">
+                      {(() => {
+                        const file = pendingFiles[previewIndex];
+                        const url = previewUrls[previewIndex];
+                        if (!file || !url) return null;
+                        if (file.type.startsWith("image/")) {
+                          return <img src={url} alt={file.name} className="max-h-full max-w-full object-contain p-2" />;
+                        }
+                        if (file.type === "application/pdf") {
+                          return <iframe src={url} className="w-full h-full border-0" title={file.name} />;
+                        }
+                        return (
+                          <div className="text-center text-muted-foreground px-4">
+                            <FileText className="h-10 w-10 mx-auto mb-2 opacity-40" />
+                            <p className="text-sm font-medium truncate">{file.name}</p>
+                            <p className="text-xs mt-1">Aperçu non disponible</p>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Flèches de navigation */}
+                      {pendingFiles.length > 1 && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setPreviewIndex((i) => Math.max(0, i - 1))}
+                            disabled={previewIndex === 0}
+                            className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-background/90 p-1.5 shadow hover:bg-background disabled:opacity-30 transition-opacity"
+                          >
+                            <ChevronLeft className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPreviewIndex((i) => Math.min(pendingFiles.length - 1, i + 1))}
+                            disabled={previewIndex === pendingFiles.length - 1}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-background/90 p-1.5 shadow hover:bg-background disabled:opacity-30 transition-opacity"
+                          >
+                            <ChevronRight className="h-4 w-4" />
+                          </button>
+                        </>
+                      )}
+
+                      {/* Indicateur */}
+                      {pendingFiles.length > 1 && (
+                        <span className="absolute bottom-2 right-3 text-[10px] text-muted-foreground bg-background/80 rounded px-1.5 py-0.5">
+                          {previewIndex + 1} / {pendingFiles.length}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Liste des fichiers cliquables */}
+                    <div className="border-t divide-y max-h-[130px] overflow-y-auto">
+                      {pendingFiles.map((f, i) => (
+                        <div
+                          key={`${f.name}-${i}`}
+                          onClick={() => setPreviewIndex(i)}
+                          className={cn(
+                            "flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer transition-colors",
+                            i === previewIndex ? "bg-muted font-medium" : "hover:bg-muted/50",
+                          )}
+                        >
+                          <span className="flex-1 truncate" title={f.name}>{f.name}</span>
+                          <span className="text-xs text-muted-foreground shrink-0">{formatBytes(f.size)}</span>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); removePendingFile(i); }}
+                            className="p-0.5 rounded hover:text-destructive transition-colors ml-1"
+                            aria-label={`Retirer ${f.name}`}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="nc-channel">Canal *</Label>
-                  <Select
-                    value={channel}
-                    onValueChange={(v) => setChannel(v as CourierChannel)}
-                  >
-                    <SelectTrigger id="nc-channel">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {channelOptions.map((c) => (
-                        <SelectItem key={c.value} value={c.value}>
-                          {c.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="nc-date">Date de réception *</Label>
-                  <Input
-                    id="nc-date"
-                    type="date"
-                    value={receivedAt}
-                    onChange={(e) => setReceivedAt(e.target.value)}
-                  />
-                  {errors.received_at && (
-                    <p className="text-xs text-destructive">{errors.received_at}</p>
-                  )}
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="nc-body">Contenu</Label>
+                <Textarea
+                  id="nc-body"
+                  value={bodyText}
+                  onChange={(e) => setBodyText(e.target.value)}
+                  placeholder="Saisissez le contenu du courrier (facultatif)…"
+                  rows={6}
+                  className="resize-y min-h-[140px]"
+                />
               </div>
+            </div>
+
+            {/* Colonne droite — Expéditeur, Destinataire, Tags */}
+            <div className="space-y-4">
+              {/* Extracted sender banner (OCR result not matched to an existing usager) */}
+              {extractedSender && !senderUsager && (
+                <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
+                  <p className="text-xs font-medium text-primary">Expéditeur extrait par OCR</p>
+                  <div className="text-xs text-muted-foreground space-y-0.5">
+                    {(extractedSender.first_name || extractedSender.last_name) && (
+                      <div>{[extractedSender.first_name, extractedSender.last_name].filter(Boolean).join(" ")}</div>
+                    )}
+                    {extractedSender.email && <div>{extractedSender.email}</div>}
+                    {extractedSender.phone && <div>{extractedSender.phone}</div>}
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="w-full h-7 text-xs"
+                    onClick={async () => {
+                      try {
+                        const created = await createUsager(organizationId, {
+                          category: "citoyen",
+                          first_name: extractedSender.first_name,
+                          last_name: extractedSender.last_name,
+                          email: extractedSender.email,
+                          phone: extractedSender.phone,
+                        });
+                        setSenderUsager(created as any);
+                        setExtractedSender(null);
+                        toast.success("Usager créé et sélectionné");
+                      } catch (e) {
+                        toast.error((e as Error).message);
+                      }
+                    }}
+                  >
+                    Créer et sélectionner cet usager
+                  </Button>
+                  <button
+                    type="button"
+                    className="text-xs text-muted-foreground hover:text-foreground transition-colors w-full text-center"
+                    onClick={() => setExtractedSender(null)}
+                  >
+                    Ignorer
+                  </button>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label>Expéditeur (usager)</Label>
@@ -359,15 +664,9 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId }:
                 />
                 {senderUsager && (
                   <div className="text-xs text-muted-foreground space-y-0.5 pt-1">
-                    <div>
-                      <span className="font-medium">Nature :</span> {categoryLabels[senderUsager.category]}
-                    </div>
-                    {senderUsager.email && (
-                      <div><span className="font-medium">Email :</span> {senderUsager.email}</div>
-                    )}
-                    {senderUsager.phone && (
-                      <div><span className="font-medium">Téléphone :</span> {senderUsager.phone}</div>
-                    )}
+                    <div><span className="font-medium">Nature :</span> {categoryLabels[senderUsager.category]}</div>
+                    {senderUsager.email && <div><span className="font-medium">Email :</span> {senderUsager.email}</div>}
+                    {senderUsager.phone && <div><span className="font-medium">Téléphone :</span> {senderUsager.phone}</div>}
                   </div>
                 )}
               </div>
@@ -381,35 +680,6 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId }:
                   maxLength={150}
                   placeholder="Nom du destinataire"
                 />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="nc-service">Service gestionnaire *</Label>
-                <Select value={serviceId} onValueChange={setServiceId}>
-                  <SelectTrigger id="nc-service">
-                    <SelectValue placeholder="Sélectionner un service" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(services ?? []).map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.name}
-                        {s.workflow?.name && (
-                          <span className="text-muted-foreground text-xs ml-2">
-                            — {s.workflow.name}
-                          </span>
-                        )}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {!services?.length && (
-                  <p className="text-xs text-muted-foreground">
-                    Aucun service défini. Créez-en un dans Paramètres → Services.
-                  </p>
-                )}
-                {errors.service_id && (
-                  <p className="text-xs text-destructive">{errors.service_id}</p>
-                )}
               </div>
 
               <div className="space-y-2">
@@ -429,30 +699,12 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId }:
                           <CommandEmpty>Aucun tag défini.</CommandEmpty>
                           <CommandGroup>
                             {(orgTags ?? []).map((tag) => {
-                              const checked = selectedTags.some(
-                                (t) => t.toLowerCase() === tag.name.toLowerCase(),
-                              );
+                              const checked = selectedTags.some((t) => t.toLowerCase() === tag.name.toLowerCase());
                               return (
-                                <CommandItem
-                                  key={tag.id}
-                                  value={tag.name}
-                                  onSelect={() => toggleTag(tag.name)}
-                                  className="gap-2"
-                                >
-                                  <span
-                                    className="h-2.5 w-2.5 rounded-full shrink-0"
-                                    style={{
-                                      backgroundColor:
-                                        tag.color ?? "hsl(var(--muted-foreground))",
-                                    }}
-                                  />
+                                <CommandItem key={tag.id} value={tag.name} onSelect={() => toggleTag(tag.name)} className="gap-2">
+                                  <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: tag.color ?? "hsl(var(--muted-foreground))" }} />
                                   <span className="flex-1">{tag.name}</span>
-                                  <Check
-                                    className={cn(
-                                      "h-4 w-4",
-                                      checked ? "opacity-100" : "opacity-0",
-                                    )}
-                                  />
+                                  <Check className={cn("h-4 w-4", checked ? "opacity-100" : "opacity-0")} />
                                 </CommandItem>
                               );
                             })}
@@ -464,31 +716,22 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId }:
                 </div>
                 <div className="flex flex-wrap gap-1.5 min-h-[28px]">
                   {selectedTags.length === 0 && (
-                    <span className="text-xs text-muted-foreground self-center">
-                      Aucun tag (facultatif)
-                    </span>
+                    <span className="text-xs text-muted-foreground self-center">Aucun tag (facultatif)</span>
                   )}
                   {selectedTags.map((name) => {
                     const tag = tagByName.get(name.toLowerCase());
                     const fg = tag?.color ? readableTextColor(tag.color) : undefined;
                     return (
                       <Badge
-                        key={name}
-                        variant="secondary"
+                        key={name} variant="secondary"
                         className="gap-1.5 pl-2 pr-1 border-transparent"
-                        style={
-                          tag?.color
-                            ? { backgroundColor: tag.color, color: fg }
-                            : undefined
-                        }
+                        style={tag?.color ? { backgroundColor: tag.color, color: fg } : undefined}
                       >
                         {name}
                         <button
-                          type="button"
-                          onClick={() => toggleTag(name)}
+                          type="button" onClick={() => toggleTag(name)}
                           className="ml-0.5 rounded-full p-0.5 hover:bg-black/20 transition-colors"
-                          aria-label={`Retirer ${name}`}
-                          style={fg ? { color: fg } : undefined}
+                          aria-label={`Retirer ${name}`} style={fg ? { color: fg } : undefined}
                         >
                           <X className="h-3 w-3" />
                         </button>
@@ -497,102 +740,38 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId }:
                   })}
                 </div>
               </div>
-            </div>
 
-            {/* Right column — body + file upload */}
-            <div className="space-y-4">
+              {/* Service gestionnaire — en bas de la colonne droite */}
               <div className="space-y-2">
-                <Label htmlFor="nc-body">Contenu</Label>
-                <Textarea
-                  id="nc-body"
-                  value={bodyText}
-                  onChange={(e) => setBodyText(e.target.value)}
-                  placeholder="Saisissez le contenu du courrier (facultatif)…"
-                  rows={8}
-                  className="resize-y min-h-[180px]"
-                />
-              </div>
-
-              <div className="space-y-3">
-                <Label>Documents (facultatif)</Label>
-              <div
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setDragOver(true);
-                }}
-                onDragLeave={() => setDragOver(false)}
-                onDrop={onDrop}
-                className={cn(
-                  "border-2 border-dashed rounded-lg p-6 text-center transition-colors",
-                  dragOver
-                    ? "border-primary bg-primary/5"
-                    : "border-muted-foreground/25 hover:border-muted-foreground/50",
+                <Label htmlFor="nc-service">Service gestionnaire *</Label>
+                <Select value={serviceId} onValueChange={setServiceId}>
+                  <SelectTrigger id="nc-service">
+                    <SelectValue placeholder="Sélectionner un service" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(services ?? []).map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name}
+                        {s.workflow?.name && (
+                          <span className="text-muted-foreground text-xs ml-2">— {s.workflow.name}</span>
+                        )}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {!services?.length && (
+                  <p className="text-xs text-muted-foreground">
+                    Aucun service défini. Créez-en un dans Paramètres → Services.
+                  </p>
                 )}
-              >
-                <Upload className="h-8 w-8 mx-auto text-muted-foreground/50 mb-2" />
-                <p className="text-sm text-muted-foreground mb-3">
-                  Glissez-déposez vos fichiers ici ou
-                </p>
-                <Button
-                  type="button"
-                  size="sm"
-                  className="gap-1.5"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <FileUp className="h-4 w-4" /> Parcourir
-                </Button>
-                <p className="text-xs text-muted-foreground mt-2">
-                  Max {(maxFileSize / (1024 * 1024)).toFixed(0)} Mo par fichier
-                </p>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  className="hidden"
-                  onChange={(e) => {
-                    if (e.target.files?.length) addFiles(e.target.files);
-                    e.target.value = "";
-                  }}
-                />
-              </div>
-
-              {pendingFiles.length > 0 && (
-                <div className="border rounded-lg divide-y max-h-[260px] overflow-y-auto">
-                  {pendingFiles.map((f, i) => (
-                    <div
-                      key={`${f.name}-${i}`}
-                      className="flex items-center gap-2 px-3 py-2 text-sm"
-                    >
-                      <span className="flex-1 truncate" title={f.name}>
-                        {f.name}
-                      </span>
-                      <span className="text-xs text-muted-foreground shrink-0">
-                        {formatBytes(f.size)}
-                      </span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={() => removePendingFile(i)}
-                        aria-label={`Retirer ${f.name}`}
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {pendingFiles.length === 0 && (
-                <p className="text-xs text-muted-foreground text-center">
-                  Aucun fichier sélectionné
-                </p>
-              )}
+                {errors.service_id && (
+                  <p className="text-xs text-destructive">{errors.service_id}</p>
+                )}
               </div>
             </div>
           </div>
 
-          <DialogFooter className="mt-6">
+          <DialogFooter className="mt-2">
             <Button
               type="button"
               variant="outline"

@@ -96,11 +96,20 @@ export function NotificationBell() {
                       )}
                     />
                     <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        {notif.type === "courier_transferred" && (
+                          <span className="inline-flex items-center rounded px-1 py-0 text-[10px] font-medium bg-warning/15 text-warning-foreground border border-warning/30">
+                            transféré
+                          </span>
+                        )}
+                      </div>
                       <p className={cn(
                         "text-sm truncate",
                         !notif.read ? "font-semibold text-foreground" : "text-muted-foreground"
                       )}>
-                        {notif.title ?? "Nouveau courrier"}
+                        {notif.type === "courier_transferred"
+                          ? ((notif.title ?? "").replace(/^Transféré : /, "") || "Courrier transféré")
+                          : (notif.title ?? "Nouveau courrier")}
                       </p>
                       <p className="text-xs text-muted-foreground mt-0.5">
                         {formatDistanceToNow(new Date(notif.created_at), {

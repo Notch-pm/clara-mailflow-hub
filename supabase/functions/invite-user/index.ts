@@ -1,6 +1,12 @@
-import { createClient } from "npm:@supabase/supabase-js@2";
-import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import nodemailer from "npm:nodemailer@6";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-org-id, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
 
 interface SmtpSettings {
   host: string;
@@ -48,8 +54,8 @@ function buildBrandedEmail(org: OrgBranding, heading: string, bodyHtml: string, 
   return `<!DOCTYPE html>
 <html lang="fr">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin:0;padding:0;background-color:${secondary};font-family:Arial,Helvetica,sans-serif;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:${secondary};padding:40px 20px;">
+<body style="margin:0;padding:0;background-color:#ffffff;font-family:Arial,Helvetica,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#ffffff;padding:40px 20px;">
     <tr><td align="center">
       <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
         <tr><td style="background-color:${primary};padding:24px 32px;text-align:center;">
@@ -227,14 +233,12 @@ Deno.serve(async (req) => {
             },
           });
 
-        if (linkError || !linkData?.properties?.hashed_token) {
+        if (linkError || !linkData?.properties?.action_link) {
           console.error("Generate link error:", linkError);
           throw new Error(linkError?.message || "Impossible de générer le lien d'invitation");
         }
 
-        const tokenHash = linkData.properties.hashed_token;
-        const redirectTo = `${(req.headers.get("origin") || "").replace(/\/$/, "")}/activer-compte`;
-        const confirmationUrl = `${supabaseUrl}/auth/v1/verify?token=${tokenHash}&type=invite&redirect_to=${encodeURIComponent(redirectTo)}`;
+        const confirmationUrl = linkData.properties.action_link;
 
         // Fetch org branding
         const { data: org } = await supabaseAdmin

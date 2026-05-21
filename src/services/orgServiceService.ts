@@ -146,6 +146,46 @@ export async function updateService(
   return data as unknown as OrgService;
 }
 
+export async function listServiceMemberIds(serviceId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("service_members" as never)
+    .select("user_id")
+    .eq("service_id", serviceId);
+  if (error) throw error;
+  return ((data ?? []) as { user_id: string }[]).map((r) => r.user_id);
+}
+
+export async function setServiceMembers(
+  organizationId: string,
+  serviceId: string,
+  userIds: string[],
+): Promise<void> {
+  const { data: existing, error: fetchErr } = await supabase
+    .from("service_members" as never)
+    .select("user_id")
+    .eq("service_id", serviceId);
+  if (fetchErr) throw fetchErr;
+
+  const existingIds = ((existing ?? []) as { user_id: string }[]).map((r) => r.user_id);
+  const toAdd = userIds.filter((id) => !existingIds.includes(id));
+  const toRemove = existingIds.filter((id) => !userIds.includes(id));
+
+  if (toAdd.length > 0) {
+    const { error } = await supabase
+      .from("service_members" as never)
+      .insert(toAdd.map((uid) => ({ organization_id: organizationId, service_id: serviceId, user_id: uid })));
+    if (error) throw error;
+  }
+  if (toRemove.length > 0) {
+    const { error } = await supabase
+      .from("service_members" as never)
+      .delete()
+      .eq("service_id", serviceId)
+      .in("user_id", toRemove);
+    if (error) throw error;
+  }
+}
+
 export async function deleteService(id: string): Promise<void> {
   const { data: svc, error: fetchErr } = await supabase
     .from("services")

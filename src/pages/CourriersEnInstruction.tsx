@@ -24,6 +24,7 @@ import { useOrganization } from "@/contexts/OrganizationContext";
 import { supabase } from "@/integrations/supabase/client";
 import { listTags } from "@/services/courierTagService";
 import { listServices } from "@/services/orgServiceService";
+import { useUserServiceFilter, applyServiceFilter } from "@/hooks/useUserServiceFilter";
 
 import { readableTextColor } from "@/lib/tag-color";
 import { cn } from "@/lib/utils";
@@ -92,21 +93,24 @@ export default function CourriersEnInstruction() {
       if (!organizationId || !stateIds.length) return [];
       let q = supabase
         .from("couriers")
-        .select("*, courier_participants(*)")
+        .select("id, subject, direction, channel, received_at, sent_at, workflow_state_id, assigned_service, metadata, chrono, created_at, updated_at, courier_participants(id, role, name, email, usager_id)")
         .eq("organization_id", organizationId)
         .eq("direction", "inbound")
         .in("workflow_state_id", stateIds)
-        .order("updated_at", { ascending: false });
+        .order("updated_at", { ascending: false })
+        .limit(200);
       if (search) q = q.ilike("subject", `%${search}%`);
       const { data, error } = await q;
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []) as unknown as CourierWithRelations[];
     },
     enabled: !!organizationId && !!stateIds.length,
   });
 
+  const userServiceFilter = useUserServiceFilter();
+
   const filtered = useMemo(() => {
-    let list = couriers ?? [];
+    let list = applyServiceFilter(couriers ?? [], userServiceFilter);
     if (serviceFilter !== "all") {
       const svc = services?.find((s) => s.id === serviceFilter);
       if (svc) list = list.filter((c) => c.assigned_service === svc.name);
@@ -121,7 +125,7 @@ export default function CourriersEnInstruction() {
       });
     }
     return list;
-  }, [couriers, serviceFilter, stateFilter, tagFilter, services]);
+  }, [couriers, serviceFilter, stateFilter, tagFilter, services, userServiceFilter]);
 
   // Group
   const groups = useMemo(() => {

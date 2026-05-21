@@ -16,7 +16,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { toast } from "sonner";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { getCouriers, createCourier } from "@/services/courierService";
-import type { CourierChannel } from "@/types/courier";
+import type { CourierChannel, CourierWithRelations } from "@/types/courier";
+import { useUserServiceFilter, applyServiceFilter } from "@/hooks/useUserServiceFilter";
 
 const schema = z.object({
   subject: z.string().min(1, "L'objet est obligatoire").max(500),
@@ -38,16 +39,20 @@ export default function CourriersSortants() {
     defaultValues: { subject: "", channel: undefined, sent_at: new Date().toISOString().slice(0, 16) },
   });
 
-  const { data: couriers, isLoading } = useQuery({
+  const userServiceFilter = useUserServiceFilter();
+
+  const { data: rawCouriers, isLoading } = useQuery({
     queryKey: ["couriers", "outbound", organizationId, search],
     queryFn: async () => {
       if (!organizationId) return [];
       const { data, error } = await getCouriers(organizationId, { direction: "outbound", search: search || undefined });
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []) as unknown as CourierWithRelations[];
     },
     enabled: !!organizationId,
   });
+
+  const couriers = applyServiceFilter(rawCouriers ?? [], userServiceFilter);
 
   const createMutation = useMutation({
     mutationFn: async (values: z.infer<typeof schema>) => {

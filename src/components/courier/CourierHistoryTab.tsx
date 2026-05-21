@@ -48,6 +48,7 @@ const ICONS: Record<string, JSX.Element> = {
   document_updated:      <Pencil className="h-3.5 w-3.5" />,
   document_deleted:      <FileX2 className="h-3.5 w-3.5" />,
   service_changed:       <Briefcase className="h-3.5 w-3.5" />,
+  service_transferred:   <ArrowRightCircle className="h-3.5 w-3.5" />,
   state_changed:         <ArrowRightCircle className="h-3.5 w-3.5" />,
   reply_created:         <MessageSquarePlus className="h-3.5 w-3.5" />,
   reply_deleted:         <MessageSquareX className="h-3.5 w-3.5" />,
@@ -71,6 +72,7 @@ const LABELS: Record<string, string> = {
   document_updated:      "Document modifié",
   document_deleted:      "Document supprimé",
   service_changed:       "Changement de service",
+  service_transferred:   "Transfert de service",
   state_changed:         "Changement d'état",
   reply_created:         "Réponse créée",
   reply_deleted:         "Réponse supprimée",
@@ -181,6 +183,11 @@ export default function CourierHistoryTab({ courierId, organizationId }: Props) 
             : payload.to
               ? `→ ${payload.to}`
               : null;
+          break;
+        case "service_transferred":
+          detail = payload.from && payload.to
+            ? `${payload.from} → ${payload.to}`
+            : payload.to ?? null;
           break;
         case "state_changed":
           detail = payload.to_name
