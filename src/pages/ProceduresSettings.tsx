@@ -334,7 +334,7 @@ function ProcedureRow({
       {isAdmin && (
         <TableCell className="text-right">
           <div className="flex justify-end gap-1">
-            <Button variant="ghost" size="icon" onClick={() => onEdit(procedure)} title="Modifier">
+            <Button variant="ghost" size="icon" onClick={() => onEdit(procedure)} title="Modifier" aria-label="Modifier la démarche">
               <Pencil className="h-4 w-4" />
             </Button>
             <Button
@@ -342,6 +342,7 @@ function ProcedureRow({
               size="icon"
               onClick={() => onDelete(procedure)}
               title="Supprimer"
+              aria-label="Supprimer la démarche"
               className="text-destructive hover:text-destructive"
             >
               <Trash2 className="h-4 w-4" />

@@ -8,7 +8,7 @@ export function AppLayout() {
   const isMobile = useIsMobile();
 
   return (
-    <div className="h-screen flex flex-col w-full overflow-hidden">
+    <div className="h-dvh flex flex-col w-full overflow-hidden">
       <AppHeader />
 
       <div className="flex-1 flex min-h-0 overflow-hidden">

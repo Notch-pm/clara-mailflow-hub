@@ -51,7 +51,7 @@ export function StateEditPanel({
     <div className="w-64 border-l bg-card p-4 space-y-4 overflow-y-auto">
       <div className="flex items-center justify-between">
         <h3 className="font-semibold text-sm">Éditer l'état</h3>
-        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
+        <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Fermer" onClick={onClose}>
           <X className="h-4 w-4" />
         </Button>
       </div>

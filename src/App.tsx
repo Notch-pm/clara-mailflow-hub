@@ -35,7 +35,7 @@ const queryClient = new QueryClient();
 
 function LoadingScreen() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
+    <div className="min-h-dvh flex items-center justify-center bg-background">
       <Loader2 className="h-8 w-8 animate-spin text-primary" />
     </div>
   );
@@ -50,7 +50,7 @@ function NoProfileFallback() {
 function NoOrganizationFallback() {
   const { signOut } = useAuth();
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-4 px-6 text-center">
+    <div className="min-h-dvh flex flex-col items-center justify-center bg-background gap-4 px-6 text-center">
       <div className="rounded-lg border p-6 max-w-md space-y-3">
         <h2 className="text-lg font-semibold text-foreground">Aucune organisation associée</h2>
         <p className="text-sm text-muted-foreground">

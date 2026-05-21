@@ -183,10 +183,10 @@ export default function OrganizationsAdmin() {
                         <Button variant="outline" size="sm" onClick={() => navigate(`/superadmin/organisations/${org.id}`)}>
                           <Settings className="h-4 w-4 mr-1" /> Paramétrer
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => openEdit(org)}>
+                        <Button variant="ghost" size="icon" aria-label="Modifier l'organisation" onClick={() => openEdit(org)}>
                           <Pencil className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => setDeleteConfirm(org)}>
+                        <Button variant="ghost" size="icon" aria-label="Supprimer l'organisation" onClick={() => setDeleteConfirm(org)}>
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>

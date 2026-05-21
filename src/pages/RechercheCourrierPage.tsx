@@ -401,7 +401,7 @@ export default function RechercheCourrierPage() {
         onReset={resetFilters}
       />
 
-      <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <section aria-label="Résultats de recherche" className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Search bar */}
         <div className="px-4 py-3 border-b bg-background sticky top-0 z-10">
           <div className="relative max-w-2xl">
@@ -411,7 +411,7 @@ export default function RechercheCourrierPage() {
               placeholder="Rechercher dans les objets, expéditeurs, destinataires, textes…"
               value={keywords}
               onChange={(e) => setKeywords(e.target.value)}
-              autoFocus
+              
             />
             {keywords && (
               <button
@@ -472,7 +472,7 @@ export default function RechercheCourrierPage() {
             </div>
           )}
         </div>
-      </main>
+      </section>
     </div>
   );
 }
