@@ -472,7 +472,7 @@ export default function RechercheCourrierPage() {
             </div>
           )}
         </div>
-      </main>
+      </section>
     </div>
   );
 }
