@@ -1075,7 +1075,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 />
               </>
             )}
-          </main>
+          </section>
 
           {/* Notes inline sidebar — fullScreen + inbound only */}
           {fullScreen && withTabs && !isOutbound && (
