@@ -101,7 +101,7 @@ export default function ActivateAccount() {
 
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <div className="min-h-dvh flex items-center justify-center bg-background p-4">
         <Card className="w-full max-w-md">
           <CardContent className="py-12 text-center space-y-4">
             <CheckCircle2 className="h-12 w-12 text-green-500 mx-auto" />
@@ -120,7 +120,7 @@ export default function ActivateAccount() {
 
   if (!ready) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <div className="min-h-dvh flex items-center justify-center bg-background p-4">
         <Card className="w-full max-w-md">
           <CardContent className="py-8 text-center text-muted-foreground space-y-3">
             <ShieldCheck className="h-10 w-10 mx-auto text-muted-foreground/50" />
@@ -133,7 +133,7 @@ export default function ActivateAccount() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <div className="min-h-dvh flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <CardTitle className="text-xl">Activez votre compte</CardTitle>
