@@ -1035,7 +1035,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
           </aside>
 
           {/* Right: viewer + documents */}
-          <main className="px-6 py-5 space-y-5 bg-muted/10 overflow-y-auto">
+          <section aria-label="Aperçu du courrier" className="px-6 py-5 space-y-5 bg-muted/10 overflow-y-auto">
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <FileText className="h-4 w-4 text-muted-foreground" />

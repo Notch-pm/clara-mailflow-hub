@@ -232,7 +232,7 @@ export default function UsersPage({ organizationId: propOrgId }: UsersPageProps 
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1">
-                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditMember(m)} title="Modifier">
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditMember(m)} title="Modifier" aria-label="Modifier l'utilisateur">
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
                       <Button
@@ -242,6 +242,7 @@ export default function UsersPage({ organizationId: propOrgId }: UsersPageProps 
                         onClick={() => resetPasswordMutation.mutate(m)}
                         disabled={resetPasswordMutation.isPending}
                         title="Envoyer un e-mail de réinitialisation"
+                        aria-label="Envoyer un e-mail de réinitialisation"
                       >
                         {resetPasswordMutation.isPending ? (
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -252,7 +253,7 @@ export default function UsersPage({ organizationId: propOrgId }: UsersPageProps 
                       {m.is_active !== false ? (
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" title="Désactiver">
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" title="Désactiver" aria-label="Désactiver l'utilisateur">
                               <UserX className="h-3.5 w-3.5" />
                             </Button>
                           </AlertDialogTrigger>
@@ -279,6 +280,7 @@ export default function UsersPage({ organizationId: propOrgId }: UsersPageProps 
                           onClick={() => reactivateMutation.mutate(m)}
                           disabled={reactivateMutation.isPending}
                           title="Réactiver"
+                          aria-label="Réactiver l'utilisateur"
                         >
                           <UserCheck className="h-3.5 w-3.5" />
                         </Button>

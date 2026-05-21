@@ -358,6 +358,7 @@ export default function SignaturesSettings() {
                         size="icon"
                         className="h-8 w-8"
                         title={row.signature_storage_key ? "Remplacer la signature" : "Ajouter une signature"}
+                        aria-label={row.signature_storage_key ? "Remplacer la signature" : "Ajouter une signature"}
                         onClick={() => fileInputRefs.current[row.key]?.click()}
                         disabled={uploadMutation.isPending}
                       >
@@ -369,6 +370,7 @@ export default function SignaturesSettings() {
                           size="icon"
                           className="h-8 w-8 text-destructive hover:text-destructive"
                           title="Supprimer la signature"
+                          aria-label="Supprimer la signature"
                           onClick={() => removeSigMutation.mutate(row.signatory!.id)}
                         >
                           <ImageIcon className="h-3.5 w-3.5 line-through" />
@@ -381,6 +383,7 @@ export default function SignaturesSettings() {
                             size="icon"
                             className="h-8 w-8"
                             title="Modifier"
+                            aria-label="Modifier le signataire"
                             onClick={() => setEditing(row)}
                           >
                             <Pencil className="h-3.5 w-3.5" />
@@ -392,6 +395,7 @@ export default function SignaturesSettings() {
                                 size="icon"
                                 className="h-8 w-8 text-destructive hover:text-destructive"
                                 title="Supprimer le signataire"
+                                aria-label="Supprimer le signataire"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </Button>

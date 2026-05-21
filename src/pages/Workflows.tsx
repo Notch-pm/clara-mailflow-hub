@@ -157,6 +157,7 @@ export default function Workflows() {
                       variant="ghost"
                       size="icon"
                       className="h-7 w-7"
+                      aria-label="Supprimer le workflow"
                       onClick={(e) => {
                         e.stopPropagation();
                         setDeleteId(wf.id);
