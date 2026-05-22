@@ -19,6 +19,19 @@ export function AppLayout() {
         </main>
       </div>
 
+      {!isMobile && (
+        <footer className="hidden md:flex flex-shrink-0 items-center justify-end gap-4 px-4 py-1.5 border-t bg-background text-[11px] text-muted-foreground">
+          <a
+            href="/accessibilite"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline-offset-4 hover:underline"
+          >
+            Déclaration d'accessibilité
+          </a>
+        </footer>
+      )}
+
       {isMobile && <MobileNav />}
     </div>
   );
