@@ -36,9 +36,8 @@ export default function ActivateAccount() {
       hash.includes("type=signup") ||
       hash.includes("access_token")
     ) {
-      supabase.auth.signOut().then(() => {
-        setReady(true);
-      });
+      // Keep the session alive — updateUser() needs it. Sign out after password is set.
+      setReady(true);
     }
   }, [searchParams]);
 
@@ -59,9 +58,13 @@ export default function ActivateAccount() {
 
     try {
       if (tokenHash) {
+        const rawType = searchParams.get("type");
+        const otpType = (rawType === "invite" || rawType === "recovery" || rawType === "magiclink" || rawType === "signup")
+          ? rawType
+          : "invite";
         const { error: verifyError } = await supabase.auth.verifyOtp({
           token_hash: tokenHash,
-          type: "recovery",
+          type: otpType,
         });
 
         if (verifyError) {

@@ -17,6 +17,7 @@ import CourriersArchives from "@/pages/CourriersArchives";
 import CourriersSortants from "@/pages/CourriersSortants";
 import CourierDetail from "@/pages/CourierDetail";
 const WorkflowDetail = lazy(() => import("@/pages/WorkflowDetail"));
+const StatistiquesPage = lazy(() => import("@/pages/StatistiquesPage"));
 import SettingsPage from "@/pages/SettingsPage";
 import MonProfil from "@/pages/MonProfil";
 import Usagers from "@/pages/Usagers";
@@ -155,6 +156,7 @@ const App = () => (
                   <Route path="/usagers/:id" element={<Usagers />} />
                   <Route path="/recherche" element={<RechercheCourrierPage />} />
                   <Route path="/import-en-masse" element={<BulkImport />} />
+                  <Route path="/statistiques" element={<Suspense fallback={<LoadingScreen />}><StatistiquesPage /></Suspense>} />
                 </Route>
               </Route>
               <Route path="*" element={<NotFound />} />

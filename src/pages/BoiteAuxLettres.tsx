@@ -50,7 +50,14 @@ export default function BoiteAuxLettres() {
     const { error } = await deleteCourier(organizationId, courierToDelete.id);
     setDeleting(false);
     if (error) {
-      toast({ title: "Erreur", description: error.message, variant: "destructive" });
+      const isLinkedReply = error.message?.includes("parent_courier_id");
+      toast({
+        title: "Suppression impossible",
+        description: isLinkedReply
+          ? "Ce courrier a des réponses associées. Supprimez d'abord les réponses avant de supprimer le courrier parent."
+          : error.message,
+        variant: "destructive",
+      });
       return;
     }
     toast({ title: "Courrier supprimé" });
@@ -409,6 +416,7 @@ export default function BoiteAuxLettres() {
           open={newDialogOpen}
           onOpenChange={setNewDialogOpen}
           organizationId={organizationId}
+          onCreated={(id) => setPendingOpenId(id)}
         />
       )}
 

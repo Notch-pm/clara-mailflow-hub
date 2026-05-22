@@ -69,6 +69,7 @@ interface Props {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   organizationId: string;
+  onCreated?: (courierId: string) => void;
 }
 
 function formatBytes(b: number): string {
@@ -77,7 +78,7 @@ function formatBytes(b: number): string {
   return `${(b / (1024 * 1024)).toFixed(1)} Mo`;
 }
 
-export default function NewCourierDialog({ open, onOpenChange, organizationId }: Props) {
+export default function NewCourierDialog({ open, onOpenChange, organizationId, onCreated }: Props) {
   const qc = useQueryClient();
 
   const [subject, setSubject] = useState("");
@@ -278,7 +279,7 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId }:
           toast.error(`${file.name} : ${msg}`);
         }
       }
-      return { uploaded: pendingFiles.length - uploadFailures, total: pendingFiles.length };
+      return { courierId: courier.id, uploaded: pendingFiles.length - uploadFailures, total: pendingFiles.length };
     },
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["mailbox-couriers"] });
@@ -289,6 +290,7 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId }:
         toast.success("Courrier créé");
       }
       onOpenChange(false);
+      if (onCreated) onCreated(res.courierId);
     },
     onError: (err: Error) => {
       if (err.message !== "Veuillez corriger les erreurs du formulaire.") {

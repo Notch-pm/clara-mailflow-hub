@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useOrganization } from "@/contexts/OrganizationContext";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Users as UsersIcon, Mail, Plug, Tags, Briefcase, ClipboardList, LucideIcon } from "lucide-react";
+import { ArrowLeft, Users as UsersIcon, Mail, Plug, Tags, Briefcase, ClipboardList, GitBranch, LucideIcon } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import UsersPage from "./UsersPage";
 import SmtpSettings from "@/components/SmtpSettings";
@@ -25,6 +26,8 @@ const settingSections: { key: Section; title: string; description: string; icon:
   { key: "classification", title: "Classification", description: "Tags de classement des courriers", icon: Tags },
 ];
 
+const workflowsSection = { title: "Workflows", description: "Workflows de traitement des courriers", icon: GitBranch };
+
 const sectionLabels: Record<string, string> = {
   utilisateurs: "Utilisateurs et rôles",
   smtp: "Emails — SMTP (envoi) & IMAP (réception)",
@@ -37,7 +40,16 @@ const sectionLabels: Record<string, string> = {
 export default function OrgSettings() {
   const { orgId } = useParams<{ orgId: string }>();
   const navigate = useNavigate();
+  const { setOrganizationId } = useOrganization();
   const [activeSection, setActiveSection] = useState<Section>("menu");
+
+  // Injecte l'org de l'URL dans le contexte pour que les pages workflow
+  // (qui lisent useOrganization) fonctionnent depuis la vue superadmin.
+  // Pas de cleanup : si on navigue vers /workflows, OrgSettings se démonte
+  // avant que Workflows monte — un cleanup viderait le contexte trop tôt.
+  useEffect(() => {
+    if (orgId) setOrganizationId(orgId);
+  }, [orgId]);
 
   const { data: org, isLoading } = useQuery({
     queryKey: ["organization", orgId],
@@ -114,6 +126,20 @@ export default function OrgSettings() {
             </CardHeader>
           </Card>
         ))}
+        <Card
+          className="cursor-pointer hover:shadow-md hover:border-primary/30 transition-all"
+          onClick={() => navigate("/workflows")}
+        >
+          <CardHeader className="flex flex-row items-center gap-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+              <workflowsSection.icon className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <CardTitle className="text-base">{workflowsSection.title}</CardTitle>
+              <CardDescription>{workflowsSection.description}</CardDescription>
+            </div>
+          </CardHeader>
+        </Card>
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 import { NavLink } from "@/components/NavLink";
-import { LayoutDashboard, Send, FileClock, CheckCircle2, Archive, Mailbox, LucideIcon } from "lucide-react";
+import { LayoutDashboard, Send, FileClock, CheckCircle2, Archive, Mailbox, BarChart3, LucideIcon } from "lucide-react";
 
 interface NavItem {
   title: string;
@@ -14,6 +14,7 @@ const navItems: NavItem[] = [
   { title: "Traités", url: "/courriers-traites", icon: CheckCircle2 },
   { title: "Archivés", url: "/courriers-archives", icon: Archive },
   { title: "Sortants", url: "/courriers-sortants", icon: Send },
+  { title: "Stats", url: "/statistiques", icon: BarChart3 },
 ];
 
 export function MobileNav() {

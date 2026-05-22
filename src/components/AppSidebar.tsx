@@ -1,5 +1,5 @@
 import { NavLink } from "@/components/NavLink";
-import { LayoutDashboard, Send, FileClock, Users, CheckCircle2, Archive, Search, Mailbox, LucideIcon } from "lucide-react";
+import { LayoutDashboard, Send, FileClock, Users, CheckCircle2, Archive, Search, Mailbox, BarChart3, LucideIcon } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -22,6 +22,7 @@ const navItems: NavItem[] = [
   { title: "Courriers sortants", url: "/courriers-sortants", icon: Send },
   { title: "Usagers", url: "/usagers", icon: Users },
   { title: "Recherche", url: "/recherche", icon: Search },
+  { title: "Statistiques", url: "/statistiques", icon: BarChart3 },
 ];
 
 function SidebarItem({ item }: { item: NavItem }) {
