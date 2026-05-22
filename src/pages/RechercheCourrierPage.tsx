@@ -401,6 +401,7 @@ export default function RechercheCourrierPage() {
       />
 
       <section aria-label="Résultats de recherche" className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <h1 className="sr-only">Recherche de courriers</h1>
         {/* Search bar */}
         <div className="px-4 py-3 border-b bg-background sticky top-0 z-10">
           <div className="relative max-w-2xl">
