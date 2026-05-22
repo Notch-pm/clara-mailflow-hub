@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# Lock files — Bun est le seul gestionnaire de paquets utilisé
+package-lock.json
+bun.lockb
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
