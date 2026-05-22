@@ -29,6 +29,7 @@ import OrganizationsAdmin from "@/pages/OrganizationsAdmin";
 import OrgSettings from "@/pages/OrgSettings";
 import BulkImport from "@/pages/BulkImport";
 import NotFound from "@/pages/NotFound";
+import Accessibility from "@/pages/Accessibility";
 import { Loader2 } from "lucide-react";
 
 const queryClient = new QueryClient();
