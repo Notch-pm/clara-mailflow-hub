@@ -129,6 +129,7 @@ const App = () => (
               <Route path="/connexion" element={<PublicRoute><Login /></PublicRoute>} />
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/activer-compte" element={<ActivateAccount />} />
+              <Route path="/accessibilite" element={<Accessibility />} />
 
               {/* Super Admin routes */}
               <Route path="/superadmin" element={<SuperAdminRoute />}>
