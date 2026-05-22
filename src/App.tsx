@@ -29,6 +29,7 @@ import OrganizationsAdmin from "@/pages/OrganizationsAdmin";
 import OrgSettings from "@/pages/OrgSettings";
 import BulkImport from "@/pages/BulkImport";
 import NotFound from "@/pages/NotFound";
+import Accessibility from "@/pages/Accessibility";
 import { Loader2 } from "lucide-react";
 
 const queryClient = new QueryClient();
@@ -128,6 +129,7 @@ const App = () => (
               <Route path="/connexion" element={<PublicRoute><Login /></PublicRoute>} />
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/activer-compte" element={<ActivateAccount />} />
+              <Route path="/accessibilite" element={<Accessibility />} />
 
               {/* Super Admin routes */}
               <Route path="/superadmin" element={<SuperAdminRoute />}>
