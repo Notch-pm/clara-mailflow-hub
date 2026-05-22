@@ -130,8 +130,17 @@ export default function Workflows() {
             return (
               <Card
                 key={wf.id}
-                className="cursor-pointer hover:shadow-lg transition-shadow"
+                role="button"
+                tabIndex={0}
+                aria-label={`Ouvrir le workflow ${wf.name}`}
+                className="cursor-pointer hover:shadow-lg transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 onClick={() => navigate(`/workflows/${wf.id}`)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    navigate(`/workflows/${wf.id}`);
+                  }
+                }}
               >
                 <CardHeader className="flex flex-row items-start justify-between pb-2">
                   <div className="space-y-2 flex-1 min-w-0">
