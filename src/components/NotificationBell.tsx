@@ -65,7 +65,7 @@ export function NotificationBell() {
               onClick={() => markAllRead()}
             >
               <CheckCheck className="h-3.5 w-3.5" />
-              Tout marquer comme lu
+              Lire tout
             </Button>
           )}
         </div>
