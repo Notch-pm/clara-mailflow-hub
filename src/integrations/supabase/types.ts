@@ -1467,6 +1467,58 @@ export type Database = {
           workflow_state_id: string
         }[]
       }
+      stats_by_channel: {
+        Args: { p_org_id: string; p_service_name?: string; p_since?: string }
+        Returns: {
+          channel: string
+          count: number
+        }[]
+      }
+      stats_by_service: {
+        Args: { p_direction: string; p_org_id: string; p_since?: string }
+        Returns: {
+          count: number
+          service_name: string
+        }[]
+      }
+      stats_inbound_by_day: {
+        Args: { p_org_id: string; p_service_name?: string }
+        Returns: {
+          count: number
+          day: string
+        }[]
+      }
+      stats_inbound_by_month: {
+        Args: { p_months?: number; p_org_id: string; p_service_name?: string }
+        Returns: {
+          count: number
+          month: string
+        }[]
+      }
+      stats_processing_times: {
+        Args: { p_org_id: string; p_since?: string }
+        Returns: {
+          avg_days_to_instruction: number
+          avg_days_to_processed: number
+          courier_count: number
+          service_name: string
+        }[]
+      }
+      stats_replies_by_month: {
+        Args: { p_months?: number; p_org_id: string; p_service_name?: string }
+        Returns: {
+          count: number
+          month: string
+        }[]
+      }
+      stats_tag_evolution: {
+        Args: { p_org_id: string; p_service_name?: string; p_since?: string }
+        Returns: {
+          count: number
+          period: string
+          tag_name: string
+        }[]
+      }
       trigger_arpege_sync: { Args: never; Returns: number }
       trigger_fetch_inbound_emails: { Args: never; Returns: number }
     }

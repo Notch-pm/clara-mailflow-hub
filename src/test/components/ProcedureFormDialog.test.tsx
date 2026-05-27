@@ -25,7 +25,7 @@ describe("ProcedureFormDialog", () => {
   });
 
   it("affiche le titre 'Modifier la démarche' en mode édition", () => {
-    const procedure = { id: "p-1", name: "Passeport", description: null, color: "#0acf83", icon: null, is_displayed: true, external_source: null, created_at: "", updated_at: "", organization_id: ORG_ID, created_by: null };
+    const procedure = { id: "p-1", name: "Passeport", description: null, color: "#0acf83", icon: null, is_displayed: true, external_source: null, external_reference_id: null, display_order: 0, arpege_config_fields: null, created_at: "", updated_at: "", organization_id: ORG_ID, created_by: null };
     renderWithProviders(
       <ProcedureFormDialog open={true} onOpenChange={onOpenChange} orgId={ORG_ID} procedure={procedure} />
     );

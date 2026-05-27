@@ -26,6 +26,8 @@ const fakeMember = {
   membership_id: "mem-1",
   membership_active: true,
   avatar_url: null,
+  is_signataire: false,
+  signataire_title: null,
 };
 
 beforeEach(() => {

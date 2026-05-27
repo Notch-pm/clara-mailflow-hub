@@ -360,7 +360,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
           title: `Transféré : ${subject}`,
           resource_id: courier.id,
         }));
-        await supabase.from("notifications" as never).insert(notifs);
+        await (supabase.from("notifications" as never) as any).insert(notifs);
       }
 
       return { name: targetService.name, initialStateId: initial?.id ?? null, loseAccess };
