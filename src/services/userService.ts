@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { OrgMember } from "@/types/user";
+export type { OrgMember } from "@/types/user";
 
 interface OrgMemberRow {
   id: string;
