@@ -171,8 +171,8 @@ export async function setServiceMembers(
   const toRemove = existingIds.filter((id) => !userIds.includes(id));
 
   if (toAdd.length > 0) {
-    const { error } = await supabase
-      .from("service_members" as never)
+    const { error } = await (supabase
+      .from("service_members" as never) as any)
       .insert(toAdd.map((uid) => ({ organization_id: organizationId, service_id: serviceId, user_id: uid })));
     if (error) throw error;
   }
