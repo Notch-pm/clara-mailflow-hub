@@ -297,7 +297,7 @@ export default function BulkImport() {
             tags: draft.tags,
             service_id: service?.id ?? null,
             ...(draft.bodyText.trim() ? { body_text: draft.bodyText.trim() } : {}),
-          } as Record<string, unknown>,
+          } as any,
           created_by: user?.id ?? null,
         });
 
