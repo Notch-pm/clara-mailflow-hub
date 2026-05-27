@@ -25,7 +25,7 @@ export function ProcessingTimesChart({ data, loading }: Props) {
 
   const options: ApexOptions = {
     chart: { ...baseChart, type: "bar", id: "processing-times" },
-    plotOptions: { bar: { horizontal: true, borderRadius: 4, barHeight: "70%", grouped: true } },
+    plotOptions: { bar: { horizontal: true, borderRadius: 4, barHeight: "70%" } },
     colors: [CHART_COLORS[2], CHART_COLORS[0]],
     xaxis: {
       categories,
