@@ -16,10 +16,18 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.4
 export type AiResourceType = "ocr" | "chat" | "agent";
 
 export class AiQuotaExceededError extends Error {
-  constructor(message = "Quota IA mensuel atteint pour cette organisation") {
+  constructor(message = `Le plafond de consommation IA est atteint. Le crédit sera renouvelé le ${nextRenewalDateLabel()}.`) {
     super(message);
     this.name = "AiQuotaExceededError";
   }
+}
+
+/** Date du prochain renouvellement de quota = 1er jour du mois suivant (les
+ *  compteurs sont remis à zéro par période 'YYYY-MM', voir reserve_ai_usage). */
+function nextRenewalDateLabel(): string {
+  const now = new Date();
+  const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  return new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "long", year: "numeric" }).format(next);
 }
 
 interface ReserveResult {
