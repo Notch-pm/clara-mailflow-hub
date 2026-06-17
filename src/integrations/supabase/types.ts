@@ -100,7 +100,7 @@ export type Database = {
           id: string
           organization_id: string
           period: string
-          provider: string | null
+          provider: string
           reserved_tokens: number
           updated_at: string
           used_tokens: number
@@ -109,7 +109,7 @@ export type Database = {
           id?: string
           organization_id: string
           period: string
-          provider?: string | null
+          provider?: string
           reserved_tokens?: number
           updated_at?: string
           used_tokens?: number
@@ -118,7 +118,7 @@ export type Database = {
           id?: string
           organization_id?: string
           period?: string
-          provider?: string | null
+          provider?: string
           reserved_tokens?: number
           updated_at?: string
           used_tokens?: number
@@ -201,7 +201,7 @@ export type Database = {
           monthly_limit_tokens: number
           organization_id: string
           period_unit: string
-          provider: string | null
+          provider: string
           updated_at: string
         }
         Insert: {
@@ -211,7 +211,7 @@ export type Database = {
           monthly_limit_tokens: number
           organization_id: string
           period_unit?: string
-          provider?: string | null
+          provider?: string
           updated_at?: string
         }
         Update: {
@@ -221,7 +221,7 @@ export type Database = {
           monthly_limit_tokens?: number
           organization_id?: string
           period_unit?: string
-          provider?: string | null
+          provider?: string
           updated_at?: string
         }
         Relationships: [
