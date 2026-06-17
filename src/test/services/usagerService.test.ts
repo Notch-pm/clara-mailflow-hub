@@ -3,7 +3,7 @@ import "../mocks/supabase";
 import { mockSupabase } from "../mocks/supabase";
 
 // Import after mock is registered
-const { findMatchingUsager, listUsagers } =
+const { findMatchingUsager, listUsagers, fetchAllUsagersForExport } =
   await import("@/services/usagerService");
 
 const ORG_ID = "org-1";
@@ -97,6 +97,46 @@ describe("usagerService", () => {
       });
 
       await expect(listUsagers(ORG_ID)).rejects.toThrow("DB error");
+    });
+  });
+
+  describe("fetchAllUsagersForExport", () => {
+    it("retourne toutes les lignes en une seule page si moins de 500 résultats", async () => {
+      const fakeRows = Array.from({ length: 10 }, (_, i) => ({ id: `u-${i}` }));
+      mockSupabase.rpc.mockResolvedValue({ data: fakeRows, error: null });
+
+      const result = await fetchAllUsagersForExport(ORG_ID, { search: "dup" });
+
+      expect(result).toHaveLength(10);
+      expect(mockSupabase.rpc).toHaveBeenCalledTimes(1);
+      expect(mockSupabase.rpc).toHaveBeenCalledWith(
+        "search_usagers",
+        expect.objectContaining({ p_org_id: ORG_ID, p_search: "dup", p_limit: 500, p_offset: 0 }),
+      );
+    });
+
+    it("pagine par blocs de 500 jusqu'à une page incomplète", async () => {
+      const fullPage = Array.from({ length: 500 }, (_, i) => ({ id: `u-${i}` }));
+      const lastPage = Array.from({ length: 3 }, (_, i) => ({ id: `v-${i}` }));
+      mockSupabase.rpc
+        .mockResolvedValueOnce({ data: fullPage, error: null })
+        .mockResolvedValueOnce({ data: lastPage, error: null });
+
+      const result = await fetchAllUsagersForExport(ORG_ID);
+
+      expect(result).toHaveLength(503);
+      expect(mockSupabase.rpc).toHaveBeenCalledTimes(2);
+      expect(mockSupabase.rpc).toHaveBeenNthCalledWith(1, "search_usagers", expect.objectContaining({ p_offset: 0 }));
+      expect(mockSupabase.rpc).toHaveBeenNthCalledWith(
+        2,
+        "search_usagers",
+        expect.objectContaining({ p_offset: 500 }),
+      );
+    });
+
+    it("propage l'erreur Supabase", async () => {
+      mockSupabase.rpc.mockResolvedValue({ data: null, error: new Error("RPC error") });
+      await expect(fetchAllUsagersForExport(ORG_ID)).rejects.toThrow("RPC error");
     });
   });
 });

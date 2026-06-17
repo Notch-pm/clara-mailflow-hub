@@ -30,6 +30,7 @@ import OrganizationsAdmin from "@/pages/OrganizationsAdmin";
 import OrgSettings from "@/pages/OrgSettings";
 import BulkImport from "@/pages/BulkImport";
 import NotFound from "@/pages/NotFound";
+import PortalFormPage from "@/pages/PortalFormPage";
 import Accessibility from "@/pages/Accessibility";
 import { Loader2 } from "lucide-react";
 
@@ -131,6 +132,7 @@ const App = () => (
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/activer-compte" element={<ActivateAccount />} />
               <Route path="/accessibilite" element={<Accessibility />} />
+              <Route path="/portail/:token" element={<PortalFormPage />} />
 
               {/* Super Admin routes */}
               <Route path="/superadmin" element={<SuperAdminRoute />}>

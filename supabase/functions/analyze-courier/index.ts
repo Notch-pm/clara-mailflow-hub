@@ -1,6 +1,13 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import JSZip from "https://esm.sh/jszip@3.10.1";
 import { extractText, getDocumentProxy } from "https://esm.sh/unpdf@0.12.1";
+import {
+  withAiUsageGuard,
+  AiQuotaExceededError,
+  estimateOcrTokens,
+  estimateTextTokens,
+  estimateTokensFromText,
+} from "../_shared/aiUsage.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -144,6 +151,7 @@ async function ocrDocument(
   orgId: string,
   documentId: string,
   mistralKey: string,
+  userId: string,
 ) {
   // Fetch document
   const { data: doc, error: docErr } = await admin
@@ -220,30 +228,43 @@ async function ocrDocument(
         .createSignedUrl(doc.storage_key, 600);
       if (signErr || !signed) throw new Error(`Signed URL error: ${signErr?.message}`);
 
-      const ocrResp = await fetch(MISTRAL_OCR_URL, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${mistralKey}`,
-          "Content-Type": "application/json",
+      const ocrOutcome = await withAiUsageGuard({
+        admin,
+        organizationId: orgId,
+        provider: "mistral",
+        resourceType: "ocr",
+        estimatedTokens: estimateOcrTokens(pageCount ?? 1),
+        userId,
+        run: async () => {
+          const ocrResp = await fetch(MISTRAL_OCR_URL, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${mistralKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: OCR_MODEL,
+              document: { type: "document_url", document_url: signed.signedUrl },
+              include_image_base64: false,
+            }),
+          });
+          if (!ocrResp.ok) {
+            const t = await ocrResp.text();
+            console.error("Mistral OCR error", ocrResp.status, t);
+            throw new Error(`Mistral OCR ${ocrResp.status}: ${t.slice(0, 200)}`);
+          }
+          const ocrData = await ocrResp.json();
+          const pages = Array.isArray(ocrData.pages) ? ocrData.pages : [];
+          const text = pages
+            .map((p: { markdown?: string; text?: string }) => p.markdown ?? p.text ?? "")
+            .join("\n\n---\n\n")
+            .trim();
+          const actualTokens = ocrData?.usage?.total_tokens ?? estimateTokensFromText(text);
+          return { result: { text, pageCount: pages.length || null }, actualTokens };
         },
-        body: JSON.stringify({
-          model: OCR_MODEL,
-          document: { type: "document_url", document_url: signed.signedUrl },
-          include_image_base64: false,
-        }),
       });
-      if (!ocrResp.ok) {
-        const t = await ocrResp.text();
-        console.error("Mistral OCR error", ocrResp.status, t);
-        throw new Error(`Mistral OCR ${ocrResp.status}: ${t.slice(0, 200)}`);
-      }
-      const ocrData = await ocrResp.json();
-      const pages = Array.isArray(ocrData.pages) ? ocrData.pages : [];
-      pageCount = pages.length || pageCount;
-      extractedText = pages
-        .map((p: { markdown?: string; text?: string }) => p.markdown ?? p.text ?? "")
-        .join("\n\n---\n\n")
-        .trim();
+      extractedText = ocrOutcome.text;
+      pageCount = ocrOutcome.pageCount ?? pageCount;
       model = OCR_MODEL;
     }
   } else {
@@ -265,27 +286,40 @@ async function ocrDocument(
           include_image_base64: false,
         };
 
-    const ocrResp = await fetch(MISTRAL_OCR_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${mistralKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(ocrBody),
-    });
+    const ocrOutcome = await withAiUsageGuard({
+      admin,
+      organizationId: orgId,
+      provider: "mistral",
+      resourceType: "ocr",
+      estimatedTokens: estimateOcrTokens(1),
+      userId,
+      run: async () => {
+        const ocrResp = await fetch(MISTRAL_OCR_URL, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${mistralKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(ocrBody),
+        });
 
-    if (!ocrResp.ok) {
-      const t = await ocrResp.text();
-      console.error("Mistral OCR error", ocrResp.status, t);
-      throw new Error(`Mistral OCR ${ocrResp.status}: ${t.slice(0, 200)}`);
-    }
-    const ocrData = await ocrResp.json();
-    const pages = Array.isArray(ocrData.pages) ? ocrData.pages : [];
-    pageCount = pages.length || null;
-    extractedText = pages
-      .map((p: { markdown?: string; text?: string }) => p.markdown ?? p.text ?? "")
-      .join("\n\n---\n\n")
-      .trim();
+        if (!ocrResp.ok) {
+          const t = await ocrResp.text();
+          console.error("Mistral OCR error", ocrResp.status, t);
+          throw new Error(`Mistral OCR ${ocrResp.status}: ${t.slice(0, 200)}`);
+        }
+        const ocrData = await ocrResp.json();
+        const pages = Array.isArray(ocrData.pages) ? ocrData.pages : [];
+        const text = pages
+          .map((p: { markdown?: string; text?: string }) => p.markdown ?? p.text ?? "")
+          .join("\n\n---\n\n")
+          .trim();
+        const actualTokens = ocrData?.usage?.total_tokens ?? estimateTokensFromText(text);
+        return { result: { text, pageCount: pages.length || null }, actualTokens };
+      },
+    });
+    extractedText = ocrOutcome.text;
+    pageCount = ocrOutcome.pageCount;
   }
 
   // Upsert into extracts (unique on document_id)
@@ -314,6 +348,7 @@ async function analyzeCourier(
   orgId: string,
   courierId: string,
   mistralKey: string,
+  userId: string,
 ) {
   // Get courier subject + extracts
   const { data: courier } = await admin
@@ -467,47 +502,60 @@ ${procedureListForPrompt}`;
     },
   ];
 
-  const chatResp = await fetch(MISTRAL_AGENT_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${mistralKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      agent_id: ANALYSIS_AGENT_ID,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      tools,
-      tool_choice: { type: "function", function: { name: "report_analysis" } },
-    }),
-  });
-
-  if (!chatResp.ok) {
-    const t = await chatResp.text();
-    console.error("Mistral agent error", chatResp.status, t);
-    throw new Error(`Mistral agent ${chatResp.status}: ${t.slice(0, 200)}`);
-  }
-
-  const chatData = await chatResp.json();
-  const toolCall = chatData?.choices?.[0]?.message?.tool_calls?.[0];
-  if (!toolCall?.function?.arguments) {
-    throw new Error("Réponse Mistral inattendue (pas de tool_call)");
-  }
-  let parsed: {
+  type ParsedAnalysis = {
     summary: string;
     intents: string[];
     sentiment: string;
     suggested_actions: Array<{ label: string; procedure_id?: string | null; prefill?: Record<string, string> }>;
   };
-  try {
-    parsed = JSON.parse(toolCall.function.arguments);
-  } catch {
-    throw new Error("JSON invalide depuis Mistral");
-  }
 
-  const tokensUsed = chatData?.usage?.total_tokens ?? null;
+  const { parsed, tokensUsed } = await withAiUsageGuard<{ parsed: ParsedAnalysis; tokensUsed: number | null }>({
+    admin,
+    organizationId: orgId,
+    provider: "mistral",
+    resourceType: "agent",
+    estimatedTokens: estimateTextTokens(systemPrompt.length + userPrompt.length, 800),
+    userId,
+    run: async () => {
+      const chatResp = await fetch(MISTRAL_AGENT_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${mistralKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          agent_id: ANALYSIS_AGENT_ID,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          tools,
+          tool_choice: { type: "function", function: { name: "report_analysis" } },
+        }),
+      });
+
+      if (!chatResp.ok) {
+        const t = await chatResp.text();
+        console.error("Mistral agent error", chatResp.status, t);
+        throw new Error(`Mistral agent ${chatResp.status}: ${t.slice(0, 200)}`);
+      }
+
+      const chatData = await chatResp.json();
+      const toolCall = chatData?.choices?.[0]?.message?.tool_calls?.[0];
+      if (!toolCall?.function?.arguments) {
+        throw new Error("Réponse Mistral inattendue (pas de tool_call)");
+      }
+      let parsedAnalysis: ParsedAnalysis;
+      try {
+        parsedAnalysis = JSON.parse(toolCall.function.arguments);
+      } catch {
+        throw new Error("JSON invalide depuis Mistral");
+      }
+
+      const actualTokens = chatData?.usage?.total_tokens ?? null;
+      return { result: { parsed: parsedAnalysis, tokensUsed: actualTokens }, actualTokens };
+    },
+  });
 
   // Sécurité : filtrer les intents pour ne garder que ceux qui appartiennent
   // bien aux tags de l'organisation (mapping strict, insensible à la casse).
@@ -590,23 +638,29 @@ Deno.serve(async (req) => {
       }
 
       const results: Array<{ document_id: string; ok: boolean; error?: string }> = [];
+      let quotaExceeded = false;
       for (const d of docs) {
+        if (quotaExceeded) {
+          results.push({ document_id: d.id, ok: false, error: "quota_exceeded" });
+          continue;
+        }
         try {
-          await ocrDocument(admin, orgId, d.id, mistralKey);
+          await ocrDocument(admin, orgId, d.id, mistralKey, user.id);
           results.push({ document_id: d.id, ok: true });
         } catch (e) {
+          if (e instanceof AiQuotaExceededError) quotaExceeded = true;
           const msg = e instanceof Error ? e.message : "unknown";
           console.error(`OCR doc ${d.id} failed:`, msg);
           results.push({ document_id: d.id, ok: false, error: msg });
         }
       }
-      return jsonResponse({ results });
+      return jsonResponse({ results, quotaExceeded });
     }
 
     if (req.method === "POST" && action === "analyze") {
       const { courier_id } = await req.json();
       if (!courier_id) return jsonResponse({ error: "Missing courier_id" }, 400);
-      const row = await analyzeCourier(admin, orgId, courier_id, mistralKey);
+      const row = await analyzeCourier(admin, orgId, courier_id, mistralKey, user.id);
       return jsonResponse(row);
     }
 
@@ -614,7 +668,10 @@ Deno.serve(async (req) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal error";
     const status =
-      message === "Unauthorized" ? 401 : message.startsWith("Forbidden") ? 403 : 500;
+      message === "Unauthorized" ? 401
+      : message.startsWith("Forbidden") ? 403
+      : err instanceof AiQuotaExceededError ? 429
+      : 500;
     return jsonResponse({ error: message }, status);
   }
 });

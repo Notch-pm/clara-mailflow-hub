@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Users, ArrowLeft, GitBranch, Settings, Tags, Briefcase, ClipboardList, Mail, PenTool, FileText, LucideIcon } from "lucide-react";
+import { Users, ArrowLeft, GitBranch, Settings, Tags, Briefcase, ClipboardList, Mail, PenTool, FileText, Globe, MapPin, Sparkles, LucideIcon } from "lucide-react";
 import UsersPage from "./UsersPage";
 import Workflows from "./Workflows";
 import ClassificationSettings from "./ClassificationSettings";
@@ -9,12 +9,15 @@ import ServicesSettings from "./ServicesSettings";
 import ProceduresSettings from "./ProceduresSettings";
 import SignaturesSettings from "./SignaturesSettings";
 import ModeleSettings from "./ModeleSettings";
+import QuartiersSettings from "./QuartiersSettings";
 
 import ImapSettings from "@/components/ImapSettings";
 import GeneralSettings from "@/components/GeneralSettings";
+import PortalFormsSettings from "@/components/portal/PortalFormsSettings";
+import AiUsageSettings from "@/components/AiUsageSettings";
 import { useOrganization } from "@/contexts/OrganizationContext";
 
-type Section = "menu" | "general" | "utilisateurs" | "workflows" | "classification" | "services" | "demarches" | "emails" | "signatures" | "modeles";
+type Section = "menu" | "general" | "utilisateurs" | "workflows" | "classification" | "services" | "demarches" | "emails" | "signatures" | "modeles" | "portail" | "quartiers" | "ia";
 
 const settingSections: { key: Section; title: string; description: string; icon: LucideIcon }[] = [
   { key: "general", title: "Configuration générale", description: "Paramètres globaux de l'organisation", icon: Settings },
@@ -25,7 +28,10 @@ const settingSections: { key: Section; title: string; description: string; icon:
   { key: "services", title: "Services", description: "Services de l'organisation et workflows associés", icon: Briefcase },
   { key: "demarches", title: "Démarches", description: "Liste des démarches administratives proposées", icon: ClipboardList },
   { key: "classification", title: "Classification", description: "Tags de classement des courriers", icon: Tags },
+  { key: "quartiers", title: "Quartiers", description: "Découpage de la commune en quartiers", icon: MapPin },
   { key: "modeles", title: "Modèles de documents", description: "Modèle Word pour les courriers papier", icon: FileText },
+  { key: "portail", title: "Portail citoyen", description: "Formulaires intégrables sur votre site web", icon: Globe },
+  { key: "ia", title: "Consommation IA", description: "Suivi de la consommation des appels IA (lecture seule)", icon: Sparkles },
 ];
 
 const sectionLabels: Record<string, string> = {
@@ -37,7 +43,10 @@ const sectionLabels: Record<string, string> = {
   services: "Services",
   demarches: "Démarches administratives",
   classification: "Classification (tags)",
+  quartiers: "Quartiers",
   modeles: "Modèles de documents",
+  portail: "Portail citoyen — formulaires",
+  ia: "Consommation IA",
 };
 
 export default function SettingsPage() {
@@ -65,11 +74,16 @@ export default function SettingsPage() {
         )}
         {activeSection === "workflows" && <Workflows />}
         {activeSection === "classification" && <ClassificationSettings />}
+        {activeSection === "quartiers" && <QuartiersSettings />}
         {activeSection === "services" && <ServicesSettings />}
         {activeSection === "demarches" && <ProceduresSettings />}
         {activeSection === "signatures" && <SignaturesSettings />}
         {activeSection === "modeles" && organizationId && (
           <ModeleSettings orgId={organizationId} />
+        )}
+        {activeSection === "portail" && <PortalFormsSettings />}
+        {activeSection === "ia" && organizationId && (
+          <AiUsageSettings organizationId={organizationId} editable={false} />
         )}
       </div>
     );

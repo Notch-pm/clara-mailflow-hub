@@ -223,11 +223,22 @@ export default function BulkImport() {
         });
 
         if (error || data?.error) {
-          toast.error(`Courrier "${draft.title || "sans titre"}" : analyse échouée`);
+          const status = (error as { context?: { status?: number } } | null)?.context?.status;
+          const label = `Courrier "${draft.title || "sans titre"}"`;
+          toast.error(
+            status === 429
+              ? `${label} : quota IA atteint pour ce mois, contactez votre administrateur`
+              : `${label} : analyse échouée`,
+          );
           continue;
         }
 
-        const result = data as OcrResult;
+        const result = data as OcrResult & { quota_exceeded?: boolean };
+        if (result.quota_exceeded) {
+          toast.error(
+            `Courrier "${draft.title || "sans titre"}" : quota IA atteint pour ce mois, extraction partielle`,
+          );
+        }
         const senderName = [result.sender?.first_name, result.sender?.last_name].filter(Boolean).join(" ");
         const matchedService = services.find(
           (s) => result.suggested_service_name &&

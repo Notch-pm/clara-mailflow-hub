@@ -25,6 +25,7 @@ function makeQueryBuilder(resolvedValue: unknown = { data: null, error: null }) 
 
 export const mockSupabase = {
   from: vi.fn(() => makeQueryBuilder()),
+  rpc: vi.fn().mockResolvedValue({ data: [], error: null }),
   auth: {
     getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user-1" } }, error: null }),
     getSession: vi.fn().mockResolvedValue({ data: { session: null }, error: null }),

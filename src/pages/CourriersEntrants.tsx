@@ -1,23 +1,28 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { MailOpen, Plus, Search, Filter } from "lucide-react";
+import type { ColumnDef, Table as TanstackTable } from "@tanstack/react-table";
+import { Download, MailOpen, Plus, Search } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
 import { useOrganization } from "@/contexts/OrganizationContext";
-import { getCouriers, createCourier } from "@/services/courierService";
-import type { CourierChannel } from "@/types/courier";
+import { DataTable } from "@/components/data-table/data-table";
+import { DataTableColumnHeader } from "@/components/data-table/data-table-column-header";
+import { DataTableColumnToggle } from "@/components/data-table/data-table-column-toggle";
+import { DataTableGroupingSelect } from "@/components/data-table/data-table-grouping-select";
+import { buildCsv, downloadCsv, type CsvColumn } from "@/components/data-table/csv-export";
+import { getCouriers, createCourier, fetchAllCouriersForExport } from "@/services/courierService";
+import type { CourierChannel, CourierWithRelations } from "@/types/courier";
 
 const createCourierSchema = z.object({
   subject: z.string().min(1, "L'objet est obligatoire").max(500),
@@ -54,10 +59,78 @@ export default function CourriersEntrants() {
         search: search || undefined,
       });
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []) as unknown as CourierWithRelations[];
     },
     enabled: !!organizationId,
   });
+
+  const [tableInstance, setTableInstance] = useState<TanstackTable<CourierWithRelations> | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const columns = useMemo<ColumnDef<CourierWithRelations>[]>(
+    () => [
+      {
+        accessorKey: "chrono",
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Chrono" />,
+        cell: ({ row }) => <span className="font-mono text-xs">{row.original.chrono ?? "—"}</span>,
+        meta: { exportLabel: "Chrono" },
+      },
+      {
+        accessorKey: "subject",
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Objet" />,
+        cell: ({ row }) => (
+          <span className="font-medium max-w-[300px] truncate block">{row.original.subject ?? "Sans objet"}</span>
+        ),
+        meta: { exportLabel: "Objet" },
+      },
+      {
+        id: "channel",
+        accessorFn: (c) => channelLabels[c.channel as CourierChannel] ?? c.channel,
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Canal" />,
+        cell: ({ row }) => (
+          <Badge variant="outline">{channelLabels[row.original.channel as CourierChannel] ?? row.original.channel}</Badge>
+        ),
+        meta: { exportLabel: "Canal" },
+      },
+      {
+        accessorKey: "assigned_service",
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Service" />,
+        cell: ({ row }) => <span className="text-sm">{row.original.assigned_service ?? "—"}</span>,
+        meta: { exportLabel: "Service" },
+      },
+      {
+        id: "received_at",
+        accessorFn: (c) => (c.received_at ? new Date(c.received_at).toLocaleDateString("fr-FR") : ""),
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Reçu le" />,
+        cell: ({ row }) => (
+          <span className="text-sm">{row.original.received_at ? new Date(row.original.received_at).toLocaleDateString("fr-FR") : "—"}</span>
+        ),
+        meta: { exportLabel: "Reçu le" },
+      },
+    ],
+    [],
+  );
+
+  async function handleExportCsv() {
+    if (!organizationId || !tableInstance) return;
+    setIsExporting(true);
+    try {
+      const allRows = await fetchAllCouriersForExport(organizationId, { direction: "inbound", search: search || undefined });
+      const csvColumns: CsvColumn<CourierWithRelations>[] = tableInstance
+        .getVisibleLeafColumns()
+        .map((col) => ({
+          header: (col.columnDef.meta as { exportLabel?: string } | undefined)?.exportLabel ?? col.id,
+          accessor: (row) => (col.accessorFn as ((row: CourierWithRelations) => unknown) | undefined)?.(row) ?? "",
+        }));
+      const csv = buildCsv(allRows, csvColumns);
+      downloadCsv(csv, `courriers-entrants-${new Date().toISOString().slice(0, 10)}.csv`);
+    } catch (e) {
+      console.error(e);
+      toast.error("Erreur lors de l'export du fichier.");
+    } finally {
+      setIsExporting(false);
+    }
+  }
 
   const createMutation = useMutation({
     mutationFn: async (values: CreateCourierForm) => {
@@ -141,17 +214,35 @@ export default function CourriersEntrants() {
         </Dialog>
       </div>
 
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Rechercher par objet..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
-          />
+      {organizationId && (
+        <div className="flex items-center justify-end gap-2">
+          {tableInstance && <DataTableGroupingSelect table={tableInstance} />}
+          {tableInstance && <DataTableColumnToggle table={tableInstance} />}
+          <Button variant="outline" size="sm" onClick={handleExportCsv} disabled={isExporting || !couriers?.length}>
+            <Download className="h-4 w-4 mr-1" />
+            {isExporting ? "Export…" : "Exporter CSV"}
+          </Button>
         </div>
-      </div>
+      )}
+
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex items-end gap-4 flex-wrap">
+            <div className="flex flex-col gap-1.5 flex-1 min-w-[200px] max-w-sm">
+              <Label className="text-xs text-muted-foreground">Recherche</Label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Rechercher par objet…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {!organizationId ? (
         <Card>
@@ -159,49 +250,15 @@ export default function CourriersEntrants() {
             Veuillez sélectionner une organisation pour voir les courriers.
           </CardContent>
         </Card>
-      ) : isLoading ? (
-        <Card>
-          <CardContent className="py-8 text-center text-muted-foreground">Chargement…</CardContent>
-        </Card>
-      ) : !couriers?.length ? (
-        <Card>
-          <CardContent className="py-8 text-center text-muted-foreground">
-            Aucun courrier entrant. Cliquez sur "Nouveau courrier" pour commencer.
-          </CardContent>
-        </Card>
       ) : (
-        <Card>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Chrono</TableHead>
-                <TableHead>Objet</TableHead>
-                <TableHead>Canal</TableHead>
-                <TableHead>Service</TableHead>
-                <TableHead>Reçu le</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {couriers.map((c) => (
-                <TableRow
-                  key={c.id}
-                  className="cursor-pointer hover:bg-muted/50"
-                  onClick={() => navigate(`/courrier/${c.id}`)}
-                >
-                  <TableCell className="font-mono text-xs">{c.chrono ?? "—"}</TableCell>
-                  <TableCell className="font-medium max-w-[300px] truncate">{c.subject ?? "Sans objet"}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{channelLabels[c.channel as CourierChannel] ?? c.channel}</Badge>
-                  </TableCell>
-                  <TableCell className="text-sm">{c.assigned_service ?? "—"}</TableCell>
-                  <TableCell className="text-sm">
-                    {c.received_at ? new Date(c.received_at).toLocaleDateString("fr-FR") : "—"}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Card>
+        <DataTable
+          columns={columns}
+          data={couriers ?? []}
+          isLoading={isLoading}
+          onRowClick={(c) => navigate(`/courrier/${c.id}`)}
+          onTableInstanceChange={setTableInstance}
+          emptyMessage='Aucun courrier entrant. Cliquez sur "Nouveau courrier" pour commencer.'
+        />
       )}
     </div>
   );

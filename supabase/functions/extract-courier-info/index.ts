@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
+import { withAiUsageGuard, AiQuotaExceededError, estimateOcrTokens, estimateTextTokens, estimateTokensFromText } from "../_shared/aiUsage.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -82,6 +83,7 @@ async function ocrFile(
   orgId: string,
   file: FileInput,
   mistralKey: string,
+  userId: string,
 ): Promise<string> {
   const mime = file.mime_type.toLowerCase();
   const name = file.name.toLowerCase();
@@ -92,26 +94,38 @@ async function ocrFile(
 
   if (mime.startsWith("image/")) {
     const dataUri = `data:${file.mime_type};base64,${file.content_base64}`;
-    const resp = await fetch(MISTRAL_OCR_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${mistralKey}`,
-        "Content-Type": "application/json",
+    return await withAiUsageGuard({
+      admin,
+      organizationId: orgId,
+      provider: "mistral",
+      resourceType: "ocr",
+      estimatedTokens: estimateOcrTokens(1),
+      userId,
+      run: async () => {
+        const resp = await fetch(MISTRAL_OCR_URL, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${mistralKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: OCR_MODEL,
+            document: { type: "image_url", image_url: dataUri },
+            include_image_base64: false,
+          }),
+        });
+        if (!resp.ok) {
+          const t = await resp.text();
+          throw new Error(`OCR image failed (${resp.status}): ${t.slice(0, 200)}`);
+        }
+        const data = await resp.json();
+        const text = (data.pages ?? [])
+          .map((p: { markdown?: string; text?: string }) => p.markdown ?? p.text ?? "")
+          .join("\n\n");
+        const actualTokens = data?.usage?.total_tokens ?? estimateTokensFromText(text);
+        return { result: text, actualTokens };
       },
-      body: JSON.stringify({
-        model: OCR_MODEL,
-        document: { type: "image_url", image_url: dataUri },
-        include_image_base64: false,
-      }),
     });
-    if (!resp.ok) {
-      const t = await resp.text();
-      throw new Error(`OCR image failed (${resp.status}): ${t.slice(0, 200)}`);
-    }
-    const data = await resp.json();
-    return (data.pages ?? [])
-      .map((p: { markdown?: string; text?: string }) => p.markdown ?? p.text ?? "")
-      .join("\n\n");
   }
 
   if (mime === "application/pdf" || name.endsWith(".pdf")) {
@@ -130,26 +144,38 @@ async function ocrFile(
         .createSignedUrl(tempKey, 300);
       if (signErr || !signed) throw new Error(`Signed URL error: ${signErr?.message}`);
 
-      const resp = await fetch(MISTRAL_OCR_URL, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${mistralKey}`,
-          "Content-Type": "application/json",
+      return await withAiUsageGuard({
+        admin,
+        organizationId: orgId,
+        provider: "mistral",
+        resourceType: "ocr",
+        estimatedTokens: estimateOcrTokens(1),
+        userId,
+        run: async () => {
+          const resp = await fetch(MISTRAL_OCR_URL, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${mistralKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: OCR_MODEL,
+              document: { type: "document_url", document_url: signed.signedUrl },
+              include_image_base64: false,
+            }),
+          });
+          if (!resp.ok) {
+            const t = await resp.text();
+            throw new Error(`OCR PDF failed (${resp.status}): ${t.slice(0, 200)}`);
+          }
+          const data = await resp.json();
+          const text = (data.pages ?? [])
+            .map((p: { markdown?: string; text?: string }) => p.markdown ?? p.text ?? "")
+            .join("\n\n");
+          const actualTokens = data?.usage?.total_tokens ?? estimateTokensFromText(text);
+          return { result: text, actualTokens };
         },
-        body: JSON.stringify({
-          model: OCR_MODEL,
-          document: { type: "document_url", document_url: signed.signedUrl },
-          include_image_base64: false,
-        }),
       });
-      if (!resp.ok) {
-        const t = await resp.text();
-        throw new Error(`OCR PDF failed (${resp.status}): ${t.slice(0, 200)}`);
-      }
-      const data = await resp.json();
-      return (data.pages ?? [])
-        .map((p: { markdown?: string; text?: string }) => p.markdown ?? p.text ?? "")
-        .join("\n\n");
     } finally {
       await admin.storage.from(BUCKET).remove([tempKey]);
     }
@@ -177,13 +203,26 @@ Deno.serve(async (req) => {
 
     // OCR each file (up to first 5 to cap cost)
     const texts: string[] = [];
+    let quotaExceeded = false;
     for (const file of files.slice(0, 5)) {
       try {
-        const text = await ocrFile(admin, orgId, file, mistralKey);
+        const text = await ocrFile(admin, orgId, file, mistralKey, user.id);
         if (text.trim()) texts.push(text.trim());
       } catch (e) {
+        if (e instanceof AiQuotaExceededError) {
+          // Contrairement aux autres erreurs OCR par fichier (avalées en
+          // silence, traitement best-effort), le quota dépassé concerne
+          // l'organisation entière : inutile de continuer la boucle, les
+          // fichiers suivants échoueraient tous pour la même raison.
+          quotaExceeded = true;
+          break;
+        }
         console.error(`OCR failed for ${file.name}:`, (e as Error).message);
       }
+    }
+
+    if (quotaExceeded && !texts.length) {
+      return jsonResponse({ error: "quota_exceeded" }, 429);
     }
 
     if (!texts.length) return jsonResponse({ error: "Aucun texte extrait des documents" }, 400);
@@ -260,33 +299,45 @@ ${combinedText}`;
     ];
 
     // Use same Mistral agent as analyze-courier for consistent results
-    const agentResp = await fetch(MISTRAL_AGENT_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${mistralKey}`,
-        "Content-Type": "application/json",
+    const extracted: ExtractedInfo = await withAiUsageGuard({
+      admin,
+      organizationId: orgId,
+      provider: "mistral",
+      resourceType: "agent",
+      estimatedTokens: estimateTextTokens(systemPrompt.length + userPrompt.length, 800),
+      userId: user.id,
+      run: async () => {
+        const agentResp = await fetch(MISTRAL_AGENT_URL, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${mistralKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            agent_id: ANALYSIS_AGENT_ID,
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userPrompt },
+            ],
+            tools,
+            tool_choice: { type: "function", function: { name: "extract_info" } },
+          }),
+        });
+
+        if (!agentResp.ok) {
+          const t = await agentResp.text();
+          throw new Error(`Mistral agent ${agentResp.status}: ${t.slice(0, 200)}`);
+        }
+
+        const agentData = await agentResp.json();
+        const toolCall = agentData?.choices?.[0]?.message?.tool_calls?.[0];
+        if (!toolCall?.function?.arguments) throw new Error("Réponse Mistral inattendue");
+
+        const result: ExtractedInfo = JSON.parse(toolCall.function.arguments);
+        const actualTokens = agentData?.usage?.total_tokens ?? null;
+        return { result, actualTokens };
       },
-      body: JSON.stringify({
-        agent_id: ANALYSIS_AGENT_ID,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        tools,
-        tool_choice: { type: "function", function: { name: "extract_info" } },
-      }),
     });
-
-    if (!agentResp.ok) {
-      const t = await agentResp.text();
-      throw new Error(`Mistral agent ${agentResp.status}: ${t.slice(0, 200)}`);
-    }
-
-    const agentData = await agentResp.json();
-    const toolCall = agentData?.choices?.[0]?.message?.tool_calls?.[0];
-    if (!toolCall?.function?.arguments) throw new Error("Réponse Mistral inattendue");
-
-    const extracted: ExtractedInfo = JSON.parse(toolCall.function.arguments);
 
     // Validate and sanitize against org data (same pattern as analyze-courier)
     const validServiceNames = new Set(serviceNames.map((n) => n.toLowerCase()));
@@ -345,11 +396,17 @@ ${combinedText}`;
       suggested_tag_names: suggestedTags,
       matched_usager: matchedUsager,
       extracted_text: extractedText.slice(0, 10_000),
+      // true si certains fichiers du lot n'ont pas pu être OCRisés faute de quota
+      // (mais l'extraction a quand même pu se faire sur les fichiers déjà traités).
+      quota_exceeded: quotaExceeded,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal error";
     const status =
-      message === "Unauthorized" ? 401 : message.startsWith("Forbidden") ? 403 : 500;
+      message === "Unauthorized" ? 401
+      : message.startsWith("Forbidden") ? 403
+      : err instanceof AiQuotaExceededError ? 429
+      : 500;
     return jsonResponse({ error: message }, status);
   }
 });

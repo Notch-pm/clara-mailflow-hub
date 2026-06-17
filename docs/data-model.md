@@ -7,6 +7,7 @@
 - **PostgreSQL** managé par Supabase. Types générés dans `src/integrations/supabase/types.ts` (ne **jamais** éditer à la main).
 - **Multi-tenant strict** : toutes les tables métier ont `organization_id uuid NOT NULL REFERENCES organizations(id)`.
 - **RLS activée partout** via `is_member_of` / `is_admin_of` / `is_superadmin`. Voir `docs/database-rls.md`.
+- **Extensions** : `postgis` (schéma `public`) activée pour le découpage en quartiers — géométrie `geometry(MultiPolygon, 4326)`, fonctions `ST_*`.
 
 ## Pattern RLS
 
@@ -36,6 +37,7 @@ Le header `x-org-id` n'est **plus** utilisé dans les policies — il est unique
 | `sync_status` | `pending` + autres (voir types.ts) |
 | `usager_category` | `citoyen` + autres (voir types.ts) |
 | `usager_civilite` | (USER-DEFINED, voir types.ts) |
+| `usager_family_status` | `celibataire` `marie` `pacse` `divorce` `inconnu` |
 | `workflow_type` | (USER-DEFINED, voir types.ts) |
 
 ---
@@ -57,6 +59,7 @@ Tenants racine. RLS sur `id` (pas sur `organization_id`).
 | `logo_url` | text | |
 | `primary_color` / `secondary_color` | text | |
 | `multiple_imap` | boolean | multi-boîtes IMAP |
+| `domiciliary_file_enabled` | boolean | mode "fichier domiciliaire" (optionnable, admin uniquement) — active la saisie des champs domiciliaires sur `usagers` |
 | `reply_template_html` / `_design` / `_data` / `_storage_key` | text/jsonb | template courrier Unlayer |
 | `address_*` / `phone` / `website` / `contact_email` | text | coordonnées org |
 
@@ -259,14 +262,55 @@ Dictionnaire de tags (étiquettes) de l'org. Les tags appliqués sont dans `cour
 #### `roles`
 Rôles personnalisés d'une organisation (usage libre, pas de lien direct RLS).
 
+#### `quartiers`
+Découpage de la commune en quartiers (polygones). Import GeoJSON uniquement en Phase 1 (pas de dessin dans l'app).
+
+| Colonne | Type | Notes |
+|---|---|---|
+| `name` | varchar | unique par org (`UNIQUE (organization_id, name)`) |
+| `color` | varchar | |
+| `geom` | `geometry(MultiPolygon, 4326)` | indexé GIST (`idx_quartiers_geom`) |
+
+Fonctions associées (`SECURITY INVOKER`, RLS appliquée normalement) :
+- `quartier_for_point(p_org_id, p_lon, p_lat)` — quartier contenant un point (assignation auto usager).
+- `create_quartier_from_geojson(p_org_id, p_name, p_color, p_geojson)` — insertion depuis un GeoJSON importé (`ST_MakeValid` + `ST_GeomFromGeoJSON`).
+- `list_quartiers_geojson(p_org_id)` — lecture avec `ST_AsGeoJSON(geom)` pour l'affichage carte (`react-leaflet` `<GeoJSON>`).
+- `recalculate_usager_quartiers(p_org_id)` — réapplique `quartier_for_point` à tous les usagers `quartier_auto = true`.
+- `stats_usagers_by_quartier(p_org_id)` — comptage par quartier + ligne "Sans quartier", utilisée par la page Statistiques et la page d'admin Quartiers.
+- `usagers_outside_quartiers(p_org_id)` — substitut pragmatique à "rues hors quartiers" : usagers géolocalisés hors de tout polygone (aucune donnée de voirie externe).
+
 #### `usagers`
 Annuaire des personnes (citoyens, entreprises…) connues de l'org.
+
+Recherche avancée (page `/usagers`) via la RPC `search_usagers(p_org_id, p_search, p_quartier_ids, p_min_inbound, p_max_inbound, p_sent_from, p_sent_to, p_marriage_anniv_years, p_birthday_years, p_limit)` — texte libre, quartiers (multi), nombre min. de courriers entrants, période d'envoi, "grands anniversaires de mariage" (années écoulées depuis `marriage_date`, excluant `family_status = divorce`) et "grands anniversaires" (âge atteint dans l'année, basé sur `birth_date`).
 
 | Colonne | Type |
 |---|---|
 | `category` | enum `usager_category` (`citoyen` par défaut) |
 | `civilite` | enum |
 | `first_name` / `last_name` / `email` / `phone` | varchar |
+| `quartier_id` | uuid FK → `quartiers`, nullable (`ON DELETE SET NULL`) |
+| `quartier_auto` | boolean, `true` par défaut — passe à `false` dès qu'un admin force une valeur manuelle (pour ne pas l'écraser au recalcul de masse) |
+
+Champs adresse — **généraux**, toujours visibles dans le formulaire (indépendants de `organizations.domiciliary_file_enabled`, car nécessaires entre autres au rattachement à un quartier) :
+
+| Colonne | Type | Notes |
+|---|---|---|
+| `address_number` / `address_btq` / `address_street` / `address_building` / `address_apartment` / `address_complement` / `address_postal_code` / `address_city` | varchar | adresse détaillée, pré-remplie via autocomplete BAN (Géoplateforme IGN) |
+| `address_lat` / `address_lon` | double precision | coordonnées géocodées lors de la sélection d'une suggestion BAN ; nullable, fallback géocodage à la volée côté client si absent (carte sur la fiche usager) |
+
+Champs "fichier domiciliaire" — toujours en base, saisie conditionnée côté UI à `organizations.domiciliary_file_enabled` :
+
+| Colonne | Type | Notes |
+|---|---|---|
+| `usual_name` | varchar | nom usuel |
+| `birth_date` / `death_date` | date | |
+| `family_status` | enum `usager_family_status` | `celibataire` \| `marie` \| `pacse` \| `divorce` \| `inconnu` |
+| `marriage_date` | date | affiché/saisi si `family_status = marie` ; conservé même après passage à `divorce` (historique, exclu du filtre "grands anniversaires de mariage") |
+| `pacs_date` | date | affiché/saisi si `family_status = pacse` |
+| `arrival_date` / `departure_date` | date | |
+| `nationality` | varchar | |
+| `phone_2` | varchar | second téléphone |
 
 ---
 

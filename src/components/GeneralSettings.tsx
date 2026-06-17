@@ -6,12 +6,15 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
-import { Loader2, Settings2, MapPin } from "lucide-react";
+import { Loader2, Settings2, MapPin, Home } from "lucide-react";
 import { toast } from "sonner";
+import AddressAutocomplete from "@/components/AddressAutocomplete";
+import type { BanAddressSuggestion } from "@/services/banAddressService";
 
 interface OrgRow {
   id: string;
   multiple_imap: boolean;
+  domiciliary_file_enabled: boolean;
   address_street: string | null;
   address_complement: string | null;
   address_postal_code: string | null;
@@ -29,7 +32,7 @@ export default function GeneralSettings({ orgId }: { orgId: string }) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("organizations" as never)
-        .select("id, multiple_imap, address_street, address_complement, address_postal_code, address_city, phone, website, contact_email")
+        .select("id, multiple_imap, domiciliary_file_enabled, address_street, address_complement, address_postal_code, address_city, phone, website, contact_email")
         .eq("id", orgId)
         .single();
       if (error) throw error;
@@ -48,6 +51,22 @@ export default function GeneralSettings({ orgId }: { orgId: string }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["org-general", orgId] });
+      toast.success("Configuration enregistrée");
+    },
+    onError: (e: Error) => toast.error("Erreur : " + e.message),
+  });
+
+  const domiciliaryToggleMutation = useMutation({
+    mutationFn: async (value: boolean) => {
+      const { error } = await supabase
+        .from("organizations" as never)
+        .update({ domiciliary_file_enabled: value } as never)
+        .eq("id", orgId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["org-general", orgId] });
+      queryClient.invalidateQueries({ queryKey: ["org-domiciliary-file-enabled", orgId] });
       toast.success("Configuration enregistrée");
     },
     onError: (e: Error) => toast.error("Erreur : " + e.message),
@@ -132,6 +151,25 @@ export default function GeneralSettings({ orgId }: { orgId: string }) {
               onCheckedChange={(val) => toggleMutation.mutate(val)}
             />
           </div>
+
+          <div className="flex items-center justify-between rounded-lg border p-4 mt-4">
+            <div className="flex items-start gap-3">
+              <Home className="h-4 w-4 text-muted-foreground mt-0.5" />
+              <div>
+                <Label className="text-sm font-medium">
+                  Mode fichier domiciliaire
+                </Label>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Permet de saisir des informations supplémentaires sur les usagers (nom usuel, dates de naissance/décès, situation familiale, dates d'arrivée/départ, nationalité, adresse détaillée, second téléphone).
+                </p>
+              </div>
+            </div>
+            <Switch
+              checked={org?.domiciliary_file_enabled ?? false}
+              disabled={domiciliaryToggleMutation.isPending}
+              onCheckedChange={(val) => domiciliaryToggleMutation.mutate(val)}
+            />
+          </div>
         </CardContent>
       </Card>
 
@@ -155,7 +193,17 @@ export default function GeneralSettings({ orgId }: { orgId: string }) {
           >
             <div className="space-y-2">
               <Label htmlFor="org-street">Numéro et voie</Label>
-              <Input id="org-street" value={street} onChange={(e) => setStreet(e.target.value)} maxLength={200} />
+              <AddressAutocomplete
+                id="org-street"
+                value={street}
+                onChange={setStreet}
+                onSelect={(s: BanAddressSuggestion) => {
+                  setStreet([s.number, s.btq, s.street].filter(Boolean).join(" "));
+                  if (s.postcode) setPostal(s.postcode);
+                  if (s.city) setCity(s.city);
+                }}
+                placeholder="Rechercher une adresse…"
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="org-complement">Complément d'adresse</Label>

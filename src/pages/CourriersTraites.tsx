@@ -1,18 +1,12 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import type { ColumnDef, Table as TanstackTable } from "@tanstack/react-table";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   Select,
   SelectContent,
@@ -20,17 +14,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Search, CheckCircle2, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
+import { Download, Search, CheckCircle2, Loader2 } from "lucide-react";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { supabase } from "@/integrations/supabase/client";
 import type { CourierWithRelations } from "@/types/courier";
 import { listTags } from "@/services/courierTagService";
 import { listServices } from "@/services/orgServiceService";
 import { useUserServiceFilter, applyServiceFilter } from "@/hooks/useUserServiceFilter";
+import { fetchAllCouriersByStatesForExport } from "@/services/courierService";
 import { readableTextColor } from "@/lib/tag-color";
-import { cn } from "@/lib/utils";
-
-type GroupBy = "none" | "state" | "service";
+import { toast } from "sonner";
+import { DataTable } from "@/components/data-table/data-table";
+import { DataTableColumnHeader } from "@/components/data-table/data-table-column-header";
+import { DataTableColumnToggle } from "@/components/data-table/data-table-column-toggle";
+import { DataTableGroupingSelect } from "@/components/data-table/data-table-grouping-select";
+import { buildCsv, downloadCsv, type CsvColumn } from "@/components/data-table/csv-export";
 
 export default function CourriersTraites() {
   const { organizationId } = useOrganization();
@@ -39,8 +37,6 @@ export default function CourriersTraites() {
   const [serviceFilter, setServiceFilter] = useState<string>("all");
   const [tagFilter, setTagFilter] = useState<string>("all");
   const [stateFilter, setStateFilter] = useState<string>("all");
-  const [groupBy, setGroupBy] = useState<GroupBy>("none");
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [limit, setLimit] = useState(50);
 
   // Processed states for the org (excludes archived)
@@ -136,50 +132,28 @@ export default function CourriersTraites() {
 
   const userServiceFilter = useUserServiceFilter();
 
-  const filtered = useMemo(() => {
-    let list = applyServiceFilter(couriers ?? [], userServiceFilter);
-    if (serviceFilter !== "all") {
-      const svc = services?.find((s) => s.id === serviceFilter);
-      if (svc) list = list.filter((c) => c.assigned_service === svc.name);
-    }
-    if (stateFilter !== "all") {
-      list = list.filter((c) => c.workflow_state_id === stateFilter);
-    }
-    if (tagFilter !== "all") {
-      list = list.filter((c) => {
-        const t = (c.metadata as Record<string, unknown> | null)?.tags ?? [];
-        return Array.isArray(t) && t.some((x: string) => x.toLowerCase() === tagFilter.toLowerCase());
-      });
-    }
-    return list;
-  }, [couriers, serviceFilter, stateFilter, tagFilter, services, userServiceFilter]);
-
-  const groups = useMemo(() => {
-    if (groupBy === "none") {
-      return [{ key: "all", label: "", items: filtered }];
-    }
-    const map = new Map<string, { label: string; items: CourierWithRelations[] }>();
-    filtered.forEach((c) => {
-      let key: string;
-      let label: string;
-      if (groupBy === "state") {
-        key = c.workflow_state_id ?? "—";
-        label = stateById.get(c.workflow_state_id ?? "")?.name ?? "Sans état";
-      } else {
-        key = c.assigned_service ?? "—";
-        label = c.assigned_service ?? "Sans service";
+  const applyFilters = useCallback(
+    (list: CourierWithRelations[]): CourierWithRelations[] => {
+      let out = applyServiceFilter(list, userServiceFilter);
+      if (serviceFilter !== "all") {
+        const svc = services?.find((s) => s.id === serviceFilter);
+        if (svc) out = out.filter((c) => c.assigned_service === svc.name);
       }
-      if (!map.has(key)) map.set(key, { label, items: [] });
-      map.get(key)!.items.push(c);
-    });
-    return Array.from(map.entries())
-      .map(([key, v]) => ({ key, ...v }))
-      .sort((a, b) => a.label.localeCompare(b.label));
-  }, [filtered, groupBy, stateById]);
+      if (stateFilter !== "all") {
+        out = out.filter((c) => c.workflow_state_id === stateFilter);
+      }
+      if (tagFilter !== "all") {
+        out = out.filter((c) => {
+          const t = (c.metadata as Record<string, unknown> | null)?.tags ?? [];
+          return Array.isArray(t) && t.some((x: string) => x.toLowerCase() === tagFilter.toLowerCase());
+        });
+      }
+      return out;
+    },
+    [userServiceFilter, serviceFilter, stateFilter, tagFilter, services],
+  );
 
-  function toggle(key: string) {
-    setCollapsed((c) => ({ ...c, [key]: !c[key] }));
-  }
+  const filtered = useMemo(() => applyFilters(couriers ?? []), [couriers, applyFilters]);
 
   function getSender(c: CourierWithRelations): string {
     const p = c.courier_participants?.find((x) => x.role === "sender");
@@ -191,6 +165,127 @@ export default function CourriersTraites() {
   function getRecipient(c: CourierWithRelations): string {
     const p = c.courier_participants?.find((x) => x.role === "recipient");
     return p?.name ?? p?.email ?? "—";
+  }
+
+  function getTags(c: CourierWithRelations): string[] {
+    const t = (c.metadata as Record<string, unknown> | null)?.tags ?? [];
+    return Array.isArray(t) ? (t as string[]) : [];
+  }
+
+  const [tableInstance, setTableInstance] = useState<TanstackTable<CourierWithRelations> | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const columns = useMemo<ColumnDef<CourierWithRelations>[]>(
+    () => [
+      {
+        id: "received_at",
+        accessorFn: (c) => (c.received_at ? new Date(c.received_at).toLocaleDateString("fr-FR") : ""),
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Date de réception" />,
+        cell: ({ row }) => (
+          <span className="text-sm whitespace-nowrap">
+            {row.original.received_at ? new Date(row.original.received_at).toLocaleDateString("fr-FR") : "—"}
+          </span>
+        ),
+        meta: { exportLabel: "Date de réception" },
+      },
+      {
+        id: "processed_at",
+        accessorFn: (c) => {
+          const at = processedAtMap?.[c.id];
+          return at ? new Date(at).toLocaleDateString("fr-FR") : "";
+        },
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Date de traitement" />,
+        cell: ({ row }) => {
+          const at = processedAtMap?.[row.original.id];
+          return <span className="text-sm whitespace-nowrap">{at ? new Date(at).toLocaleDateString("fr-FR") : "—"}</span>;
+        },
+        meta: { exportLabel: "Date de traitement" },
+      },
+      {
+        accessorKey: "subject",
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Objet" />,
+        cell: ({ row }) => (
+          <span className="text-sm font-medium max-w-[260px] truncate block">{row.original.subject ?? "Sans titre"}</span>
+        ),
+        meta: { exportLabel: "Objet" },
+      },
+      {
+        id: "state",
+        accessorFn: (c) => stateById.get(c.workflow_state_id ?? "")?.name ?? "",
+        header: ({ column }) => <DataTableColumnHeader column={column} title="État" />,
+        cell: ({ row }) => {
+          const name = stateById.get(row.original.workflow_state_id ?? "")?.name;
+          return name ? <Badge variant="outline" className="text-xs">{name}</Badge> : null;
+        },
+        meta: { exportLabel: "État" },
+      },
+      {
+        accessorKey: "assigned_service",
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Service" />,
+        cell: ({ row }) => <span className="text-sm">{row.original.assigned_service ?? "—"}</span>,
+        meta: { exportLabel: "Service" },
+      },
+      {
+        id: "sender",
+        accessorFn: getSender,
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Expéditeur" />,
+        cell: ({ row }) => <span className="text-sm">{getSender(row.original)}</span>,
+        meta: { exportLabel: "Expéditeur" },
+      },
+      {
+        id: "recipient",
+        accessorFn: getRecipient,
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Destinataire" />,
+        cell: ({ row }) => <span className="text-sm">{getRecipient(row.original)}</span>,
+        meta: { exportLabel: "Destinataire" },
+      },
+      {
+        id: "tags",
+        accessorFn: (c) => getTags(c).join(", "),
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Tags" />,
+        cell: ({ row }) => (
+          <div className="flex flex-wrap gap-1">
+            {getTags(row.original).map((t) => {
+              const color = tagByName.get(t.toLowerCase())?.color ?? null;
+              return (
+                <span
+                  key={t}
+                  className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium"
+                  style={color ? { backgroundColor: color, color: readableTextColor(color) } : undefined}
+                >
+                  {t}
+                </span>
+              );
+            })}
+          </div>
+        ),
+        meta: { exportLabel: "Tags" },
+      },
+    ],
+    [stateById, tagByName, processedAtMap],
+  );
+
+  async function handleExportCsv() {
+    if (!organizationId || !tableInstance) return;
+    setIsExporting(true);
+    try {
+      const allRows = applyFilters(
+        await fetchAllCouriersByStatesForExport(organizationId, { stateIds, search: search || undefined }),
+      );
+      const csvColumns: CsvColumn<CourierWithRelations>[] = tableInstance
+        .getVisibleLeafColumns()
+        .map((col) => ({
+          header: (col.columnDef.meta as { exportLabel?: string } | undefined)?.exportLabel ?? col.id,
+          accessor: (row) => (col.accessorFn as ((row: CourierWithRelations) => unknown) | undefined)?.(row) ?? "",
+        }));
+      const csv = buildCsv(allRows, csvColumns);
+      downloadCsv(csv, `courriers-traites-${new Date().toISOString().slice(0, 10)}.csv`);
+    } catch (e) {
+      console.error(e);
+      toast.error("Erreur lors de l'export du fichier.");
+    } finally {
+      setIsExporting(false);
+    }
   }
 
   function handleRowClick(c: CourierWithRelations) {
@@ -209,199 +304,105 @@ export default function CourriersTraites() {
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[200px] max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Rechercher par objet…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
-          />
+      {organizationId && (
+        <div className="flex items-center justify-end gap-2">
+          {tableInstance && <DataTableGroupingSelect table={tableInstance} />}
+          {tableInstance && <DataTableColumnToggle table={tableInstance} />}
+          <Button variant="outline" size="sm" onClick={handleExportCsv} disabled={isExporting || !filtered.length}>
+            <Download className="h-4 w-4 mr-1" />
+            {isExporting ? "Export…" : "Exporter CSV"}
+          </Button>
         </div>
+      )}
 
-        <Select value={serviceFilter} onValueChange={setServiceFilter}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Service" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Tous les services</SelectItem>
-            {(services ?? []).map((s) => (
-              <SelectItem key={s.id} value={s.id}>
-                {s.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex items-end gap-4 flex-wrap">
+            <div className="flex flex-col gap-1.5 flex-1 min-w-[200px] max-w-sm">
+              <Label className="text-xs text-muted-foreground">Recherche</Label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Rechercher par objet…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+            </div>
 
-        <Select value={stateFilter} onValueChange={setStateFilter}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="État" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Tous les états</SelectItem>
-            {(processedStates ?? []).map((s) => (
-              <SelectItem key={s.id} value={s.id}>
-                {s.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs text-muted-foreground whitespace-nowrap">Service</Label>
+              <Select value={serviceFilter} onValueChange={setServiceFilter}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Service" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tous les services</SelectItem>
+                  {(services ?? []).map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-        <Select value={tagFilter} onValueChange={setTagFilter}>
-          <SelectTrigger className="w-[160px]">
-            <SelectValue placeholder="Tag" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Tous les tags</SelectItem>
-            {(tags ?? []).map((t) => (
-              <SelectItem key={t.id} value={t.name}>
-                {t.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs text-muted-foreground whitespace-nowrap">État</Label>
+              <Select value={stateFilter} onValueChange={setStateFilter}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="État" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tous les états</SelectItem>
+                  {(processedStates ?? []).map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-        <div className="ml-auto flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Grouper par</span>
-          <Select value={groupBy} onValueChange={(v) => setGroupBy(v as GroupBy)}>
-            <SelectTrigger className="w-[150px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">Aucun</SelectItem>
-              <SelectItem value="state">État</SelectItem>
-              <SelectItem value="service">Service</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs text-muted-foreground whitespace-nowrap">Tag</Label>
+              <Select value={tagFilter} onValueChange={setTagFilter}>
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue placeholder="Tag" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tous les tags</SelectItem>
+                  {(tags ?? []).map((t) => (
+                    <SelectItem key={t.id} value={t.name}>
+                      {t.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
-      {/* Content */}
       {!organizationId ? (
         <Card>
           <CardContent className="py-8 text-center text-muted-foreground">
             Veuillez sélectionner une organisation.
           </CardContent>
         </Card>
-      ) : isLoading ? (
-        <Card>
-          <CardContent className="py-8 text-center text-muted-foreground">Chargement…</CardContent>
-        </Card>
-      ) : !filtered.length ? (
-        <Card>
-          <CardContent className="py-8 text-center text-muted-foreground">
-            Aucun courrier traité.
-          </CardContent>
-        </Card>
       ) : (
-        <div className="space-y-4">
-          {groups.map((g) => {
-            const isCollapsed = collapsed[g.key];
-            return (
-              <Card key={g.key}>
-                {groupBy !== "none" && (
-                  <button
-                    type="button"
-                    onClick={() => toggle(g.key)}
-                    className="w-full flex items-center gap-2 px-4 py-3 border-b hover:bg-muted/50 transition-colors text-left"
-                  >
-                    {isCollapsed ? (
-                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                    ) : (
-                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                    )}
-                    <span className="font-medium text-sm">{g.label}</span>
-                    <Badge variant="secondary" className="ml-1">
-                      {g.items.length}
-                    </Badge>
-                  </button>
-                )}
-                {!isCollapsed && (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Date de réception</TableHead>
-                        <TableHead>Date de traitement</TableHead>
-                        <TableHead>Objet</TableHead>
-                        <TableHead>État</TableHead>
-                        <TableHead>Service</TableHead>
-                        <TableHead>Expéditeur</TableHead>
-                        <TableHead>Destinataire</TableHead>
-                        <TableHead>Tags</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {g.items.map((c) => {
-                        const courierTags = ((c.metadata as any)?.tags ?? []) as string[];
-                        const stateName = stateById.get(c.workflow_state_id ?? "")?.name;
-                        const processedAt = processedAtMap?.[c.id];
-                        return (
-                          <TableRow
-                            key={c.id}
-                            className="cursor-pointer hover:bg-muted/50"
-                            onClick={() => handleRowClick(c)}
-                          >
-                            <TableCell className="text-sm whitespace-nowrap">
-                              {c.received_at
-                                ? new Date(c.received_at).toLocaleDateString("fr-FR")
-                                : "—"}
-                            </TableCell>
-                            <TableCell className="text-sm whitespace-nowrap">
-                              {processedAt
-                                ? new Date(processedAt).toLocaleDateString("fr-FR")
-                                : "—"}
-                            </TableCell>
-                            <TableCell className="text-sm font-medium max-w-[260px] truncate">
-                              {c.subject ?? "Sans titre"}
-                            </TableCell>
-                            <TableCell>
-                              {stateName && (
-                                <Badge variant="outline" className="text-xs">
-                                  {stateName}
-                                </Badge>
-                              )}
-                            </TableCell>
-                            <TableCell className="text-sm">{c.assigned_service ?? "—"}</TableCell>
-                            <TableCell className="text-sm">{getSender(c)}</TableCell>
-                            <TableCell className="text-sm">{getRecipient(c)}</TableCell>
-                            <TableCell>
-                              <div className="flex flex-wrap gap-1">
-                                {courierTags.map((t) => {
-                                  const color = tagByName.get(t.toLowerCase())?.color ?? null;
-                                  return (
-                                    <span
-                                      key={t}
-                                      className={cn(
-                                        "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium",
-                                        !color && "bg-muted text-foreground",
-                                      )}
-                                      style={
-                                        color
-                                          ? { backgroundColor: color, color: readableTextColor(color) }
-                                          : undefined
-                                      }
-                                    >
-                                      {t}
-                                    </span>
-                                  );
-                                })}
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                )}
-              </Card>
-            );
-          })}
-        </div>
+        <DataTable
+          columns={columns}
+          data={filtered}
+          isLoading={isLoading}
+          onRowClick={handleRowClick}
+          onTableInstanceChange={setTableInstance}
+          emptyMessage="Aucun courrier traité."
+        />
       )}
 
-      {(couriers?.length ?? 0) >= limit && (
+      {organizationId && (couriers?.length ?? 0) >= limit && (
         <div className="flex justify-center pt-2">
           <Button variant="outline" onClick={() => setLimit((l) => l + 50)} disabled={isLoading}>
             {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}

@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
+import { withAiUsageGuard, AiQuotaExceededError, estimateTextTokens } from "../_shared/aiUsage.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -142,35 +143,54 @@ ${ticketsText}
 
 Rédige maintenant le corps de la lettre de réponse.`;
 
-    const chatResp = await fetch(MISTRAL_CHAT_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${mistralKey}`,
-        "Content-Type": "application/json",
+    const draftHtml = await withAiUsageGuard({
+      admin,
+      organizationId: orgId,
+      provider: "mistral",
+      resourceType: "chat",
+      estimatedTokens: estimateTextTokens(systemPrompt.length + userPrompt.length, 1500),
+      userId: user.id,
+      run: async () => {
+        const chatResp = await fetch(MISTRAL_CHAT_URL, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${mistralKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: CHAT_MODEL,
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userPrompt },
+            ],
+            temperature: 0.4,
+            max_tokens: 1500,
+          }),
+        });
+
+        if (!chatResp.ok) {
+          const err = await chatResp.text();
+          throw new Error(`Erreur Mistral : ${err}`);
+        }
+
+        const chatData = await chatResp.json();
+        let html = chatData.choices?.[0]?.message?.content ?? "";
+        // Strip markdown code block if Mistral wraps the output
+        html = html.replace(/^```(?:html)?\s*/i, "").replace(/\s*```$/i, "").trim();
+        const actualTokens = chatData?.usage?.total_tokens ?? null;
+        return { result: html, actualTokens };
       },
-      body: JSON.stringify({
-        model: CHAT_MODEL,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        temperature: 0.4,
-        max_tokens: 1500,
-      }),
     });
 
-    if (!chatResp.ok) {
-      const err = await chatResp.text();
-      return jsonResponse({ error: `Erreur Mistral : ${err}` }, 502);
-    }
-
-    const chatData = await chatResp.json();
-    let draftHtml = chatData.choices?.[0]?.message?.content ?? "";
-    // Strip markdown code block if Mistral wraps the output
-    draftHtml = draftHtml.replace(/^```(?:html)?\s*/i, "").replace(/\s*```$/i, "").trim();
-
     return jsonResponse({ html: draftHtml });
-  } catch (err: any) {
-    return jsonResponse({ error: err.message ?? "Erreur interne" }, 500);
+  } catch (err) {
+    if (err instanceof AiQuotaExceededError) {
+      return jsonResponse({ error: err.message }, 429);
+    }
+    if (err instanceof Error && err.message.startsWith("Erreur Mistral")) {
+      return jsonResponse({ error: err.message }, 502);
+    }
+    const message = err instanceof Error ? err.message : "Erreur interne";
+    return jsonResponse({ error: message }, 500);
   }
 });

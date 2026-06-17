@@ -13,6 +13,7 @@ import {
   getByService,
   getRepliesByMonth,
   getProcessingTimes,
+  getUsagersByQuartier,
 } from "@/services/statsService";
 import { StatsFilters, type StatPeriod } from "@/components/stats/StatsFilters";
 import { InboundVolumeChart } from "@/components/stats/charts/InboundVolumeChart";
@@ -22,6 +23,7 @@ import { ByChannelChart } from "@/components/stats/charts/ByChannelChart";
 import { ByServiceChart } from "@/components/stats/charts/ByServiceChart";
 import { RepliesChart } from "@/components/stats/charts/RepliesChart";
 import { ProcessingTimesChart } from "@/components/stats/charts/ProcessingTimesChart";
+import { UsagersByQuartierChart } from "@/components/stats/charts/UsagersByQuartierChart";
 
 function sinceFromPeriod(period: StatPeriod): Date {
   const d = new Date();
@@ -123,6 +125,12 @@ export default function StatistiquesPage() {
     enabled,
   });
 
+  const { data: quartierData, isLoading: loadingQuartiers } = useQuery({
+    queryKey: ["stats-quartiers", organizationId],
+    queryFn: () => getUsagersByQuartier(organizationId!),
+    enabled,
+  });
+
   const totalInbound = useMemo(
     () => (monthlyData ?? []).reduce((s, d) => s + d.count, 0),
     [monthlyData],
@@ -184,6 +192,7 @@ export default function StatistiquesPage() {
         <ByServiceChart data={inboundByService} loading={loadingInboundService} direction="inbound" />
         <ByServiceChart data={outboundByService} loading={loadingOutboundService} direction="outbound" />
         <ProcessingTimesChart data={processingData} loading={loadingProcessing} />
+        <UsagersByQuartierChart data={quartierData} loading={loadingQuartiers} />
       </div>
     </div>
   );

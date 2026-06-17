@@ -2,6 +2,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 export type UsagerCategory = "citoyen" | "entreprise" | "association";
 export type UsagerCivilite = "madame" | "monsieur";
+export type UsagerFamilyStatus = "celibataire" | "marie" | "pacse" | "divorce" | "inconnu";
 
 export interface Usager {
   id: string;
@@ -15,6 +16,30 @@ export interface Usager {
   created_at: string;
   updated_at: string;
   created_by: string | null;
+  // Quartier (général, indépendant du mode "fichier domiciliaire")
+  quartier_id: string | null;
+  quartier_auto: boolean;
+  // Champs "fichier domiciliaire" (saisie conditionnée à organizations.domiciliary_file_enabled)
+  usual_name: string | null;
+  birth_date: string | null;
+  death_date: string | null;
+  family_status: UsagerFamilyStatus | null;
+  marriage_date: string | null;
+  pacs_date: string | null;
+  arrival_date: string | null;
+  departure_date: string | null;
+  nationality: string | null;
+  address_number: string | null;
+  address_btq: string | null;
+  address_street: string | null;
+  address_building: string | null;
+  address_apartment: string | null;
+  address_complement: string | null;
+  address_postal_code: string | null;
+  address_city: string | null;
+  address_lat: number | null;
+  address_lon: number | null;
+  phone_2: string | null;
 }
 
 export interface UsagerInput {
@@ -24,6 +49,29 @@ export interface UsagerInput {
   last_name?: string | null;
   email?: string | null;
   phone?: string | null;
+  quartier_id?: string | null;
+  quartier_auto?: boolean;
+  // Champs "fichier domiciliaire"
+  usual_name?: string | null;
+  birth_date?: string | null;
+  death_date?: string | null;
+  family_status?: UsagerFamilyStatus | null;
+  marriage_date?: string | null;
+  pacs_date?: string | null;
+  arrival_date?: string | null;
+  departure_date?: string | null;
+  nationality?: string | null;
+  address_number?: string | null;
+  address_btq?: string | null;
+  address_street?: string | null;
+  address_building?: string | null;
+  address_apartment?: string | null;
+  address_complement?: string | null;
+  address_postal_code?: string | null;
+  address_city?: string | null;
+  address_lat?: number | null;
+  address_lon?: number | null;
+  phone_2?: string | null;
 }
 
 export interface UsagerCourier {
@@ -57,6 +105,77 @@ export async function listUsagers(organizationId: string, search?: string) {
   return (data ?? []) as unknown as Usager[];
 }
 
+export interface UsagerSearchFilters {
+  search?: string;
+  quartierIds?: string[];
+  minInbound?: number | null;
+  /** A envoyé un courrier entrant entre ces deux dates (YYYY-MM-DD), bornes incluses. */
+  sentFrom?: string | null;
+  sentTo?: string | null;
+  /** Grands anniversaires de mariage (ex. [10, 20]) : marié(e)s depuis exactement N ans, hors divorcé(e)s. */
+  marriageAnniversaryYears?: number[];
+  /** Grands anniversaires (âge atteint dans l'année courante, basé sur l'année de naissance). */
+  birthdayYears?: number[];
+  /** Nombre max de lignes retournées (défaut 200, cf. RPC search_usagers). */
+  limit?: number;
+  /** Décalage pour la pagination (utilisé par fetchAllUsagersForExport). */
+  offset?: number;
+}
+
+export interface UsagerWithInboundCount extends Usager {
+  inbound_count: number;
+}
+
+/**
+ * Recherche avancée pour /usagers : texte libre + quartiers (multi-sélection)
+ * + nombre minimum de courriers entrants reçus + période d'envoi (RPC search_usagers).
+ */
+export async function searchUsagers(
+  organizationId: string,
+  filters: UsagerSearchFilters = {},
+): Promise<UsagerWithInboundCount[]> {
+  const { data, error } = await (supabase.rpc as unknown as (
+    fn: string,
+    params: Record<string, unknown>,
+  ) => Promise<{ data: UsagerWithInboundCount[] | null; error: unknown }>)("search_usagers", {
+    p_org_id: organizationId,
+    p_search: filters.search?.trim() || null,
+    p_quartier_ids: filters.quartierIds?.length ? filters.quartierIds : null,
+    p_min_inbound: filters.minInbound ?? null,
+    p_sent_from: filters.sentFrom || null,
+    p_sent_to: filters.sentTo || null,
+    p_marriage_anniv_years: filters.marriageAnniversaryYears?.length ? filters.marriageAnniversaryYears : null,
+    p_birthday_years: filters.birthdayYears?.length ? filters.birthdayYears : null,
+    p_limit: filters.limit ?? 200,
+    p_offset: filters.offset ?? 0,
+  });
+  if (error) throw error;
+  return data ?? [];
+}
+
+/** Taille de page utilisée pour récupérer l'intégralité des résultats filtrés (export). */
+const EXPORT_PAGE_SIZE = 500;
+
+/**
+ * Récupère la totalité des usagers correspondant aux filtres, sans le plafond
+ * de 200 lignes utilisé à l'écran — pagine la RPC search_usagers par blocs de
+ * EXPORT_PAGE_SIZE jusqu'à obtenir une page incomplète. Destiné à l'export.
+ */
+export async function fetchAllUsagersForExport(
+  organizationId: string,
+  filters: UsagerSearchFilters = {},
+): Promise<UsagerWithInboundCount[]> {
+  const all: UsagerWithInboundCount[] = [];
+  let offset = 0;
+  while (true) {
+    const page = await searchUsagers(organizationId, { ...filters, limit: EXPORT_PAGE_SIZE, offset });
+    all.push(...page);
+    if (page.length < EXPORT_PAGE_SIZE) break;
+    offset += EXPORT_PAGE_SIZE;
+  }
+  return all;
+}
+
 export async function getUsager(id: string) {
   const { data, error } = await supabase.from("usagers").select("*").eq("id", id).maybeSingle();
   if (error) throw error;
@@ -72,6 +191,36 @@ export async function getUsagersByIds(ids: string[]): Promise<Record<string, Usa
   return result;
 }
 
+/**
+ * Champs "fichier domiciliaire" communs à la création et la mise à jour.
+ * Toujours envoyés (la colonne existe en base) ; c'est la couche UI qui
+ * conditionne leur saisie à organizations.domiciliary_file_enabled.
+ */
+function domiciliaryFields(input: UsagerInput) {
+  return {
+    usual_name: input.usual_name?.trim() || null,
+    birth_date: input.birth_date || null,
+    death_date: input.death_date || null,
+    family_status: input.family_status ?? null,
+    marriage_date: input.marriage_date || null,
+    pacs_date: input.pacs_date || null,
+    arrival_date: input.arrival_date || null,
+    departure_date: input.departure_date || null,
+    nationality: input.nationality?.trim() || null,
+    address_number: input.address_number?.trim() || null,
+    address_btq: input.address_btq?.trim() || null,
+    address_street: input.address_street?.trim() || null,
+    address_building: input.address_building?.trim() || null,
+    address_apartment: input.address_apartment?.trim() || null,
+    address_complement: input.address_complement?.trim() || null,
+    address_postal_code: input.address_postal_code?.trim() || null,
+    address_city: input.address_city?.trim() || null,
+    address_lat: input.address_lat ?? null,
+    address_lon: input.address_lon ?? null,
+    phone_2: input.phone_2?.trim() || null,
+  };
+}
+
 export async function createUsager(organizationId: string, input: UsagerInput) {
   const { data, error } = await supabase
     .from("usagers")
@@ -83,6 +232,9 @@ export async function createUsager(organizationId: string, input: UsagerInput) {
       last_name: input.last_name?.trim() || null,
       email: normalizeEmail(input.email),
       phone: input.phone?.trim() || null,
+      quartier_id: input.quartier_id ?? null,
+      quartier_auto: input.quartier_auto ?? true,
+      ...domiciliaryFields(input),
     } as never)
     .select("*")
     .single();
@@ -100,6 +252,9 @@ export async function updateUsager(id: string, input: UsagerInput) {
       last_name: input.last_name?.trim() || null,
       email: normalizeEmail(input.email),
       phone: input.phone?.trim() || null,
+      quartier_id: input.quartier_id ?? null,
+      quartier_auto: input.quartier_auto ?? true,
+      ...domiciliaryFields(input),
     } as never)
     .eq("id", id)
     .select("*")
