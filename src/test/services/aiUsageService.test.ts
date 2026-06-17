@@ -109,7 +109,7 @@ describe("aiUsageService", () => {
 
       expect(mockSupabase.from).toHaveBeenCalledWith("ai_usage_quotas");
       expect(upsertFn).toHaveBeenCalledWith(
-        { organization_id: ORG_ID, provider: null, monthly_limit_tokens: 100000, is_active: true },
+        { organization_id: ORG_ID, provider: "__global__", monthly_limit_tokens: 100000, is_active: true },
         { onConflict: "organization_id,provider" },
       );
     });

@@ -1,5 +1,15 @@
 import { supabase } from "@/integrations/supabase/client";
 
+/** Sentinelle DB pour "plafond global tous fournisseurs confondus" — voir
+ *  migration 20260617090000_ai_usage_global_provider_sentinel.sql. NULL ne
+ *  peut pas être utilisé ici : deux NULL ne sont jamais égaux pour une
+ *  contrainte UNIQUE en SQL, ce qui cassait l'upsert (ON CONFLICT ne matchait
+ *  jamais, donc chaque mise à jour créait une nouvelle ligne). Ce module
+ *  conserve `null` comme convention publique (API inchangée pour les
+ *  appelants) et ne traduit vers/depuis la sentinelle qu'à la frontière DB.
+ */
+const GLOBAL_PROVIDER_SENTINEL = "__global__";
+
 export interface AiUsageSummary {
   /** null = plafond global appliqué à tous les fournisseurs confondus. */
   provider: string | null;
@@ -43,7 +53,7 @@ export async function getAiUsageSummary(organizationId: string): Promise<AiUsage
   return ((quotas ?? []) as unknown as QuotaRow[]).map((q) => {
     const counter = ((counters ?? []) as unknown as CounterRow[]).find((c) => c.provider === q.provider);
     return {
-      provider: q.provider,
+      provider: q.provider === GLOBAL_PROVIDER_SENTINEL ? null : q.provider,
       period,
       monthlyLimitTokens: q.monthly_limit_tokens,
       usedTokens: counter?.used_tokens ?? 0,
@@ -67,7 +77,7 @@ export async function upsertAiUsageQuota(
   const { error } = await supabase.from("ai_usage_quotas" as never).upsert(
     {
       organization_id: organizationId,
-      provider,
+      provider: provider ?? GLOBAL_PROVIDER_SENTINEL,
       monthly_limit_tokens: monthlyLimitTokens,
       is_active: true,
     } as never,
