@@ -1,7 +1,7 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ChevronsUpDown, LogOut, User } from "lucide-react";
 import parametresIcon from "@/assets/icons/parametres.svg";
-import notchLogo from "@/assets/logo-notch.png";
+import notchLogo from "@/assets/logo-notch.svg";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,7 +35,7 @@ export function AppHeader() {
       {/* Left: Notch logo + org logo */}
       <div className="flex items-center gap-3 shrink-0">
         <Link to="/">
-          <img src={notchLogo} alt="Notch - Clara" className="h-5 object-contain shadow-none" />
+          <img src={notchLogo} alt="Notch - Clara" className="h-6 object-contain shadow-none" />
         </Link>
         {membership?.organization_logo_url && (
           <>
