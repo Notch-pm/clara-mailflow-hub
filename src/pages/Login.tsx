@@ -5,7 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { LogIn, Loader2, Mail } from "lucide-react";
+import { LogIn, Loader2 } from "lucide-react";
+import notchLogo from "@/assets/logo-notch.svg";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -53,9 +54,7 @@ export default function Login() {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center space-y-3">
           <div className="space-y-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground mx-auto">
-              <Mail className="h-6 w-6" />
-            </div>
+            <img src={notchLogo} alt="Notch" className="h-10 object-contain mx-auto" />
             <div>
               <CardTitle className="text-2xl font-bold">Clara</CardTitle>
               <p className="text-sm text-muted-foreground font-medium mt-1">Gestion du courrier administratif</p>
