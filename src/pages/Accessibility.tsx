@@ -28,9 +28,10 @@ export default function Accessibility() {
         <p className="text-muted-foreground">Dernière mise à jour : {updatedAt}</p>
 
         <p>
-          <strong>Notch</strong>, éditeur du produit <strong>Clara</strong>,
-          s'engage à rendre son service accessible, conformément à l'article
-          47 de la loi n° 2005-102 du 11 février 2005.
+          <strong>Edilumen</strong> est une marque de l'entreprise <strong>Notch</strong>,
+          éditeur du produit <strong>Clara</strong>. L'éditeur s'engage à rendre son
+          service accessible, conformément à l'article 47 de la loi n° 2005-102 du
+          11 février 2005.
         </p>
         <p>
           À cette fin, Notch met en œuvre la stratégie et les actions
