@@ -1,4 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
+import { updateCourier } from "@/services/courierService";
+import { logEvent } from "@/services/courierEventService";
 
 export interface OrgService {
   id: string;
@@ -184,6 +186,47 @@ export async function setServiceMembers(
       .in("user_id", toRemove);
     if (error) throw error;
   }
+}
+
+/**
+ * Assigne un service gestionnaire à un courrier : place le courrier dans
+ * l'état initial du workflow du nouveau service et journalise l'événement.
+ * Pas d'effet UI ici (toast, état local) — à la charge de l'appelant.
+ */
+export async function assignService(
+  organizationId: string,
+  courier: { id: string; assigned_service: string | null; metadata: unknown },
+  newService: OrgService,
+): Promise<{ name: string; initialStateId: string | null }> {
+  const { data: initial, error: stateErr } = await supabase
+    .from("workflow_states")
+    .select("id, name, category")
+    .eq("workflow_id", newService.workflow_id)
+    .eq("is_initial", true)
+    .maybeSingle();
+  if (stateErr) throw stateErr;
+
+  const previousService = courier.assigned_service ?? null;
+  const currentMeta = (courier.metadata as Record<string, unknown> | null) ?? {};
+  const { error } = await updateCourier(organizationId, courier.id, {
+    assigned_service: newService.name,
+    workflow_state_id: initial?.id ?? null,
+    metadata: { ...currentMeta, service_id: newService.id },
+  });
+  if (error) throw error;
+
+  await logEvent(organizationId, courier.id, "service_changed", {
+    from: previousService,
+    to: newService.name,
+  });
+
+  if (initial?.category === "processing") {
+    await logEvent(organizationId, courier.id, "instruction_started", {
+      state_name: initial.name,
+    });
+  }
+
+  return { name: newService.name, initialStateId: initial?.id ?? null };
 }
 
 export async function deleteService(id: string): Promise<void> {

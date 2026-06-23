@@ -8,6 +8,15 @@ import {
   estimateTextTokens,
   estimateTokensFromText,
 } from "../_shared/aiUsage.ts";
+import {
+  SUGGESTED_FIELDS_PROPERTIES,
+  SUGGESTED_FIELDS_KEYS,
+  SUGGESTED_FIELDS_PROMPT_RULES,
+  nullIfEmpty,
+  validateAgainstNames,
+  cleanSenderFields,
+  hasSenderData,
+} from "../_shared/courierFieldSuggestions.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -382,6 +391,15 @@ async function analyzeCourier(
     .order("display_order", { ascending: true });
   const procedureList = (orgProcedures ?? []) as Array<{ id: string; name: string; external_source: string | null }>;
 
+  // Services disponibles — pour suggérer le service gestionnaire
+  const { data: orgServices } = await admin
+    .from("services")
+    .select("id, name")
+    .eq("organization_id", orgId);
+  const serviceNames: string[] = (orgServices ?? [])
+    .map((s: { name: string }) => s.name)
+    .filter((n) => typeof n === "string" && n.trim().length > 0);
+
   // Corps de l'email (si présent dans metadata)
   const meta = (courier.metadata ?? {}) as Record<string, unknown>;
   const bodyText = typeof meta.body_text === "string" ? meta.body_text.trim() : "";
@@ -430,13 +448,17 @@ async function analyzeCourier(
   • label: description courte de l'action
   • procedure_id: si une procédure de la liste correspond à l'action, indique son id exact. Sinon null.
   • prefill: si des données personnelles sont identifiables dans le courrier (nom, prénom, email, téléphone, date de naissance, civilité), extrais-les ici pour pré-remplir le formulaire. N'invente aucune donnée absente du courrier.
-Sois factuel, en français. Si le corps de l'email et les pièces jointes coexistent, traite-les comme un tout cohérent.
+${SUGGESTED_FIELDS_PROMPT_RULES}
+Sois factuel, en français. Si le corps de l'email et les pièces jointes coexistent, traite-les comme un tout cohérent. Ne retourne que ce qui est clairement identifiable — ne devine rien.
 
 Tags disponibles pour intents :
 ${tagListForPrompt}
 
 Procédures disponibles (utilise l'id exact pour procedure_id) :
-${procedureListForPrompt}`;
+${procedureListForPrompt}
+
+Services disponibles pour suggested_service_name :
+${serviceNames.length ? serviceNames.join(", ") : "(aucun)"}`;
 
   const sections: string[] = [`Sujet du courrier : ${courier.subject ?? "(aucun)"}`];
   if (emailBody.trim()) {
@@ -467,6 +489,7 @@ ${procedureListForPrompt}`;
               type: "string",
               enum: ["neutre", "courtois", "urgent", "mécontent", "agressif", "satisfait", "inquiet"],
             },
+            ...SUGGESTED_FIELDS_PROPERTIES,
             suggested_actions: {
               type: "array",
               items: {
@@ -495,7 +518,7 @@ ${procedureListForPrompt}`;
               },
             },
           },
-          required: ["summary", "intents", "sentiment", "suggested_actions"],
+          required: ["summary", "intents", "sentiment", "suggested_actions", ...SUGGESTED_FIELDS_KEYS],
           additionalProperties: false,
         },
       },
@@ -507,6 +530,13 @@ ${procedureListForPrompt}`;
     intents: string[];
     sentiment: string;
     suggested_actions: Array<{ label: string; procedure_id?: string | null; prefill?: Record<string, string> }>;
+    suggested_subject?: string;
+    suggested_service_name?: string;
+    recipient_name?: string;
+    sender_first_name?: string;
+    sender_last_name?: string;
+    sender_email?: string;
+    sender_phone?: string;
   };
 
   const { parsed, tokensUsed } = await withAiUsageGuard<{ parsed: ParsedAnalysis; tokensUsed: number | null }>({
@@ -579,6 +609,13 @@ ${procedureListForPrompt}`;
       })
     : [];
 
+  // Sécurité : le service suggéré doit appartenir aux services de l'org.
+  const safeSuggestedService = validateAgainstNames(parsed.suggested_service_name, serviceNames);
+  const safeSuggestedSubject = nullIfEmpty(parsed.suggested_subject);
+  const safeSuggestedRecipient = nullIfEmpty(parsed.recipient_name);
+  const cleanSender = cleanSenderFields(parsed);
+  const safeSuggestedSender = hasSenderData(cleanSender) ? cleanSender : null;
+
   const { data: row, error: upErr } = await admin
     .from("courier_analyses")
     .upsert(
@@ -589,6 +626,10 @@ ${procedureListForPrompt}`;
         intents: safeIntents,
         sentiment: parsed.sentiment,
         suggested_actions: safeActions,
+        suggested_subject: safeSuggestedSubject,
+        suggested_service_name: safeSuggestedService,
+        suggested_recipient_name: safeSuggestedRecipient,
+        suggested_sender: safeSuggestedSender,
         model: `agent:${ANALYSIS_AGENT_ID}`,
         tokens_used: tokensUsed,
       },

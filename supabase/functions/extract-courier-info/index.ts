@@ -1,5 +1,13 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { withAiUsageGuard, AiQuotaExceededError, estimateOcrTokens, estimateTextTokens, estimateTokensFromText } from "../_shared/aiUsage.ts";
+import {
+  SUGGESTED_FIELDS_PROPERTIES,
+  SUGGESTED_FIELDS_KEYS,
+  SUGGESTED_FIELDS_PROMPT_RULES,
+  nullIfEmpty,
+  validateAgainstNames,
+  cleanSenderFields,
+} from "../_shared/courierFieldSuggestions.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -21,6 +29,7 @@ interface FileInput {
 }
 
 interface ExtractedInfo {
+  suggested_subject: string | null;
   sender_first_name: string | null;
   sender_last_name: string | null;
   sender_email: string | null;
@@ -198,13 +207,15 @@ Deno.serve(async (req) => {
     const mistralKey = Deno.env.get("MISTRAL_API_KEY");
     if (!mistralKey) return jsonResponse({ error: "MISTRAL_API_KEY non configurée" }, 500);
 
-    const { files } = (await req.json()) as { files: FileInput[] };
-    if (!files?.length) return jsonResponse({ error: "No files provided" }, 400);
+    const { files, pasted_text } = (await req.json()) as { files?: FileInput[]; pasted_text?: string };
+    if (!files?.length && !pasted_text?.trim()) {
+      return jsonResponse({ error: "No content provided" }, 400);
+    }
 
     // OCR each file (up to first 5 to cap cost)
     const texts: string[] = [];
     let quotaExceeded = false;
-    for (const file of files.slice(0, 5)) {
+    for (const file of (files ?? []).slice(0, 5)) {
       try {
         const text = await ocrFile(admin, orgId, file, mistralKey, user.id);
         if (text.trim()) texts.push(text.trim());
@@ -223,6 +234,12 @@ Deno.serve(async (req) => {
 
     if (quotaExceeded && !texts.length) {
       return jsonResponse({ error: "quota_exceeded" }, 429);
+    }
+
+    // Texte collé directement par l'utilisateur — ne passe ni par l'OCR ni par
+    // le quota OCR (uniquement par l'appel LLM d'extraction ci-dessous).
+    if (pasted_text?.trim()) {
+      texts.push(pasted_text.trim().slice(0, 50_000));
     }
 
     if (!texts.length) return jsonResponse({ error: "Aucun texte extrait des documents" }, 400);
@@ -247,10 +264,8 @@ Deno.serve(async (req) => {
 Analyse le texte extrait d'un courrier et utilise l'outil "extract_info" pour retourner les informations structurées.
 Règles :
 - Ne retourne QUE ce qui est clairement identifiable dans le texte. Ne devine rien.
-- suggested_service_name : choisis UNIQUEMENT parmi la liste fournie, ou null si aucun ne correspond clairement.
+${SUGGESTED_FIELDS_PROMPT_RULES}
 - suggested_tag_names : choisis EXCLUSIVEMENT dans la liste des tags disponibles ci-dessous (copie exacte du nom, sensible à la casse). N'invente AUCUN tag. Liste vide si aucun ne correspond.
-- Pour le destinataire : c'est la personne ou le service à qui s'adresse le courrier (ex: "Monsieur le Maire", "Direction des Travaux").
-- Pour l'expéditeur : c'est l'auteur/signataire du courrier.
 
 Services disponibles : ${serviceNames.length ? serviceNames.join(", ") : "(aucun)"}
 
@@ -275,23 +290,10 @@ ${combinedText}`;
           parameters: {
             type: "object",
             properties: {
-              sender_first_name: { type: "string", description: "Prénom de l'expéditeur (chaîne vide si absent)" },
-              sender_last_name: { type: "string", description: "Nom de l'expéditeur (chaîne vide si absent)" },
-              sender_email: { type: "string", description: "Email de l'expéditeur (chaîne vide si absent)" },
-              sender_phone: { type: "string", description: "Téléphone de l'expéditeur (chaîne vide si absent)" },
-              recipient_name: { type: "string", description: "Nom du destinataire (chaîne vide si absent)" },
-              suggested_service_name: { type: "string", description: "Service le plus pertinent parmi ceux disponibles (chaîne vide si aucun)" },
+              ...SUGGESTED_FIELDS_PROPERTIES,
               suggested_tag_names: intentsSchema,
             },
-            required: [
-              "sender_first_name",
-              "sender_last_name",
-              "sender_email",
-              "sender_phone",
-              "recipient_name",
-              "suggested_service_name",
-              "suggested_tag_names",
-            ],
+            required: [...SUGGESTED_FIELDS_KEYS, "suggested_tag_names"],
             additionalProperties: false,
           },
         },
@@ -340,25 +342,19 @@ ${combinedText}`;
     });
 
     // Validate and sanitize against org data (same pattern as analyze-courier)
-    const validServiceNames = new Set(serviceNames.map((n) => n.toLowerCase()));
-    const suggestedService =
-      extracted.suggested_service_name &&
-      validServiceNames.has(extracted.suggested_service_name.toLowerCase())
-        ? extracted.suggested_service_name
-        : null;
+    const suggestedService = validateAgainstNames(extracted.suggested_service_name, serviceNames);
 
     const allowed = new Set(tagNames.map((n) => n.toLowerCase()));
     const suggestedTags = (extracted.suggested_tag_names ?? []).filter(
       (t: string) => typeof t === "string" && allowed.has(t.toLowerCase()),
     );
 
-    // Normalize empty strings to null for string fields
-    const nullIfEmpty = (v: string | null | undefined) => (v?.trim() || null);
+    const sender = cleanSenderFields(extracted);
+    const senderEmail = sender.email;
+    const senderLastName = sender.last_name;
 
     // Match sender against usagers (email first, then last_name)
     let matchedUsager = null;
-    const senderEmail = nullIfEmpty(extracted.sender_email as unknown as string);
-    const senderLastName = nullIfEmpty(extracted.sender_last_name as unknown as string);
 
     if (senderEmail || senderLastName) {
       if (senderEmail) {
@@ -385,13 +381,9 @@ ${combinedText}`;
     }
 
     return jsonResponse({
-      sender: {
-        first_name: nullIfEmpty(extracted.sender_first_name as unknown as string),
-        last_name: senderLastName,
-        email: senderEmail,
-        phone: nullIfEmpty(extracted.sender_phone as unknown as string),
-      },
-      recipient_name: nullIfEmpty(extracted.recipient_name as unknown as string),
+      suggested_subject: nullIfEmpty(extracted.suggested_subject),
+      sender,
+      recipient_name: nullIfEmpty(extracted.recipient_name),
       suggested_service_name: suggestedService,
       suggested_tag_names: suggestedTags,
       matched_usager: matchedUsager,

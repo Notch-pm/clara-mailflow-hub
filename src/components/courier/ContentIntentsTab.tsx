@@ -10,12 +10,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { getDocuments } from "@/services/courierDocumentService";
 import { getCourierById, updateCourier } from "@/services/courierService";
 import { listTags } from "@/services/courierTagService";
+import { listServices, assignService } from "@/services/orgServiceService";
+import { findMatchingUsager } from "@/services/usagerService";
+import { updateParticipant, addParticipant } from "@/services/courierParticipantService";
 import { readableTextColor } from "@/lib/tag-color";
 import {
   getExtracts,
   getAnalysis,
   runOcr,
   runAnalysis,
+  runFullAnalysis,
 } from "@/services/courierAnalysisService";
 import SuggestedActionsCard from "./SuggestedActionsCard";
 
@@ -24,6 +28,8 @@ interface Props {
   organizationId: string;
   /** When true, disables OCR/analysis buttons and tag application. */
   readOnly?: boolean;
+  /** Service gestionnaire modifiable uniquement à l'état initial du workflow. */
+  isInitialState?: boolean;
 }
 
 const SENTIMENT_VARIANT: Record<string, { label: string; className: string }> = {
@@ -46,7 +52,7 @@ function formatDate(iso: string) {
   });
 }
 
-export default function ContentIntentsTab({ courierId, organizationId, readOnly = false }: Props) {
+export default function ContentIntentsTab({ courierId, organizationId, readOnly = false, isInitialState = true }: Props) {
   const qc = useQueryClient();
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
@@ -132,6 +138,126 @@ export default function ContentIntentsTab({ courierId, organizationId, readOnly 
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // Bouton unique "Analyser" pour le premier lancement (OCR + LLM en une action) :
+  // une fois qu'une analyse existe, les boutons distincts ci-dessus reprennent la main.
+  const runFullAnalysisMutation = useMutation({
+    mutationFn: () => runFullAnalysis(courierId),
+    onSuccess: () => {
+      toast.success("Analyse terminée");
+      qc.invalidateQueries({ queryKey: ["courier-extracts", courierId] });
+      qc.invalidateQueries({ queryKey: ["courier-analysis", courierId] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const { data: orgServices } = useQuery({
+    queryKey: ["org-services", organizationId],
+    queryFn: () => listServices(organizationId),
+    enabled: !!organizationId,
+  });
+
+  const participants =
+    (courierData as { courier_participants?: Array<{
+      id: string;
+      role: string;
+      name: string | null;
+      email: string | null;
+      phone: string | null;
+      usager_id: string | null;
+    }> } | null)?.courier_participants ?? [];
+  const senderParticipant = participants.find((p) => p.role === "sender");
+  const recipientParticipant = participants.find((p) => p.role === "recipient");
+  const suggestedSender = analysis?.suggested_sender ?? null;
+
+  const { data: matchedUsagerSuggestion } = useQuery({
+    queryKey: ["matched-usager-suggestion", organizationId, suggestedSender?.email, suggestedSender?.phone],
+    queryFn: () => findMatchingUsager(organizationId, { email: suggestedSender?.email, phone: suggestedSender?.phone }),
+    enabled: !readOnly && !!suggestedSender && (!!suggestedSender.email || !!suggestedSender.phone) && !senderParticipant?.usager_id,
+  });
+
+  const applySubjectMutation = useMutation({
+    mutationFn: async () => {
+      if (!analysis?.suggested_subject) return;
+      const { error } = await updateCourier(organizationId, courierId, { subject: analysis.suggested_subject });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Titre appliqué");
+      qc.invalidateQueries({ queryKey: ["courier", organizationId, courierId] });
+      qc.invalidateQueries({ queryKey: ["mailbox-couriers"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const assignSuggestedServiceMutation = useMutation({
+    mutationFn: async () => {
+      if (!courierData || !analysis?.suggested_service_name) return;
+      const match = orgServices?.find(
+        (s) => s.name.toLowerCase() === analysis.suggested_service_name!.toLowerCase(),
+      );
+      if (!match) throw new Error("Service introuvable");
+      return assignService(organizationId, courierData, match);
+    },
+    onSuccess: () => {
+      toast.success("Service gestionnaire mis à jour");
+      qc.invalidateQueries({ queryKey: ["courier", organizationId, courierId] });
+      qc.invalidateQueries({ queryKey: ["mailbox-couriers"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const linkSenderMutation = useMutation({
+    mutationFn: async () => {
+      if (!senderParticipant || !matchedUsagerSuggestion) return;
+      return updateParticipant(senderParticipant.id, { usager_id: matchedUsagerSuggestion.id });
+    },
+    onSuccess: () => {
+      toast.success("Expéditeur lié à l'usager");
+      qc.invalidateQueries({ queryKey: ["courier", organizationId, courierId] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const updateSenderContactMutation = useMutation({
+    mutationFn: async () => {
+      if (!senderParticipant || !suggestedSender) return;
+      const patch: { email?: string; phone?: string } = {};
+      if (!senderParticipant.email && suggestedSender.email) patch.email = suggestedSender.email;
+      if (!senderParticipant.phone && suggestedSender.phone) patch.phone = suggestedSender.phone;
+      if (Object.keys(patch).length === 0) return;
+      return updateParticipant(senderParticipant.id, patch);
+    },
+    onSuccess: () => {
+      toast.success("Coordonnées de l'expéditeur mises à jour");
+      qc.invalidateQueries({ queryKey: ["courier", organizationId, courierId] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const fillRecipientMutation = useMutation({
+    mutationFn: async () => {
+      if (!analysis?.suggested_recipient_name) return;
+      if (recipientParticipant) {
+        return updateParticipant(recipientParticipant.id, {
+          name: analysis.suggested_recipient_name,
+          last_name: analysis.suggested_recipient_name,
+        });
+      }
+      return addParticipant({
+        courier_id: courierId,
+        organization_id: organizationId,
+        role: "recipient",
+        name: analysis.suggested_recipient_name,
+        last_name: analysis.suggested_recipient_name,
+      });
+    },
+    onSuccess: () => {
+      toast.success("Destinataire renseigné");
+      qc.invalidateQueries({ queryKey: ["courier", organizationId, courierId] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const applyTagsMutation = useMutation({
     mutationFn: async () => {
       const currentMeta = (courierData?.metadata as Record<string, unknown> | null) ?? {};
@@ -183,22 +309,27 @@ export default function ContentIntentsTab({ courierId, organizationId, readOnly 
               {extractCount}/{docCount} document(s) extrait(s) via OCR Mistral
             </p>
           </div>
-          <Button
-            size="sm"
-            variant={hasExtracts ? "outline" : "default"}
-            onClick={() => ocrMutation.mutate()}
-            disabled={readOnly || ocrMutation.isPending || docCount === 0}
-            title={readOnly ? "Courrier archivé — actions désactivées" : docCount === 0 ? "Aucun document à extraire" : undefined}
-          >
-            {ocrMutation.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : hasExtracts ? (
-              <RefreshCw className="h-4 w-4" />
-            ) : (
-              <Sparkles className="h-4 w-4" />
-            )}
-            {hasExtracts ? "Ré-extraire" : "Extraire le texte"}
-          </Button>
+          {/* Avant la première analyse, le bouton unique "Analyser" de la section
+              ci-dessous se charge de l'extraction — ce bouton dédié ne réapparaît
+              qu'une fois une analyse déjà disponible, pour le diagnostic fin. */}
+          {!!analysis && (
+            <Button
+              size="sm"
+              variant={hasExtracts ? "outline" : "default"}
+              onClick={() => ocrMutation.mutate()}
+              disabled={readOnly || ocrMutation.isPending || docCount === 0}
+              title={readOnly ? "Courrier archivé — actions désactivées" : docCount === 0 ? "Aucun document à extraire" : undefined}
+            >
+              {ocrMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : hasExtracts ? (
+                <RefreshCw className="h-4 w-4" />
+              ) : (
+                <Sparkles className="h-4 w-4" />
+              )}
+              {hasExtracts ? "Ré-extraire" : "Extraire le texte"}
+            </Button>
+          )}
         </div>
 
         {extractsLoading ? (
@@ -284,11 +415,20 @@ export default function ContentIntentsTab({ courierId, organizationId, readOnly 
           <Button
             size="sm"
             variant={analysis ? "outline" : "default"}
-            onClick={() => analyzeMutation.mutate()}
-            disabled={readOnly || analyzeMutation.isPending || !canAnalyze}
-            title={readOnly ? "Courrier archivé — actions désactivées" : !canAnalyze ? "Extrayez d'abord le texte des documents ou réceptionnez un email" : undefined}
+            onClick={() => (analysis ? analyzeMutation.mutate() : runFullAnalysisMutation.mutate())}
+            disabled={
+              readOnly ||
+              (analysis ? analyzeMutation.isPending || !canAnalyze : runFullAnalysisMutation.isPending)
+            }
+            title={
+              readOnly
+                ? "Courrier archivé — actions désactivées"
+                : analysis && !canAnalyze
+                  ? "Extrayez d'abord le texte des documents ou réceptionnez un email"
+                  : undefined
+            }
           >
-            {analyzeMutation.isPending ? (
+            {(analysis ? analyzeMutation.isPending : runFullAnalysisMutation.isPending) ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : analysis ? (
               <RefreshCw className="h-4 w-4" />
@@ -306,9 +446,8 @@ export default function ContentIntentsTab({ courierId, organizationId, readOnly 
           </div>
         ) : !analysis ? (
           <Card className="p-4 text-center text-sm text-muted-foreground">
-            {canAnalyze
-              ? "Cliquez sur \"Analyser\" pour détecter les intentions, l'état d'esprit et les actions à mettre en œuvre."
-              : "Extrayez d'abord le texte des documents."}
+            Cliquez sur "Analyser" pour détecter les intentions, l'état d'esprit, les champs
+            suggérés (titre, expéditeur, destinataire, service) et les actions à mettre en œuvre.
           </Card>
         ) : (
           <div className="space-y-3">
@@ -396,6 +535,136 @@ export default function ContentIntentsTab({ courierId, organizationId, readOnly 
                 </Badge>
               </Card>
             )}
+
+            {(() => {
+              const subjectSuggestion =
+                analysis.suggested_subject && analysis.suggested_subject !== courierData?.subject
+                  ? analysis.suggested_subject
+                  : null;
+              const serviceSuggestion =
+                analysis.suggested_service_name &&
+                analysis.suggested_service_name !== courierData?.assigned_service
+                  ? analysis.suggested_service_name
+                  : null;
+              const canLinkSender =
+                !!matchedUsagerSuggestion && !!senderParticipant && !senderParticipant.usager_id;
+              const canUpdateSenderContact =
+                !!senderParticipant &&
+                !!suggestedSender &&
+                ((!senderParticipant.email && !!suggestedSender.email) ||
+                  (!senderParticipant.phone && !!suggestedSender.phone));
+              const recipientSuggestion =
+                analysis.suggested_recipient_name && !recipientParticipant?.name
+                  ? analysis.suggested_recipient_name
+                  : null;
+
+              const hasAnySuggestion =
+                subjectSuggestion || serviceSuggestion || canLinkSender || canUpdateSenderContact || recipientSuggestion;
+              if (!hasAnySuggestion) return null;
+
+              return (
+                <Card className="p-3 space-y-3">
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Champs suggérés
+                  </h4>
+
+                  {subjectSuggestion && (
+                    <div className="flex items-center justify-between gap-2 text-sm">
+                      <div className="min-w-0">
+                        <span className="text-muted-foreground">Titre : </span>
+                        <span className="font-medium">{subjectSuggestion}</span>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs shrink-0"
+                        onClick={() => applySubjectMutation.mutate()}
+                        disabled={readOnly || applySubjectMutation.isPending}
+                      >
+                        Appliquer
+                      </Button>
+                    </div>
+                  )}
+
+                  {serviceSuggestion && (
+                    <div className="flex items-center justify-between gap-2 text-sm">
+                      <div className="min-w-0">
+                        <span className="text-muted-foreground">Service : </span>
+                        <span className="font-medium">{serviceSuggestion}</span>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs shrink-0"
+                        onClick={() => assignSuggestedServiceMutation.mutate()}
+                        disabled={readOnly || !isInitialState || assignSuggestedServiceMutation.isPending}
+                        title={!isInitialState ? "Le service n'est modifiable qu'à l'état initial du workflow" : undefined}
+                      >
+                        Assigner
+                      </Button>
+                    </div>
+                  )}
+
+                  {canLinkSender && (
+                    <div className="flex items-center justify-between gap-2 text-sm">
+                      <div className="min-w-0">
+                        <span className="text-muted-foreground">Expéditeur reconnu : </span>
+                        <span className="font-medium">
+                          {[matchedUsagerSuggestion!.first_name, matchedUsagerSuggestion!.last_name]
+                            .filter(Boolean)
+                            .join(" ")}
+                        </span>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs shrink-0"
+                        onClick={() => linkSenderMutation.mutate()}
+                        disabled={readOnly || linkSenderMutation.isPending}
+                      >
+                        Lier
+                      </Button>
+                    </div>
+                  )}
+
+                  {canUpdateSenderContact && (
+                    <div className="flex items-center justify-between gap-2 text-sm">
+                      <div className="min-w-0 text-muted-foreground">
+                        Coordonnées détectées :{" "}
+                        {[suggestedSender!.email, suggestedSender!.phone].filter(Boolean).join(" · ")}
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs shrink-0"
+                        onClick={() => updateSenderContactMutation.mutate()}
+                        disabled={readOnly || updateSenderContactMutation.isPending}
+                      >
+                        Mettre à jour
+                      </Button>
+                    </div>
+                  )}
+
+                  {recipientSuggestion && (
+                    <div className="flex items-center justify-between gap-2 text-sm">
+                      <div className="min-w-0">
+                        <span className="text-muted-foreground">Destinataire : </span>
+                        <span className="font-medium">{recipientSuggestion}</span>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs shrink-0"
+                        onClick={() => fillRecipientMutation.mutate()}
+                        disabled={readOnly || fillRecipientMutation.isPending}
+                      >
+                        Renseigner
+                      </Button>
+                    </div>
+                  )}
+                </Card>
+              );
+            })()}
 
             <SuggestedActionsCard courierId={courierId} readOnly={readOnly} />
           </div>

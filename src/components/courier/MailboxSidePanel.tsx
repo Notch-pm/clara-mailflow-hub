@@ -39,7 +39,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { updateCourier, getCourierById } from "@/services/courierService";
 import { logEvent } from "@/services/courierEventService";
 import { listTags, type CourierTag } from "@/services/courierTagService";
-import { listServices } from "@/services/orgServiceService";
+import { listServices, assignService } from "@/services/orgServiceService";
 import { useUserServiceFilter } from "@/hooks/useUserServiceFilter";
 import { getDocuments } from "@/services/courierDocumentService";
 import { addParticipant, updateParticipant } from "@/services/courierParticipantService";
@@ -271,38 +271,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
       if (!courier) return null;
       const newService = services?.find((s) => s.id === newServiceId);
       if (!newService) throw new Error("Service introuvable");
-
-      // Find initial state of the new service's workflow
-      const { data: initial, error: stateErr } = await supabase
-        .from("workflow_states")
-        .select("id, name, category")
-        .eq("workflow_id", newService.workflow_id)
-        .eq("is_initial", true)
-        .maybeSingle();
-      if (stateErr) throw stateErr;
-
-      const previousService = courier.assigned_service ?? null;
-      const currentMeta = courier.metadata ?? {};
-      const { error } = await updateCourier(organizationId, courier.id, {
-        assigned_service: newService.name,
-        workflow_state_id: initial?.id ?? null,
-        metadata: { ...currentMeta, service_id: newService.id },
-      });
-      if (error) throw error;
-
-      await logEvent(organizationId, courier.id, "service_changed", {
-        from: previousService,
-        to: newService.name,
-      });
-
-      // If we just landed in a processing state, mark instruction as started.
-      if (initial?.category === "processing") {
-        await logEvent(organizationId, courier.id, "instruction_started", {
-          state_name: initial.name,
-        });
-      }
-
-      return { name: newService.name, initialStateId: initial?.id ?? null };
+      return assignService(organizationId, courier, newService);
     },
     onSuccess: (result) => {
       if (result?.name) setLocalAssignedService(result.name);
@@ -1262,7 +1231,12 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   value="content"
                   className="flex-1 overflow-y-auto px-6 py-5 mt-0"
                 >
-                  <ContentIntentsTab courierId={courier.id} organizationId={organizationId} readOnly={readOnly || isFinalState} />
+                  <ContentIntentsTab
+                    courierId={courier.id}
+                    organizationId={organizationId}
+                    readOnly={readOnly || isFinalState}
+                    isInitialState={isInitialState}
+                  />
                 </TabsContent>
               )}
               {!isOutbound && (

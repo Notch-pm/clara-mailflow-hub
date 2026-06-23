@@ -12,6 +12,7 @@ import { addParticipant } from "@/services/courierParticipantService";
 import { listServices } from "@/services/orgServiceService";
 import { listTags } from "@/services/courierTagService";
 import { storage } from "@/services/storageService";
+import { extractCourierInfo } from "@/services/courierAnalysisService";
 import BulkStep1Channel from "@/components/courier/bulk/BulkStep1Channel";
 import BulkStep2Upload from "@/components/courier/bulk/BulkStep2Upload";
 import BulkStep3Assign from "@/components/courier/bulk/BulkStep3Assign";
@@ -182,32 +183,6 @@ export default function BulkImport() {
     return result;
   }
 
-  type OcrResult = {
-    sender?: { first_name: string | null; last_name: string | null; email: string | null };
-    recipient_name?: string | null;
-    suggested_service_name?: string | null;
-    suggested_tag_names?: string[];
-    extracted_text?: string | null;
-    subject?: string | null;
-    confidence?: number;
-  };
-
-  async function encodeFiles(bfList: BulkFile[]) {
-    return Promise.all(
-      bfList.map(async (bf) => {
-        const buf = await bf.file.arrayBuffer();
-        const bytes = new Uint8Array(buf);
-        let binary = "";
-        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-        return {
-          name: bf.file.name,
-          mime_type: bf.file.type || "application/octet-stream",
-          content_base64: btoa(binary),
-        };
-      })
-    );
-  }
-
   async function analyzeExistingDrafts() {
     if (!organizationId || drafts.length === 0) return;
     setAnalyzing(true);
@@ -217,23 +192,8 @@ export default function BulkImport() {
       if (draftFiles.length === 0) continue;
 
       try {
-        const filePayloads = await encodeFiles(draftFiles);
-        const { data, error } = await supabase.functions.invoke("extract-courier-info", {
-          body: { files: filePayloads },
-        });
+        const result = await extractCourierInfo({ files: draftFiles.map((bf) => bf.file) });
 
-        if (error || data?.error) {
-          const status = (error as { context?: { status?: number } } | null)?.context?.status;
-          const label = `Courrier "${draft.title || "sans titre"}"`;
-          toast.error(
-            status === 429
-              ? `${label} : quota IA atteint pour ce mois, contactez votre administrateur`
-              : `${label} : analyse échouée`,
-          );
-          continue;
-        }
-
-        const result = data as OcrResult & { quota_exceeded?: boolean };
         if (result.quota_exceeded) {
           toast.error(
             `Courrier "${draft.title || "sans titre"}" : quota IA atteint pour ce mois, extraction partielle`,
@@ -250,7 +210,7 @@ export default function BulkImport() {
             if (d.id !== draft.id) return d;
             const updated: DraftCourier = {
               ...d,
-              title: result.subject || d.title,
+              title: result.suggested_subject || d.title,
               senderName: senderName || d.senderName,
               senderEmail: result.sender?.email || d.senderEmail,
               recipientName: result.recipient_name || d.recipientName,
@@ -258,7 +218,7 @@ export default function BulkImport() {
               serviceName: matchedService?.name ?? (result.suggested_service_name || d.serviceName),
               tags: result.suggested_tag_names?.length ? result.suggested_tag_names : d.tags,
               bodyText: result.extracted_text || d.bodyText,
-              confidence: typeof result.confidence === "number" ? result.confidence : 0.7,
+              confidence: 0.7,
             };
             const flags: Array<"missing-service" | "duplicate"> = [];
             if (!updated.serviceName) flags.push("missing-service");
@@ -266,8 +226,14 @@ export default function BulkImport() {
           })
         );
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "Erreur inconnue";
-        toast.error(`Courrier "${draft.title || "sans titre"}" : ${msg}`);
+        const status = (err as Error & { status?: number }).status;
+        const label = `Courrier "${draft.title || "sans titre"}"`;
+        if (status === 429) {
+          toast.error(`${label} : quota IA atteint pour ce mois, contactez votre administrateur`);
+        } else {
+          const msg = err instanceof Error ? err.message : "Erreur inconnue";
+          toast.error(`${label} : ${msg}`);
+        }
       }
     }
 
