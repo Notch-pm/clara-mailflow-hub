@@ -42,7 +42,7 @@ import { addParticipant } from "@/services/courierParticipantService";
 import { listServices } from "@/services/orgServiceService";
 import { listTags } from "@/services/courierTagService";
 import { storage } from "@/services/storageService";
-import { extractCourierInfo } from "@/services/courierAnalysisService";
+import { extractCourierInfo, runFullAnalysis } from "@/services/courierAnalysisService";
 import UsagerPicker from "@/components/courier/UsagerPicker";
 import type { Usager, UsagerCategory } from "@/services/usagerService";
 import type { CourierChannel } from "@/types/courier";
@@ -110,6 +110,7 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
     phone: string | null;
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const analyzedPreCreationRef = useRef(false);
 
   useEffect(() => {
     if (!open) return;
@@ -128,6 +129,7 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
     setPendingFiles([]);
     setPreviewIndex(0);
     setExtractedSender(null);
+    analyzedPreCreationRef.current = false;
   }, [open]);
 
   // Maintain previewIndex in bounds when files are removed
@@ -300,6 +302,22 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
       }
       onOpenChange(false);
       if (onCreated) onCreated(res.courierId);
+
+      // Si l'utilisateur a lancé l'analyse OCR en pré-création, on relance
+      // une analyse complète côté serveur pour persister les extraits OCR
+      // dans `courier_document_extracts` et générer l'analyse IA dès maintenant.
+      if (analyzedPreCreationRef.current && res.uploaded > 0 && res.courierId) {
+        const courierId = res.courierId;
+        runFullAnalysis(courierId)
+          .then(() => {
+            qc.invalidateQueries({ queryKey: ["courier-extracts", courierId] });
+            qc.invalidateQueries({ queryKey: ["courier-analysis", courierId] });
+            qc.invalidateQueries({ queryKey: ["courier", organizationId, courierId] });
+          })
+          .catch((e) => {
+            console.error("Analyse automatique post-création échouée:", e);
+          });
+      }
     },
     onError: (err: Error) => {
       if (err.message !== "Veuillez corriger les erreurs du formulaire.") {
@@ -316,6 +334,9 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
       });
     },
     onSuccess: (result) => {
+      // Mémorise qu'une extraction OCR a été effectuée : permettra de relancer
+      // automatiquement l'analyse complète côté serveur après création.
+      analyzedPreCreationRef.current = true;
       const filled: string[] = [];
 
       // Pre-fill subject
