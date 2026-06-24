@@ -1108,6 +1108,14 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
               </AlertDialogContent>
             </AlertDialog>
 
+            <CloseLinkedCouriersDialog
+              open={closeLinkedOpen}
+              onOpenChange={setCloseLinkedOpen}
+              organizationId={organizationId}
+              linkedCourierIds={closeLinkedIds}
+              sourceTitle={courier?.subject ?? courier?.chrono ?? "ce courrier"}
+            />
+
             <Separator />
             <div className="space-y-3">
               <div className="flex items-center justify-between">
