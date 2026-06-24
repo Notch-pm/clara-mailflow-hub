@@ -57,7 +57,10 @@ import CourierHistoryTab from "./CourierHistoryTab";
 import ContentIntentsTab from "./ContentIntentsTab";
 import LinkedActionsTab from "./LinkedActionsTab";
 import ReplyComposer from "./ReplyComposer";
+import CourierLinksTab from "./CourierLinksTab";
+import SimilarCouriersAlert from "./SimilarCouriersAlert";
 import { listRepliesForCourier } from "@/services/courierReplyService";
+import { listRelationsForCourier } from "@/services/courierRelationService";
 import type { CourierChannel, CourierParticipant, WorkflowTransition, WorkflowState, WorkflowCategory } from "@/types/courier";
 
 const channelLabels: Record<CourierChannel, string> = {
@@ -125,6 +128,12 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
         .eq("courier_id", courier!.id);
       return data ?? [];
     },
+    enabled: !!courier?.id,
+  });
+
+  const { data: relationsList = [] } = useQuery({
+    queryKey: ["courier-relations", courier?.id],
+    queryFn: () => listRelationsForCourier(courier!.id),
     enabled: !!courier?.id,
   });
 
@@ -773,6 +782,16 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   </span>
                 )}
               </TabsTrigger>
+              {!isOutbound && (
+                <TabsTrigger value="links" className="gap-2">
+                  Liens
+                  {relationsList.length > 0 && (
+                    <span className="inline-flex items-center justify-center rounded-full bg-green-500/20 text-green-700 px-1.5 text-[10px] font-medium leading-none min-w-[18px] h-[18px]">
+                      {relationsList.length}
+                    </span>
+                  )}
+                </TabsTrigger>
+              )}
               <TabsTrigger value="history">Historique</TabsTrigger>
             </TabsList>
           )}
@@ -1172,6 +1191,13 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
 
           {/* Right: viewer + documents */}
           <section aria-label="Aperçu du courrier" className="px-6 py-5 space-y-5 bg-muted/10 overflow-y-auto">
+            {!isOutbound && isInitialState && (
+              <SimilarCouriersAlert
+                courierId={courier.id}
+                organizationId={organizationId}
+                disabled={readOnly}
+              />
+            )}
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <FileText className="h-4 w-4 text-muted-foreground" />
@@ -1288,6 +1314,18 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   organizationId={organizationId}
                 />
               </TabsContent>
+              {!isOutbound && (
+                <TabsContent
+                  value="links"
+                  className="flex-1 overflow-y-auto px-6 py-5 mt-0"
+                >
+                  <CourierLinksTab
+                    courierId={courier.id}
+                    organizationId={organizationId}
+                    readOnly={readOnly}
+                  />
+                </TabsContent>
+              )}
               <TabsContent
                 value="history"
                 className="flex-1 overflow-y-auto px-6 py-5 mt-0"
