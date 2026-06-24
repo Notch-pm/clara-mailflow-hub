@@ -782,6 +782,16 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   </span>
                 )}
               </TabsTrigger>
+              {!isOutbound && (
+                <TabsTrigger value="links" className="gap-2">
+                  Liens
+                  {relationsList.length > 0 && (
+                    <span className="inline-flex items-center justify-center rounded-full bg-green-500/20 text-green-700 px-1.5 text-[10px] font-medium leading-none min-w-[18px] h-[18px]">
+                      {relationsList.length}
+                    </span>
+                  )}
+                </TabsTrigger>
+              )}
               <TabsTrigger value="history">Historique</TabsTrigger>
             </TabsList>
           )}
