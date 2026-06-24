@@ -139,19 +139,26 @@ export default function BulkStep3Assign({ files, onChange, onPreview }: Props) {
               <span className="ml-2 text-xs font-normal">({unassigned.length})</span>
             )}
           </h3>
-          {hasSelection && (
-            <Button size="sm" className="gap-1.5 h-7" onClick={groupSelected}>
-              <FolderPlus className="h-3.5 w-3.5" />
-              Rassembler en courrier ({selectedIds.size})
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {unassigned.length > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5 h-7"
+                onClick={oneFilePerCourier}
+              >
+                <FileText className="h-3.5 w-3.5" />
+                1 fichier = 1 courrier
+              </Button>
+            )}
+            {hasSelection && (
+              <Button size="sm" className="gap-1.5 h-7" onClick={groupSelected}>
+                <FolderPlus className="h-3.5 w-3.5" />
+                Rassembler en courrier ({selectedIds.size})
+              </Button>
+            )}
+          </div>
         </div>
-
-        {unassigned.length === 0 ? (
-          <p className="text-xs text-muted-foreground text-center py-4">
-            Tous les documents sont associés à un courrier.
-          </p>
-        ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
             {unassigned.map((bf) => {
               const selected = selectedIds.has(bf.id);
