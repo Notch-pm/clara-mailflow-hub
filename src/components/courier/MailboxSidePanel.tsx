@@ -425,7 +425,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
           }
         }
       }
-      return { toStateId, isInitial: toStateRow?.is_initial === true };
+      return { toStateId, isInitial: toStateRow?.is_initial === true, isFinal: toStateRow?.is_final === true };
     },
     onSuccess: (result) => {
       if (!result) return;
@@ -435,6 +435,21 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
       queryClient.invalidateQueries({ queryKey: ["courier-events", courier?.id] });
       queryClient.invalidateQueries({ queryKey: ["usagers"] });
       toast.success("Courrier déplacé");
+
+      // If we just closed this courier and it has linked couriers that are
+      // not yet closed, propose to close them too.
+      if (result.isFinal && courier) {
+        const siblingIds = (relationsList ?? [])
+          .map((r) => r.related?.id)
+          .filter((id): id is string => !!id && id !== courier.id);
+        if (siblingIds.length > 0) {
+          setCloseLinkedIds(siblingIds);
+          setCloseLinkedOpen(true);
+          setLocalWorkflowStateId(result.toStateId);
+          return;
+        }
+      }
+
       if (!fullScreen && !result.isInitial) {
         navigate(`/courrier/${courier?.id}`);
       } else {
