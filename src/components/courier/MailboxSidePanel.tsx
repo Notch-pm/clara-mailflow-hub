@@ -1314,6 +1314,18 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   organizationId={organizationId}
                 />
               </TabsContent>
+              {!isOutbound && (
+                <TabsContent
+                  value="links"
+                  className="flex-1 overflow-y-auto px-6 py-5 mt-0"
+                >
+                  <CourierLinksTab
+                    courierId={courier.id}
+                    organizationId={organizationId}
+                    readOnly={readOnly}
+                  />
+                </TabsContent>
+              )}
               <TabsContent
                 value="history"
                 className="flex-1 overflow-y-auto px-6 py-5 mt-0"
