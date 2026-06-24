@@ -334,6 +334,9 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
       });
     },
     onSuccess: (result) => {
+      // Mémorise qu'une extraction OCR a été effectuée : permettra de relancer
+      // automatiquement l'analyse complète côté serveur après création.
+      analyzedPreCreationRef.current = true;
       const filled: string[] = [];
 
       // Pre-fill subject
