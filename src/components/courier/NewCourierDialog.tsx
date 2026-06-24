@@ -302,6 +302,22 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
       }
       onOpenChange(false);
       if (onCreated) onCreated(res.courierId);
+
+      // Si l'utilisateur a lancé l'analyse OCR en pré-création, on relance
+      // une analyse complète côté serveur pour persister les extraits OCR
+      // dans `courier_document_extracts` et générer l'analyse IA dès maintenant.
+      if (analyzedPreCreationRef.current && res.uploaded > 0 && res.courierId) {
+        const courierId = res.courierId;
+        runFullAnalysis(courierId)
+          .then(() => {
+            qc.invalidateQueries({ queryKey: ["courier-extracts", courierId] });
+            qc.invalidateQueries({ queryKey: ["courier-analysis", courierId] });
+            qc.invalidateQueries({ queryKey: ["courier", organizationId, courierId] });
+          })
+          .catch((e) => {
+            console.error("Analyse automatique post-création échouée:", e);
+          });
+      }
     },
     onError: (err: Error) => {
       if (err.message !== "Veuillez corriger les erreurs du formulaire.") {
