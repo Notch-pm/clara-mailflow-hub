@@ -170,15 +170,20 @@ const SUBJECT_STOPWORDS = new Set([
   "the", "and", "for", "from", "your", "you", "our", "with",
 ]);
 
-/** Extract significant tokens from a subject line for similarity matching. */
-function extractSubjectTokens(subject: string | null | undefined): Set<string> {
-  if (!subject) return new Set();
-  // Strip common reply/forward prefixes
-  const cleaned = subject
+function normalizeSubject(subject: string | null | undefined): string {
+  if (!subject) return "";
+  return subject
     .toLowerCase()
     .replace(/^((re|fwd?|tr)\s*:\s*)+/gi, "")
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, ""); // remove accents
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+}
+
+/** Extract significant tokens from a subject line for similarity matching. */
+function extractSubjectTokens(subject: string | null | undefined): Set<string> {
+  const cleaned = normalizeSubject(subject);
+  if (!cleaned) return new Set();
   const tokens = cleaned.split(/[^a-z0-9]+/).filter(
     (t) => t.length >= 4 && !SUBJECT_STOPWORDS.has(t) && !/^\d+$/.test(t),
   );
@@ -192,8 +197,9 @@ function extractSubjectTokens(subject: string | null | undefined): Set<string> {
  * Scoring:
  *  - same sender usager_id  → +50
  *  - same sender email      → +30
+ *  - per common subject word→ +12
+ *  - very close subject      → +20
  *  - per common tag/keyword → +10
- *  - per common subject word→ +6
  *  - recency bonus (linear) → up to +5
  *
  * Filtrage : on exige au moins un signal de contenu (tag OU mot d'objet commun).
@@ -217,6 +223,7 @@ export async function computeSimilarCouriers(
   const refCourier = ref as unknown as RelatedCourierSummary;
 
   const refSender = refCourier.courier_participants.find((p) => p.role === "sender");
+  const refNormalizedSubject = normalizeSubject(refCourier.subject);
   const refTags = new Set(
     (((refCourier.metadata as Record<string, unknown> | null)?.tags as string[] | undefined) ?? [])
       .map((t) => t.toLowerCase()),
@@ -254,6 +261,27 @@ export async function computeSimilarCouriers(
       reasons.push("Même email expéditeur");
     }
 
+    // Subject token overlap first: the object is the strongest content signal.
+    const candSubjectTokens = extractSubjectTokens(cand.subject);
+    const commonSubject: string[] = [];
+    for (const t of candSubjectTokens) {
+      if (refSubjectTokens.has(t)) commonSubject.push(t);
+    }
+    const candNormalizedSubject = normalizeSubject(cand.subject);
+    const sameNormalizedSubject =
+      refNormalizedSubject.length > 0 && candNormalizedSubject === refNormalizedSubject;
+    if (commonSubject.length > 0) {
+      score += commonSubject.length * 12;
+      if (sameNormalizedSubject || commonSubject.length >= 2) score += 20;
+      reasons.push(
+        sameNormalizedSubject
+          ? "Même objet"
+          : commonSubject.length === 1
+          ? `Objet : « ${commonSubject[0]} »`
+          : `${commonSubject.length} mots d'objet communs`,
+      );
+    }
+
     const candTags = new Set(
       (((cand.metadata as Record<string, unknown> | null)?.tags as string[] | undefined) ?? [])
         .map((t) => t.toLowerCase()),
@@ -271,21 +299,6 @@ export async function computeSimilarCouriers(
       );
     }
 
-    // Subject token overlap (fallback / complement when tags are missing)
-    const candSubjectTokens = extractSubjectTokens(cand.subject);
-    const commonSubject: string[] = [];
-    for (const t of candSubjectTokens) {
-      if (refSubjectTokens.has(t)) commonSubject.push(t);
-    }
-    if (commonSubject.length > 0) {
-      score += commonSubject.length * 6;
-      reasons.push(
-        commonSubject.length === 1
-          ? `Objet : « ${commonSubject[0]} »`
-          : `${commonSubject.length} mots d'objet communs`,
-      );
-    }
-
     // Recency bonus
     const refDate = new Date(cand.received_at ?? cand.sent_at ?? Date.now()).getTime();
     const ageDays = Math.max(0, (now - refDate) / 86400_000);
@@ -299,7 +312,8 @@ export async function computeSimilarCouriers(
     const sameSender = reasons.includes("Même usager") || reasons.includes("Même email expéditeur");
     const hasContentSignal = commonTags.length > 0 || commonSubject.length > 0;
     if (!hasContentSignal) continue;
-    const threshold = sameSender ? minScore : Math.max(minScore, 30);
+    const hasStrongSubjectSignal = sameNormalizedSubject || commonSubject.length >= 2;
+    const threshold = sameSender || hasStrongSubjectSignal ? minScore : Math.max(minScore, 30);
     if (score >= threshold) {
       scored.push({ courier: cand, score: Math.round(score), reasons });
     }
