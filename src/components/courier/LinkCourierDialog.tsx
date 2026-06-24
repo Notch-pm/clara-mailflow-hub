@@ -301,7 +301,9 @@ export default function LinkCourierDialog({
           </div>
         )}
 
-        <DialogFooter>
+        </div>
+
+        <DialogFooter className="border-t px-6 py-4">
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Annuler</Button>
           <Button
             onClick={() => mutation.mutate()}
