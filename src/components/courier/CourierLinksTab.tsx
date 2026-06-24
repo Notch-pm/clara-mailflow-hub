@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import LinkCourierDialog from "./LinkCourierDialog";
+import SimilarCouriersAlert from "./SimilarCouriersAlert";
 import {
   deleteRelation,
   listRelationsForCourier,
@@ -140,6 +141,12 @@ export default function CourierLinksTab({ courierId, organizationId, readOnly }:
           </Button>
         )}
       </div>
+
+      <SimilarCouriersAlert
+        courierId={courierId}
+        organizationId={organizationId}
+        disabled={readOnly}
+      />
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Chargement…</p>
