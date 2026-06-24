@@ -511,9 +511,37 @@ export default function BulkStep4Verify({
 
       {orphanedFiles.length > 0 && (
         <div className="rounded-lg border border-yellow-400/50 bg-yellow-50 dark:bg-yellow-900/10 px-4 py-3 space-y-2">
-          <p className="text-xs font-medium text-yellow-800 dark:text-yellow-300">
-            {orphanedFiles.length} fichier{orphanedFiles.length > 1 ? "s" : ""} sans courrier — assignez-les ou supprimez-les
-          </p>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <p className="text-xs font-medium text-yellow-800 dark:text-yellow-300">
+              {orphanedFiles.length} fichier{orphanedFiles.length > 1 ? "s" : ""} sans courrier — assignez-les ou supprimez-les
+            </p>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="gap-1.5 h-7"
+              onClick={() => {
+                const newDrafts: DraftCourier[] = orphanedFiles.map((f) => ({
+                  id: crypto.randomUUID(),
+                  title: "",
+                  senderName: "",
+                  senderEmail: "",
+                  recipientName: "",
+                  serviceId: "",
+                  serviceName: "",
+                  tags: [],
+                  bodyText: "",
+                  fileIds: [f.id],
+                  confidence: 0,
+                  flags: ["missing-service"],
+                }));
+                onChange([...drafts, ...newDrafts]);
+              }}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              1 fichier = 1 courrier
+            </Button>
+          </div>
           <div className="flex flex-wrap gap-1.5">
             {orphanedFiles.map((f) => (
               <OrphanFileChip
