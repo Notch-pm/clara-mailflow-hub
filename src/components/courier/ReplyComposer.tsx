@@ -879,7 +879,7 @@ export default function ReplyComposer({
 
       {/* Assistant IA */}
       {!body && !editorDisabled && (
-        <div className="border rounded-md overflow-hidden">
+        <div className="border rounded-md shrink-0">
           <button
             type="button"
             onClick={() => setAiPanelOpen((o) => !o)}
