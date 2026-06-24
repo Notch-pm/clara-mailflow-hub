@@ -244,6 +244,10 @@ export type Database = {
           organization_id: string
           sentiment: string | null
           suggested_actions: Json
+          suggested_recipient_name: string | null
+          suggested_sender: Json | null
+          suggested_service_name: string | null
+          suggested_subject: string | null
           summary: string | null
           tokens_used: number | null
           updated_at: string
@@ -257,6 +261,10 @@ export type Database = {
           organization_id: string
           sentiment?: string | null
           suggested_actions?: Json
+          suggested_recipient_name?: string | null
+          suggested_sender?: Json | null
+          suggested_service_name?: string | null
+          suggested_subject?: string | null
           summary?: string | null
           tokens_used?: number | null
           updated_at?: string
@@ -270,6 +278,10 @@ export type Database = {
           organization_id?: string
           sentiment?: string | null
           suggested_actions?: Json
+          suggested_recipient_name?: string | null
+          suggested_sender?: Json | null
+          suggested_service_name?: string | null
+          suggested_subject?: string | null
           summary?: string | null
           tokens_used?: number | null
           updated_at?: string

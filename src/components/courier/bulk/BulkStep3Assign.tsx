@@ -75,6 +75,17 @@ export default function BulkStep3Assign({ files, onChange, onPreview }: Props) {
     setSelectedIds(new Set());
   }
 
+  function oneFilePerCourier() {
+    let nextId = nextGroupId(files);
+    const updated = files.map((f) => {
+      if (f.rejected || f.groupId !== null) return f;
+      const gid = nextId++;
+      return { ...f, groupId: gid };
+    });
+    onChange(updated);
+    setSelectedIds(new Set());
+  }
+
   function moveToGroup(fileId: string, targetGroupId: number | null) {
     onChange(files.map((f) => (f.id === fileId ? { ...f, groupId: targetGroupId } : f)));
   }
@@ -128,12 +139,25 @@ export default function BulkStep3Assign({ files, onChange, onPreview }: Props) {
               <span className="ml-2 text-xs font-normal">({unassigned.length})</span>
             )}
           </h3>
-          {hasSelection && (
-            <Button size="sm" className="gap-1.5 h-7" onClick={groupSelected}>
-              <FolderPlus className="h-3.5 w-3.5" />
-              Rassembler en courrier ({selectedIds.size})
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {unassigned.length > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5 h-7"
+                onClick={oneFilePerCourier}
+              >
+                <FileText className="h-3.5 w-3.5" />
+                1 fichier = 1 courrier
+              </Button>
+            )}
+            {hasSelection && (
+              <Button size="sm" className="gap-1.5 h-7" onClick={groupSelected}>
+                <FolderPlus className="h-3.5 w-3.5" />
+                Rassembler en courrier ({selectedIds.size})
+              </Button>
+            )}
+          </div>
         </div>
 
         {unassigned.length === 0 ? (
