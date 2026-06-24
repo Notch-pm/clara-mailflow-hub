@@ -249,7 +249,14 @@ export async function computeSimilarCouriers(
     const recencyBonus = Math.max(0, 5 * (1 - ageDays / windowDays));
     score += recencyBonus;
 
-    if (score >= minScore) {
+    // Filtrage strict :
+    //  - jamais de suggestion sur la seule base du "même usager" sans mots-clés communs
+    //  - si même usager + mots-clés communs → on garde dès le seuil bas
+    //  - si mots-clés communs sans même usager → on garde uniquement à score élevé
+    const sameSender = reasons.includes("Même usager") || reasons.includes("Même email expéditeur");
+    if (commonTags.length === 0) continue;
+    const threshold = sameSender ? minScore : Math.max(minScore, 30);
+    if (score >= threshold) {
       scored.push({ courier: cand, score: Math.round(score), reasons });
     }
   }
