@@ -87,16 +87,54 @@ export async function getOrCreateSignatoryForUser(
   return data as Signatory;
 }
 
+const MAX_SIGNATURE_WIDTH = 350;
+
+async function resizeSignatureFile(file: File): Promise<{ blob: Blob; ext: string; contentType: string }> {
+  try {
+    const dataUrl: string = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+    const img: HTMLImageElement = await new Promise((resolve, reject) => {
+      const i = new Image();
+      i.onload = () => resolve(i);
+      i.onerror = () => reject(new Error("image load failed"));
+      i.src = dataUrl;
+    });
+    if (img.width <= MAX_SIGNATURE_WIDTH) {
+      return { blob: file, ext: file.name.split(".").pop()?.toLowerCase() || "png", contentType: file.type || "image/png" };
+    }
+    const ratio = MAX_SIGNATURE_WIDTH / img.width;
+    const w = MAX_SIGNATURE_WIDTH;
+    const h = Math.round(img.height * ratio);
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("no 2d ctx");
+    ctx.drawImage(img, 0, 0, w, h);
+    // Preserve transparency → PNG
+    const blob: Blob = await new Promise((resolve, reject) =>
+      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob failed"))), "image/png")
+    );
+    return { blob, ext: "png", contentType: "image/png" };
+  } catch {
+    return { blob: file, ext: file.name.split(".").pop()?.toLowerCase() || "png", contentType: file.type || "image/png" };
+  }
+}
+
 export async function uploadSignatureImage(
   organizationId: string,
   signatoryId: string,
   file: File
 ): Promise<string> {
-  const ext = file.name.split(".").pop()?.toLowerCase() || "png";
+  const { blob, ext, contentType } = await resizeSignatureFile(file);
   const key = `${organizationId}/${signatoryId}-${Date.now()}.${ext}`;
   const { error: upErr } = await supabase.storage
     .from(BUCKET)
-    .upload(key, file, { upsert: true, contentType: file.type });
+    .upload(key, blob, { upsert: true, contentType });
   if (upErr) throw upErr;
 
   // Fetch previous key to remove afterwards
