@@ -368,7 +368,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
       );
       const { data: toStateRow } = await supabase
         .from("workflow_states")
-        .select("id, name, category, is_initial")
+        .select("id, name, category, is_initial, is_final")
         .eq("id", toStateId)
         .maybeSingle();
       const fromStateRow = courier.workflow_state_id
