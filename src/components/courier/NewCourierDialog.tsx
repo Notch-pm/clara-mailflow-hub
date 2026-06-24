@@ -110,6 +110,7 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
     phone: string | null;
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const analyzedPreCreationRef = useRef(false);
 
   useEffect(() => {
     if (!open) return;
