@@ -166,7 +166,8 @@ export default function LinkCourierDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl flex flex-col max-h-[90vh] p-0">
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 pt-6 pb-2 space-y-4">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Link2 className="h-4 w-4" /> Lier un courrier
@@ -300,7 +301,9 @@ export default function LinkCourierDialog({
           </div>
         )}
 
-        <DialogFooter>
+        </div>
+
+        <DialogFooter className="border-t px-6 py-4">
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Annuler</Button>
           <Button
             onClick={() => mutation.mutate()}
