@@ -59,6 +59,7 @@ import LinkedActionsTab from "./LinkedActionsTab";
 import ReplyComposer from "./ReplyComposer";
 import CourierLinksTab from "./CourierLinksTab";
 import SimilarCouriersAlert from "./SimilarCouriersAlert";
+import CloseLinkedCouriersDialog from "./CloseLinkedCouriersDialog";
 import { listRepliesForCourier } from "@/services/courierReplyService";
 import { listRelationsForCourier } from "@/services/courierRelationService";
 import type { CourierChannel, CourierParticipant, WorkflowTransition, WorkflowState, WorkflowCategory } from "@/types/courier";
@@ -106,6 +107,8 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
   const [replyState, setReplyState] = useState<{ name: string; category: string | null } | null>(null);
   const [transferTargetServiceId, setTransferTargetServiceId] = useState<string>("");
   const [transferConfirmOpen, setTransferConfirmOpen] = useState(false);
+  const [closeLinkedOpen, setCloseLinkedOpen] = useState(false);
+  const [closeLinkedIds, setCloseLinkedIds] = useState<string[]>([]);
 
   const { data: replyList = [] } = useQuery({
     queryKey: ["courier-replies", courier?.id],
@@ -365,7 +368,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
       );
       const { data: toStateRow } = await supabase
         .from("workflow_states")
-        .select("id, name, category, is_initial")
+        .select("id, name, category, is_initial, is_final")
         .eq("id", toStateId)
         .maybeSingle();
       const fromStateRow = courier.workflow_state_id
@@ -422,7 +425,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
           }
         }
       }
-      return { toStateId, isInitial: toStateRow?.is_initial === true };
+      return { toStateId, isInitial: toStateRow?.is_initial === true, isFinal: toStateRow?.is_final === true };
     },
     onSuccess: (result) => {
       if (!result) return;
@@ -432,6 +435,21 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
       queryClient.invalidateQueries({ queryKey: ["courier-events", courier?.id] });
       queryClient.invalidateQueries({ queryKey: ["usagers"] });
       toast.success("Courrier déplacé");
+
+      // If we just closed this courier and it has linked couriers that are
+      // not yet closed, propose to close them too.
+      if (result.isFinal && courier) {
+        const siblingIds = (relationsList ?? [])
+          .map((r) => r.related?.id)
+          .filter((id): id is string => !!id && id !== courier.id);
+        if (siblingIds.length > 0) {
+          setCloseLinkedIds(siblingIds);
+          setCloseLinkedOpen(true);
+          setLocalWorkflowStateId(result.toStateId);
+          return;
+        }
+      }
+
       if (!fullScreen && !result.isInitial) {
         navigate(`/courrier/${courier?.id}`);
       } else {
@@ -1089,6 +1107,14 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
+
+            <CloseLinkedCouriersDialog
+              open={closeLinkedOpen}
+              onOpenChange={setCloseLinkedOpen}
+              organizationId={organizationId}
+              linkedCourierIds={closeLinkedIds}
+              sourceTitle={courier?.subject ?? courier?.chrono ?? "ce courrier"}
+            />
 
             <Separator />
             <div className="space-y-3">
