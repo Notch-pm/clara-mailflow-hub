@@ -75,6 +75,17 @@ export default function BulkStep3Assign({ files, onChange, onPreview }: Props) {
     setSelectedIds(new Set());
   }
 
+  function oneFilePerCourier() {
+    let nextId = nextGroupId(files);
+    const updated = files.map((f) => {
+      if (f.rejected || f.groupId !== null) return f;
+      const gid = nextId++;
+      return { ...f, groupId: gid };
+    });
+    onChange(updated);
+    setSelectedIds(new Set());
+  }
+
   function moveToGroup(fileId: string, targetGroupId: number | null) {
     onChange(files.map((f) => (f.id === fileId ? { ...f, groupId: targetGroupId } : f)));
   }
