@@ -116,7 +116,7 @@ export default function SimilarCouriersAlert({ courierId, organizationId, disabl
             Courriers potentiellement liés détectés ({visibleSuggestions.length})
           </AlertTitle>
           <AlertDescription className="text-amber-900/80">
-            Ces courriers récents partagent l'expéditeur ou des mots-clés avec celui-ci.
+            Ces courriers récents partagent l'objet, des mots-clés ou l'expéditeur avec celui-ci.
           </AlertDescription>
         </div>
         <Button
