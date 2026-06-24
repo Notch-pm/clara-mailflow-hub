@@ -59,6 +59,7 @@ import LinkedActionsTab from "./LinkedActionsTab";
 import ReplyComposer from "./ReplyComposer";
 import CourierLinksTab from "./CourierLinksTab";
 import SimilarCouriersAlert from "./SimilarCouriersAlert";
+import CloseLinkedCouriersDialog from "./CloseLinkedCouriersDialog";
 import { listRepliesForCourier } from "@/services/courierReplyService";
 import { listRelationsForCourier } from "@/services/courierRelationService";
 import type { CourierChannel, CourierParticipant, WorkflowTransition, WorkflowState, WorkflowCategory } from "@/types/courier";
