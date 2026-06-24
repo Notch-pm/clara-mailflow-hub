@@ -129,6 +129,7 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
     setPendingFiles([]);
     setPreviewIndex(0);
     setExtractedSender(null);
+    analyzedPreCreationRef.current = false;
   }, [open]);
 
   // Maintain previewIndex in bounds when files are removed
