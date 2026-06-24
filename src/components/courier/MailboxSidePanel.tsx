@@ -1191,6 +1191,13 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
 
           {/* Right: viewer + documents */}
           <section aria-label="Aperçu du courrier" className="px-6 py-5 space-y-5 bg-muted/10 overflow-y-auto">
+            {!isOutbound && isInitialState && (
+              <SimilarCouriersAlert
+                courierId={courier.id}
+                organizationId={organizationId}
+                disabled={readOnly}
+              />
+            )}
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <FileText className="h-4 w-4 text-muted-foreground" />
