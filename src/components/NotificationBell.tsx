@@ -104,7 +104,7 @@ export function NotificationBell() {
                         )}
                       </div>
                       <p className={cn(
-                        "text-sm truncate",
+                        "text-sm line-clamp-2 break-words",
                         !notif.read ? "font-semibold text-foreground" : "text-muted-foreground"
                       )}>
                         {notif.type === "courier_transferred"
