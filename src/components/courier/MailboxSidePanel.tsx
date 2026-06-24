@@ -131,6 +131,12 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
     enabled: !!courier?.id,
   });
 
+  const { data: relationsList = [] } = useQuery({
+    queryKey: ["courier-relations", courier?.id],
+    queryFn: () => listRelationsForCourier(courier!.id),
+    enabled: !!courier?.id,
+  });
+
   const isOutbound = courier?.direction === "outbound";
 
   const participants = courier?.courier_participants ?? [];
