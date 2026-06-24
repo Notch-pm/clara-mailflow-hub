@@ -159,6 +159,12 @@ export default function BulkStep3Assign({ files, onChange, onPreview }: Props) {
             )}
           </div>
         </div>
+
+        {unassigned.length === 0 ? (
+          <p className="text-xs text-muted-foreground text-center py-4">
+            Tous les documents sont associés à un courrier.
+          </p>
+        ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
             {unassigned.map((bf) => {
               const selected = selectedIds.has(bf.id);
