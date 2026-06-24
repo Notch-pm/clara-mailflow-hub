@@ -158,17 +158,45 @@ interface SimilarityCandidate {
   reasons: string[];
 }
 
+const SUBJECT_STOPWORDS = new Set([
+  "re", "fwd", "tr", "fw", "ref", "objet",
+  "le", "la", "les", "un", "une", "des", "de", "du", "et", "ou", "a", "à",
+  "au", "aux", "en", "dans", "sur", "sous", "pour", "par", "avec", "sans",
+  "que", "qui", "quoi", "dont", "où", "ce", "cet", "cette", "ces", "se",
+  "sa", "son", "ses", "mon", "ma", "mes", "ton", "ta", "tes", "votre",
+  "vos", "notre", "nos", "leur", "leurs", "est", "sont", "été", "être",
+  "avoir", "fait", "faire", "plus", "moins", "très", "tres", "bien",
+  "monsieur", "madame", "mr", "mme", "mlle", "objet", "courrier", "demande",
+  "the", "and", "for", "from", "your", "you", "our", "with",
+]);
+
+/** Extract significant tokens from a subject line for similarity matching. */
+function extractSubjectTokens(subject: string | null | undefined): Set<string> {
+  if (!subject) return new Set();
+  // Strip common reply/forward prefixes
+  const cleaned = subject
+    .toLowerCase()
+    .replace(/^((re|fwd?|tr)\s*:\s*)+/gi, "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, ""); // remove accents
+  const tokens = cleaned.split(/[^a-z0-9]+/).filter(
+    (t) => t.length >= 4 && !SUBJECT_STOPWORDS.has(t) && !/^\d+$/.test(t),
+  );
+  return new Set(tokens);
+}
+
 /**
  * Computes similarity client-side between the current courier and all other
- * couriers of the same organization in a sliding window. Used for both the
- * "Suggestions IA" list in the linking dialog and the "Chercher des courriers
- * similaires" button (no LLM call).
+ * couriers of the same organization in a sliding window.
  *
  * Scoring:
  *  - same sender usager_id  → +50
  *  - same sender email      → +30
  *  - per common tag/keyword → +10
+ *  - per common subject word→ +6
  *  - recency bonus (linear) → up to +5
+ *
+ * Filtrage : on exige au moins un signal de contenu (tag OU mot d'objet commun).
  */
 export async function computeSimilarCouriers(
   organizationId: string,
@@ -180,7 +208,6 @@ export async function computeSimilarCouriers(
   const minScore = opts?.minScore ?? 15;
   const excludeIds = new Set([courierId, ...(opts?.excludeIds ?? [])]);
 
-  // Load the reference courier
   const { data: ref, error: refErr } = await supabase
     .from("couriers")
     .select(RELATED_SELECT)
@@ -194,6 +221,7 @@ export async function computeSimilarCouriers(
     (((refCourier.metadata as Record<string, unknown> | null)?.tags as string[] | undefined) ?? [])
       .map((t) => t.toLowerCase()),
   );
+  const refSubjectTokens = extractSubjectTokens(refCourier.subject);
 
   const sinceIso = new Date(Date.now() - windowDays * 86400 * 1000).toISOString();
 
@@ -243,18 +271,34 @@ export async function computeSimilarCouriers(
       );
     }
 
-    // Recency bonus: up to +5 for very recent items inside the window
+    // Subject token overlap (fallback / complement when tags are missing)
+    const candSubjectTokens = extractSubjectTokens(cand.subject);
+    const commonSubject: string[] = [];
+    for (const t of candSubjectTokens) {
+      if (refSubjectTokens.has(t)) commonSubject.push(t);
+    }
+    if (commonSubject.length > 0) {
+      score += commonSubject.length * 6;
+      reasons.push(
+        commonSubject.length === 1
+          ? `Objet : « ${commonSubject[0]} »`
+          : `${commonSubject.length} mots d'objet communs`,
+      );
+    }
+
+    // Recency bonus
     const refDate = new Date(cand.received_at ?? cand.sent_at ?? Date.now()).getTime();
     const ageDays = Math.max(0, (now - refDate) / 86400_000);
     const recencyBonus = Math.max(0, 5 * (1 - ageDays / windowDays));
     score += recencyBonus;
 
     // Filtrage strict :
-    //  - jamais de suggestion sur la seule base du "même usager" sans mots-clés communs
-    //  - si même usager + mots-clés communs → on garde dès le seuil bas
-    //  - si mots-clés communs sans même usager → on garde uniquement à score élevé
+    //  - exige au moins un signal de contenu (tag OU mot d'objet commun)
+    //  - même usager + signal de contenu → seuil bas
+    //  - signal de contenu sans même usager → seuil plus élevé
     const sameSender = reasons.includes("Même usager") || reasons.includes("Même email expéditeur");
-    if (commonTags.length === 0) continue;
+    const hasContentSignal = commonTags.length > 0 || commonSubject.length > 0;
+    if (!hasContentSignal) continue;
     const threshold = sameSender ? minScore : Math.max(minScore, 30);
     if (score >= threshold) {
       scored.push({ courier: cand, score: Math.round(score), reasons });
@@ -264,6 +308,7 @@ export async function computeSimilarCouriers(
   scored.sort((a, b) => b.score - a.score);
   return scored.slice(0, limit);
 }
+
 
 export function relationLabel(
   rel: CourierRelationWithCourier,
