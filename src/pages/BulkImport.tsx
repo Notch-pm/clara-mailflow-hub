@@ -346,7 +346,21 @@ export default function BulkImport() {
         </p>
       </div>
 
-      <StepStrip current={step} maxReached={maxReached} onNavigate={goToStep} />
+      <StepStrip
+        current={step}
+        maxReached={Math.max(
+          maxReached,
+          channel ? 2 : 1,
+          channel && validFiles.length > 0 ? 3 : 1,
+          channel && validFiles.length > 0 && step >= 3 ? 4 : 1,
+        )}
+        onNavigate={(n) => {
+          if (n === 4 && step === 3) {
+            setDrafts(buildDraftsFromGroups());
+          }
+          goToStep(n);
+        }}
+      />
 
       <div>
         {step === 1 && (
