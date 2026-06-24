@@ -591,6 +591,57 @@ export type Database = {
           },
         ]
       }
+      courier_relations: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          created_via: Database["public"]["Enums"]["courier_relation_origin"]
+          id: string
+          note: string | null
+          organization_id: string
+          relation_type: Database["public"]["Enums"]["courier_relation_type"]
+          source_courier_id: string
+          target_courier_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          created_via?: Database["public"]["Enums"]["courier_relation_origin"]
+          id?: string
+          note?: string | null
+          organization_id: string
+          relation_type: Database["public"]["Enums"]["courier_relation_type"]
+          source_courier_id: string
+          target_courier_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          created_via?: Database["public"]["Enums"]["courier_relation_origin"]
+          id?: string
+          note?: string | null
+          organization_id?: string
+          relation_type?: Database["public"]["Enums"]["courier_relation_type"]
+          source_courier_id?: string
+          target_courier_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "courier_relations_source_courier_id_fkey"
+            columns: ["source_courier_id"]
+            isOneToOne: false
+            referencedRelation: "couriers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "courier_relations_target_courier_id_fkey"
+            columns: ["target_courier_id"]
+            isOneToOne: false
+            referencedRelation: "couriers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       courier_sequences: {
         Row: {
           direction: Database["public"]["Enums"]["courier_direction"]
@@ -660,12 +711,14 @@ export type Database = {
       }
       couriers: {
         Row: {
+          ai_suggested_links: Json
           assigned_service: string | null
           channel: Database["public"]["Enums"]["courier_channel"]
           chrono: string | null
           created_at: string
           created_by: string | null
           direction: Database["public"]["Enums"]["courier_direction"]
+          dismissed_link_suggestions: Json
           fts_body: unknown
           fts_subject: unknown
           id: string
@@ -679,12 +732,14 @@ export type Database = {
           workflow_state_id: string | null
         }
         Insert: {
+          ai_suggested_links?: Json
           assigned_service?: string | null
           channel: Database["public"]["Enums"]["courier_channel"]
           chrono?: string | null
           created_at?: string
           created_by?: string | null
           direction: Database["public"]["Enums"]["courier_direction"]
+          dismissed_link_suggestions?: Json
           fts_body?: unknown
           fts_subject?: unknown
           id?: string
@@ -698,12 +753,14 @@ export type Database = {
           workflow_state_id?: string | null
         }
         Update: {
+          ai_suggested_links?: Json
           assigned_service?: string | null
           channel?: Database["public"]["Enums"]["courier_channel"]
           chrono?: string | null
           created_at?: string
           created_by?: string | null
           direction?: Database["public"]["Enums"]["courier_direction"]
+          dismissed_link_suggestions?: Json
           fts_body?: unknown
           fts_subject?: unknown
           id?: string
@@ -2968,6 +3025,8 @@ export type Database = {
     Enums: {
       courier_channel: "paper" | "email" | "portal"
       courier_direction: "inbound" | "outbound" | "internal"
+      courier_relation_origin: "manual" | "ai_suggestion"
+      courier_relation_type: "relance" | "sujet_lie"
       document_type: "original" | "response" | "attachment"
       participant_role: "sender" | "recipient" | "cc"
       sync_status: "pending" | "synced" | "error"
@@ -3118,6 +3177,8 @@ export const Constants = {
     Enums: {
       courier_channel: ["paper", "email", "portal"],
       courier_direction: ["inbound", "outbound", "internal"],
+      courier_relation_origin: ["manual", "ai_suggestion"],
+      courier_relation_type: ["relance", "sujet_lie"],
       document_type: ["original", "response", "attachment"],
       participant_role: ["sender", "recipient", "cc"],
       sync_status: ["pending", "synced", "error"],
