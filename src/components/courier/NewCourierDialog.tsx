@@ -42,7 +42,7 @@ import { addParticipant } from "@/services/courierParticipantService";
 import { listServices } from "@/services/orgServiceService";
 import { listTags } from "@/services/courierTagService";
 import { storage } from "@/services/storageService";
-import { extractCourierInfo } from "@/services/courierAnalysisService";
+import { extractCourierInfo, runFullAnalysis } from "@/services/courierAnalysisService";
 import UsagerPicker from "@/components/courier/UsagerPicker";
 import type { Usager, UsagerCategory } from "@/services/usagerService";
 import type { CourierChannel } from "@/types/courier";
