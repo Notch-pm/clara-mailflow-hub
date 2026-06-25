@@ -138,9 +138,11 @@ export async function searchCouriersForLinking(
     .from("couriers")
     .select(RELATED_SELECT)
     .eq("organization_id", organizationId)
+    .eq("direction", "inbound")
     .neq("id", excludeCourierId)
     .order("created_at", { ascending: false })
     .limit(limit);
+
 
   if (trimmed.length > 0) {
     // Match either subject or chrono. Sender name lookup via participants is
@@ -236,10 +238,12 @@ export async function computeSimilarCouriers(
     .from("couriers")
     .select(RELATED_SELECT)
     .eq("organization_id", organizationId)
+    .eq("direction", "inbound")
     .gte("created_at", sinceIso)
     .order("created_at", { ascending: false })
     .limit(500);
   if (error) throw error;
+
 
   const scored: SimilarityCandidate[] = [];
   const now = Date.now();
