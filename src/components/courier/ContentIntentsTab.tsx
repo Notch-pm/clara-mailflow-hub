@@ -10,9 +10,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { getDocuments } from "@/services/courierDocumentService";
 import { getCourierById, updateCourier } from "@/services/courierService";
 import { listTags } from "@/services/courierTagService";
-import { listServices, assignService } from "@/services/orgServiceService";
-import { findMatchingUsager } from "@/services/usagerService";
-import { updateParticipant, addParticipant } from "@/services/courierParticipantService";
 import { readableTextColor } from "@/lib/tag-color";
 import {
   getExtracts,
