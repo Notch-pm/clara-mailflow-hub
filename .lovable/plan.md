@@ -1,55 +1,70 @@
-## Objectif
+# Refonte de la structure des écrans courrier
 
-Permettre, dans l'éditeur de workflow, de désigner explicitement pour chaque état une transition sortante **« Suivante »** (nominale, en avant) et/ou une transition sortante **« Précédente »** (retour en arrière nominal). Cette désignation servira de référence fiable pour les automatisations — notamment l'avancement automatique après signature d'une réponse — quand un état a plusieurs sorties.
+## 1 — Analyse de la maquette
 
-## Modèle de données
+Votre maquette propose de :
+- Remonter les métadonnées principales (Date de réception, Canal, Expéditeur, Destinataire, Tags, Service gestionnaire) dans une **carte d'entête** sous le titre du courrier.
+- Supprimer la colonne gauche `aside` actuellement présente dans l'onglet **Détail du courrier**, qui devient alors plein largeur (juste l'Aperçu + Documents).
+- Conserver les onglets (Détail / Contenu et intentions / Actions liées / Réponse / Participants / Liens / Historique) mais sans encart latéral fixe.
 
-Ajout d'une colonne sur `workflow_transitions` :
+Cela apporte deux gains réels :
+- Les infos clés du courrier restent visibles **quel que soit l'onglet actif** (alors qu'aujourd'hui elles disparaissent dès qu'on quitte "Détail").
+- L'aperçu du courrier (souvent un email forwardé) gagne ~360 px de large.
 
-- `kind` (texte, valeurs : `next`, `previous`, ou `null` = transition « secondaire »)
-- Index unique partiel par `(from_state_id, kind)` quand `kind IS NOT NULL` → garantit **au plus une** transition « next » et **au plus une** « previous » par état source.
-- Valeur par défaut : `null` (toutes les transitions existantes restent neutres, l'utilisateur les marquera au besoin).
+C'est donc pertinent à implémenter.
 
-Migration unique : `ALTER TABLE` + index + commentaire.
+## 2 — Plan d'implémentation
 
-## Éditeur de workflow
+### Composant impacté
+`src/components/courier/MailboxSidePanel.tsx` — le composant unique utilisé en plein écran (`CourierDetail`) et historiquement en side panel.
 
-Quand l'utilisateur clique sur une arête (transition) dans le canvas React Flow :
+### Changements
 
-- Affichage d'un mini-panneau latéral (ou popover ancré à l'arête) avec :
-  - Le nom de la transition (éditable, comme aujourd'hui).
-  - Un sélecteur de **rôle** : `Suivante` / `Précédente` / `Aucun` (par défaut).
-  - Une note explicative : « La transition désignée comme Suivante sera utilisée par les automatisations (ex. après signature). »
-- Si l'utilisateur désigne une transition « Suivante » alors qu'une autre l'est déjà pour le même état source, on bascule automatiquement l'ancienne sur « Aucun » (côté UI + contrainte DB en garde-fou).
+**A. Nouvelle carte d'entête (sous le titre, au-dessus des onglets)**
 
-Visualisation sur le canvas :
+Layout type 3 colonnes (responsive : empilage en mobile) :
 
-- Arête `next` : trait vert plus épais + flèche pleine + petit badge « → Suivante ».
-- Arête `previous` : trait ambré pointillé + badge « ← Précédente ».
-- Arête `null` : style actuel inchangé.
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│ [Date réception]  24/06/2026   [Expéditeur (nom)]  Laurent Jacquot   │  [Tags : usager voirie …]
+│ [Canal réception] Courriel     [Destinataire (nom)] —                │
+│                                                                       │  [Service gestionnaire : Cabinet du Maire ⇄]
+└──────────────────────────────────────────────────────────────────────┘
+```
 
-La sauvegarde existante du workflow (sync des transitions) est étendue pour persister `kind`.
+- Réutilise `InlineEditField` pour les champs éditables (pas de duplication de logique).
+- Le bouton "Transférer à un autre service" (icône ⇄) reste accessible à côté du service gestionnaire.
+- Pour les courriers **sortants** : variante avec Date d'envoi + lien vers le courrier entrant parent.
+- Conserve `readOnly` (mode archive) qui désactive l'édition inline.
 
-## Utilisation côté courrier
+**B. Onglet "Détail du courrier" simplifié**
 
-Dans `ReplyComposer.doSign` (et tout futur point d'automatisation) :
+- Suppression du `<aside class="lg:border-r">` (métadonnées) et du `grid lg:grid-cols-[360px_1fr]`.
+- Le contenu droit (Aperçu / Corps de l'email / pagination Préc/Suiv / Documents) prend toute la largeur.
+- Tout le bloc Service gestionnaire / Transfert / Tags qui est aujourd'hui dans `aside` est déplacé dans la carte d'entête (Tags + Service), ou supprimé du Détail s'il est désormais dans l'entête.
 
-1. Chercher parmi les transitions sortantes celle dont `kind = 'next'`.
-2. Si trouvée → l'emprunter automatiquement après signature.
-3. Sinon → ne **pas** transiter automatiquement et laisser l'utilisateur choisir (on retire le fallback heuristique actuel basé sur `CATEGORY_ORDER`, qui est ambigu).
-4. Afficher un toast d'info si aucune « Suivante » n'est définie : « Aucune étape suivante désignée dans le workflow. »
+**C. Préservation des comportements existants**
 
-## Détails techniques
+- Boutons de transition (Précédent / Suivant / Autres actions) restent en haut à droite, comme aujourd'hui.
+- Badge de statut reste accolé au titre.
+- Bouton retour (flèche gauche) inchangé.
+- Panneau flottant "Notes" (languette ambrée) inchangé.
+- Onglet Contenu et intentions, Actions liées, Réponse, Participants, Liens, Historique : **aucune modification**.
 
-- Fichiers DB : nouvelle migration `..._workflow_transition_kind.sql`.
-- Fichiers front :
-  - `src/pages/WorkflowDetail.tsx` : gestion `onEdgeClick`, sync `kind` dans la sauvegarde, styles d'arêtes calculés à partir de `kind`.
-  - Nouveau composant `src/components/workflow/EdgeEditPanel.tsx` (sélecteur de rôle + nom).
-  - `toEdges()` enrichi : passe `data.kind` aux edges + applique le style conditionnel.
-  - `src/components/courier/ReplyComposer.tsx` : remplace l'heuristique `CATEGORY_ORDER` par un lookup direct sur `kind === 'next'`.
-- Types : régénération automatique de `src/integrations/supabase/types.ts` après migration.
+**D. Responsive**
 
-## Hors périmètre
+- Desktop ≥ lg : 3 colonnes (date+canal | expéditeur+destinataire | tags+service).
+- < lg : empilement vertical des 3 blocs, avec wrap des tags.
 
-- Pas de migration automatique des workflows existants vers des `next`/`previous` (l'admin marque manuellement).
-- Pas de changement sur les boutons manuels de transition dans `ReplyComposer` (toujours toutes les transitions affichées dans le sélecteur).
+### Hors scope (à confirmer si vous voulez l'inclure)
+
+- Renommage / réorganisation des onglets (vous parlez d'évolution des onglets dans le message mais la maquette les conserve à l'identique).
+- Modifications visuelles du panneau de réponse, des actions liées, etc.
+
+## 3 — Vérification
+
+Après implémentation, vérification par capture Playwright sur `/courrier/:id` (entrant et sortant) que :
+1. Les métadonnées sont bien lisibles dans l'entête.
+2. L'onglet Détail est bien plein-largeur.
+3. L'édition inline (titre, date, expéditeur…) fonctionne toujours.
+4. Aucune régression visuelle dans les autres onglets.
