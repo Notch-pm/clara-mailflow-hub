@@ -1,4 +1,4 @@
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { getCourierById } from "@/services/courierService";
@@ -7,6 +7,7 @@ import MailboxSidePanel from "@/components/courier/MailboxSidePanel";
 export default function CourierDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { organizationId } = useOrganization();
 
   const { data: courier, isLoading } = useQuery({
