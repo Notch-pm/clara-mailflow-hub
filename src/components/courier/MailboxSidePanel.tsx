@@ -50,7 +50,7 @@ import DocumentManager from "./DocumentManager";
 import DocumentViewer from "./DocumentViewer";
 import InlineEditField from "./InlineEditField";
 import CourierNotes from "./CourierNotes";
-import NotesInlineSidebar from "./NotesInlineSidebar";
+import FloatingNotesPanel from "./FloatingNotesPanel";
 import { listNotes, type CourierNote } from "@/services/courierNoteService";
 import ParticipantManager from "./ParticipantManager";
 import CourierHistoryTab from "./CourierHistoryTab";
