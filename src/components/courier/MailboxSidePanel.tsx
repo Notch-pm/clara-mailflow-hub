@@ -50,7 +50,7 @@ import DocumentManager from "./DocumentManager";
 import DocumentViewer from "./DocumentViewer";
 import InlineEditField from "./InlineEditField";
 import CourierNotes from "./CourierNotes";
-import NotesInlineSidebar from "./NotesInlineSidebar";
+import FloatingNotesPanel from "./FloatingNotesPanel";
 import { listNotes, type CourierNote } from "@/services/courierNoteService";
 import ParticipantManager from "./ParticipantManager";
 import CourierHistoryTab from "./CourierHistoryTab";
@@ -740,7 +740,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
 
         <Tabs
           defaultValue="detail"
-          className="flex flex-col mb-px flex-1 min-h-0 overflow-hidden"
+          className="flex flex-col mb-px flex-1 min-h-0 overflow-hidden relative"
         >
           {withTabs && (
             <TabsList className={cn("self-start shrink-0", fullScreen ? "mx-4 mt-1 mb-1" : "mx-6 mt-[4px] mb-[4px]")}>
@@ -782,16 +782,6 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   )}
                 </TabsTrigger>
               )}
-              {!isOutbound && !fullScreen && (
-                <TabsTrigger value="notes" className="gap-2">
-                  Notes internes
-                  {notesList.length > 0 && (
-                    <span className="inline-flex items-center justify-center rounded-full bg-green-500/20 text-green-700 px-1.5 text-[10px] font-medium leading-none min-w-[18px] h-[18px]">
-                      {notesList.length}
-                    </span>
-                  )}
-                </TabsTrigger>
-              )}
               <TabsTrigger value="participants" className="gap-2">
                 Participants
                 {participants.length > 0 && (
@@ -817,9 +807,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
             value="detail"
             className={cn(
               "mt-0 data-[state=inactive]:hidden flex-1 min-h-0 overflow-hidden grid grid-cols-1",
-              fullScreen
-                ? "lg:grid-cols-[300px_1fr_260px]"
-                : "lg:grid-cols-[360px_1fr]",
+              "lg:grid-cols-[360px_1fr]",
             )}
             forceMount
           >
@@ -1264,16 +1252,6 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
               </>
             )}
           </section>
-
-          {/* Notes inline sidebar — fullScreen + inbound only */}
-          {fullScreen && withTabs && !isOutbound && (
-            <NotesInlineSidebar
-              courierId={courier.id}
-              organizationId={organizationId}
-              notes={notesList}
-              readOnly={readOnly || isFinalState}
-            />
-          )}
           </TabsContent>
 
           {withTabs && (
@@ -1319,18 +1297,6 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   />
                 </TabsContent>
               )}
-              {!isOutbound && !fullScreen && (
-                <TabsContent
-                  value="notes"
-                  className="flex-1 overflow-y-auto px-6 py-5 mt-0"
-                >
-                  <CourierNotes
-                    courierId={courier.id}
-                    organizationId={organizationId}
-                    readOnly={readOnly || isFinalState}
-                  />
-                </TabsContent>
-              )}
               <TabsContent
                 value="participants"
                 className="flex-1 overflow-y-auto px-6 py-5 mt-0"
@@ -1362,6 +1328,16 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 />
               </TabsContent>
             </>
+          )}
+
+          {/* Floating retractable notes panel — accessible from any tab */}
+          {withTabs && !isOutbound && (
+            <FloatingNotesPanel
+              courierId={courier.id}
+              organizationId={organizationId}
+              notes={notesList}
+              readOnly={readOnly || isFinalState}
+            />
           )}
         </Tabs>
     </>
