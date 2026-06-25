@@ -660,71 +660,82 @@ export default function ReplyComposer({
         : null;
     }
 
-    type Entry = {
-      transitionId: string;
-      label: string;
-      target: { id: string; name: string; category: string | null; is_final?: boolean | null };
-      isForward: boolean;
+    const nextEntry = outgoingTransitions.find(({ transition }) => (transition as any).kind === "next");
+    const prevEntry = outgoingTransitions.find(({ transition }) => (transition as any).kind === "previous");
+    const nominalIds = new Set([nextEntry?.transition.id, prevEntry?.transition.id].filter(Boolean));
+    const others = outgoingTransitions.filter(({ transition }) => !nominalIds.has(transition.id));
+
+    const runTransition = (target: { id: string; name: string; category: string | null; is_final?: boolean | null }) => {
+      doTransition.mutate(target);
     };
 
-    const entries: Entry[] = outgoingTransitions.map(({ transition: t, target }) => {
-      const currentOrder = CATEGORY_ORDER[currentState?.category ?? ""] ?? 0;
-      const targetOrder = CATEGORY_ORDER[target.category ?? ""] ?? 0;
-      return {
-        transitionId: t.id,
-        label: t.name || target.name,
-        target: { id: target.id, name: target.name, category: target.category, is_final: target.is_final },
-        isForward: targetOrder >= currentOrder || target.is_final === true,
-      };
-    });
-
-    const forwards = entries.filter((e) => e.isForward);
-    const backwards = entries.filter((e) => !e.isForward);
-
     return (
-      <Select
-        value=""
-        onValueChange={(id) => {
-          const e = entries.find((x) => x.transitionId === id);
-          if (e) doTransition.mutate(e.target);
-        }}
-        disabled={isBusy || !!readOnly}
-      >
-        <SelectTrigger className="h-8 w-[200px] text-sm">
-          <SelectValue placeholder="Déplacer vers…" />
-        </SelectTrigger>
-        <SelectContent align="end">
-          {forwards.length > 0 && (
-            <SelectGroup>
-              <SelectLabel className="text-[10px] uppercase tracking-wide text-primary">Avancer</SelectLabel>
-              {forwards.map((e) => (
-                <SelectItem key={e.transitionId} value={e.transitionId}>
+      <div className="flex items-center gap-2">
+        {prevEntry && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 gap-1.5"
+            disabled={isBusy || !!readOnly}
+            onClick={() => runTransition({
+              id: prevEntry.target.id,
+              name: prevEntry.target.name,
+              category: prevEntry.target.category,
+              is_final: prevEntry.target.is_final,
+            })}
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            {prevEntry.transition.name || prevEntry.target.name}
+          </Button>
+        )}
+        {nextEntry && (
+          <Button
+            size="sm"
+            className="h-8 gap-1.5"
+            disabled={isBusy || !!readOnly}
+            onClick={() => runTransition({
+              id: nextEntry.target.id,
+              name: nextEntry.target.name,
+              category: nextEntry.target.category,
+              is_final: nextEntry.target.is_final,
+            })}
+          >
+            <span className={dotColor(nextEntry.target.category)} />
+            {nextEntry.transition.name || nextEntry.target.name}
+          </Button>
+        )}
+        {others.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="outline" className="h-8 gap-1.5" disabled={isBusy || !!readOnly}>
+                Autres actions
+                <ChevronDown className="h-3.5 w-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {others.map(({ transition: t, target }) => (
+                <DropdownMenuItem
+                  key={t.id}
+                  onClick={() => runTransition({
+                    id: target.id,
+                    name: target.name,
+                    category: target.category,
+                    is_final: target.is_final,
+                  })}
+                >
                   <div className="flex items-center gap-2">
-                    <span className={dotColor(e.target.category)} />
-                    <span>{e.label}</span>
+                    <span className={dotColor(target.category)} />
+                    <span>{t.name || target.name}</span>
                   </div>
-                </SelectItem>
+                </DropdownMenuItem>
               ))}
-            </SelectGroup>
-          )}
-          {forwards.length > 0 && backwards.length > 0 && <SelectSeparator />}
-          {backwards.length > 0 && (
-            <SelectGroup>
-              <SelectLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">Retour en arrière</SelectLabel>
-              {backwards.map((e) => (
-                <SelectItem key={e.transitionId} value={e.transitionId}>
-                  <div className="flex items-center gap-2">
-                    <span className={dotColor(e.target.category)} />
-                    <span>{e.label}</span>
-                  </div>
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          )}
-        </SelectContent>
-      </Select>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
     );
   };
+
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
