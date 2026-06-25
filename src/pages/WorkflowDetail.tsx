@@ -521,8 +521,10 @@ export default function WorkflowDetail() {
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             onNodeClick={onNodeClick}
+            onEdgeClick={onEdgeClick}
             onPaneClick={onPaneClick}
             onEdgeDoubleClick={onEdgeDoubleClick}
+
             nodeTypes={nodeTypes}
             fitView
             deleteKeyCode="Delete"
