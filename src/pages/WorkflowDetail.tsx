@@ -195,17 +195,20 @@ export default function WorkflowDetail() {
         return;
       }
 
+      const style = EDGE_STYLES.none;
       setEdges((eds) =>
         addEdge(
           {
             ...connection,
             id: `temp-${Date.now()}`,
-            markerEnd: { type: MarkerType.ArrowClosed },
-            style: { strokeWidth: 2 },
+            markerEnd: { type: MarkerType.ArrowClosed, color: style.stroke },
+            style,
+            data: { kind: null, name: "" },
           },
           eds
         )
       );
+
     },
     [nodes, setEdges, toast]
   );
