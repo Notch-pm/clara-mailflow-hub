@@ -1,4 +1,4 @@
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { getCourierById } from "@/services/courierService";
@@ -7,6 +7,7 @@ import MailboxSidePanel from "@/components/courier/MailboxSidePanel";
 export default function CourierDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { organizationId } = useOrganization();
 
   const { data: courier, isLoading } = useQuery({
@@ -35,7 +36,15 @@ export default function CourierDetail() {
       courier={courier as any}
       open={true}
       onOpenChange={(open) => {
-        if (!open) navigate(-1);
+        if (!open) {
+          // navigate(-1) fails (blank page) when there is no prior history entry,
+          // e.g. after a transfer on a deep-linked courier. Fall back to the inbox.
+          if (location.key === "default") {
+            navigate("/boite-aux-lettres", { replace: true });
+          } else {
+            navigate(-1);
+          }
+        }
       }}
       organizationId={organizationId}
       withTabs
