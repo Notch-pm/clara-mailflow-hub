@@ -757,7 +757,339 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
               )}
             </div>
           </div>
+
+          {/* Header metadata card — always visible across tabs */}
+          <div
+            className={cn(
+              "grid gap-x-6 gap-y-1 rounded-lg border bg-card/40 px-4 py-2.5 grid-cols-1 lg:grid-cols-3",
+              fullScreen ? "mx-4 mb-2" : "mx-6 mb-3",
+            )}
+          >
+            {/* Column 1: Dates / Canal / Lien courrier parent */}
+            <div className="space-y-0.5 min-w-0">
+              {isOutbound ? (
+                <InlineEditField
+                  label="Date d'envoi"
+                  type="date"
+                  value={courier.sent_at ? courier.sent_at.slice(0, 10) : ""}
+                  readOnly={readOnly}
+                  onSave={(v) =>
+                    persistCourierUpdate(
+                      { sent_at: v ? new Date(v).toISOString() : null },
+                      "Date modifiée",
+                    )
+                  }
+                  renderDisplay={(v) =>
+                    new Date(v).toLocaleDateString("fr-FR", {
+                      day: "2-digit",
+                      month: "2-digit",
+                      year: "numeric",
+                    })
+                  }
+                />
+              ) : (
+                <InlineEditField
+                  label="Date de réception"
+                  type="date"
+                  value={courier.received_at ? courier.received_at.slice(0, 10) : ""}
+                  readOnly={readOnly}
+                  onSave={(v) =>
+                    persistCourierUpdate(
+                      { received_at: v ? new Date(v).toISOString() : null },
+                      "Date modifiée",
+                    )
+                  }
+                  renderDisplay={(v) =>
+                    new Date(v).toLocaleDateString("fr-FR", {
+                      day: "2-digit",
+                      month: "2-digit",
+                      year: "numeric",
+                    })
+                  }
+                />
+              )}
+              {!isOutbound && (
+                <div className="flex items-center justify-between gap-2 py-0.5">
+                  <span className="text-muted-foreground text-sm shrink-0">Canal de réception</span>
+                  {readOnly ? (
+                    <span className="text-sm font-medium px-2">{channelLabels[courier.channel]}</span>
+                  ) : (
+                    <Select
+                      value={courier.channel}
+                      onValueChange={(v) =>
+                        persistCourierUpdate({ channel: v }, "Canal modifié")
+                      }
+                    >
+                      <SelectTrigger className="h-7 w-auto text-sm border-0 bg-transparent hover:bg-muted px-2 gap-1.5 [&>span]:font-medium">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent align="end">
+                        {(Object.keys(channelLabels) as CourierChannel[]).map((c) => (
+                          <SelectItem key={c} value={c}>
+                            {channelLabels[c]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+              )}
+              {isOutbound && courier.parent_courier_id && (
+                <div className="flex items-center justify-between gap-2 py-0.5">
+                  <span className="text-muted-foreground text-sm shrink-0">Courrier entrant lié</span>
+                  <Link
+                    to={`/courrier/${courier.parent_courier_id}`}
+                    className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+                    Voir le courrier
+                  </Link>
+                </div>
+              )}
+            </div>
+
+            {/* Column 2: Expéditeur / Destinataire */}
+            <div className="space-y-0.5 min-w-0">
+              {isOutbound ? (
+                <div className="flex items-center justify-between gap-2 py-0.5">
+                  <span className="text-muted-foreground text-sm shrink-0">Expéditeur</span>
+                  <span className="text-sm font-medium px-2 truncate">
+                    {parentCourier?.assigned_service ?? (
+                      <span className="text-muted-foreground italic font-normal">—</span>
+                    )}
+                  </span>
+                </div>
+              ) : (
+                <div className="relative pr-7">
+                  <InlineEditField
+                    label="Expéditeur (nom)"
+                    value={sender?.name ?? ""}
+                    placeholder="Nom de l'expéditeur"
+                    maxLength={150}
+                    readOnly={readOnly}
+                    onSave={(v) => upsertParticipant("sender", { name: v.trim() || null })}
+                  />
+                  {sender?.usager_id && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Link
+                          to={`/usagers/${sender.usager_id}`}
+                          onClick={() => onOpenChange(false)}
+                          className="absolute right-0 top-0 inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:text-primary hover:bg-muted transition-colors bg-background"
+                          aria-label="Voir tous les courriers de cet expéditeur"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </Link>
+                      </TooltipTrigger>
+                      <TooltipContent>Voir tous les courriers de cet expéditeur</TooltipContent>
+                    </Tooltip>
+                  )}
+                </div>
+              )}
+              {isOutbound ? (
+                <div className="flex items-center justify-between gap-2 py-0.5">
+                  <span className="text-muted-foreground text-sm shrink-0">Destinataire (nom)</span>
+                  <span className="text-sm font-medium px-2 truncate">
+                    {parentSender?.name ?? (
+                      <span className="text-muted-foreground italic font-normal">—</span>
+                    )}
+                  </span>
+                </div>
+              ) : (
+                <InlineEditField
+                  label="Destinataire (nom)"
+                  value={recipient?.name ?? ""}
+                  placeholder="Nom du destinataire"
+                  maxLength={150}
+                  readOnly={readOnly}
+                  onSave={(v) => upsertParticipant("recipient", { name: v.trim() || null })}
+                />
+              )}
+            </div>
+
+            {/* Column 3: Tags + Service gestionnaire */}
+            <div className="space-y-1.5 min-w-0">
+              <div className="flex items-start justify-between gap-2">
+                <span className="text-muted-foreground text-sm shrink-0 pt-1">Tags</span>
+                <div className="flex flex-wrap items-center gap-1.5 justify-end min-w-0">
+                  {selectedTags.length === 0 && (
+                    <span className="text-xs text-muted-foreground italic pt-1">Aucun tag</span>
+                  )}
+                  {selectedTags.map((tagName) => {
+                    const tag = tagByName.get(tagName.toLowerCase());
+                    const orphan = !tag;
+                    const fg = tag?.color ? readableTextColor(tag.color) : undefined;
+                    return (
+                      <Badge
+                        key={tagName}
+                        variant="secondary"
+                        className={cn(
+                          "gap-1 pl-2 pr-1 border-transparent text-xs",
+                          orphan && "opacity-60 italic",
+                          readOnly && "pr-2",
+                        )}
+                        style={tag?.color ? { backgroundColor: tag.color, color: fg } : undefined}
+                      >
+                        {tagName}
+                        {!readOnly && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              removeTag(tagName);
+                            }}
+                            className="ml-0.5 rounded-full p-0.5 hover:bg-black/20 transition-colors"
+                            aria-label={`Retirer ${tagName}`}
+                            style={fg ? { color: fg } : undefined}
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        )}
+                      </Badge>
+                    );
+                  })}
+                  {!readOnly && (
+                    <Popover open={tagPopoverOpen} onOpenChange={setTagPopoverOpen}>
+                      <PopoverTrigger asChild>
+                        <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" aria-label="Gérer les tags">
+                          <TagIcon className="h-3.5 w-3.5" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-64 p-0" align="end">
+                        <Command>
+                          <CommandInput placeholder="Rechercher un tag…" />
+                          <CommandList>
+                            <CommandEmpty>
+                              Aucun tag défini. Allez dans Paramètres → Classification.
+                            </CommandEmpty>
+                            <CommandGroup>
+                              {(orgTags ?? []).map((tag) => {
+                                const checked = selectedTags.some(
+                                  (t) => t.toLowerCase() === tag.name.toLowerCase(),
+                                );
+                                return (
+                                  <CommandItem
+                                    key={tag.id}
+                                    value={tag.name}
+                                    onSelect={() => toggleTag(tag.name)}
+                                    className="gap-2"
+                                  >
+                                    <span
+                                      className="h-2.5 w-2.5 rounded-full shrink-0"
+                                      style={{ backgroundColor: tag.color ?? "hsl(var(--muted-foreground))" }}
+                                    />
+                                    <span className="flex-1">{tag.name}</span>
+                                    <Check className={cn("h-4 w-4", checked ? "opacity-100" : "opacity-0")} />
+                                  </CommandItem>
+                                );
+                              })}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-muted-foreground text-sm shrink-0">Service gestionnaire</span>
+                <div className="flex items-center gap-1 min-w-0">
+                  {readOnly ? (
+                    <span className="text-sm font-medium truncate px-2">
+                      {courier.assigned_service ?? (
+                        <span className="text-muted-foreground italic font-normal">—</span>
+                      )}
+                    </span>
+                  ) : (
+                    <Popover open={servicePopoverOpen} onOpenChange={setServicePopoverOpen}>
+                      <PopoverTrigger asChild>
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 -mx-1.5 text-sm font-medium hover:bg-muted transition-colors max-w-full"
+                          title={isInitialState ? "Affecter un service" : "Transférer à un autre service"}
+                        >
+                          <span className="truncate">
+                            {courier.assigned_service ?? (
+                              <span className="text-muted-foreground italic font-normal">Non assigné</span>
+                            )}
+                          </span>
+                          <ArrowRightLeft className="h-3 w-3 text-muted-foreground shrink-0" />
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-72 p-3 space-y-2" align="end">
+                        {isInitialState ? (
+                          <>
+                            <p className="text-xs text-muted-foreground">Affecter à un service</p>
+                            <Select
+                              value={currentService?.id ?? ""}
+                              onValueChange={(v) => {
+                                serviceMutation.mutate(v);
+                                setServicePopoverOpen(false);
+                              }}
+                              disabled={serviceMutation.isPending}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Sélectionner un service" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {availableServices.map((s) => (
+                                  <SelectItem key={s.id} value={s.id}>
+                                    {s.name}
+                                    {s.workflow?.name && (
+                                      <span className="text-muted-foreground text-xs ml-2">
+                                        — {s.workflow.name}
+                                      </span>
+                                    )}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            {courier.assigned_service && !currentService && (
+                              <p className="text-xs text-muted-foreground italic">
+                                Service actuel « {courier.assigned_service} » introuvable.
+                              </p>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-xs text-muted-foreground">
+                              Transférer à un autre service. Le courrier sera remis à l'état initial.
+                            </p>
+                            <Select
+                              value=""
+                              onValueChange={(serviceId) => {
+                                setTransferTargetServiceId(serviceId);
+                                setTransferConfirmOpen(true);
+                                setServicePopoverOpen(false);
+                              }}
+                              disabled={transferMutation.isPending}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Choisir un service…" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {(services ?? [])
+                                  .filter((s) => s.name !== localAssignedService)
+                                  .map((s) => (
+                                    <SelectItem key={s.id} value={s.id}>
+                                      {s.name}
+                                    </SelectItem>
+                                  ))}
+                              </SelectContent>
+                            </Select>
+                          </>
+                        )}
+                      </PopoverContent>
+                    </Popover>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
+
 
         <Tabs
           defaultValue="detail"
