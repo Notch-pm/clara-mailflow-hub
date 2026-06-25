@@ -356,10 +356,34 @@ export default function ReplyComposer({
         bodyHtml: newBody, signedBy: currentUserId!, signedStateId: currentState?.id ?? null,
       });
       setBody(newBody);
+
+      // Auto-advance to the next workflow state after signing.
+      const currentOrder = CATEGORY_ORDER[currentState?.category ?? ""] ?? 0;
+      const forward = outgoingTransitions.find(({ target }) => {
+        const targetOrder = CATEGORY_ORDER[target.category ?? ""] ?? 0;
+        return targetOrder >= currentOrder || target.is_final === true;
+      }) ?? outgoingTransitions[0];
+      if (forward) {
+        await transitionReplyState(
+          organizationId,
+          courierId,
+          ensured.id,
+          forward.target.id,
+          forward.target.name,
+          forward.target.category,
+        );
+      }
     },
-    onSuccess: () => { setDirty(false); invalidate(); refetchReplies(); toast.success("Réponse signée"); },
+    onSuccess: () => {
+      setDirty(false);
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
+      refetchReplies();
+      toast.success("Réponse signée");
+    },
     onError: (err: Error) => toast.error(err.message),
   });
+
 
   const doUnsign = useMutation({
     mutationFn: async () => {
