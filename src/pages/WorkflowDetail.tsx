@@ -88,16 +88,35 @@ function layoutNodes(states: WorkflowState[], transitions: WorkflowTransition[])
   });
 }
 
-function toEdges(transitions: WorkflowTransition[]): Edge[] {
-  return transitions.map((t) => ({
-    id: t.id,
-    source: t.from_state_id,
-    target: t.to_state_id,
-    label: t.name ?? undefined,
-    markerEnd: { type: MarkerType.ArrowClosed },
-    style: { strokeWidth: 2 },
-  }));
+const EDGE_STYLES: Record<"next" | "previous" | "none", { stroke: string; strokeWidth: number; strokeDasharray?: string }> = {
+  next: { stroke: "#0acf83", strokeWidth: 2.5 },
+  previous: { stroke: "#d97706", strokeWidth: 2, strokeDasharray: "6 4" },
+  none: { stroke: "#94a3b8", strokeWidth: 2 },
+};
+
+function edgeLabel(name: string | null | undefined, kind: TransitionKind): string | undefined {
+  const prefix = kind === "next" ? "→ " : kind === "previous" ? "← " : "";
+  const base = name ?? "";
+  const result = `${prefix}${base}`.trim();
+  return result.length > 0 ? result : undefined;
 }
+
+function toEdges(transitions: WorkflowTransition[]): Edge[] {
+  return transitions.map((t) => {
+    const kind = ((t as any).kind ?? null) as TransitionKind;
+    const style = EDGE_STYLES[kind ?? "none"];
+    return {
+      id: t.id,
+      source: t.from_state_id,
+      target: t.to_state_id,
+      label: edgeLabel(t.name, kind),
+      markerEnd: { type: MarkerType.ArrowClosed, color: style.stroke },
+      style,
+      data: { kind, name: t.name ?? "" },
+    };
+  });
+}
+
 
 // Business rule helpers
 const CATEGORY_ORDER: Record<WorkflowCategory, number> = {
