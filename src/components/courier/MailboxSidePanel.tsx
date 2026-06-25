@@ -782,16 +782,6 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   )}
                 </TabsTrigger>
               )}
-              {!isOutbound && !fullScreen && (
-                <TabsTrigger value="notes" className="gap-2">
-                  Notes internes
-                  {notesList.length > 0 && (
-                    <span className="inline-flex items-center justify-center rounded-full bg-green-500/20 text-green-700 px-1.5 text-[10px] font-medium leading-none min-w-[18px] h-[18px]">
-                      {notesList.length}
-                    </span>
-                  )}
-                </TabsTrigger>
-              )}
               <TabsTrigger value="participants" className="gap-2">
                 Participants
                 {participants.length > 0 && (
