@@ -97,7 +97,7 @@ export default function InlineEditField({
               }}
               placeholder={placeholder}
               disabled={saving}
-              className="h-7 text-sm"
+              className={cn("h-8 text-sm py-1 px-1.5", displayClassName)}
             />
             <Button
               type="button"
