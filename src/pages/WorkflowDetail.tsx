@@ -22,6 +22,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { StateNode, type StateNodeData } from "@/components/workflow/StateNode";
 import { StateEditPanel } from "@/components/workflow/StateEditPanel";
+import { EdgeEditPanel } from "@/components/workflow/EdgeEditPanel";
 import { WorkflowToolbar } from "@/components/workflow/WorkflowToolbar";
 import {
   getWorkflowById,
@@ -29,12 +30,15 @@ import {
   updateState,
   deleteState,
   createTransition,
+  updateTransition,
   deleteTransition,
   getAffectedCouriers,
   clearInitialFlag,
   clearSignatureFlag,
   clearSendFlag,
+  type TransitionKind,
 } from "@/services/workflowService";
+
 import type { WorkflowCategory, WorkflowState, WorkflowTransition } from "@/types/courier";
 import {
   AlertDialog,
@@ -84,16 +88,35 @@ function layoutNodes(states: WorkflowState[], transitions: WorkflowTransition[])
   });
 }
 
-function toEdges(transitions: WorkflowTransition[]): Edge[] {
-  return transitions.map((t) => ({
-    id: t.id,
-    source: t.from_state_id,
-    target: t.to_state_id,
-    label: t.name ?? undefined,
-    markerEnd: { type: MarkerType.ArrowClosed },
-    style: { strokeWidth: 2 },
-  }));
+const EDGE_STYLES: Record<"next" | "previous" | "none", { stroke: string; strokeWidth: number; strokeDasharray?: string }> = {
+  next: { stroke: "#0acf83", strokeWidth: 2.5 },
+  previous: { stroke: "#d97706", strokeWidth: 2, strokeDasharray: "6 4" },
+  none: { stroke: "#94a3b8", strokeWidth: 2 },
+};
+
+function edgeLabel(name: string | null | undefined, kind: TransitionKind): string | undefined {
+  const prefix = kind === "next" ? "→ " : kind === "previous" ? "← " : "";
+  const base = name ?? "";
+  const result = `${prefix}${base}`.trim();
+  return result.length > 0 ? result : undefined;
 }
+
+function toEdges(transitions: WorkflowTransition[]): Edge[] {
+  return transitions.map((t) => {
+    const kind = ((t as any).kind ?? null) as TransitionKind;
+    const style = EDGE_STYLES[kind ?? "none"];
+    return {
+      id: t.id,
+      source: t.from_state_id,
+      target: t.to_state_id,
+      label: edgeLabel(t.name, kind),
+      markerEnd: { type: MarkerType.ArrowClosed, color: style.stroke },
+      style,
+      data: { kind, name: t.name ?? "" },
+    };
+  });
+}
+
 
 // Business rule helpers
 const CATEGORY_ORDER: Record<WorkflowCategory, number> = {
@@ -126,8 +149,10 @@ export default function WorkflowDetail() {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{ stateId: string; courierCount: number } | null>(null);
+
 
   const { data: workflow, isLoading } = useQuery({
     queryKey: ["workflow", workflowId],
@@ -170,17 +195,20 @@ export default function WorkflowDetail() {
         return;
       }
 
+      const style = EDGE_STYLES.none;
       setEdges((eds) =>
         addEdge(
           {
             ...connection,
             id: `temp-${Date.now()}`,
-            markerEnd: { type: MarkerType.ArrowClosed },
-            style: { strokeWidth: 2 },
+            markerEnd: { type: MarkerType.ArrowClosed, color: style.stroke },
+            style,
+            data: { kind: null, name: "" },
           },
           eds
         )
       );
+
     },
     [nodes, setEdges, toast]
   );
@@ -341,15 +369,31 @@ export default function WorkflowDetail() {
         }
       }
 
+      // Update existing transitions whose name or kind changed
+      const existingById = new Map(existingTransitions.map((t) => [t.id, t]));
+      for (const e of edges) {
+        if (e.id.startsWith("temp-")) continue;
+        const ex = existingById.get(e.id);
+        if (!ex) continue;
+        const newName = (e.data as any)?.name ?? null;
+        const newKind = ((e.data as any)?.kind ?? null) as TransitionKind;
+        const oldKind = ((ex as any).kind ?? null) as TransitionKind;
+        if ((ex.name ?? null) !== (newName || null) || oldKind !== newKind) {
+          await updateTransition(e.id, { name: newName || null, kind: newKind });
+        }
+      }
+
       // Create new transitions (temp IDs)
       for (const e of edges) {
         if (e.id.startsWith("temp-")) {
+          const data_ = (e.data as any) ?? {};
           const { data, error } = await createTransition(
             organizationId,
             workflowId,
             e.source,
             e.target,
-            typeof e.label === "string" ? e.label : undefined
+            data_.name || undefined,
+            (data_.kind ?? null) as TransitionKind,
           );
           if (error) throw error;
           // Update edge ID with real ID
@@ -358,6 +402,7 @@ export default function WorkflowDetail() {
           }
         }
       }
+
 
       toast({ title: "Sauvegardé", description: "Le workflow a été mis à jour." });
       queryClient.invalidateQueries({ queryKey: ["workflow", workflowId] });
@@ -370,10 +415,17 @@ export default function WorkflowDetail() {
 
   const onNodeClick = useCallback((_: any, node: Node) => {
     setSelectedNodeId(node.id);
+    setSelectedEdgeId(null);
+  }, []);
+
+  const onEdgeClick = useCallback((_: any, edge: Edge) => {
+    setSelectedEdgeId(edge.id);
+    setSelectedNodeId(null);
   }, []);
 
   const onPaneClick = useCallback(() => {
     setSelectedNodeId(null);
+    setSelectedEdgeId(null);
   }, []);
 
   const onEdgeDoubleClick = useCallback(
@@ -386,9 +438,62 @@ export default function WorkflowDetail() {
           setEdges((eds) => eds.filter((e) => e.id !== edge.id));
         }
       }
+      setSelectedEdgeId(null);
     },
     [setEdges]
   );
+
+  const selectedEdge = useMemo(
+    () => edges.find((e) => e.id === selectedEdgeId),
+    [edges, selectedEdgeId]
+  );
+
+  const handleUpdateEdge = useCallback(
+    (data: { name?: string; kind?: TransitionKind }) => {
+      if (!selectedEdgeId) return;
+      const currentSource = edges.find((e) => e.id === selectedEdgeId)?.source;
+      setEdges((eds) =>
+        eds.map((e) => {
+          if (e.id !== selectedEdgeId) {
+            // Enforce single 'next'/'previous' per source state locally
+            if (data.kind && currentSource && e.source === currentSource && (e.data as any)?.kind === data.kind) {
+              const newData = { ...(e.data as any), kind: null };
+              const style = EDGE_STYLES.none;
+              return {
+                ...e,
+                data: newData,
+                style,
+                markerEnd: { type: MarkerType.ArrowClosed, color: style.stroke },
+                label: edgeLabel(newData.name, null),
+              };
+            }
+            return e;
+          }
+          const next = { ...(e.data as any), ...data };
+          const kind = (next.kind ?? null) as TransitionKind;
+          const style = EDGE_STYLES[kind ?? "none"];
+          return {
+            ...e,
+            data: next,
+            style,
+            markerEnd: { type: MarkerType.ArrowClosed, color: style.stroke },
+            label: edgeLabel(next.name, kind),
+          };
+        })
+      );
+    },
+    [selectedEdgeId, edges, setEdges]
+  );
+
+  const handleDeleteEdge = useCallback(async () => {
+    if (!selectedEdgeId) return;
+    if (!selectedEdgeId.startsWith("temp-")) {
+      await deleteTransition(selectedEdgeId);
+    }
+    setEdges((eds) => eds.filter((e) => e.id !== selectedEdgeId));
+    setSelectedEdgeId(null);
+  }, [selectedEdgeId, setEdges]);
+
 
   if (isLoading) {
     return <div className="flex items-center justify-center h-64 text-muted-foreground">Chargement…</div>;
@@ -416,8 +521,10 @@ export default function WorkflowDetail() {
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             onNodeClick={onNodeClick}
+            onEdgeClick={onEdgeClick}
             onPaneClick={onPaneClick}
             onEdgeDoubleClick={onEdgeDoubleClick}
+
             nodeTypes={nodeTypes}
             fitView
             deleteKeyCode="Delete"
@@ -443,6 +550,20 @@ export default function WorkflowDetail() {
             onClose={() => setSelectedNodeId(null)}
           />
         )}
+
+        {selectedEdge && selectedEdgeId && (
+          <EdgeEditPanel
+            edgeId={selectedEdgeId}
+            name={((selectedEdge.data as any)?.name as string) ?? ""}
+            kind={((selectedEdge.data as any)?.kind ?? null) as TransitionKind}
+            sourceLabel={(nodes.find((n) => n.id === selectedEdge.source)?.data as unknown as StateNodeData | undefined)?.label}
+            targetLabel={(nodes.find((n) => n.id === selectedEdge.target)?.data as unknown as StateNodeData | undefined)?.label}
+            onUpdate={handleUpdateEdge}
+            onDelete={handleDeleteEdge}
+            onClose={() => setSelectedEdgeId(null)}
+          />
+        )}
+
       </div>
 
       <AlertDialog open={!!deleteConfirm} onOpenChange={() => setDeleteConfirm(null)}>
