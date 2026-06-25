@@ -616,6 +616,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   maxLength={255}
                   displayClassName="text-lg font-semibold"
                   readOnly={readOnly}
+                  multiline
                   onSave={(v) => persistCourierUpdate({ subject: v.trim() || null }, "Titre modifié")}
                 />
               </div>
