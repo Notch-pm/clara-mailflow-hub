@@ -1297,18 +1297,6 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   />
                 </TabsContent>
               )}
-              {!isOutbound && !fullScreen && (
-                <TabsContent
-                  value="notes"
-                  className="flex-1 overflow-y-auto px-6 py-5 mt-0"
-                >
-                  <CourierNotes
-                    courierId={courier.id}
-                    organizationId={organizationId}
-                    readOnly={readOnly || isFinalState}
-                  />
-                </TabsContent>
-              )}
               <TabsContent
                 value="participants"
                 className="flex-1 overflow-y-auto px-6 py-5 mt-0"
