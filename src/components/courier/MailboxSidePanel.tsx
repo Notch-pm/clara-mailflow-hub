@@ -1262,16 +1262,6 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
               </>
             )}
           </section>
-
-          {/* Notes inline sidebar — fullScreen + inbound only */}
-          {fullScreen && withTabs && !isOutbound && (
-            <NotesInlineSidebar
-              courierId={courier.id}
-              organizationId={organizationId}
-              notes={notesList}
-              readOnly={readOnly || isFinalState}
-            />
-          )}
           </TabsContent>
 
           {withTabs && (
