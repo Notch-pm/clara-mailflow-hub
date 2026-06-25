@@ -22,7 +22,7 @@ export default function FloatingNotesPanel({ courierId, organizationId, notes, r
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="absolute right-0 top-1/2 -translate-y-1/2 z-20 flex flex-col items-center gap-2 rounded-l-lg bg-amber-200 hover:bg-amber-300 text-amber-900 border border-r-0 border-amber-300 shadow-md px-1.5 py-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+          className="absolute right-0 top-20 z-20 flex flex-col items-center gap-2 rounded-l-lg bg-amber-200 hover:bg-amber-300 text-amber-900 border border-r-0 border-amber-300 shadow-md px-1.5 py-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
           aria-label={`Ouvrir les notes internes (${count})`}
           title="Notes internes"
         >
@@ -45,15 +45,17 @@ export default function FloatingNotesPanel({ courierId, organizationId, notes, r
         aria-hidden={!open}
       >
         <div className="relative h-full flex flex-col">
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            className="absolute -left-7 top-1/2 -translate-y-1/2 z-10 flex items-center justify-center h-12 w-7 rounded-l-md bg-amber-200 hover:bg-amber-300 text-amber-900 border border-r-0 border-amber-300 shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
-            aria-label="Fermer les notes internes"
-            title="Fermer"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </button>
+          {open && (
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="absolute -left-7 top-20 z-10 flex items-center justify-center h-12 w-7 rounded-l-md bg-amber-200 hover:bg-amber-300 text-amber-900 border border-r-0 border-amber-300 shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+              aria-label="Fermer les notes internes"
+              title="Fermer"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          )}
           <NotesInlineSidebar
             courierId={courierId}
             organizationId={organizationId}
