@@ -133,13 +133,24 @@ export async function deleteState(stateId: string, reassignToStateId?: string | 
   return supabase.from("workflow_states").delete().eq("id", stateId);
 }
 
+export type TransitionKind = "next" | "previous" | null;
+
 export async function createTransition(
   organizationId: string,
   workflowId: string,
   fromStateId: string,
   toStateId: string,
-  name?: string
+  name?: string,
+  kind?: TransitionKind,
 ) {
+  // Enforce single 'next'/'previous' per source state by clearing the previous holder.
+  if (kind) {
+    await supabase
+      .from("workflow_transitions")
+      .update({ kind: null } as never)
+      .eq("from_state_id", fromStateId)
+      .eq("kind", kind);
+  }
   return supabase
     .from("workflow_transitions")
     .insert({
@@ -148,7 +159,36 @@ export async function createTransition(
       from_state_id: fromStateId,
       to_state_id: toStateId,
       name: name ?? null,
-    })
+      kind: kind ?? null,
+    } as never)
+    .select()
+    .single();
+}
+
+export async function updateTransition(
+  transitionId: string,
+  data: { name?: string | null; kind?: TransitionKind },
+) {
+  // Enforce single 'next'/'previous' per source state.
+  if (data.kind) {
+    const { data: current } = await supabase
+      .from("workflow_transitions")
+      .select("from_state_id")
+      .eq("id", transitionId)
+      .single();
+    if (current?.from_state_id) {
+      await supabase
+        .from("workflow_transitions")
+        .update({ kind: null } as never)
+        .eq("from_state_id", current.from_state_id)
+        .eq("kind", data.kind)
+        .neq("id", transitionId);
+    }
+  }
+  return supabase
+    .from("workflow_transitions")
+    .update(data as never)
+    .eq("id", transitionId)
     .select()
     .single();
 }
@@ -156,6 +196,7 @@ export async function createTransition(
 export async function deleteTransition(transitionId: string) {
   return supabase.from("workflow_transitions").delete().eq("id", transitionId);
 }
+
 
 export async function getAffectedCouriers(stateIds: string[]) {
   if (stateIds.length === 0) return { data: [], error: null };
