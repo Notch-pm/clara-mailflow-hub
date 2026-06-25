@@ -550,6 +550,20 @@ export default function WorkflowDetail() {
             onClose={() => setSelectedNodeId(null)}
           />
         )}
+
+        {selectedEdge && selectedEdgeId && (
+          <EdgeEditPanel
+            edgeId={selectedEdgeId}
+            name={((selectedEdge.data as any)?.name as string) ?? ""}
+            kind={((selectedEdge.data as any)?.kind ?? null) as TransitionKind}
+            sourceLabel={(nodes.find((n) => n.id === selectedEdge.source)?.data as unknown as StateNodeData | undefined)?.label}
+            targetLabel={(nodes.find((n) => n.id === selectedEdge.target)?.data as unknown as StateNodeData | undefined)?.label}
+            onUpdate={handleUpdateEdge}
+            onDelete={handleDeleteEdge}
+            onClose={() => setSelectedEdgeId(null)}
+          />
+        )}
+
       </div>
 
       <AlertDialog open={!!deleteConfirm} onOpenChange={() => setDeleteConfirm(null)}>
