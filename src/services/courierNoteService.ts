@@ -9,11 +9,24 @@ export interface CourierNote {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  mentioned_user_ids: string[];
 }
 
 function preview(text: string, max = 80): string {
   const t = text.trim().replace(/\s+/g, " ");
   return t.length > max ? `${t.slice(0, max)}…` : t;
+}
+
+async function notifyMentions(courierId: string, newMentions: string[]) {
+  if (newMentions.length === 0) return;
+  try {
+    await supabase.functions.invoke("send-mention-notification", {
+      body: { courier_id: courierId, mentioned_user_ids: newMentions },
+    });
+  } catch (e) {
+    // Non-bloquant
+    console.warn("notifyMentions failed", e);
+  }
 }
 
 export async function listNotes(courierId: string): Promise<CourierNote[]> {
@@ -30,10 +43,12 @@ export async function createNote(
   orgId: string,
   courierId: string,
   content: string,
+  mentionedUserIds: string[] = [],
 ): Promise<CourierNote> {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  const uniqueMentions = [...new Set(mentionedUserIds)].filter(Boolean);
   const { data, error } = await supabase
     .from("courier_notes")
     .insert({
@@ -41,18 +56,34 @@ export async function createNote(
       courier_id: courierId,
       content: content.trim(),
       created_by: user?.id ?? null,
-    })
+      mentioned_user_ids: uniqueMentions,
+    } as never)
     .select()
     .single();
   if (error) throw error;
   await logEvent(orgId, courierId, "note_added", { preview: preview(content) });
+  // Notify (exclude self — also filtered server-side)
+  const toNotify = uniqueMentions.filter((id) => id !== user?.id);
+  await notifyMentions(courierId, toNotify);
   return data as unknown as CourierNote;
 }
 
-export async function updateNote(id: string, content: string): Promise<CourierNote> {
+export async function updateNote(
+  id: string,
+  content: string,
+  mentionedUserIds: string[] = [],
+): Promise<CourierNote> {
+  const { data: existing } = await supabase
+    .from("courier_notes")
+    .select("mentioned_user_ids")
+    .eq("id", id)
+    .maybeSingle();
+  const previous = new Set(((existing as unknown as { mentioned_user_ids?: string[] } | null)?.mentioned_user_ids) ?? []);
+  const uniqueMentions = [...new Set(mentionedUserIds)].filter(Boolean);
+
   const { data, error } = await supabase
     .from("courier_notes")
-    .update({ content: content.trim() })
+    .update({ content: content.trim(), mentioned_user_ids: uniqueMentions } as never)
     .eq("id", id)
     .select()
     .single();
@@ -61,6 +92,11 @@ export async function updateNote(id: string, content: string): Promise<CourierNo
   await logEvent(row.organization_id, row.courier_id, "note_updated", {
     preview: preview(content),
   });
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const newOnes = uniqueMentions.filter((id) => !previous.has(id) && id !== user?.id);
+  await notifyMentions(row.courier_id, newOnes);
   return row;
 }
 
