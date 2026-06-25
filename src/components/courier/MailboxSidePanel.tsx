@@ -110,6 +110,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
+  const [servicePopoverOpen, setServicePopoverOpen] = useState(false);
   const [replyState, setReplyState] = useState<{ name: string; category: string | null } | null>(null);
   const [transferTargetServiceId, setTransferTargetServiceId] = useState<string>("");
   const [transferConfirmOpen, setTransferConfirmOpen] = useState(false);
