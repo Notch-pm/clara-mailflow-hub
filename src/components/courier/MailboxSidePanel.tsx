@@ -757,13 +757,15 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
               )}
             </div>
           </div>
+        </div>
 
-          {/* Header metadata card — always visible across tabs */}
-          <div
+        <div className="flex flex-1 min-h-0 overflow-hidden">
+          <aside
             className={cn(
-              "grid gap-x-6 gap-y-1 rounded-lg border bg-card/40 px-4 py-2.5 grid-cols-1 lg:grid-cols-3",
-              fullScreen ? "mx-4 mb-2" : "mx-6 mb-3",
+              "shrink-0 border-r overflow-y-auto bg-muted/10 px-4 py-4 space-y-4",
+              "w-64 xl:w-72",
             )}
+            aria-label="Informations courrier"
           >
             {/* Column 1: Dates / Canal / Lien courrier parent */}
             <div className="space-y-0.5 min-w-0">
@@ -810,7 +812,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
               )}
               {!isOutbound && (
                 <div className="flex items-center justify-between gap-2 py-0.5">
-                  <span className="text-muted-foreground text-sm shrink-0">Canal de réception</span>
+                  <span className="text-muted-foreground text-sm shrink-0">Canal</span>
                   {readOnly ? (
                     <span className="text-sm font-medium px-2">{channelLabels[courier.channel]}</span>
                   ) : (
@@ -836,17 +838,19 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
               )}
               {isOutbound && courier.parent_courier_id && (
                 <div className="flex items-center justify-between gap-2 py-0.5">
-                  <span className="text-muted-foreground text-sm shrink-0">Courrier entrant lié</span>
+                  <span className="text-muted-foreground text-sm shrink-0">Courrier lié</span>
                   <Link
                     to={`/courrier/${courier.parent_courier_id}`}
                     className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
                   >
                     <ExternalLink className="h-3.5 w-3.5 shrink-0" />
-                    Voir le courrier
+                    Voir
                   </Link>
                 </div>
               )}
             </div>
+
+            <Separator />
 
             {/* Column 2: Expéditeur / Destinataire */}
             <div className="space-y-0.5 min-w-0">
@@ -862,7 +866,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
               ) : (
                 <div className="relative pr-7">
                   <InlineEditField
-                    label="Expéditeur (nom)"
+                    label="Expéditeur"
                     value={sender?.name ?? ""}
                     placeholder="Nom de l'expéditeur"
                     maxLength={150}
@@ -888,7 +892,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
               )}
               {isOutbound ? (
                 <div className="flex items-center justify-between gap-2 py-0.5">
-                  <span className="text-muted-foreground text-sm shrink-0">Destinataire (nom)</span>
+                  <span className="text-muted-foreground text-sm shrink-0">Destinataire</span>
                   <span className="text-sm font-medium px-2 truncate">
                     {parentSender?.name ?? (
                       <span className="text-muted-foreground italic font-normal">—</span>
@@ -897,7 +901,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 </div>
               ) : (
                 <InlineEditField
-                  label="Destinataire (nom)"
+                  label="Destinataire"
                   value={recipient?.name ?? ""}
                   placeholder="Nom du destinataire"
                   maxLength={150}
@@ -907,13 +911,15 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
               )}
             </div>
 
+            <Separator />
+
             {/* Column 3: Tags + Service gestionnaire */}
-            <div className="space-y-1.5 min-w-0">
-              <div className="flex items-start justify-between gap-2">
-                <span className="text-muted-foreground text-sm shrink-0 pt-1">Tags</span>
-                <div className="flex flex-wrap items-center gap-1.5 justify-end min-w-0">
+            <div className="space-y-2 min-w-0">
+              <div className="space-y-1.5">
+                <span className="text-muted-foreground text-sm">Tags</span>
+                <div className="flex flex-wrap items-center gap-1.5">
                   {selectedTags.length === 0 && (
-                    <span className="text-xs text-muted-foreground italic pt-1">Aucun tag</span>
+                    <span className="text-xs text-muted-foreground italic">Aucun tag</span>
                   )}
                   {selectedTags.map((tagName) => {
                     const tag = tagByName.get(tagName.toLowerCase());
@@ -956,7 +962,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                           <TagIcon className="h-3.5 w-3.5" />
                         </Button>
                       </PopoverTrigger>
-                      <PopoverContent className="w-64 p-0" align="end">
+                      <PopoverContent className="w-64 p-0" align="start">
                         <Command>
                           <CommandInput placeholder="Rechercher un tag…" />
                           <CommandList>
@@ -980,7 +986,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                                       style={{ backgroundColor: tag.color ?? "hsl(var(--muted-foreground))" }}
                                     />
                                     <span className="flex-1">{tag.name}</span>
-                                    <Check className={cn("h-4 w-4", checked ? "opacity-100" : "opacity-0")} />
+                                    {checked && <Check className="h-4 w-4" />}
                                   </CommandItem>
                                 );
                               })}
@@ -993,11 +999,11 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 </div>
               </div>
 
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-muted-foreground text-sm shrink-0">Service gestionnaire</span>
-                <div className="flex items-center gap-1 min-w-0">
+              <div className="space-y-1">
+                <span className="text-muted-foreground text-sm">Service gestionnaire</span>
+                <div className="min-w-0">
                   {readOnly ? (
-                    <span className="text-sm font-medium truncate px-2">
+                    <span className="text-sm font-medium truncate px-2 block">
                       {courier.assigned_service ?? (
                         <span className="text-muted-foreground italic font-normal">—</span>
                       )}
@@ -1007,7 +1013,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                       <PopoverTrigger asChild>
                         <button
                           type="button"
-                          className="inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 -mx-1.5 text-sm font-medium hover:bg-muted transition-colors max-w-full"
+                          className="inline-flex w-full items-center justify-between gap-1.5 rounded px-1.5 py-0.5 text-sm font-medium hover:bg-muted transition-colors"
                           title={isInitialState ? "Affecter un service" : "Transférer à un autre service"}
                         >
                           <span className="truncate">
@@ -1018,7 +1024,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                           <ArrowRightLeft className="h-3 w-3 text-muted-foreground shrink-0" />
                         </button>
                       </PopoverTrigger>
-                      <PopoverContent className="w-72 p-3 space-y-2" align="end">
+                      <PopoverContent className="w-72 p-3 space-y-2" align="start">
                         {isInitialState ? (
                           <>
                             <p className="text-xs text-muted-foreground">Affecter à un service</p>
@@ -1087,14 +1093,12 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 </div>
               </div>
             </div>
-          </div>
-        </div>
+          </aside>
 
-
-        <Tabs
-          defaultValue="detail"
-          className="flex flex-col mb-px flex-1 min-h-0 overflow-hidden relative"
-        >
+          <Tabs
+            defaultValue="detail"
+            className="flex flex-col mb-px flex-1 min-h-0 overflow-hidden relative"
+          >
           {withTabs && (
             <TabsList className={cn("self-start shrink-0", fullScreen ? "mx-4 mt-1 mb-1" : "mx-6 mt-[4px] mb-[4px]")}>
               <TabsTrigger value="detail">Détail du courrier</TabsTrigger>
@@ -1345,7 +1349,9 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
             />
           )}
         </Tabs>
+        </div>
     </>
+
   );
 
   if (fullScreen) {
