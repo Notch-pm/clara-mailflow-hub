@@ -149,8 +149,10 @@ export default function WorkflowDetail() {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{ stateId: string; courierCount: number } | null>(null);
+
 
   const { data: workflow, isLoading } = useQuery({
     queryKey: ["workflow", workflowId],
