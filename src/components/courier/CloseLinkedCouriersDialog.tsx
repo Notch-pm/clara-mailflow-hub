@@ -246,7 +246,7 @@ export default function CloseLinkedCouriersDialog({
                           {r.chrono}
                         </Badge>
                       )}
-                      <span className="text-sm font-medium truncate">
+                      <span className="text-sm font-medium line-clamp-2 break-words">
                         {r.subject ?? "Sans objet"}
                       </span>
                       <Link
