@@ -415,10 +415,17 @@ export default function WorkflowDetail() {
 
   const onNodeClick = useCallback((_: any, node: Node) => {
     setSelectedNodeId(node.id);
+    setSelectedEdgeId(null);
+  }, []);
+
+  const onEdgeClick = useCallback((_: any, edge: Edge) => {
+    setSelectedEdgeId(edge.id);
+    setSelectedNodeId(null);
   }, []);
 
   const onPaneClick = useCallback(() => {
     setSelectedNodeId(null);
+    setSelectedEdgeId(null);
   }, []);
 
   const onEdgeDoubleClick = useCallback(
@@ -431,9 +438,62 @@ export default function WorkflowDetail() {
           setEdges((eds) => eds.filter((e) => e.id !== edge.id));
         }
       }
+      setSelectedEdgeId(null);
     },
     [setEdges]
   );
+
+  const selectedEdge = useMemo(
+    () => edges.find((e) => e.id === selectedEdgeId),
+    [edges, selectedEdgeId]
+  );
+
+  const handleUpdateEdge = useCallback(
+    (data: { name?: string; kind?: TransitionKind }) => {
+      if (!selectedEdgeId) return;
+      const currentSource = edges.find((e) => e.id === selectedEdgeId)?.source;
+      setEdges((eds) =>
+        eds.map((e) => {
+          if (e.id !== selectedEdgeId) {
+            // Enforce single 'next'/'previous' per source state locally
+            if (data.kind && currentSource && e.source === currentSource && (e.data as any)?.kind === data.kind) {
+              const newData = { ...(e.data as any), kind: null };
+              const style = EDGE_STYLES.none;
+              return {
+                ...e,
+                data: newData,
+                style,
+                markerEnd: { type: MarkerType.ArrowClosed, color: style.stroke },
+                label: edgeLabel(newData.name, null),
+              };
+            }
+            return e;
+          }
+          const next = { ...(e.data as any), ...data };
+          const kind = (next.kind ?? null) as TransitionKind;
+          const style = EDGE_STYLES[kind ?? "none"];
+          return {
+            ...e,
+            data: next,
+            style,
+            markerEnd: { type: MarkerType.ArrowClosed, color: style.stroke },
+            label: edgeLabel(next.name, kind),
+          };
+        })
+      );
+    },
+    [selectedEdgeId, edges, setEdges]
+  );
+
+  const handleDeleteEdge = useCallback(async () => {
+    if (!selectedEdgeId) return;
+    if (!selectedEdgeId.startsWith("temp-")) {
+      await deleteTransition(selectedEdgeId);
+    }
+    setEdges((eds) => eds.filter((e) => e.id !== selectedEdgeId));
+    setSelectedEdgeId(null);
+  }, [selectedEdgeId, setEdges]);
+
 
   if (isLoading) {
     return <div className="flex items-center justify-center h-64 text-muted-foreground">Chargement…</div>;
