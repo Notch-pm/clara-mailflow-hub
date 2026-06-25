@@ -1,54 +1,55 @@
-# Mentions @utilisateur dans les notes internes
+## Objectif
 
-Ajouter la possibilité de mentionner un utilisateur de l'organisation dans une note interne via `@`, et notifier la personne mentionnée par email (template SMTP brandé déjà utilisé pour le reset password).
+Permettre, dans l'éditeur de workflow, de désigner explicitement pour chaque état une transition sortante **« Suivante »** (nominale, en avant) et/ou une transition sortante **« Précédente »** (retour en arrière nominal). Cette désignation servira de référence fiable pour les automatisations — notamment l'avancement automatique après signature d'une réponse — quand un état a plusieurs sorties.
 
-## UX
+## Modèle de données
 
-- Dans le `Textarea` d'ajout/édition d'une note (`NotesInlineSidebar.tsx`) :
-  - Quand l'utilisateur tape `@`, un popover apparaît sous le curseur avec la liste des membres actifs de l'organisation.
-  - Filtre en temps réel sur la frappe (`@jean` → filtre par prénom/nom/email).
-  - Navigation clavier ↑/↓, validation `Enter` ou `Tab`, fermeture `Esc`.
-  - Sélection → insère `@Prénom Nom ` dans le texte et stocke en parallèle l'`user_id` mentionné.
-- Affichage des notes : les `@Prénom Nom` correspondant à une mention sont stylés (badge vert clair) pour les distinguer du texte.
+Ajout d'une colonne sur `workflow_transitions` :
 
-## Données
+- `kind` (texte, valeurs : `next`, `previous`, ou `null` = transition « secondaire »)
+- Index unique partiel par `(from_state_id, kind)` quand `kind IS NOT NULL` → garantit **au plus une** transition « next » et **au plus une** « previous » par état source.
+- Valeur par défaut : `null` (toutes les transitions existantes restent neutres, l'utilisateur les marquera au besoin).
 
-- Pas de nouvelle table. On ajoute deux colonnes à `courier_notes` :
-  - `mentioned_user_ids uuid[] not null default '{}'`
-- Migration : `ALTER TABLE` + index GIN sur `mentioned_user_ids` (pour usages futurs). RLS inchangée.
-- `createNote` / `updateNote` (service) acceptent désormais une liste de `mentioned_user_ids`. On compare ancien/nouveau pour ne notifier QUE les nouveaux mentionnés (pas de spam à chaque édition).
+Migration unique : `ALTER TABLE` + index + commentaire.
 
-## Notification email
+## Éditeur de workflow
 
-Nouvelle edge function `send-mention-notification` (réplique le pattern de `send-password-reset`) :
+Quand l'utilisateur clique sur une arête (transition) dans le canvas React Flow :
 
-- Auth : JWT utilisateur + vérif membership de l'organisation.
-- Inputs : `courier_id`, `note_id`, `mentioned_user_ids: string[]`.
-- Pour chaque destinataire :
-  - Récupère email + nom du destinataire, nom de l'auteur, objet du courrier, branding org.
-  - Charge SMTP via `smtp_settings`.
-  - Envoie via nodemailer avec le template HTML existant `buildBrandedEmail` (titre : « Vous avez été mentionné »), corps :
-    > **{Auteur}** vient de vous mentionner dans une note interne du courrier **{Objet du courrier}**.
-  - CTA « Voir le courrier » → `{APP_URL}/courrier/{courier_id}`.
-- Idempotence simple : edge function ne traite que les IDs passés (la diff côté client garantit qu'un même utilisateur n'est notifié qu'une fois par ajout).
+- Affichage d'un mini-panneau latéral (ou popover ancré à l'arête) avec :
+  - Le nom de la transition (éditable, comme aujourd'hui).
+  - Un sélecteur de **rôle** : `Suivante` / `Précédente` / `Aucun` (par défaut).
+  - Une note explicative : « La transition désignée comme Suivante sera utilisée par les automatisations (ex. après signature). »
+- Si l'utilisateur désigne une transition « Suivante » alors qu'une autre l'est déjà pour le même état source, on bascule automatiquement l'ancienne sur « Aucun » (côté UI + contrainte DB en garde-fou).
 
-L'edge function est appelée depuis `createNote` / `updateNote` après succès via `supabase.functions.invoke`. Échec d'envoi → toast non bloquant, la note reste créée.
+Visualisation sur le canvas :
 
-## Notification in-app (bonus mineur, même feature)
+- Arête `next` : trait vert plus épais + flèche pleine + petit badge « → Suivante ».
+- Arête `previous` : trait ambré pointillé + badge « ← Précédente ».
+- Arête `null` : style actuel inchangé.
 
-Insert dans `notifications` pour chaque utilisateur mentionné, type `note_mention`, avec `courier_id` + `note_id`. Permet d'apparaître dans la cloche existante. Si cela complexifie trop, je peux le retirer — dis-le moi.
+La sauvegarde existante du workflow (sync des transitions) est étendue pour persister `kind`.
 
-## Fichiers touchés
+## Utilisation côté courrier
 
-- `supabase/migrations/<ts>_courier_notes_mentions.sql` — colonne + index.
-- `src/services/courierNoteService.ts` — signature `createNote`/`updateNote` + invoke edge function.
-- `src/components/courier/NotesInlineSidebar.tsx` — UI de mention (popover autocomplete, parsing du contenu).
-- Nouveau `src/components/courier/MentionTextarea.tsx` — composant réutilisable encapsulant le `Textarea` + popover des membres.
-- Nouveau `supabase/functions/send-mention-notification/index.ts`.
-- `supabase/config.toml` — déclarer la nouvelle fonction si nécessaire.
+Dans `ReplyComposer.doSign` (et tout futur point d'automatisation) :
 
-## Hors scope
+1. Chercher parmi les transitions sortantes celle dont `kind = 'next'`.
+2. Si trouvée → l'emprunter automatiquement après signature.
+3. Sinon → ne **pas** transiter automatiquement et laisser l'utilisateur choisir (on retire le fallback heuristique actuel basé sur `CATEGORY_ORDER`, qui est ambigu).
+4. Afficher un toast d'info si aucune « Suivante » n'est définie : « Aucune étape suivante désignée dans le workflow. »
 
-- Pas de mention de groupes/services.
-- Pas de mention dans d'autres entités (commentaires, réponses) — uniquement notes internes.
-- Pas de digest : 1 mention = 1 email immédiat.
+## Détails techniques
+
+- Fichiers DB : nouvelle migration `..._workflow_transition_kind.sql`.
+- Fichiers front :
+  - `src/pages/WorkflowDetail.tsx` : gestion `onEdgeClick`, sync `kind` dans la sauvegarde, styles d'arêtes calculés à partir de `kind`.
+  - Nouveau composant `src/components/workflow/EdgeEditPanel.tsx` (sélecteur de rôle + nom).
+  - `toEdges()` enrichi : passe `data.kind` aux edges + applique le style conditionnel.
+  - `src/components/courier/ReplyComposer.tsx` : remplace l'heuristique `CATEGORY_ORDER` par un lookup direct sur `kind === 'next'`.
+- Types : régénération automatique de `src/integrations/supabase/types.ts` après migration.
+
+## Hors périmètre
+
+- Pas de migration automatique des workflows existants vers des `next`/`previous` (l'admin marque manuellement).
+- Pas de changement sur les boutons manuels de transition dans `ReplyComposer` (toujours toutes les transitions affichées dans le sélecteur).
