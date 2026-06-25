@@ -138,9 +138,11 @@ export async function searchCouriersForLinking(
     .from("couriers")
     .select(RELATED_SELECT)
     .eq("organization_id", organizationId)
+    .eq("direction", "inbound")
     .neq("id", excludeCourierId)
     .order("created_at", { ascending: false })
     .limit(limit);
+
 
   if (trimmed.length > 0) {
     // Match either subject or chrono. Sender name lookup via participants is
