@@ -603,7 +603,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   <ArrowLeft className="h-4 w-4" />
                 </Button>
               )}
-              <div className="min-w-0 shrink">
+              <div className="min-w-0 flex-1">
                 {!fullScreen && (
                   <SheetTitle className="text-lg sr-only">
                     {courier.subject ?? "Sans titre"}
@@ -615,7 +615,8 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   placeholder="Titre du courrier"
                   emptyDisplay="Sans titre"
                   maxLength={255}
-                  displayClassName="text-lg font-semibold"
+                  displayClassName="max-w-full text-lg font-semibold leading-snug"
+                  editClassName="text-lg md:text-lg font-semibold leading-snug"
                   readOnly={readOnly}
                   multiline
                   onSave={(v) => persistCourierUpdate({ subject: v.trim() || null }, "Titre modifié")}
