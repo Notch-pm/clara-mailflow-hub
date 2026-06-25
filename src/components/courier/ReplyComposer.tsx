@@ -357,12 +357,10 @@ export default function ReplyComposer({
       });
       setBody(newBody);
 
-      // Auto-advance to the next workflow state after signing.
-      const currentOrder = CATEGORY_ORDER[currentState?.category ?? ""] ?? 0;
-      const forward = outgoingTransitions.find(({ target }) => {
-        const targetOrder = CATEGORY_ORDER[target.category ?? ""] ?? 0;
-        return targetOrder >= currentOrder || target.is_final === true;
-      }) ?? outgoingTransitions[0];
+      // Auto-advance using the transition explicitly marked as "next" in the workflow editor.
+      const forward = outgoingTransitions.find(
+        ({ transition }) => (transition as any).kind === "next",
+      );
       if (forward) {
         await transitionReplyState(
           organizationId,
@@ -373,6 +371,7 @@ export default function ReplyComposer({
           forward.target.category,
         );
       }
+
     },
     onSuccess: () => {
       setDirty(false);
