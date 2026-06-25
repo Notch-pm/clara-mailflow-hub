@@ -588,8 +588,9 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
   const body = (
     <>
       <div className="flex flex-col text-center sm:text-left border-b shrink-0">
-          <div className={cn("flex items-start justify-between gap-4 px-4", fullScreen ? "py-2 pr-4" : "py-3 pr-8")}>
-            <div className="flex-1 min-w-0 flex items-center gap-3 flex-wrap">
+          <div className={cn("flex items-center justify-between gap-4 px-4", fullScreen ? "py-2 pr-4" : "py-3 pr-8")}>
+            <div className="flex-1 min-w-0 flex items-center gap-3">
+
               {fullScreen && (
                 <Button
                   size="icon"
