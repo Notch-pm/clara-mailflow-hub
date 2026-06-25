@@ -1786,6 +1786,7 @@ export type Database = {
           created_at: string
           from_state_id: string
           id: string
+          kind: string | null
           name: string | null
           organization_id: string
           to_state_id: string
@@ -1796,6 +1797,7 @@ export type Database = {
           created_at?: string
           from_state_id: string
           id?: string
+          kind?: string | null
           name?: string | null
           organization_id: string
           to_state_id: string
@@ -1806,6 +1808,7 @@ export type Database = {
           created_at?: string
           from_state_id?: string
           id?: string
+          kind?: string | null
           name?: string | null
           organization_id?: string
           to_state_id?: string
