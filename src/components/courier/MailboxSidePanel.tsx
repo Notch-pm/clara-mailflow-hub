@@ -602,7 +602,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   <ArrowLeft className="h-4 w-4" />
                 </Button>
               )}
-              <div className="min-w-0 flex-1">
+              <div className="min-w-0 shrink">
                 {!fullScreen && (
                   <SheetTitle className="text-lg sr-only">
                     {courier.subject ?? "Sans titre"}
@@ -638,10 +638,6 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
             <div className="flex items-center gap-2 justify-end shrink-0">
               {!readOnly && transitions && transitions.length > 0 && (
                 <>
-                  <span className="text-xs text-muted-foreground inline-flex items-center gap-1 shrink-0">
-                    <ArrowRight className="h-3.5 w-3.5" />
-                    Déplacer vers
-                  </span>
                   {(() => {
                     const nextT = transitions.find((t) => (t as any).kind === "next");
                     const prevT = transitions.find((t) => (t as any).kind === "previous");
