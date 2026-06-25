@@ -642,63 +642,78 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                     <ArrowRight className="h-3.5 w-3.5" />
                     Déplacer vers
                   </span>
-                  {transitions.length <= 3 ? (
-                    transitions.map((t) => {
-                      const category = t.to_state?.category as WorkflowCategory | undefined;
-                      return (
-                        <Button
-                          key={t.id}
-                          size="sm"
-                          onClick={() => transitionMutation.mutate(t.to_state.id)}
-                          disabled={transitionMutation.isPending}
-                          className="gap-1.5"
-                        >
-                          <span
-                            className={cn(
-                              "h-2 w-2 rounded-full",
-                              category === "pending" && "bg-amber-500",
-                              category === "processing" && "bg-blue-500",
-                              category === "processed" && "bg-emerald-500",
-                              category === "archived" && "bg-slate-400",
-                              !category && "bg-gray-300"
-                            )}
-                          />
-                          {t.name ?? t.to_state?.name ?? "Suivant"}
-                        </Button>
-                      );
-                    })
-                  ) : (
-                    <Select
-                      onValueChange={(v) => transitionMutation.mutate(v)}
-                      disabled={transitionMutation.isPending}
-                    >
-                      <SelectTrigger className="h-8 text-sm gap-2">
-                        <SelectValue placeholder="Choisir…" />
-                      </SelectTrigger>
-                      <SelectContent align="end">
-                        {transitions.map((t) => {
-                          const category = t.to_state?.category as WorkflowCategory | undefined;
-                          return (
-                            <SelectItem key={t.id} value={t.to_state.id}>
-                              <div className="flex items-center gap-2">
-                                <span
-                                  className={cn(
-                                    "h-2 w-2 rounded-full shrink-0",
-                                    category === "pending" && "bg-amber-500",
-                                    category === "processing" && "bg-blue-500",
-                                    category === "processed" && "bg-emerald-500",
-                                    category === "archived" && "bg-slate-400",
-                                    !category && "bg-gray-300"
-                                  )}
-                                />
-                                <span>{t.name ?? t.to_state?.name ?? "Suivant"}</span>
-                              </div>
-                            </SelectItem>
-                          );
-                        })}
-                      </SelectContent>
-                    </Select>
-                  )}
+                  {(() => {
+                    const nextT = transitions.find((t) => (t as any).kind === "next");
+                    const prevT = transitions.find((t) => (t as any).kind === "previous");
+                    const nominalIds = new Set([nextT?.id, prevT?.id].filter(Boolean));
+                    const others = transitions.filter((t) => !nominalIds.has(t.id));
+                    const dot = (category?: string | null) => (
+                      <span
+                        className={cn(
+                          "h-2 w-2 rounded-full shrink-0",
+                          category === "pending" && "bg-amber-500",
+                          category === "processing" && "bg-blue-500",
+                          category === "processed" && "bg-emerald-500",
+                          category === "archived" && "bg-slate-400",
+                          !category && "bg-gray-300",
+                        )}
+                      />
+                    );
+                    return (
+                      <>
+                        {prevT && (
+                          <Button
+                            key={prevT.id}
+                            size="sm"
+                            variant="outline"
+                            onClick={() => transitionMutation.mutate(prevT.to_state.id)}
+                            disabled={transitionMutation.isPending}
+                            className="gap-1.5"
+                          >
+                            <ArrowLeft className="h-3.5 w-3.5" />
+                            {prevT.name ?? prevT.to_state?.name ?? "Précédent"}
+                          </Button>
+                        )}
+                        {nextT && (
+                          <Button
+                            key={nextT.id}
+                            size="sm"
+                            onClick={() => transitionMutation.mutate(nextT.to_state.id)}
+                            disabled={transitionMutation.isPending}
+                            className="gap-1.5"
+                          >
+                            {dot(nextT.to_state?.category)}
+                            {nextT.name ?? nextT.to_state?.name ?? "Suivant"}
+                          </Button>
+                        )}
+                        {others.length > 0 && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button size="sm" variant="outline" className="gap-1.5" disabled={transitionMutation.isPending}>
+                                Autres actions
+                                <ChevronDown className="h-3.5 w-3.5" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              {others.map((t) => (
+                                <DropdownMenuItem
+                                  key={t.id}
+                                  onClick={() => transitionMutation.mutate(t.to_state.id)}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    {dot(t.to_state?.category)}
+                                    <span>{t.name ?? t.to_state?.name ?? "Transition"}</span>
+                                  </div>
+                                </DropdownMenuItem>
+                              ))}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
+                        {!nextT && !prevT && others.length === 0 && null}
+                      </>
+                    );
+                  })()}
+
                 </>
               )}
               {!fullScreen && !disableFullScreen && (
