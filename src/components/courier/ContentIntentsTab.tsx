@@ -147,23 +147,8 @@ export default function ContentIntentsTab({ courierId, organizationId, readOnly 
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const { data: orgServices } = useQuery({
-    queryKey: ["org-services", organizationId],
-    queryFn: () => listServices(organizationId),
-    enabled: !!organizationId,
-  });
 
-  const participants =
-    (courierData as { courier_participants?: Array<{
-      id: string;
-      role: string;
-      name: string | null;
-      email: string | null;
-      phone: string | null;
-      usager_id: string | null;
-    }> } | null)?.courier_participants ?? [];
-  const senderParticipant = participants.find((p) => p.role === "sender");
-  const recipientParticipant = participants.find((p) => p.role === "recipient");
+
 
 
 
