@@ -1351,6 +1351,16 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
               </TabsContent>
             </>
           )}
+
+          {/* Floating retractable notes panel — accessible from any tab */}
+          {withTabs && !isOutbound && (
+            <FloatingNotesPanel
+              courierId={courier.id}
+              organizationId={organizationId}
+              notes={notesList}
+              readOnly={readOnly || isFinalState}
+            />
+          )}
         </Tabs>
     </>
   );
