@@ -369,15 +369,31 @@ export default function WorkflowDetail() {
         }
       }
 
+      // Update existing transitions whose name or kind changed
+      const existingById = new Map(existingTransitions.map((t) => [t.id, t]));
+      for (const e of edges) {
+        if (e.id.startsWith("temp-")) continue;
+        const ex = existingById.get(e.id);
+        if (!ex) continue;
+        const newName = (e.data as any)?.name ?? null;
+        const newKind = ((e.data as any)?.kind ?? null) as TransitionKind;
+        const oldKind = ((ex as any).kind ?? null) as TransitionKind;
+        if ((ex.name ?? null) !== (newName || null) || oldKind !== newKind) {
+          await updateTransition(e.id, { name: newName || null, kind: newKind });
+        }
+      }
+
       // Create new transitions (temp IDs)
       for (const e of edges) {
         if (e.id.startsWith("temp-")) {
+          const data_ = (e.data as any) ?? {};
           const { data, error } = await createTransition(
             organizationId,
             workflowId,
             e.source,
             e.target,
-            typeof e.label === "string" ? e.label : undefined
+            data_.name || undefined,
+            (data_.kind ?? null) as TransitionKind,
           );
           if (error) throw error;
           // Update edge ID with real ID
@@ -386,6 +402,7 @@ export default function WorkflowDetail() {
           }
         }
       }
+
 
       toast({ title: "Sauvegardé", description: "Le workflow a été mis à jour." });
       queryClient.invalidateQueries({ queryKey: ["workflow", workflowId] });
