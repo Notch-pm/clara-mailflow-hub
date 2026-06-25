@@ -147,7 +147,7 @@ export default function InlineEditField({
             )}
             title="Cliquer pour modifier"
           >
-            <span className="truncate text-left">
+            <span className={cn("text-left", multiline ? "line-clamp-2 break-words" : "truncate")}>
               {displayValue ? (renderDisplay ? renderDisplay(displayValue) : displayValue) : (
                 <span className="text-muted-foreground italic font-normal">{emptyDisplay}</span>
               )}
