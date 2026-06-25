@@ -1349,7 +1349,9 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
             />
           )}
         </Tabs>
+        </div>
     </>
+
   );
 
   if (fullScreen) {
