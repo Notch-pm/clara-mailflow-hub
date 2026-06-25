@@ -1,6 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { X, ArrowRight, ArrowLeft, ArrowRightLeft, Tag as TagIcon, Check, Briefcase, FileText, Trash2, Maximize2, ExternalLink } from "lucide-react";
+import { X, ArrowRight, ArrowLeft, ArrowRightLeft, Tag as TagIcon, Check, Briefcase, FileText, Trash2, Maximize2, ExternalLink, ChevronDown } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Link, useNavigate } from "react-router-dom";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
