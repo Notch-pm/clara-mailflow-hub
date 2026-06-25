@@ -16,6 +16,8 @@ interface Props {
   renderDisplay?: (value: string) => React.ReactNode;
   /** Extra classes applied to the displayed value (read mode). */
   displayClassName?: string;
+  /** Extra classes applied to the input value (edit mode). */
+  editClassName?: string;
   /** When true, displays the value but disables editing entirely. */
   readOnly?: boolean;
   /** Allow the displayed value to wrap up to 2 lines instead of truncating to 1. */
@@ -32,6 +34,7 @@ export default function InlineEditField({
   onSave,
   renderDisplay,
   displayClassName,
+  editClassName,
   readOnly = false,
   multiline = false,
 }: Props) {
@@ -75,9 +78,9 @@ export default function InlineEditField({
   }
 
   return (
-    <div className="flex items-start justify-between gap-2 group">
-      <span className="text-muted-foreground text-sm shrink-0 pt-1">{label}</span>
-      <div className="flex-1 gap-1 min-w-0 flex items-center justify-start">
+    <div className={cn("flex min-w-0 max-w-full items-start justify-between gap-2 group", !label && "w-full")}>
+      {label && <span className="text-muted-foreground text-sm shrink-0 pt-1">{label}</span>}
+      <div className="flex min-w-0 flex-1 items-center justify-start gap-1">
         {editing && !readOnly ? (
           <>
             <Input
@@ -97,7 +100,11 @@ export default function InlineEditField({
               }}
               placeholder={placeholder}
               disabled={saving}
-              className={cn("h-auto py-0.5 px-1.5 leading-tight border-muted-foreground/30", displayClassName)}
+              className={cn(
+                "h-auto min-w-0 py-0.5 px-1.5 leading-tight border-muted-foreground/30",
+                displayClassName,
+                editClassName,
+              )}
             />
             <Button
               type="button"
@@ -125,11 +132,11 @@ export default function InlineEditField({
         ) : readOnly ? (
           <span
             className={cn(
-              "flex items-center gap-1.5 text-sm font-medium text-right px-1.5 py-0.5 -mx-1.5 max-w-full",
+              "flex min-w-0 max-w-full items-center gap-1.5 px-1.5 py-0.5 -mx-1.5 text-sm font-medium text-left",
               displayClassName,
             )}
           >
-            <span className={cn("text-left", multiline ? "line-clamp-2 break-words" : "truncate")}>
+            <span className={cn("min-w-0 text-left", multiline ? "line-clamp-2 whitespace-normal break-words" : "truncate whitespace-nowrap")}>
 
               {displayValue ? (renderDisplay ? renderDisplay(displayValue) : displayValue) : (
                 <span className="text-muted-foreground italic font-normal">{emptyDisplay}</span>
@@ -141,13 +148,13 @@ export default function InlineEditField({
             type="button"
             onClick={() => setEditing(true)}
             className={cn(
-              "flex items-center gap-1.5 text-sm font-medium text-right rounded px-1.5 py-0.5 -mx-1.5",
-              "hover:bg-muted transition-colors max-w-full",
+              "flex min-w-0 max-w-full items-center gap-1.5 rounded px-1.5 py-0.5 -mx-1.5 text-sm font-medium text-left",
+              "hover:bg-muted transition-colors",
               displayClassName,
             )}
             title="Cliquer pour modifier"
           >
-            <span className={cn("text-left", multiline ? "line-clamp-2 break-words" : "truncate")}>
+            <span className={cn("min-w-0 text-left", multiline ? "line-clamp-2 whitespace-normal break-words" : "truncate whitespace-nowrap")}>
               {displayValue ? (renderDisplay ? renderDisplay(displayValue) : displayValue) : (
                 <span className="text-muted-foreground italic font-normal">{emptyDisplay}</span>
               )}
