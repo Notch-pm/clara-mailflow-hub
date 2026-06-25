@@ -18,6 +18,8 @@ interface Props {
   displayClassName?: string;
   /** When true, displays the value but disables editing entirely. */
   readOnly?: boolean;
+  /** Allow the displayed value to wrap up to 2 lines instead of truncating to 1. */
+  multiline?: boolean;
 }
 
 export default function InlineEditField({
@@ -31,6 +33,7 @@ export default function InlineEditField({
   renderDisplay,
   displayClassName,
   readOnly = false,
+  multiline = false,
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
