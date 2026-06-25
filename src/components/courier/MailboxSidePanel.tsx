@@ -740,7 +740,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
 
         <Tabs
           defaultValue="detail"
-          className="flex flex-col mb-px flex-1 min-h-0 overflow-hidden"
+          className="flex flex-col mb-px flex-1 min-h-0 overflow-hidden relative"
         >
           {withTabs && (
             <TabsList className={cn("self-start shrink-0", fullScreen ? "mx-4 mt-1 mb-1" : "mx-6 mt-[4px] mb-[4px]")}>
