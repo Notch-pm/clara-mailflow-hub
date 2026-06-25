@@ -21,6 +21,8 @@ import {
   deleteNote,
   type CourierNote,
 } from "@/services/courierNoteService";
+import { getOrgMembers } from "@/services/userService";
+import MentionTextarea, { renderNoteContent, type MentionUser } from "./MentionTextarea";
 
 interface Props {
   courierId: string;
@@ -55,10 +57,32 @@ export default function NotesInlineSidebar({ courierId, organizationId, notes, r
     enabled: authorIds.length > 0,
   });
 
+  // Liste des membres pour les mentions @
+  const { data: members = [] } = useQuery({
+    queryKey: ["org-members-mentions", organizationId],
+    queryFn: () => getOrgMembers(organizationId),
+    enabled: !!organizationId && !readOnly,
+  });
+
+  const mentionUsers: MentionUser[] = useMemo(
+    () =>
+      members
+        .filter((m) => m.is_active !== false && m.membership_active !== false)
+        .map((m) => ({
+          id: m.id,
+          label:
+            [m.first_name, m.last_name].filter(Boolean).join(" ").trim() || m.email || "Utilisateur",
+          email: m.email,
+        })),
+    [members],
+  );
+
   const [addOpen, setAddOpen] = useState(false);
   const [draft, setDraft] = useState("");
+  const [draftMentions, setDraftMentions] = useState<string[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingDraft, setEditingDraft] = useState("");
+  const [editingMentions, setEditingMentions] = useState<string[]>([]);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const invalidate = () => {
@@ -67,14 +91,28 @@ export default function NotesInlineSidebar({ courierId, organizationId, notes, r
   };
 
   const createMut = useMutation({
-    mutationFn: (content: string) => createNote(organizationId, courierId, content),
-    onSuccess: () => { setDraft(""); setAddOpen(false); invalidate(); toast.success("Note ajoutée"); },
+    mutationFn: ({ content, mentions }: { content: string; mentions: string[] }) =>
+      createNote(organizationId, courierId, content, mentions),
+    onSuccess: () => {
+      setDraft("");
+      setDraftMentions([]);
+      setAddOpen(false);
+      invalidate();
+      toast.success("Note ajoutée");
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 
   const updateMut = useMutation({
-    mutationFn: ({ id, content }: { id: string; content: string }) => updateNote(id, content),
-    onSuccess: () => { setEditingId(null); setEditingDraft(""); invalidate(); toast.success("Note modifiée"); },
+    mutationFn: ({ id, content, mentions }: { id: string; content: string; mentions: string[] }) =>
+      updateNote(id, content, mentions),
+    onSuccess: () => {
+      setEditingId(null);
+      setEditingDraft("");
+      setEditingMentions([]);
+      invalidate();
+      toast.success("Note modifiée");
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -95,7 +133,7 @@ export default function NotesInlineSidebar({ courierId, organizationId, notes, r
           <Button
             size="sm"
             className="h-7 bg-green-600 hover:bg-green-700 text-white text-xs px-2.5"
-            onClick={() => { setAddOpen((o) => !o); setDraft(""); }}
+            onClick={() => { setAddOpen((o) => !o); setDraft(""); setDraftMentions([]); }}
           >
             <Plus className="h-3.5 w-3.5 mr-1" />
             Ajouter
@@ -106,22 +144,23 @@ export default function NotesInlineSidebar({ courierId, organizationId, notes, r
       {/* Add form */}
       {addOpen && (
         <div className="px-3 py-2 border-b bg-amber-50 space-y-2 shrink-0">
-          <Textarea
+          <MentionTextarea
             autoFocus
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            placeholder="Saisir une note…"
+            onChange={(v, ids) => { setDraft(v); setDraftMentions(ids); }}
+            users={mentionUsers}
+            placeholder="Saisir une note… Tapez @ pour mentionner"
             className="min-h-[80px] text-sm bg-yellow-100 border-yellow-300 resize-none"
           />
           <div className="flex justify-end gap-1.5">
-            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setAddOpen(false); setDraft(""); }}>
+            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setAddOpen(false); setDraft(""); setDraftMentions([]); }}>
               Annuler
             </Button>
             <Button
               size="sm"
               className="h-7 text-xs bg-green-600 hover:bg-green-700 text-white"
               disabled={!draft.trim() || createMut.isPending}
-              onClick={() => createMut.mutate(draft)}
+              onClick={() => createMut.mutate({ content: draft, mentions: draftMentions })}
             >
               <Check className="h-3.5 w-3.5 mr-1" />
               Enregistrer
@@ -149,27 +188,30 @@ export default function NotesInlineSidebar({ courierId, organizationId, notes, r
             >
               {editingId === n.id ? (
                 <>
-                  <Textarea
+                  <MentionTextarea
                     autoFocus
                     value={editingDraft}
-                    onChange={(e) => setEditingDraft(e.target.value)}
+                    onChange={(v, ids) => { setEditingDraft(v); setEditingMentions(ids); }}
+                    users={mentionUsers}
                     className="min-h-[70px] text-sm bg-yellow-100 border-yellow-300 resize-none"
                   />
                   <div className="flex justify-end gap-1">
                     <Button size="sm" variant="ghost" className="h-6 text-xs px-2"
-                      onClick={() => { setEditingId(null); setEditingDraft(""); }}>
+                      onClick={() => { setEditingId(null); setEditingDraft(""); setEditingMentions([]); }}>
                       <X className="h-3 w-3 mr-0.5" />Annuler
                     </Button>
                     <Button size="sm" className="h-6 text-xs px-2 bg-green-600 hover:bg-green-700 text-white"
                       disabled={!editingDraft.trim() || updateMut.isPending}
-                      onClick={() => updateMut.mutate({ id: n.id, content: editingDraft })}>
+                      onClick={() => updateMut.mutate({ id: n.id, content: editingDraft, mentions: editingMentions })}>
                       <Check className="h-3 w-3 mr-0.5" />Enregistrer
                     </Button>
                   </div>
                 </>
               ) : (
                 <>
-                  <p className="text-sm whitespace-pre-wrap break-words text-yellow-950">{n.content}</p>
+                  <p className="text-sm whitespace-pre-wrap break-words text-yellow-950">
+                    {renderNoteContent(n.content, mentionUsers)}
+                  </p>
                   <div className="flex items-center justify-between gap-1">
                     <span className="text-[10px] text-yellow-700 leading-tight">
                       {n.created_by && (
@@ -184,7 +226,11 @@ export default function NotesInlineSidebar({ courierId, organizationId, notes, r
                     {!readOnly && (
                       <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                         <Button type="button" size="icon" variant="ghost" className="h-6 w-6 hover:bg-yellow-900/15"
-                          onClick={() => { setEditingId(n.id); setEditingDraft(n.content); }}>
+                          onClick={() => {
+                            setEditingId(n.id);
+                            setEditingDraft(n.content);
+                            setEditingMentions(n.mentioned_user_ids ?? []);
+                          }}>
                           <Pencil className="h-3 w-3" />
                         </Button>
                         <Button type="button" size="icon" variant="ghost"
