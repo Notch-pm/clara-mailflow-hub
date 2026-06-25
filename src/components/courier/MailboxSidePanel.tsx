@@ -817,9 +817,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
             value="detail"
             className={cn(
               "mt-0 data-[state=inactive]:hidden flex-1 min-h-0 overflow-hidden grid grid-cols-1",
-              fullScreen
-                ? "lg:grid-cols-[300px_1fr_260px]"
-                : "lg:grid-cols-[360px_1fr]",
+              "lg:grid-cols-[360px_1fr]",
             )}
             forceMount
           >
