@@ -22,6 +22,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { StateNode, type StateNodeData } from "@/components/workflow/StateNode";
 import { StateEditPanel } from "@/components/workflow/StateEditPanel";
+import { EdgeEditPanel } from "@/components/workflow/EdgeEditPanel";
 import { WorkflowToolbar } from "@/components/workflow/WorkflowToolbar";
 import {
   getWorkflowById,
@@ -29,12 +30,15 @@ import {
   updateState,
   deleteState,
   createTransition,
+  updateTransition,
   deleteTransition,
   getAffectedCouriers,
   clearInitialFlag,
   clearSignatureFlag,
   clearSendFlag,
+  type TransitionKind,
 } from "@/services/workflowService";
+
 import type { WorkflowCategory, WorkflowState, WorkflowTransition } from "@/types/courier";
 import {
   AlertDialog,
