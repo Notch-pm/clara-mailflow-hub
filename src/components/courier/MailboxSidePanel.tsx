@@ -1158,454 +1158,106 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
           )}
           <TabsContent
             value="detail"
-            className={cn(
-              "mt-0 data-[state=inactive]:hidden flex-1 min-h-0 overflow-hidden grid grid-cols-1",
-              "lg:grid-cols-[360px_1fr]",
-            )}
+            className="mt-0 data-[state=inactive]:hidden flex-1 min-h-0 overflow-hidden"
             forceMount
           >
-            {/* Left: metadata + workflow */}
-            <aside className="px-6 py-5 lg:border-r space-y-5 overflow-y-auto">
-              <dl className="space-y-1 text-sm">
-                {/* Lien vers le courrier entrant lié (sortants seulement) */}
-                {isOutbound && courier.parent_courier_id && (
-                  <div className="flex items-center justify-between gap-2 py-1">
-                    <span className="text-muted-foreground text-sm">Courrier entrant lié</span>
-                    <Link
-                      to={`/courrier/${courier.parent_courier_id}`}
-                      className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
-                    >
-                      <ExternalLink className="h-3.5 w-3.5 shrink-0" />
-                      Voir le courrier
-                    </Link>
-                  </div>
-                )}
-
-                {/* Date : réception pour entrants, envoi pour sortants */}
-                {isOutbound ? (
-                  <InlineEditField
-                    label="Date d'envoi"
-                    type="date"
-                    value={courier.sent_at ? courier.sent_at.slice(0, 10) : ""}
-                    readOnly={readOnly}
-                    onSave={(v) =>
-                      persistCourierUpdate(
-                        { sent_at: v ? new Date(v).toISOString() : null },
-                        "Date modifiée",
-                      )
-                    }
-                    renderDisplay={(v) =>
-                      new Date(v).toLocaleDateString("fr-FR", {
-                        day: "2-digit",
-                        month: "2-digit",
-                        year: "numeric",
-                      })
-                    }
-                  />
-                ) : (
-                  <InlineEditField
-                    label="Date de réception"
-                    type="date"
-                    value={courier.received_at ? courier.received_at.slice(0, 10) : ""}
-                    readOnly={readOnly}
-                    onSave={(v) =>
-                      persistCourierUpdate(
-                        { received_at: v ? new Date(v).toISOString() : null },
-                        "Date modifiée",
-                      )
-                    }
-                    renderDisplay={(v) =>
-                      new Date(v).toLocaleDateString("fr-FR", {
-                        day: "2-digit",
-                        month: "2-digit",
-                        year: "numeric",
-                      })
-                    }
-                  />
-                )}
-
-                {/* Canal de réception : entrants seulement */}
-                {!isOutbound && (
-                  <div className="flex items-center justify-between gap-2 py-1">
-                    <span className="text-muted-foreground text-sm">Canal de réception</span>
-                    {readOnly ? (
-                      <span className="text-sm font-medium px-2">{channelLabels[courier.channel]}</span>
-                    ) : (
-                      <Select
-                        value={courier.channel}
-                        onValueChange={(v) =>
-                          persistCourierUpdate({ channel: v }, "Canal modifié")
-                        }
-                      >
-                        <SelectTrigger className="h-7 w-auto text-sm border-0 bg-transparent hover:bg-muted px-2 gap-1.5 [&>span]:font-medium">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent align="end">
-                          {(Object.keys(channelLabels) as CourierChannel[]).map((c) => (
-                            <SelectItem key={c} value={c}>
-                              {channelLabels[c]}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                  </div>
-                )}
-
-                {/* Destinataire */}
-                {isOutbound ? (
-                  <div className="flex items-center justify-between gap-2 py-1">
-                    <span className="text-muted-foreground text-sm">Destinataire (nom)</span>
-                    <span className="text-sm font-medium px-2">
-                      {parentSender?.name ?? <span className="text-muted-foreground italic font-normal">—</span>}
-                    </span>
-                  </div>
-                ) : (
-                  <InlineEditField
-                    label="Destinataire (nom)"
-                    value={recipient?.name ?? ""}
-                    placeholder="Nom du destinataire"
-                    maxLength={150}
-                    readOnly={readOnly}
-                    onSave={(v) =>
-                      upsertParticipant("recipient", { name: v.trim() || null })
-                    }
-                  />
-                )}
-
-                {/* Expéditeur */}
-                {isOutbound ? (
-                  <div className="flex items-center justify-between gap-2 py-1">
-                    <span className="text-muted-foreground text-sm">Expéditeur</span>
-                    <span className="text-sm font-medium px-2">
-                      {parentCourier?.assigned_service ?? <span className="text-muted-foreground italic font-normal">—</span>}
-                    </span>
-                  </div>
-                ) : (
-                  <>
-                    <div className="relative">
-                      <InlineEditField
-                        label="Expéditeur (nom)"
-                        value={sender?.name ?? ""}
-                        placeholder="Nom de l'expéditeur"
-                        maxLength={150}
-                        readOnly={readOnly}
-                        onSave={(v) => upsertParticipant("sender", { name: v.trim() || null })}
-                      />
-                      {sender?.usager_id && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Link
-                              to={`/usagers/${sender.usager_id}`}
-                              onClick={() => onOpenChange(false)}
-                              className="absolute right-0 top-0 inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:text-primary hover:bg-muted transition-colors bg-background"
-                              aria-label="Voir tous les courriers de cet expéditeur"
-                            >
-                              <ExternalLink className="h-3.5 w-3.5" />
-                            </Link>
-                          </TooltipTrigger>
-                          <TooltipContent>Voir tous les courriers de cet expéditeur</TooltipContent>
-                        </Tooltip>
-                      )}
-                    </div>
-                    <InlineEditField
-                      label="Expéditeur (email)"
-                      type="email"
-                      value={sender?.email ?? ""}
-                      placeholder="email@exemple.com"
-                      readOnly={readOnly}
-                      onSave={(v) =>
-                        upsertParticipant("sender", { email: v.trim() || null })
-                      }
-                    />
-                  </>
-                )}
-              </dl>
-
-            <Separator />
-
-            {/* Service gestionnaire */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Briefcase className="h-4 w-4 text-muted-foreground" />
-                <h3 className="text-sm font-medium">Service gestionnaire</h3>
-              </div>
-              {readOnly ? (
-                <p className="text-sm font-medium px-1">
-                  {courier.assigned_service ?? <span className="text-muted-foreground italic font-normal">—</span>}
-                </p>
-              ) : (
-                <>
-                  {(() => {
-                    const serviceSelectDisabled = serviceMutation.isPending || !isInitialState;
-                    const select = (
-                      <Select
-                        value={currentService?.id ?? ""}
-                        onValueChange={(v) => serviceMutation.mutate(v)}
-                        disabled={serviceSelectDisabled}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Sélectionner un service" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {availableServices.map((s) => (
-                            <SelectItem key={s.id} value={s.id}>
-                              {s.name}
-                              {s.workflow?.name && (
-                                <span className="text-muted-foreground text-xs ml-2">
-                                  — {s.workflow.name}
-                                </span>
-                              )}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    );
-                    return !isInitialState ? (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div className="w-full">{select}</div>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          Remettez le courrier dans la boite de réception pour changer le service gestionnaire.
-                        </TooltipContent>
-                      </Tooltip>
-                    ) : select;
-                  })()}
-                  {courier.assigned_service && !currentService && (
-                    <p className="text-xs text-muted-foreground italic">
-                      Service actuel « {courier.assigned_service} » introuvable.
-                    </p>
-                  )}
-                </>
-              )}
-            </div>
-
-            {/* Inline transfer select — only when assigned to a service and NOT in initial state */}
-            {!readOnly && !!localAssignedService && !isInitialState && (
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <ArrowRightLeft className="h-4 w-4 text-muted-foreground" />
-                  <h3 className="text-sm font-medium">Transférer à un autre service</h3>
-                </div>
-                <Select
-                  value=""
-                  onValueChange={(serviceId) => {
-                    const target = services?.find((s) => s.id === serviceId);
-                    if (!target) return;
-                    setTransferTargetServiceId(serviceId);
-                    setTransferConfirmOpen(true);
-                  }}
-                  disabled={transferMutation.isPending}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Choisir un service…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(services ?? [])
-                      .filter((s) => s.name !== localAssignedService)
-                      .map((s) => (
-                        <SelectItem key={s.id} value={s.id}>
-                          {s.name}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {/* Confirmation modal — only when user loses access to the target service */}
-            <AlertDialog
-              open={transferConfirmOpen}
-              onOpenChange={(o) => {
-                setTransferConfirmOpen(o);
-                if (!o) setTransferTargetServiceId("");
-              }}
+            <section
+              aria-label="Aperçu du courrier"
+              className="h-full px-6 py-5 space-y-5 bg-muted/10 overflow-y-auto"
             >
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Transférer la demande</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    Vous allez transférer ce courrier à :{" "}
-                    <strong>
-                      {services?.find((s) => s.id === transferTargetServiceId)?.name ?? ""}
-                    </strong>
-                    . Elle sera alors remise à l'état initial. En fonction de la configuration des droits, elle pourrait vous être rendue inaccessible.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Annuler</AlertDialogCancel>
-                  <AlertDialogAction
-                    disabled={transferMutation.isPending}
-                    onClick={() => {
-                      const targetName = services?.find((s) => s.id === transferTargetServiceId)?.name ?? "";
-                      const loseAccess = userServiceFilter !== null && !userServiceFilter.includes(targetName);
-                      transferMutation.mutate({ targetServiceId: transferTargetServiceId, loseAccess  });
-                    }}
-                  >
-                    Valider
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-
-            <CloseLinkedCouriersDialog
-              open={closeLinkedOpen}
-              onOpenChange={setCloseLinkedOpen}
-              organizationId={organizationId}
-              linkedCourierIds={closeLinkedIds}
-              sourceTitle={courier?.subject ?? courier?.chrono ?? "ce courrier"}
-            />
-
-            <Separator />
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-medium">Tags</h3>
-                {!readOnly && (
-                  <Popover open={tagPopoverOpen} onOpenChange={setTagPopoverOpen}>
-                    <PopoverTrigger asChild>
-                      <Button size="sm" variant="outline" className="h-8">
-                        <TagIcon className="h-3.5 w-3.5 mr-1.5" />
-                        Gérer
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-64 p-0" align="end">
-                      <Command>
-                        <CommandInput placeholder="Rechercher un tag…" />
-                        <CommandList>
-                          <CommandEmpty>
-                            Aucun tag défini. Allez dans Paramètres → Classification.
-                          </CommandEmpty>
-                          <CommandGroup>
-                            {(orgTags ?? []).map((tag) => {
-                              const checked = selectedTags.some(
-                                (t) => t.toLowerCase() === tag.name.toLowerCase(),
-                              );
-                              return (
-                                <CommandItem
-                                  key={tag.id}
-                                  value={tag.name}
-                                  onSelect={() => toggleTag(tag.name)}
-                                  className="gap-2"
-                                >
-                                  <span
-                                    className="h-2.5 w-2.5 rounded-full shrink-0"
-                                    style={{ backgroundColor: tag.color ?? "hsl(var(--muted-foreground))" }}
-                                  />
-                                  <span className="flex-1">{tag.name}</span>
-                                  <Check
-                                    className={cn(
-                                      "h-4 w-4",
-                                      checked ? "opacity-100" : "opacity-0",
-                                    )}
-                                  />
-                                </CommandItem>
-                              );
-                            })}
-                          </CommandGroup>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {selectedTags.map((tagName) => {
-                  const tag = tagByName.get(tagName.toLowerCase());
-                  const orphan = !tag;
-                  const fg = tag?.color ? readableTextColor(tag.color) : undefined;
-                  return (
-                    <Badge
-                      key={tagName}
-                      variant="secondary"
-                      className={cn(
-                        "gap-1.5 pl-2 pr-1 border-transparent",
-                        orphan && "opacity-60 italic",
-                        readOnly && "pr-2",
-                      )}
-                      style={
-                        tag?.color
-                          ? { backgroundColor: tag.color, color: fg }
-                          : undefined
-                      }
-                    >
-                      {tagName}
-                      {!readOnly && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            removeTag(tagName);
-                          }}
-                          className="ml-0.5 rounded-full p-0.5 hover:bg-black/20 transition-colors"
-                          aria-label={`Retirer ${tagName}`}
-                          style={fg ? { color: fg } : undefined}
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      )}
-                    </Badge>
-                  );
-                })}
-                {selectedTags.length === 0 && (
-                  <span className="text-xs text-muted-foreground">Aucun tag</span>
-                )}
-              </div>
-            </div>
-
-          </aside>
-
-          {/* Right: viewer + documents */}
-          <section aria-label="Aperçu du courrier" className="px-6 py-5 space-y-5 bg-muted/10 overflow-y-auto">
-            {!isOutbound && isInitialState && (
-              <SimilarCouriersAlert
-                courierId={courier.id}
-                organizationId={organizationId}
-                disabled={readOnly}
-              />
-            )}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <FileText className="h-4 w-4 text-muted-foreground" />
-                <h3 className="text-sm font-medium">Aperçu</h3>
-              </div>
-              <div className="h-[60vh] min-h-[400px]">
-                <DocumentViewer
-                  documents={displayDocuments as any}
-                  currentId={selectedDocId}
-                  onChange={setSelectedDocId}
-                  organizationId={organizationId}
-                />
-              </div>
-            </div>
-
-            <Separator />
-
-            <div className="space-y-2">
-              <h3 className="text-sm font-medium">Documents</h3>
-              <DocumentManager
-                courierId={courier.id}
-                organizationId={organizationId}
-                selectedDocId={selectedDocId}
-                onSelectDoc={setSelectedDocId}
-                readOnly={readOnly}
-                ignoredAttachments={(courier.metadata?.ignored_attachments as { name: string; size: number }[] | undefined) ?? []}
-              />
-            </div>
-
-            {!withTabs && (
-              <>
-                <Separator />
-                <CourierNotes
+              {!isOutbound && isInitialState && (
+                <SimilarCouriersAlert
                   courierId={courier.id}
                   organizationId={organizationId}
-                  readOnly={readOnly || isFinalState}
+                  disabled={readOnly}
                 />
-              </>
-            )}
-          </section>
+              )}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-muted-foreground" />
+                  <h3 className="text-sm font-medium">Aperçu</h3>
+                </div>
+                <div className="h-[60vh] min-h-[400px]">
+                  <DocumentViewer
+                    documents={displayDocuments as any}
+                    currentId={selectedDocId}
+                    onChange={setSelectedDocId}
+                    organizationId={organizationId}
+                  />
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="space-y-2">
+                <h3 className="text-sm font-medium">Documents</h3>
+                <DocumentManager
+                  courierId={courier.id}
+                  organizationId={organizationId}
+                  selectedDocId={selectedDocId}
+                  onSelectDoc={setSelectedDocId}
+                  readOnly={readOnly}
+                  ignoredAttachments={(courier.metadata?.ignored_attachments as { name: string; size: number }[] | undefined) ?? []}
+                />
+              </div>
+
+              {!withTabs && (
+                <>
+                  <Separator />
+                  <CourierNotes
+                    courierId={courier.id}
+                    organizationId={organizationId}
+                    readOnly={readOnly || isFinalState}
+                  />
+                </>
+              )}
+            </section>
           </TabsContent>
+
+          {/* Always-mounted dialogs (service transfer + close linked couriers) */}
+          <AlertDialog
+            open={transferConfirmOpen}
+            onOpenChange={(o) => {
+              setTransferConfirmOpen(o);
+              if (!o) setTransferTargetServiceId("");
+            }}
+          >
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Transférer la demande</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Vous allez transférer ce courrier à :{" "}
+                  <strong>
+                    {services?.find((s) => s.id === transferTargetServiceId)?.name ?? ""}
+                  </strong>
+                  . Elle sera alors remise à l'état initial. En fonction de la configuration des droits, elle pourrait vous être rendue inaccessible.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Annuler</AlertDialogCancel>
+                <AlertDialogAction
+                  disabled={transferMutation.isPending}
+                  onClick={() => {
+                    const targetName = services?.find((s) => s.id === transferTargetServiceId)?.name ?? "";
+                    const loseAccess = userServiceFilter !== null && !userServiceFilter.includes(targetName);
+                    transferMutation.mutate({ targetServiceId: transferTargetServiceId, loseAccess });
+                  }}
+                >
+                  Valider
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          <CloseLinkedCouriersDialog
+            open={closeLinkedOpen}
+            onOpenChange={setCloseLinkedOpen}
+            organizationId={organizationId}
+            linkedCourierIds={closeLinkedIds}
+            sourceTitle={courier?.subject ?? courier?.chrono ?? "ce courrier"}
+          />
+
+
 
           {withTabs && (
             <>
