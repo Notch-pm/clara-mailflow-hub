@@ -117,7 +117,11 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
   const [transferConfirmOpen, setTransferConfirmOpen] = useState(false);
   const [closeLinkedOpen, setCloseLinkedOpen] = useState(false);
   const [closeLinkedIds, setCloseLinkedIds] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<string>("detail");
+  const [searchParams] = useSearchParams();
+  const initialTabParam = searchParams.get("tab");
+  const initialReplyIdParam = searchParams.get("replyId");
+  const initialEditParam = searchParams.get("edit") === "1";
+  const [activeTab, setActiveTab] = useState<string>(initialTabParam || "detail");
 
   const { data: replyList = [] } = useQuery({
     queryKey: ["courier-replies", courier?.id],
