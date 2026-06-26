@@ -77,7 +77,7 @@ export function NotificationBell() {
             Aucune notification
           </div>
         ) : (
-          <ScrollArea className="max-h-[360px]">
+          <ScrollArea className="h-[min(60vh,420px)]">
             {notifications.map((notif, i) => (
               <div key={notif.id}>
                 <button
