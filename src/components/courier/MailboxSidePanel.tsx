@@ -1099,69 +1099,14 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
           </aside>
 
           <Tabs
-            defaultValue="detail"
+            value={activeTab}
+            onValueChange={setActiveTab}
             className="flex flex-col mb-px flex-1 min-h-0 overflow-hidden relative"
           >
           {withTabs && (
-            <TabsList className={cn("self-start shrink-0", fullScreen ? "mx-4 mt-1 mb-1" : "mx-6 mt-[4px] mb-[4px]")}>
-              <TabsTrigger value="detail">Détail du courrier</TabsTrigger>
-              {!isOutbound && (
-                <TabsTrigger value="content">Contenu et intentions</TabsTrigger>
-              )}
-              {!isOutbound && (
-                <TabsTrigger value="actions" className="gap-2">
-                  Actions liées
-                  {ticketsList.length > 0 && (
-                    <span className="inline-flex items-center justify-center rounded-full bg-green-500/20 text-green-700 px-1.5 text-[10px] font-medium leading-none min-w-[18px] h-[18px]">
-                      {ticketsList.length}
-                    </span>
-                  )}
-                </TabsTrigger>
-              )}
-              {!isOutbound && (
-                <TabsTrigger value="response" className="gap-2">
-                  {replyList.length > 1 ? "Réponses" : "Réponse"}
-                  {replyList.length > 0 && (
-                    <span className="inline-flex items-center justify-center rounded-full bg-green-500/20 text-green-700 px-1.5 text-[10px] font-medium leading-none min-w-[18px] h-[18px]">
-                      {replyList.length}
-                    </span>
-                  )}
-                  {replyState && (
-                    <span
-                      className={cn(
-                        "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none",
-                        replyState.category === "processed"
-                          ? "bg-green-500/15 text-green-700"
-                          : replyState.category === "processing"
-                          ? "bg-blue-500/15 text-blue-700"
-                          : "bg-yellow-500/15 text-yellow-700",
-                      )}
-                    >
-                      {replyState.name}
-                    </span>
-                  )}
-                </TabsTrigger>
-              )}
-              <TabsTrigger value="participants" className="gap-2">
-                Participants
-                {participants.length > 0 && (
-                  <span className="inline-flex items-center justify-center rounded-full bg-green-500/20 text-green-700 px-1.5 text-[10px] font-medium leading-none min-w-[18px] h-[18px]">
-                    {participants.length}
-                  </span>
-                )}
-              </TabsTrigger>
-              {!isOutbound && (
-                <TabsTrigger value="links" className="gap-2">
-                  Liens
-                  {relationsList.length > 0 && (
-                    <span className="inline-flex items-center justify-center rounded-full bg-green-500/20 text-green-700 px-1.5 text-[10px] font-medium leading-none min-w-[18px] h-[18px]">
-                      {relationsList.length}
-                    </span>
-                  )}
-                </TabsTrigger>
-              )}
-              <TabsTrigger value="history">Historique</TabsTrigger>
-            </TabsList>
+            <div className={cn("shrink-0", fullScreen ? "mx-4 mt-1 mb-1" : "mx-6 mt-[4px] mb-[4px]")}>
+              <ResponsiveTabsList activeValue={activeTab} tabs={tabItems} />
+            </div>
           )}
           <TabsContent
             value="detail"
