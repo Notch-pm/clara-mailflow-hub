@@ -429,6 +429,62 @@ export default function ReplyComposer({
     onError: (err: Error) => toast.error(err.message),
   });
 
+  // Signature is now performed implicitly when leaving a signature-state via
+  // the nominal "next" transition.
+  const doSignAndAdvance = useMutation({
+    mutationFn: async () => {
+      const forward = outgoingTransitions.find(({ transition }) => (transition as any).kind === "next");
+      if (!forward) throw new Error("Aucune transition suivante définie.");
+      const ensured = await ensureReply();
+      const newBody = await buildSignedBody();
+      await signReply(organizationId, courierId, ensured.id, {
+        bodyHtml: newBody, signedBy: currentUserId!, signedStateId: currentState?.id ?? null,
+      });
+      setBody(newBody);
+      await transitionReplyState(
+        organizationId, courierId, ensured.id,
+        forward.target.id, forward.target.name, forward.target.category,
+      );
+    },
+    onSuccess: () => {
+      setDirty(false);
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
+      refetchReplies();
+      toast.success("Réponse signée");
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  // Email send is performed implicitly when leaving a send-state via the
+  // nominal "next" transition.
+  const doSendAndAdvance = useMutation({
+    mutationFn: async () => {
+      const forward = outgoingTransitions.find(({ transition }) => (transition as any).kind === "next");
+      if (!forward) throw new Error("Aucune transition suivante définie.");
+      if (!reply) throw new Error("Aucune réponse à envoyer.");
+      const { data, error } = await supabase.functions.invoke("send-courier-reply", {
+        body: { reply_id: reply.id, organization_id: organizationId },
+      });
+      if (error) throw new Error(error.message);
+      const result = data as SendEmailResult | null;
+      if (result?.error) throw new Error(result.error);
+      await transitionReplyState(
+        organizationId, courierId, reply.id,
+        forward.target.id, forward.target.name, forward.target.category,
+      );
+      return result;
+    },
+    onSuccess: (data) => {
+      setDirty(false);
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
+      refetchReplies();
+      toast.success(`Courriel envoyé à ${data?.to ?? "l'usager"}`);
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   const doDelete = useMutation({
     mutationFn: async (r: ReplyRecord) => {
       await deleteReply(organizationId, courierId, r.id);
