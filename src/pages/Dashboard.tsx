@@ -121,7 +121,7 @@ export default function Dashboard() {
       // 2. Outbound couriers in those states
       const { data, error } = await supabase
         .from("couriers")
-        .select("id, subject, created_at, metadata")
+        .select("id, subject, created_at, metadata, parent_courier_id")
         .eq("organization_id", organizationId!)
         .eq("direction", "outbound")
         .in("workflow_state_id", sigStateIds);
@@ -270,7 +270,11 @@ export default function Dashboard() {
                   {pendingSignature!.map((c) => (
                     <Link
                       key={c.id}
-                      to={`/courrier/${c.id}`}
+                      to={
+                        c.parent_courier_id
+                          ? `/courrier/${c.parent_courier_id}?tab=response&replyId=${c.id}&edit=1`
+                          : `/courrier/${c.id}`
+                      }
                       className="flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors"
                     >
                       <div className="min-w-0">

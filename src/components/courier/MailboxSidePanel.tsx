@@ -7,7 +7,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { ResponsiveTabsList, type ResponsiveTabItem } from "@/components/courier/ResponsiveTabsList";
@@ -117,7 +117,11 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
   const [transferConfirmOpen, setTransferConfirmOpen] = useState(false);
   const [closeLinkedOpen, setCloseLinkedOpen] = useState(false);
   const [closeLinkedIds, setCloseLinkedIds] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<string>("detail");
+  const [searchParams] = useSearchParams();
+  const initialTabParam = searchParams.get("tab");
+  const initialReplyIdParam = searchParams.get("replyId");
+  const initialEditParam = searchParams.get("edit") === "1";
+  const [activeTab, setActiveTab] = useState<string>(initialTabParam || "detail");
 
   const { data: replyList = [] } = useQuery({
     queryKey: ["courier-replies", courier?.id],
@@ -1307,6 +1311,8 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                     sender={sender ?? null}
                     readOnly={readOnly}
                     onStateChange={setReplyState}
+                    initialReplyId={initialReplyIdParam}
+                    initialOpenEditor={initialEditParam}
                   />
                 </TabsContent>
               )}
