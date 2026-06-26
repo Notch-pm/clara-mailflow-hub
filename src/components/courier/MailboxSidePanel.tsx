@@ -853,62 +853,64 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
             <Separator />
 
             {/* Column 2: Expéditeur / Destinataire */}
-            <div className="space-y-0.5 min-w-0">
-              {isOutbound ? (
-                <div className="flex items-center justify-between gap-2 py-0.5">
-                  <span className="text-muted-foreground text-sm shrink-0">Expéditeur</span>
-                  <span className="text-sm font-medium px-2 truncate">
+            <div className="space-y-3 min-w-0">
+              <div className="space-y-1 min-w-0">
+                <span className="text-muted-foreground text-sm block">Expéditeur</span>
+                {isOutbound ? (
+                  <span className="text-sm font-semibold block truncate">
                     {parentCourier?.assigned_service ?? (
                       <span className="text-muted-foreground italic font-normal">—</span>
                     )}
                   </span>
-                </div>
-              ) : (
-                <div className="relative pr-7">
-                  <InlineEditField
-                    label="Expéditeur"
-                    value={sender?.name ?? ""}
-                    placeholder="Nom de l'expéditeur"
-                    maxLength={150}
-                    readOnly={readOnly}
-                    onSave={(v) => upsertParticipant("sender", { name: v.trim() || null })}
-                  />
-                  {sender?.usager_id && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Link
-                          to={`/usagers/${sender.usager_id}`}
-                          onClick={() => onOpenChange(false)}
-                          className="absolute right-0 top-0 inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:text-primary hover:bg-muted transition-colors bg-background"
-                          aria-label="Voir tous les courriers de cet expéditeur"
-                        >
-                          <ExternalLink className="h-3.5 w-3.5" />
-                        </Link>
-                      </TooltipTrigger>
-                      <TooltipContent>Voir tous les courriers de cet expéditeur</TooltipContent>
-                    </Tooltip>
-                  )}
-                </div>
-              )}
-              {isOutbound ? (
-                <div className="flex items-center justify-between gap-2 py-0.5">
-                  <span className="text-muted-foreground text-sm shrink-0">Destinataire</span>
-                  <span className="text-sm font-medium px-2 truncate">
+                ) : (
+                  <div className="relative pr-7">
+                    <InlineEditField
+                      label=""
+                      value={sender?.name ?? ""}
+                      placeholder="Nom de l'expéditeur"
+                      maxLength={150}
+                      readOnly={readOnly}
+                      onSave={(v) => upsertParticipant("sender", { name: v.trim() || null })}
+                      displayClassName="font-semibold"
+                    />
+                    {sender?.usager_id && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Link
+                            to={`/usagers/${sender.usager_id}`}
+                            onClick={() => onOpenChange(false)}
+                            className="absolute right-0 top-0 inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:text-primary hover:bg-muted transition-colors bg-background"
+                            aria-label="Voir tous les courriers de cet expéditeur"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </Link>
+                        </TooltipTrigger>
+                        <TooltipContent>Voir tous les courriers de cet expéditeur</TooltipContent>
+                      </Tooltip>
+                    )}
+                  </div>
+                )}
+              </div>
+              <div className="space-y-1 min-w-0">
+                <span className="text-muted-foreground text-sm block">Destinataire</span>
+                {isOutbound ? (
+                  <span className="text-sm font-semibold block truncate">
                     {parentSender?.name ?? (
                       <span className="text-muted-foreground italic font-normal">—</span>
                     )}
                   </span>
-                </div>
-              ) : (
-                <InlineEditField
-                  label="Destinataire"
-                  value={recipient?.name ?? ""}
-                  placeholder="Nom du destinataire"
-                  maxLength={150}
-                  readOnly={readOnly}
-                  onSave={(v) => upsertParticipant("recipient", { name: v.trim() || null })}
-                />
-              )}
+                ) : (
+                  <InlineEditField
+                    label=""
+                    value={recipient?.name ?? ""}
+                    placeholder="Nom du destinataire"
+                    maxLength={150}
+                    readOnly={readOnly}
+                    onSave={(v) => upsertParticipant("recipient", { name: v.trim() || null })}
+                    displayClassName="font-semibold"
+                  />
+                )}
+              </div>
             </div>
 
             <Separator />
