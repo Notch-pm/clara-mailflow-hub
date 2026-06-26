@@ -77,6 +77,8 @@ interface Props {
   sender: CourierParticipant | null;
   readOnly?: boolean;
   onStateChange?: (state: { name: string; category: string | null } | null) => void;
+  initialReplyId?: string | null;
+  initialOpenEditor?: boolean;
 }
 
 const CATEGORY_ORDER: Record<string, number> = { pending: 0, processing: 1, processed: 2, archived: 3 };
@@ -91,6 +93,8 @@ export default function ReplyComposer({
   sender,
   readOnly,
   onStateChange,
+  initialReplyId = null,
+  initialOpenEditor = false,
 }: Props) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
