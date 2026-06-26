@@ -1311,6 +1311,8 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                     sender={sender ?? null}
                     readOnly={readOnly}
                     onStateChange={setReplyState}
+                    initialReplyId={initialReplyIdParam}
+                    initialOpenEditor={initialEditParam}
                   />
                 </TabsContent>
               )}
