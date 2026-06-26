@@ -270,7 +270,11 @@ export default function Dashboard() {
                   {pendingSignature!.map((c) => (
                     <Link
                       key={c.id}
-                      to={`/courrier/${c.id}`}
+                      to={
+                        c.parent_courier_id
+                          ? `/courrier/${c.parent_courier_id}?tab=response&replyId=${c.id}&edit=1`
+                          : `/courrier/${c.id}`
+                      }
                       className="flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors"
                     >
                       <div className="min-w-0">
