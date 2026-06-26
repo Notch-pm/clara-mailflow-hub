@@ -429,6 +429,62 @@ export default function ReplyComposer({
     onError: (err: Error) => toast.error(err.message),
   });
 
+  // Signature is now performed implicitly when leaving a signature-state via
+  // the nominal "next" transition.
+  const doSignAndAdvance = useMutation({
+    mutationFn: async () => {
+      const forward = outgoingTransitions.find(({ transition }) => (transition as any).kind === "next");
+      if (!forward) throw new Error("Aucune transition suivante définie.");
+      const ensured = await ensureReply();
+      const newBody = await buildSignedBody();
+      await signReply(organizationId, courierId, ensured.id, {
+        bodyHtml: newBody, signedBy: currentUserId!, signedStateId: currentState?.id ?? null,
+      });
+      setBody(newBody);
+      await transitionReplyState(
+        organizationId, courierId, ensured.id,
+        forward.target.id, forward.target.name, forward.target.category,
+      );
+    },
+    onSuccess: () => {
+      setDirty(false);
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
+      refetchReplies();
+      toast.success("Réponse signée");
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  // Email send is performed implicitly when leaving a send-state via the
+  // nominal "next" transition.
+  const doSendAndAdvance = useMutation({
+    mutationFn: async () => {
+      const forward = outgoingTransitions.find(({ transition }) => (transition as any).kind === "next");
+      if (!forward) throw new Error("Aucune transition suivante définie.");
+      if (!reply) throw new Error("Aucune réponse à envoyer.");
+      const { data, error } = await supabase.functions.invoke("send-courier-reply", {
+        body: { reply_id: reply.id, organization_id: organizationId },
+      });
+      if (error) throw new Error(error.message);
+      const result = data as SendEmailResult | null;
+      if (result?.error) throw new Error(result.error);
+      await transitionReplyState(
+        organizationId, courierId, reply.id,
+        forward.target.id, forward.target.name, forward.target.category,
+      );
+      return result;
+    },
+    onSuccess: (data) => {
+      setDirty(false);
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
+      refetchReplies();
+      toast.success(`Courriel envoyé à ${data?.to ?? "l'usager"}`);
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   const doDelete = useMutation({
     mutationFn: async (r: ReplyRecord) => {
       await deleteReply(organizationId, courierId, r.id);
@@ -443,7 +499,8 @@ export default function ReplyComposer({
   });
 
   const isBusy = saveDraft.isPending || doSign.isPending || doUnsign.isPending ||
-    doTransition.isPending || sendEmail.isPending || doDelete.isPending || isPrintingWithTemplate;
+    doTransition.isPending || sendEmail.isPending || doDelete.isPending || isPrintingWithTemplate ||
+    doSignAndAdvance.isPending || doSendAndAdvance.isPending;
 
   // ─── Early exits (no service / no workflow) ─────────────────────────
   if (!currentService) {
@@ -669,6 +726,52 @@ export default function ReplyComposer({
       doTransition.mutate(target);
     };
 
+    // The "next" nominal transition implicitly performs the signature / send
+    // action when leaving a signature- or send-state.
+    const nextRequiresSign = !!nextEntry && isSignatureState && !isSigned;
+    const nextRequiresSend = !!nextEntry && isSendState && !isSent;
+    const nextDisabledReason = nextRequiresSign
+      ? (!currentUserIsSignatory
+          ? "Vous n'êtes pas le signataire désigné."
+          : !signatoryId
+            ? "Sélectionnez un signataire."
+            : null)
+      : nextRequiresSend
+        ? (!canEmail ? "L'expéditeur n'a pas d'adresse email." : null)
+        : null;
+
+    const onClickNext = () => {
+      if (!nextEntry) return;
+      if (nextRequiresSign) {
+        doSignAndAdvance.mutate();
+        return;
+      }
+      if (nextRequiresSend) {
+        doSendAndAdvance.mutate();
+        return;
+      }
+      runTransition({
+        id: nextEntry.target.id,
+        name: nextEntry.target.name,
+        category: nextEntry.target.category,
+        is_final: nextEntry.target.is_final,
+      });
+    };
+
+    const nextLabel = nextEntry
+      ? (nextRequiresSign
+          ? "Signer et avancer"
+          : nextRequiresSend
+            ? (sendEmail.isPending ? "Envoi…" : "Envoyer et avancer")
+            : (nextEntry.transition.name || nextEntry.target.name))
+      : "";
+
+    const nextIcon = nextRequiresSign
+      ? <PenLine className="h-3.5 w-3.5" />
+      : nextRequiresSend
+        ? <Send className="h-3.5 w-3.5" />
+        : <span className={dotColor(nextEntry?.target.category ?? null)} />;
+
     return (
       <div className="flex items-center gap-2">
         {prevEntry && (
@@ -688,21 +791,18 @@ export default function ReplyComposer({
             {prevEntry.transition.name || prevEntry.target.name}
           </Button>
         )}
-        {nextEntry && (
+        {nextEntry && renderMaybeTooltip(
           <Button
             size="sm"
             className="h-8 gap-1.5"
-            disabled={isBusy || !!readOnly}
-            onClick={() => runTransition({
-              id: nextEntry.target.id,
-              name: nextEntry.target.name,
-              category: nextEntry.target.category,
-              is_final: nextEntry.target.is_final,
-            })}
+            disabled={isBusy || !!readOnly || !!nextDisabledReason}
+            onClick={onClickNext}
           >
-            <span className={dotColor(nextEntry.target.category)} />
-            {nextEntry.transition.name || nextEntry.target.name}
-          </Button>
+            {nextIcon}
+            {nextLabel}
+          </Button>,
+          nextDisabledReason,
+          "next-transition-btn",
         )}
         {others.length > 0 && (
           <DropdownMenu>
@@ -842,28 +942,18 @@ export default function ReplyComposer({
             )
           )}
 
-          {/* Signer */}
-          {isSignatureState && currentUserIsSignatory && !isSigned && (
-            <div className="flex items-center gap-2">
-              {serviceSignatories.length > 1 && (
-                <Select value={signatoryId || "__none__"} onValueChange={(v) => setSignatoryId(v === "__none__" ? "" : v)} disabled={isBusy}>
-                  <SelectTrigger className="h-8 w-[180px] text-sm"><SelectValue placeholder="Signataire…" /></SelectTrigger>
-                  <SelectContent>
-                    {serviceSignatories.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {`${s.first_name} ${s.last_name}`.trim()}{s.title ? ` — ${s.title}` : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-              {renderMaybeTooltip(
-                <Button size="sm" disabled={isBusy || !signatoryId || !!readOnly} onClick={() => doSign.mutate()} className="gap-1.5">
-                  <PenLine className="h-4 w-4" />Signer
-                </Button>,
-                !signatoryId ? "Sélectionnez un signataire." : null, "sign-btn",
-              )}
-            </div>
+          {/* Sélection du signataire (la signature est appliquée par la transition "suivante") */}
+          {isSignatureState && currentUserIsSignatory && !isSigned && serviceSignatories.length > 1 && (
+            <Select value={signatoryId || "__none__"} onValueChange={(v) => setSignatoryId(v === "__none__" ? "" : v)} disabled={isBusy}>
+              <SelectTrigger className="h-8 w-[180px] text-sm"><SelectValue placeholder="Signataire…" /></SelectTrigger>
+              <SelectContent>
+                {serviceSignatories.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {`${s.first_name} ${s.last_name}`.trim()}{s.title ? ` — ${s.title}` : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
 
           {/* Retirer la signature */}
@@ -878,17 +968,6 @@ export default function ReplyComposer({
             </Button>
           )}
 
-          {/* Envoyer */}
-          {isSendState && renderMaybeTooltip(
-            <Button
-              size="sm" disabled={isBusy || !!readOnly || !canEmail || isSent}
-              onClick={() => sendEmail.mutate()} className="gap-1.5"
-            >
-              <Send className="h-4 w-4" />
-              {sendEmail.isPending ? "Envoi…" : isSent ? "Déjà envoyé" : "Envoyer"}
-            </Button>,
-            !canEmail ? "L'expéditeur n'a pas d'adresse email." : null, "send-btn",
-          )}
 
           {/* Badges */}
           {isSigned && (
