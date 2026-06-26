@@ -12,7 +12,7 @@ import { fr } from "date-fns/locale";
 
 export function NotificationBell() {
   const navigate = useNavigate();
-  const { notifications, unreadCount, markRead, markAllRead } = useNotifications();
+  const { notifications, unreadCount, markRead, markAllRead, deleteNotification } = useNotifications();
   const [popoverOpen, setPopoverOpen] = useState(false);
 
   useEffect(() => {
