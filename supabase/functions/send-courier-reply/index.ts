@@ -144,8 +144,35 @@ Deno.serve(async (req) => {
       tls: smtp.use_tls ? { rejectUnauthorized: false } : undefined,
     });
 
-    const html = (meta.body_html as string | undefined) ?? "";
+    let html = (meta.body_html as string | undefined) ?? "";
     const text = (meta.body_text as string | undefined) ?? htmlToText(html);
+
+    // Convert inline data: images (e.g. signature) into CID attachments so
+    // that mail clients (Gmail, Outlook, Apple Mail) display them. Most
+    // clients strip <img src="data:..."> for security reasons.
+    const attachments: Array<{
+      filename: string;
+      content: Uint8Array;
+      contentType: string;
+      cid: string;
+      contentDisposition: "inline";
+    }> = [];
+    html = html.replace(
+      /src=(["'])data:([^;]+);base64,([^"']+)\1/gi,
+      (_m, quote, mime, b64) => {
+        const cid = `inline-${attachments.length}-${crypto.randomUUID()}@clara`;
+        const ext = (mime.split("/")[1] || "bin").split("+")[0];
+        const bin = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+        attachments.push({
+          filename: `signature-${attachments.length}.${ext}`,
+          content: bin,
+          contentType: mime,
+          cid,
+          contentDisposition: "inline",
+        });
+        return `src=${quote}cid:${cid}${quote}`;
+      },
+    );
 
     const info = await transporter.sendMail({
       from: smtp.from_name ? `${smtp.from_name} <${smtp.from_email}>` : smtp.from_email,
@@ -153,6 +180,7 @@ Deno.serve(async (req) => {
       subject: reply.subject || "Réponse",
       text,
       html: html || text,
+      attachments: attachments.length ? attachments : undefined,
     });
 
     const sentAt = new Date().toISOString();
