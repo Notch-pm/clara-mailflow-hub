@@ -729,7 +729,7 @@ export default function ReplyComposer({
     // The "next" nominal transition implicitly performs the signature / send
     // action when leaving a signature- or send-state.
     const nextRequiresSign = !!nextEntry && isSignatureState && !isSigned;
-    const nextRequiresSend = !!nextEntry && isSendState && !isSent;
+    const nextRequiresSend = !!nextEntry && isSendState && !isSent && channel === "email";
     const nextDisabledReason = nextRequiresSign
       ? (!currentUserIsSignatory
           ? "Vous n'êtes pas le signataire désigné."
