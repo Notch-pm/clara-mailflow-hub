@@ -73,11 +73,24 @@ export function useNotifications() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: deleteNotification,
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ["notifications", userId] });
+      queryClient.setQueryData<Notification[]>(
+        ["notifications", userId],
+        (prev) => prev?.filter((n) => n.id !== id)
+      );
+    },
+  });
+
   return {
     notifications,
     unreadCount,
     isLoading,
     markRead: (id: string) => markReadMutation.mutate(id),
     markAllRead: () => markAllReadMutation.mutate(),
+    deleteNotification: (id: string) => deleteMutation.mutate(id),
   };
 }
+
