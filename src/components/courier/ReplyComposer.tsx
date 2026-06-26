@@ -669,6 +669,52 @@ export default function ReplyComposer({
       doTransition.mutate(target);
     };
 
+    // The "next" nominal transition implicitly performs the signature / send
+    // action when leaving a signature- or send-state.
+    const nextRequiresSign = !!nextEntry && isSignatureState && !isSigned;
+    const nextRequiresSend = !!nextEntry && isSendState && !isSent;
+    const nextDisabledReason = nextRequiresSign
+      ? (!currentUserIsSignatory
+          ? "Vous n'êtes pas le signataire désigné."
+          : !signatoryId
+            ? "Sélectionnez un signataire."
+            : null)
+      : nextRequiresSend
+        ? (!canEmail ? "L'expéditeur n'a pas d'adresse email." : null)
+        : null;
+
+    const onClickNext = () => {
+      if (!nextEntry) return;
+      if (nextRequiresSign) {
+        doSignAndAdvance.mutate();
+        return;
+      }
+      if (nextRequiresSend) {
+        doSendAndAdvance.mutate();
+        return;
+      }
+      runTransition({
+        id: nextEntry.target.id,
+        name: nextEntry.target.name,
+        category: nextEntry.target.category,
+        is_final: nextEntry.target.is_final,
+      });
+    };
+
+    const nextLabel = nextEntry
+      ? (nextRequiresSign
+          ? "Signer et avancer"
+          : nextRequiresSend
+            ? (sendEmail.isPending ? "Envoi…" : "Envoyer et avancer")
+            : (nextEntry.transition.name || nextEntry.target.name))
+      : "";
+
+    const nextIcon = nextRequiresSign
+      ? <PenLine className="h-3.5 w-3.5" />
+      : nextRequiresSend
+        ? <Send className="h-3.5 w-3.5" />
+        : <span className={dotColor(nextEntry?.target.category ?? null)} />;
+
     return (
       <div className="flex items-center gap-2">
         {prevEntry && (
@@ -688,21 +734,18 @@ export default function ReplyComposer({
             {prevEntry.transition.name || prevEntry.target.name}
           </Button>
         )}
-        {nextEntry && (
+        {nextEntry && renderMaybeTooltip(
           <Button
             size="sm"
             className="h-8 gap-1.5"
-            disabled={isBusy || !!readOnly}
-            onClick={() => runTransition({
-              id: nextEntry.target.id,
-              name: nextEntry.target.name,
-              category: nextEntry.target.category,
-              is_final: nextEntry.target.is_final,
-            })}
+            disabled={isBusy || !!readOnly || !!nextDisabledReason}
+            onClick={onClickNext}
           >
-            <span className={dotColor(nextEntry.target.category)} />
-            {nextEntry.transition.name || nextEntry.target.name}
-          </Button>
+            {nextIcon}
+            {nextLabel}
+          </Button>,
+          nextDisabledReason,
+          "next-transition-btn",
         )}
         {others.length > 0 && (
           <DropdownMenu>
