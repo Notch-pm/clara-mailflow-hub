@@ -117,6 +117,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
   const [transferConfirmOpen, setTransferConfirmOpen] = useState(false);
   const [closeLinkedOpen, setCloseLinkedOpen] = useState(false);
   const [closeLinkedIds, setCloseLinkedIds] = useState<string[]>([]);
+  const [activeTab, setActiveTab] = useState<string>("detail");
 
   const { data: replyList = [] } = useQuery({
     queryKey: ["courier-replies", courier?.id],
