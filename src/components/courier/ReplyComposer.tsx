@@ -169,6 +169,17 @@ export default function ReplyComposer({
   const [proposeFinal, setProposeFinal] = useState(false);
   const [isPrintingWithTemplate, setIsPrintingWithTemplate] = useState(false);
 
+  // Auto-open a specific reply in editor mode when requested via navigation (e.g. from dashboard).
+  const [initialApplied, setInitialApplied] = useState(false);
+  useEffect(() => {
+    if (initialApplied || !initialOpenEditor || !initialReplyId) return;
+    if (replies.some((r) => r.id === initialReplyId)) {
+      setActiveReplyId(initialReplyId);
+      setView("editor");
+      setInitialApplied(true);
+    }
+  }, [initialApplied, initialOpenEditor, initialReplyId, replies]);
+
   const reply = useMemo(
     () => (activeReplyId ? replies.find((r) => r.id === activeReplyId) ?? null : null),
     [replies, activeReplyId],
