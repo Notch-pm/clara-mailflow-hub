@@ -121,7 +121,7 @@ export default function Dashboard() {
       // 2. Outbound couriers in those states
       const { data, error } = await supabase
         .from("couriers")
-        .select("id, subject, created_at, metadata")
+        .select("id, subject, created_at, metadata, parent_courier_id")
         .eq("organization_id", organizationId!)
         .eq("direction", "outbound")
         .in("workflow_state_id", sigStateIds);
