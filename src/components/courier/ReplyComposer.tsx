@@ -942,28 +942,18 @@ export default function ReplyComposer({
             )
           )}
 
-          {/* Signer */}
-          {isSignatureState && currentUserIsSignatory && !isSigned && (
-            <div className="flex items-center gap-2">
-              {serviceSignatories.length > 1 && (
-                <Select value={signatoryId || "__none__"} onValueChange={(v) => setSignatoryId(v === "__none__" ? "" : v)} disabled={isBusy}>
-                  <SelectTrigger className="h-8 w-[180px] text-sm"><SelectValue placeholder="Signataire…" /></SelectTrigger>
-                  <SelectContent>
-                    {serviceSignatories.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {`${s.first_name} ${s.last_name}`.trim()}{s.title ? ` — ${s.title}` : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-              {renderMaybeTooltip(
-                <Button size="sm" disabled={isBusy || !signatoryId || !!readOnly} onClick={() => doSign.mutate()} className="gap-1.5">
-                  <PenLine className="h-4 w-4" />Signer
-                </Button>,
-                !signatoryId ? "Sélectionnez un signataire." : null, "sign-btn",
-              )}
-            </div>
+          {/* Sélection du signataire (la signature est appliquée par la transition "suivante") */}
+          {isSignatureState && currentUserIsSignatory && !isSigned && serviceSignatories.length > 1 && (
+            <Select value={signatoryId || "__none__"} onValueChange={(v) => setSignatoryId(v === "__none__" ? "" : v)} disabled={isBusy}>
+              <SelectTrigger className="h-8 w-[180px] text-sm"><SelectValue placeholder="Signataire…" /></SelectTrigger>
+              <SelectContent>
+                {serviceSignatories.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {`${s.first_name} ${s.last_name}`.trim()}{s.title ? ` — ${s.title}` : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
 
           {/* Retirer la signature */}
@@ -978,17 +968,6 @@ export default function ReplyComposer({
             </Button>
           )}
 
-          {/* Envoyer */}
-          {isSendState && renderMaybeTooltip(
-            <Button
-              size="sm" disabled={isBusy || !!readOnly || !canEmail || isSent}
-              onClick={() => sendEmail.mutate()} className="gap-1.5"
-            >
-              <Send className="h-4 w-4" />
-              {sendEmail.isPending ? "Envoi…" : isSent ? "Déjà envoyé" : "Envoyer"}
-            </Button>,
-            !canEmail ? "L'expéditeur n'a pas d'adresse email." : null, "send-btn",
-          )}
 
           {/* Badges */}
           {isSigned && (
