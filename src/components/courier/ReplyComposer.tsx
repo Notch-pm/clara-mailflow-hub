@@ -499,7 +499,8 @@ export default function ReplyComposer({
   });
 
   const isBusy = saveDraft.isPending || doSign.isPending || doUnsign.isPending ||
-    doTransition.isPending || sendEmail.isPending || doDelete.isPending || isPrintingWithTemplate;
+    doTransition.isPending || sendEmail.isPending || doDelete.isPending || isPrintingWithTemplate ||
+    doSignAndAdvance.isPending || doSendAndAdvance.isPending;
 
   // ─── Early exits (no service / no workflow) ─────────────────────────
   if (!currentService) {
