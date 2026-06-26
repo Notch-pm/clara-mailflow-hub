@@ -80,49 +80,66 @@ export function NotificationBell() {
           <ScrollArea className="h-[min(60vh,420px)]">
             {notifications.map((notif, i) => (
               <div key={notif.id}>
-                <button
-                  type="button"
-                  onClick={() => handleNotificationClick(notif.id, notif.resource_id)}
+                <div
                   className={cn(
-                    "w-full text-left px-4 py-3 hover:bg-muted/60 transition-colors",
+                    "group relative flex items-stretch hover:bg-muted/60 transition-colors",
                     !notif.read && "bg-primary/5"
                   )}
                 >
-                  <div className="flex items-start gap-2.5">
-                    <span
-                      className={cn(
-                        "mt-1.5 h-2 w-2 shrink-0 rounded-full",
-                        !notif.read ? "bg-primary" : "bg-transparent"
-                      )}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5 mb-0.5">
-                        {notif.type === "courier_transferred" && (
-                          <span className="inline-flex items-center rounded px-1 py-0 text-[10px] font-medium bg-warning/15 text-warning-foreground border border-warning/30">
-                            transféré
-                          </span>
+                  <button
+                    type="button"
+                    onClick={() => handleNotificationClick(notif.id, notif.resource_id)}
+                    className="flex-1 text-left px-4 py-3 pr-10"
+                  >
+                    <div className="flex items-start gap-2.5">
+                      <span
+                        className={cn(
+                          "mt-1.5 h-2 w-2 shrink-0 rounded-full",
+                          !notif.read ? "bg-primary" : "bg-transparent"
                         )}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          {notif.type === "courier_transferred" && (
+                            <span className="inline-flex items-center rounded px-1 py-0 text-[10px] font-medium bg-warning/15 text-warning-foreground border border-warning/30">
+                              transféré
+                            </span>
+                          )}
+                        </div>
+                        <p className={cn(
+                          "text-sm line-clamp-2 break-words",
+                          !notif.read ? "font-semibold text-foreground" : "text-muted-foreground"
+                        )}>
+                          {notif.type === "courier_transferred"
+                            ? ((notif.title ?? "").replace(/^Transféré : /, "") || "Courrier transféré")
+                            : (notif.title ?? "Nouveau courrier")}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {formatDistanceToNow(new Date(notif.created_at), {
+                            addSuffix: true,
+                            locale: fr,
+                          })}
+                        </p>
                       </div>
-                      <p className={cn(
-                        "text-sm line-clamp-2 break-words",
-                        !notif.read ? "font-semibold text-foreground" : "text-muted-foreground"
-                      )}>
-                        {notif.type === "courier_transferred"
-                          ? ((notif.title ?? "").replace(/^Transféré : /, "") || "Courrier transféré")
-                          : (notif.title ?? "Nouveau courrier")}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {formatDistanceToNow(new Date(notif.created_at), {
-                          addSuffix: true,
-                          locale: fr,
-                        })}
-                      </p>
                     </div>
-                  </div>
-                </button>
+                  </button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-1.5 top-1.5 h-6 w-6 opacity-0 group-hover:opacity-100 focus:opacity-100 text-muted-foreground hover:text-foreground"
+                    aria-label="Supprimer la notification"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteNotification(notif.id);
+                    }}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
                 {i < notifications.length - 1 && <Separator />}
               </div>
             ))}
+
           </ScrollArea>
         )}
       </PopoverContent>
