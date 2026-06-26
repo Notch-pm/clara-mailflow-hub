@@ -957,7 +957,7 @@ export default function ReplyComposer({
           )}
 
           {/* Retirer la signature */}
-          {isSigned && currentUserIsSignatory && (
+          {isSigned && currentUserIsSignatory && !isSent && !isFinal && (
             <Button
               size="sm" variant="outline"
               disabled={isBusy || !!readOnly}
