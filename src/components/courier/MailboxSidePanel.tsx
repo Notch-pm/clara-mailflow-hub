@@ -155,6 +155,61 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
   const sender = participants.find((p) => p.role === "sender");
   const recipient = participants.find((p) => p.role === "recipient");
 
+  const countBadge = (n: number) => (
+    <span className="inline-flex items-center justify-center rounded-full bg-primary/15 text-primary px-1.5 text-[10px] font-medium leading-none min-w-[18px] h-[18px]">
+      {n}
+    </span>
+  );
+
+  const tabItems: ResponsiveTabItem[] = useMemo(() => {
+    const items: ResponsiveTabItem[] = [{ value: "detail", label: "Détail du courrier" }];
+    if (!isOutbound) {
+      items.push({ value: "content", label: "Contenu et intentions" });
+      items.push({
+        value: "actions",
+        label: "Actions liées",
+        badge: ticketsList.length > 0 ? countBadge(ticketsList.length) : null,
+      });
+      items.push({
+        value: "response",
+        label: replyList.length > 1 ? "Réponses" : "Réponse",
+        badge: (
+          <>
+            {replyList.length > 0 && countBadge(replyList.length)}
+            {replyState && (
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none",
+                  replyState.category === "processed"
+                    ? "bg-green-500/15 text-green-700"
+                    : replyState.category === "processing"
+                    ? "bg-blue-500/15 text-blue-700"
+                    : "bg-yellow-500/15 text-yellow-700",
+                )}
+              >
+                {replyState.name}
+              </span>
+            )}
+          </>
+        ),
+      });
+    }
+    items.push({
+      value: "participants",
+      label: "Participants",
+      badge: participants.length > 0 ? countBadge(participants.length) : null,
+    });
+    if (!isOutbound) {
+      items.push({
+        value: "links",
+        label: "Liens",
+        badge: relationsList.length > 0 ? countBadge(relationsList.length) : null,
+      });
+    }
+    items.push({ value: "history", label: "Historique" });
+    return items;
+  }, [isOutbound, ticketsList.length, replyList.length, replyState, participants.length, relationsList.length]);
+
   // For outbound couriers, fetch the linked parent inbound courier
   const { data: parentCourier } = useQuery({
     queryKey: ["courier", courier?.parent_courier_id, organizationId],
