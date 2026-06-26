@@ -5,8 +5,10 @@ import {
   getNotifications,
   markNotificationRead,
   markAllNotificationsRead,
+  deleteNotification,
   type Notification,
 } from "@/services/notificationService";
+
 import { useAuth } from "@/contexts/AuthContext";
 
 export function useNotifications() {
