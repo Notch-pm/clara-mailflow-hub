@@ -34,7 +34,7 @@ export default function GeneralSettings({ orgId }: { orgId: string }) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("organizations" as never)
-        .select("id, multiple_imap, domiciliary_file_enabled, address_street, address_complement, address_postal_code, address_city, phone, website, contact_email")
+        .select("id, multiple_imap, domiciliary_file_enabled, address_street, address_complement, address_postal_code, address_city, phone, website, contact_email, courier_retention_days, usager_retention_days")
         .eq("id", orgId)
         .single();
       if (error) throw error;
