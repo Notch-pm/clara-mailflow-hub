@@ -1009,6 +1009,7 @@ export type Database = {
           address_postal_code: string | null
           address_street: string | null
           contact_email: string | null
+          courier_retention_days: number | null
           created_at: string
           domiciliary_file_enabled: boolean
           id: string
@@ -1026,6 +1027,7 @@ export type Database = {
           slug: string
           status: string
           updated_at: string
+          usager_retention_days: number | null
           website: string | null
         }
         Insert: {
@@ -1034,6 +1036,7 @@ export type Database = {
           address_postal_code?: string | null
           address_street?: string | null
           contact_email?: string | null
+          courier_retention_days?: number | null
           created_at?: string
           domiciliary_file_enabled?: boolean
           id?: string
@@ -1051,6 +1054,7 @@ export type Database = {
           slug: string
           status?: string
           updated_at?: string
+          usager_retention_days?: number | null
           website?: string | null
         }
         Update: {
@@ -1059,6 +1063,7 @@ export type Database = {
           address_postal_code?: string | null
           address_street?: string | null
           contact_email?: string | null
+          courier_retention_days?: number | null
           created_at?: string
           domiciliary_file_enabled?: boolean
           id?: string
@@ -1076,6 +1081,7 @@ export type Database = {
           slug?: string
           status?: string
           updated_at?: string
+          usager_retention_days?: number | null
           website?: string | null
         }
         Relationships: []

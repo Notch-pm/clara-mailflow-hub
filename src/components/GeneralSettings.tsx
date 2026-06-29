@@ -22,6 +22,8 @@ interface OrgRow {
   phone: string | null;
   website: string | null;
   contact_email: string | null;
+  courier_retention_days: number | null;
+  usager_retention_days: number | null;
 }
 
 export default function GeneralSettings({ orgId }: { orgId: string }) {
@@ -32,7 +34,7 @@ export default function GeneralSettings({ orgId }: { orgId: string }) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("organizations" as never)
-        .select("id, multiple_imap, domiciliary_file_enabled, address_street, address_complement, address_postal_code, address_city, phone, website, contact_email")
+        .select("id, multiple_imap, domiciliary_file_enabled, address_street, address_complement, address_postal_code, address_city, phone, website, contact_email, courier_retention_days, usager_retention_days")
         .eq("id", orgId)
         .single();
       if (error) throw error;
@@ -80,6 +82,8 @@ export default function GeneralSettings({ orgId }: { orgId: string }) {
   const [phone, setPhone] = useState("");
   const [website, setWebsite] = useState("");
   const [contactEmail, setContactEmail] = useState("");
+  const [courierRetention, setCourierRetention] = useState<string>("");
+  const [usagerRetention, setUsagerRetention] = useState<string>("");
 
   useEffect(() => {
     if (!org) return;
@@ -90,7 +94,36 @@ export default function GeneralSettings({ orgId }: { orgId: string }) {
     setPhone(org.phone ?? "");
     setWebsite(org.website ?? "");
     setContactEmail(org.contact_email ?? "");
+    setCourierRetention(org.courier_retention_days != null ? String(org.courier_retention_days) : "");
+    setUsagerRetention(org.usager_retention_days != null ? String(org.usager_retention_days) : "");
   }, [org]);
+
+  const retentionMutation = useMutation({
+    mutationFn: async () => {
+      const parse = (v: string) => {
+        const t = v.trim();
+        if (!t) return null;
+        const n = Number.parseInt(t, 10);
+        if (!Number.isFinite(n) || n <= 0) throw new Error("Les durées doivent être des entiers positifs.");
+        return n;
+      };
+      const courier = parse(courierRetention);
+      const usager = parse(usagerRetention);
+      const { error } = await supabase
+        .from("organizations" as never)
+        .update({
+          courier_retention_days: courier,
+          usager_retention_days: usager,
+        } as never)
+        .eq("id", orgId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["org-general", orgId] });
+      toast.success("Durées de conservation enregistrées");
+    },
+    onError: (e: Error) => toast.error("Erreur : " + e.message),
+  });
 
   const contactMutation = useMutation({
     mutationFn: async () => {
@@ -237,6 +270,58 @@ export default function GeneralSettings({ orgId }: { orgId: string }) {
               <Button type="submit" disabled={contactMutation.isPending}>
                 {contactMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Enregistrer les coordonnées
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <Settings2 className="h-5 w-5 text-primary" />
+            <div>
+              <CardTitle className="text-base">Conservation et purge</CardTitle>
+              <CardDescription>Durées de rétention des données. Laissez vide pour désactiver la purge.</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              retentionMutation.mutate();
+            }}
+          >
+            <div className="space-y-2">
+              <Label htmlFor="org-courier-retention">Conservation des courriers avant purge (en jours)</Label>
+              <Input
+                id="org-courier-retention"
+                type="number"
+                min={1}
+                step={1}
+                value={courierRetention}
+                onChange={(e) => setCourierRetention(e.target.value)}
+                placeholder="Ex. 365"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="org-usager-retention">Conservation des données usagers sans nouveau courrier (en jours)</Label>
+              <Input
+                id="org-usager-retention"
+                type="number"
+                min={1}
+                step={1}
+                value={usagerRetention}
+                onChange={(e) => setUsagerRetention(e.target.value)}
+                placeholder="Ex. 1095"
+              />
+            </div>
+            <div className="flex justify-end">
+              <Button type="submit" disabled={retentionMutation.isPending}>
+                {retentionMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Enregistrer les durées
               </Button>
             </div>
           </form>
