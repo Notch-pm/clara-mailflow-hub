@@ -22,6 +22,8 @@ interface OrgRow {
   phone: string | null;
   website: string | null;
   contact_email: string | null;
+  courier_retention_days: number | null;
+  usager_retention_days: number | null;
 }
 
 export default function GeneralSettings({ orgId }: { orgId: string }) {
