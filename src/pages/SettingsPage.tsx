@@ -16,6 +16,8 @@ import GeneralSettings from "@/components/GeneralSettings";
 import PortalFormsSettings from "@/components/portal/PortalFormsSettings";
 import AiUsageSettings from "@/components/AiUsageSettings";
 import { useOrganization } from "@/contexts/OrganizationContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { ShieldAlert } from "lucide-react";
 
 type Section = "menu" | "general" | "utilisateurs" | "workflows" | "classification" | "services" | "demarches" | "emails" | "signatures" | "modeles" | "portail" | "quartiers" | "ia";
 
