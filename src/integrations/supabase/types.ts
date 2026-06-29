@@ -2262,6 +2262,7 @@ export type Database = {
       }
       postgis_version: { Args: never; Returns: string }
       postgis_wagyu_version: { Args: never; Returns: string }
+      purge_expired_data: { Args: never; Returns: Json }
       quartier_for_point: {
         Args: { p_lat: number; p_lon: number; p_org_id: string }
         Returns: string
