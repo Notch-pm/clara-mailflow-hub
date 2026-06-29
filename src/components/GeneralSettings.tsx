@@ -275,6 +275,58 @@ export default function GeneralSettings({ orgId }: { orgId: string }) {
           </form>
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <Settings2 className="h-5 w-5 text-primary" />
+            <div>
+              <CardTitle className="text-base">Conservation et purge</CardTitle>
+              <CardDescription>Durées de rétention des données. Laissez vide pour désactiver la purge.</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              retentionMutation.mutate();
+            }}
+          >
+            <div className="space-y-2">
+              <Label htmlFor="org-courier-retention">Conservation des courriers avant purge (en jours)</Label>
+              <Input
+                id="org-courier-retention"
+                type="number"
+                min={1}
+                step={1}
+                value={courierRetention}
+                onChange={(e) => setCourierRetention(e.target.value)}
+                placeholder="Ex. 365"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="org-usager-retention">Conservation des données usagers sans nouveau courrier (en jours)</Label>
+              <Input
+                id="org-usager-retention"
+                type="number"
+                min={1}
+                step={1}
+                value={usagerRetention}
+                onChange={(e) => setUsagerRetention(e.target.value)}
+                placeholder="Ex. 1095"
+              />
+            </div>
+            <div className="flex justify-end">
+              <Button type="submit" disabled={retentionMutation.isPending}>
+                {retentionMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Enregistrer les durées
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }
