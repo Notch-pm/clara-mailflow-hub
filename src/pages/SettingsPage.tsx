@@ -16,6 +16,8 @@ import GeneralSettings from "@/components/GeneralSettings";
 import PortalFormsSettings from "@/components/portal/PortalFormsSettings";
 import AiUsageSettings from "@/components/AiUsageSettings";
 import { useOrganization } from "@/contexts/OrganizationContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { ShieldAlert } from "lucide-react";
 
 type Section = "menu" | "general" | "utilisateurs" | "workflows" | "classification" | "services" | "demarches" | "emails" | "signatures" | "modeles" | "portail" | "quartiers" | "ia";
 
@@ -52,6 +54,37 @@ const sectionLabels: Record<string, string> = {
 export default function SettingsPage() {
   const [activeSection, setActiveSection] = useState<Section>("menu");
   const { organizationId } = useOrganization();
+  const { profile, membership } = useAuth();
+  const isSuperAdmin = profile?.is_superadmin === true;
+  const isOrgAdmin = membership?.role === "admin" || membership?.role === "administrateur";
+  const isAllowed = isSuperAdmin || isOrgAdmin;
+
+  if (!isAllowed) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-3">
+          <Settings className="h-6 w-6 text-primary" />
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Paramètres</h1>
+            <p className="text-muted-foreground">Configuration générale de l'application</p>
+          </div>
+        </div>
+        <Card>
+          <CardHeader className="flex flex-row items-center gap-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-destructive/10">
+              <ShieldAlert className="h-5 w-5 text-destructive" />
+            </div>
+            <div>
+              <CardTitle className="text-base">Accès réservé</CardTitle>
+              <CardDescription>
+                Seuls les administrateurs de l'organisation et les superadministrateurs peuvent accéder aux paramètres. Contactez votre administrateur si vous avez besoin de modifier la configuration.
+              </CardDescription>
+            </div>
+          </CardHeader>
+        </Card>
+      </div>
+    );
+  }
 
   if (activeSection !== "menu") {
     return (
