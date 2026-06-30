@@ -48,7 +48,7 @@ export function EditUserDialog({ member, organizationId, onClose }: Props) {
       ? {
           first_name: member.first_name ?? "",
           last_name: member.last_name ?? "",
-          role: member.role as "administrateur" | "gestionnaire" | "consultant",
+          role: member.role as OrgUserRole,
           is_signataire: member.is_signataire ?? false,
           signataire_title: member.signataire_title ?? "",
         }
