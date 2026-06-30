@@ -13,12 +13,14 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/contexts/AuthContext";
 import { NotificationBell } from "@/components/NotificationBell";
+import { canAccessSettings } from "@/lib/permissions";
 
 export function AppHeader() {
   const location = useLocation();
   const navigate = useNavigate();
   const isSettings = location.pathname.startsWith("/parametres");
   const { profile, membership, signOut } = useAuth();
+  const showSettings = canAccessSettings(profile, membership);
 
   const displayName = profile
     ? [profile.first_name, profile.last_name].filter(Boolean).join(" ") || profile.email
