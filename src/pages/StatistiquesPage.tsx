@@ -149,6 +149,8 @@ export default function StatistiquesPage() {
     [repliesData],
   );
 
+  if (!allowed) return <Navigate to="/" replace />;
+
   return (
     <div className="space-y-6 p-1">
       <div className="flex items-center gap-3">
