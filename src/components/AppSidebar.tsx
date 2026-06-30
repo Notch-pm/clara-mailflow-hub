@@ -52,6 +52,10 @@ function SidebarItem({ item }: { item: NavItem }) {
 }
 
 export function AppSidebar() {
+  const { profile, membership } = useAuth();
+  const navItems = baseNavItems.filter((it) =>
+    it.url === "/statistiques" ? canAccessStats(profile, membership) : true,
+  );
   return (
     <TooltipProvider delayDuration={150}>
       <nav aria-label="Navigation principale" className="hidden md:flex flex-col items-center w-[52px] shrink-0 py-3 bg-primary h-full relative">
