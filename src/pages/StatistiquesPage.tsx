@@ -67,9 +67,7 @@ function KpiCard({ label, value, loading, Icon, iconColor }: KpiCardProps) {
 export default function StatistiquesPage() {
   const { organizationId } = useOrganization();
   const { profile, membership } = useAuth();
-  if (!canAccessStats(profile, membership)) {
-    return <Navigate to="/" replace />;
-  }
+  const allowed = canAccessStats(profile, membership);
   const [serviceName, setServiceName] = useState<string | null>(null);
   const [period, setPeriod] = useState<StatPeriod>("30d");
 
