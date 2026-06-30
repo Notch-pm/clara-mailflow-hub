@@ -6,6 +6,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useAuth } from "@/contexts/AuthContext";
+import { canAccessStats } from "@/lib/permissions";
 
 interface NavItem {
   title: string;
@@ -13,7 +15,7 @@ interface NavItem {
   icon: LucideIcon;
 }
 
-const navItems: NavItem[] = [
+const baseNavItems: NavItem[] = [
   { title: "Tableau de bord", url: "/", icon: LayoutDashboard },
   { title: "Boîte aux lettres", url: "/boite-aux-lettres", icon: Mailbox },
   { title: "Courriers en instruction", url: "/courriers-en-instruction", icon: FileClock },
