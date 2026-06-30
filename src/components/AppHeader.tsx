@@ -62,17 +62,19 @@ export function AppHeader() {
       {/* Right: Notifications + Settings + Profile */}
       <div className="flex items-center gap-2 shrink-0">
         <NotificationBell />
-        <Link
-          to="/parametres"
-          className={`flex items-center justify-center h-9 w-9 rounded-lg transition-colors ${
-            isSettings
-              ? "bg-primary/10 text-primary"
-              : "text-muted-foreground hover:text-foreground hover:bg-muted"
-          }`}
-          title="Paramètres"
-        >
-          <img src={parametresIcon} alt="Paramètres" className="h-5 w-5" />
-        </Link>
+        {showSettings && (
+          <Link
+            to="/parametres"
+            className={`flex items-center justify-center h-9 w-9 rounded-lg transition-colors ${
+              isSettings
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted"
+            }`}
+            title="Paramètres"
+          >
+            <img src={parametresIcon} alt="Paramètres" className="h-5 w-5" />
+          </Link>
+        )}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-muted transition-colors focus:outline-none">
