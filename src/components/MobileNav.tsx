@@ -1,5 +1,7 @@
 import { NavLink } from "@/components/NavLink";
 import { LayoutDashboard, Send, FileClock, CheckCircle2, Archive, Mailbox, BarChart3, LucideIcon } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { canAccessStats } from "@/lib/permissions";
 
 interface NavItem {
   title: string;
@@ -7,7 +9,7 @@ interface NavItem {
   icon: LucideIcon;
 }
 
-const navItems: NavItem[] = [
+const baseNavItems: NavItem[] = [
   { title: "Accueil", url: "/", icon: LayoutDashboard },
   { title: "Boîte", url: "/boite-aux-lettres", icon: Mailbox },
   { title: "Instruction", url: "/courriers-en-instruction", icon: FileClock },
@@ -18,9 +20,14 @@ const navItems: NavItem[] = [
 ];
 
 export function MobileNav() {
+  const { profile, membership } = useAuth();
+  const navItems = baseNavItems.filter((it) =>
+    it.url === "/statistiques" ? canAccessStats(profile, membership) : true,
+  );
   return (
     <nav aria-label="Navigation principale" className="fixed bottom-0 left-0 right-0 z-40 border-t py-1.5 md:hidden bg-primary">
       <ul className="flex items-center justify-around">
+
         {navItems.map((item) => {
           const Icon = item.icon;
           return (
