@@ -1,6 +1,9 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Navigate } from "react-router-dom";
 import { useOrganization } from "@/contexts/OrganizationContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { canAccessStats } from "@/lib/permissions";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BarChart3, Mail, Send, Clock } from "lucide-react";
@@ -63,6 +66,8 @@ function KpiCard({ label, value, loading, Icon, iconColor }: KpiCardProps) {
 
 export default function StatistiquesPage() {
   const { organizationId } = useOrganization();
+  const { profile, membership } = useAuth();
+  const allowed = canAccessStats(profile, membership);
   const [serviceName, setServiceName] = useState<string | null>(null);
   const [period, setPeriod] = useState<StatPeriod>("30d");
 
@@ -143,6 +148,8 @@ export default function StatistiquesPage() {
     () => (repliesData ?? []).reduce((s, d) => s + d.count, 0),
     [repliesData],
   );
+
+  if (!allowed) return <Navigate to="/" replace />;
 
   return (
     <div className="space-y-6 p-1">

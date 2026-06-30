@@ -19,24 +19,23 @@ import { getOrgMembers, createOrgMember, deactivateOrgMember, reactivateOrgMembe
 import { UserAvatar } from "@/components/UserAvatar";
 import { EditUserDialog } from "@/components/EditUserDialog";
 import type { OrgMember } from "@/types/user";
+import { ORG_ROLES, ORG_ROLE_VALUES } from "@/lib/permissions";
 
-const ROLES = [
-  { value: "administrateur", label: "Administrateur" },
-  { value: "gestionnaire", label: "Gestionnaire" },
-  { value: "consultant", label: "Consultant" },
-] as const;
+const ROLES = ORG_ROLES;
 
 const roleBadgeVariant: Record<string, "default" | "secondary" | "outline"> = {
   administrateur: "default",
   gestionnaire: "secondary",
   consultant: "outline",
+  elu: "default",
+  superviseur: "secondary",
 };
 
 const createSchema = z.object({
   email: z.string().email("Email invalide").max(255),
   first_name: z.string().min(1, "Prénom obligatoire").max(100),
   last_name: z.string().min(1, "Nom obligatoire").max(100),
-  role: z.enum(["administrateur", "gestionnaire", "consultant"], { required_error: "Rôle obligatoire" }),
+  role: z.enum(ORG_ROLE_VALUES, { required_error: "Rôle obligatoire" }),
 });
 
 interface UsersPageProps {

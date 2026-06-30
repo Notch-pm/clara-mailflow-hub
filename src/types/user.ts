@@ -21,7 +21,7 @@ export interface AppUserInsert {
   is_active?: boolean | null;
 }
 
-export type OrgUserRole = "administrateur" | "gestionnaire" | "consultant";
+export type OrgUserRole = "administrateur" | "gestionnaire" | "consultant" | "elu" | "superviseur";
 
 export interface OrganizationUser {
   id: string;

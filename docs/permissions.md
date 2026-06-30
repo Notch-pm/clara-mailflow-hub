@@ -6,8 +6,10 @@
 |---|---|---|
 | **Anonyme** | Pas de session | Pages publiques uniquement |
 | **Superadmin** | `users.is_superadmin = true` | Global, toutes organisations |
-| **Admin d'organisation** | `organization_users.role = 'admin'` | Une organisation |
-| **Membre d'organisation** | `organization_users.role = 'member'` | Une organisation |
+| **Administrateur d'organisation** | `organization_users.role = 'administrateur'` | Une organisation, accès complet + paramètres |
+| **Élu / Superviseur** | `role = 'elu' \| 'superviseur'` | Une organisation, accès complet **hors** paramètres |
+| **Gestionnaire** | `role = 'gestionnaire'` | Une organisation, sans paramètres ni statistiques |
+| **Consultant** | `role = 'consultant'` | Une organisation, accès standard hors paramètres |
 
 > Un superadmin est redirigé d'office vers `/superadmin` et n'utilise pas les écrans utilisateur standards.
 
