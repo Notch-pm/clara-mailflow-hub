@@ -28,3 +28,5 @@ bun.lockb
 *.sw?
 .playwright-mcp/
 src/test-integration/fixtures.json
+test-results/
+playwright-report/
