@@ -53,3 +53,39 @@ jobs:
       - name: Secret manquant — job sauté
         if: env.SUPABASE_SERVICE_ROLE_KEY == ''
         run: echo "SUPABASE_SERVICE_ROLE_KEY non configuré — tests d'intégration sautés."
+
+  # ─── E2E Playwright : parcours critiques (PR vers main) ──────────────────────
+  e2e:
+    name: E2E Playwright
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    env:
+      SUPABASE_URL: https://aullweizxcjbvtdspjli.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile || bun install
+      - name: Navigateurs Playwright
+        if: env.SUPABASE_SERVICE_ROLE_KEY != ''
+        run: bunx playwright install --with-deps chromium
+      - name: Seed des tenants [TEST]
+        if: env.SUPABASE_SERVICE_ROLE_KEY != ''
+        run: bun run seed:test
+      - name: Suite E2E
+        if: env.SUPABASE_SERVICE_ROLE_KEY != ''
+        run: bun run test:e2e
+      - name: Artefacts (traces, screenshots)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7
+      - name: Secret manquant — job sauté
+        if: env.SUPABASE_SERVICE_ROLE_KEY == ''
+        run: echo "SUPABASE_SERVICE_ROLE_KEY non configuré — E2E sautés."

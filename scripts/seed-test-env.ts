@@ -158,11 +158,11 @@ async function seedTenant(letter: "Alpha" | "Beta"): Promise<TenantFixture> {
     organization_id: org.id, workflow_id: wf.id, name: "Traité", category: "processed", is_final: true,
   });
   await insertOne("workflow_transitions", {
-    organization_id: org.id, workflow_id: wf.id, name: "Instruire",
+    organization_id: org.id, workflow_id: wf.id, name: "Instruire", kind: "next",
     from_state_id: stInitial.id, to_state_id: stProcessing.id,
   });
   await insertOne("workflow_transitions", {
-    organization_id: org.id, workflow_id: wf.id, name: "Clôturer",
+    organization_id: org.id, workflow_id: wf.id, name: "Clôturer", kind: "next",
     from_state_id: stProcessing.id, to_state_id: stFinal.id,
   });
 
@@ -179,11 +179,11 @@ async function seedTenant(letter: "Alpha" | "Beta"): Promise<TenantFixture> {
     organization_id: org.id, workflow_id: replyWf.id, name: "Terminée", category: "processed", is_final: true,
   });
   await insertOne("workflow_transitions", {
-    organization_id: org.id, workflow_id: replyWf.id, name: "Envoyer en signature",
+    organization_id: org.id, workflow_id: replyWf.id, name: "Envoyer en signature", kind: "next",
     from_state_id: rInitial.id, to_state_id: rSignature.id,
   });
   await insertOne("workflow_transitions", {
-    organization_id: org.id, workflow_id: replyWf.id, name: "Terminer",
+    organization_id: org.id, workflow_id: replyWf.id, name: "Terminer", kind: "next",
     from_state_id: rSignature.id, to_state_id: rFinal.id,
   });
 
