@@ -247,13 +247,25 @@ Deno.serve(async (req) => {
     const extractedText = texts.join("\n\n===\n\n");
     const combinedText = extractedText.slice(0, 30_000);
 
-    // Load org context for the LLM
-    const [{ data: orgServices }, { data: orgTags }] = await Promise.all([
-      admin.from("services").select("name").eq("organization_id", orgId),
+    // Load org context for the LLM — organisations (miroir Socle), fallback services legacy
+    const [{ data: socleOrgRows }, { data: orgTags }] = await Promise.all([
+      admin
+        .from("socle_organizations")
+        .select("name")
+        .eq("organization_id", orgId)
+        .eq("status", "active")
+        .is("obsoleted_at", null),
       admin.from("courier_tags").select("name").eq("organization_id", orgId),
     ]);
 
-    const serviceNames: string[] = (orgServices ?? []).map((s: { name: string }) => s.name);
+    let serviceNames: string[] = (socleOrgRows ?? []).map((s: { name: string }) => s.name);
+    if (serviceNames.length === 0) {
+      const { data: orgServices } = await admin
+        .from("services")
+        .select("name")
+        .eq("organization_id", orgId);
+      serviceNames = (orgServices ?? []).map((s: { name: string }) => s.name);
+    }
     const tagNames: string[] = (orgTags ?? []).map((t: { name: string }) => t.name);
 
     const tagListForPrompt = tagNames.length > 0

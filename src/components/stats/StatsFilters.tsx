@@ -5,9 +5,10 @@ export type StatPeriod = "7d" | "30d" | "1y";
 
 interface StatsFiltersProps {
   services: { id: string; name: string }[];
-  serviceName: string | null;
+  /** UUID de l'organisation sélectionnée (miroir Socle), null = toutes. */
+  socleOrgId: string | null;
   period: StatPeriod;
-  onServiceChange: (name: string | null) => void;
+  onServiceChange: (socleOrganizationId: string | null) => void;
   onPeriodChange: (p: StatPeriod) => void;
 }
 
@@ -19,7 +20,7 @@ const PERIOD_LABELS: Record<StatPeriod, string> = {
 
 export function StatsFilters({
   services,
-  serviceName,
+  socleOrgId,
   period,
   onServiceChange,
   onPeriodChange,
@@ -27,16 +28,16 @@ export function StatsFilters({
   return (
     <div className="flex flex-wrap gap-3 items-center">
       <Select
-        value={serviceName ?? "__all__"}
+        value={socleOrgId ?? "__all__"}
         onValueChange={(v) => onServiceChange(v === "__all__" ? null : v)}
       >
         <SelectTrigger className="w-52">
-          <SelectValue placeholder="Tous les services" />
+          <SelectValue placeholder="Toutes les organisations" />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="__all__">Tous les services</SelectItem>
+          <SelectItem value="__all__">Toutes les organisations</SelectItem>
           {services.map((s) => (
-            <SelectItem key={s.id} value={s.name}>
+            <SelectItem key={s.id} value={s.id}>
               {s.name}
             </SelectItem>
           ))}

@@ -113,7 +113,7 @@ Deno.serve(async (req) => {
       // 1. Charger le formulaire (sans join pour fiabilité)
       const { data: form, error: formErr } = await admin
         .from("portal_forms")
-        .select("id, organization_id, service_id, is_active, allowed_origins")
+        .select("id, organization_id, service_id, socle_organization_id, is_active, allowed_origins")
         .eq("token", token)
         .maybeSingle();
 
@@ -143,11 +143,33 @@ Deno.serve(async (req) => {
         return jsonResponse({ error: "Trop de soumissions. Réessayez dans quelques instants." }, 429);
       }
 
-      // 4. Résoudre le service + état initial du workflow
+      // 4. Résoudre l'organisation (miroir Socle, prioritaire) ou le service legacy
+      //    + état initial du workflow
       let serviceName: string | null = null;
+      let socleOrganizationId: string | null = null;
       let initialStateId: string | null = null;
 
-      if (form.service_id) {
+      if (form.socle_organization_id) {
+        const { data: socleOrg } = await admin
+          .from("socle_organizations")
+          .select("id, name, workflow_id")
+          .eq("id", form.socle_organization_id)
+          .maybeSingle();
+        if (socleOrg) {
+          serviceName = (socleOrg as any).name ?? null;
+          socleOrganizationId = (socleOrg as any).id ?? null;
+          if ((socleOrg as any).workflow_id) {
+            const { data: initState } = await admin
+              .from("workflow_states")
+              .select("id")
+              .eq("workflow_id", (socleOrg as any).workflow_id)
+              .eq("is_initial", true)
+              .maybeSingle();
+            initialStateId = (initState as any)?.id ?? null;
+          }
+        }
+      } else if (form.service_id) {
+        // Legacy : formulaire encore rattaché à un service (tables gelées)
         const { data: svc } = await admin
           .from("services")
           .select("name, workflow_id")
@@ -193,6 +215,7 @@ Deno.serve(async (req) => {
           subject: subject.trim().slice(0, 500),
           received_at: new Date().toISOString(),
           assigned_service: serviceName,
+          socle_organization_id: socleOrganizationId,
           workflow_state_id: initialStateId,
           created_by: null,
           metadata: { body_text: messageBody.trim(), source: "portal" },

@@ -4,7 +4,7 @@ export interface StatMonthPoint { month: string; count: number }
 export interface StatDayPoint { day: string; count: number }
 export interface StatTagPoint { period: string; tag_name: string; count: number }
 export interface StatChannelPoint { channel: string; count: number }
-export interface StatServicePoint { service_name: string; count: number }
+export interface StatServicePoint { socle_organization_id: string | null; service_name: string; count: number }
 export interface StatProcessingPoint {
   service_name: string;
   avg_days_to_instruction: number | null;
@@ -30,46 +30,46 @@ async function rpc<T>(fn: string, params: Record<string, unknown>): Promise<T[]>
 export async function getInboundByMonth(
   orgId: string,
   months = 12,
-  serviceName?: string,
+  socleOrganizationId?: string,
 ): Promise<StatMonthPoint[]> {
   return rpc<StatMonthPoint>("stats_inbound_by_month", {
     p_org_id: orgId,
     p_months: months,
-    p_service_name: serviceName ?? null,
+    p_socle_organization_id: socleOrganizationId ?? null,
   });
 }
 
 export async function getInboundByDay(
   orgId: string,
-  serviceName?: string,
+  socleOrganizationId?: string,
 ): Promise<StatDayPoint[]> {
   return rpc<StatDayPoint>("stats_inbound_by_day", {
     p_org_id: orgId,
-    p_service_name: serviceName ?? null,
+    p_socle_organization_id: socleOrganizationId ?? null,
   });
 }
 
 export async function getTagEvolution(
   orgId: string,
   since: Date,
-  serviceName?: string,
+  socleOrganizationId?: string,
 ): Promise<StatTagPoint[]> {
   return rpc<StatTagPoint>("stats_tag_evolution", {
     p_org_id: orgId,
     p_since: since.toISOString(),
-    p_service_name: serviceName ?? null,
+    p_socle_organization_id: socleOrganizationId ?? null,
   });
 }
 
 export async function getByChannel(
   orgId: string,
   since: Date,
-  serviceName?: string,
+  socleOrganizationId?: string,
 ): Promise<StatChannelPoint[]> {
   return rpc<StatChannelPoint>("stats_by_channel", {
     p_org_id: orgId,
     p_since: since.toISOString(),
-    p_service_name: serviceName ?? null,
+    p_socle_organization_id: socleOrganizationId ?? null,
   });
 }
 
@@ -88,12 +88,12 @@ export async function getByService(
 export async function getRepliesByMonth(
   orgId: string,
   months = 12,
-  serviceName?: string,
+  socleOrganizationId?: string,
 ): Promise<StatMonthPoint[]> {
   return rpc<StatMonthPoint>("stats_replies_by_month", {
     p_org_id: orgId,
     p_months: months,
-    p_service_name: serviceName ?? null,
+    p_socle_organization_id: socleOrganizationId ?? null,
   });
 }
 

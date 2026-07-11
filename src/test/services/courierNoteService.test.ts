@@ -109,6 +109,9 @@ describe("courierNoteService", () => {
         eq: vi.fn().mockReturnThis(),
         select: vi.fn().mockReturnThis(),
         single: vi.fn().mockResolvedValue({ data: fakeNote, error: null }),
+        // updateNote lit d'abord les mentions existantes via maybeSingle
+        maybeSingle: vi.fn().mockResolvedValue({ data: { mentioned_user_ids: [] }, error: null }),
+        insert: vi.fn().mockResolvedValue({ data: null, error: null }),
       });
 
       await updateNote(NOTE_ID, "  contenu modifié  ");

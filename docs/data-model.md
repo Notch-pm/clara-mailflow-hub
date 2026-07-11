@@ -62,6 +62,7 @@ Tenants racine. RLS sur `id` (pas sur `organization_id`).
 | `domiciliary_file_enabled` | boolean | mode "fichier domiciliaire" (optionnable, admin uniquement) — active la saisie des champs domiciliaires sur `usagers` |
 | `reply_template_html` / `_design` / `_data` / `_storage_key` | text/jsonb | template courrier Unlayer |
 | `address_*` / `phone` / `website` / `contact_email` | text | coordonnées org |
+| `socle_org_id` | uuid | mapping vers l'org Socle (renseigné par le superadmin) ; NULL = pas de sync Socle |
 
 #### `users`
 Profils étendus (miroir `auth.users`). Trigger `prevent_superadmin_escalation` bloque l'auto-promotion.
@@ -107,7 +108,8 @@ Table centrale. Tags stockés dans `metadata->'tags'` (tableau JSON de strings).
 | `received_at` | timestamp | date réception (inbound) |
 | `sent_at` | timestamp | date envoi (outbound) |
 | `parent_courier_id` | uuid FK → couriers | réponse à un courrier |
-| `assigned_service` | varchar | nom du service (TEXT, pas UUID) |
+| `assigned_service` | varchar | nom de l'organisation gestionnaire — **pure dénormalisation d'affichage** (toujours écrite en double, mais plus aucune logique ne compare ce texte) |
+| `socle_organization_id` | uuid FK → socle_organizations | organisation gestionnaire — **clé de toute la logique** : RPC `stats_*` (`p_socle_organization_id`), `search_couriers`, filtres de droits (`useUserServiceFilter` → UUIDs via `socle_organization_members`), résolutions dans le panneau courrier/composer |
 | `metadata` | jsonb | `tags: string[]`, `body_text`, etc. |
 | `fts_subject` / `fts_body` | tsvector | index full-text français |
 
@@ -241,15 +243,51 @@ Personnes autorisées à signer. Image de signature dans le bucket `signatures`.
 | `signature_storage_key` | text |
 
 #### `procedures`
-Démarches administratives. Sync nocturne possible depuis Arpège.
+Démarches administratives. **Source de vérité : le Socle** (référentiel central), synchronisé chaque nuit par l'edge function `sync-socle-referentiel`. Plus de création/suppression côté Clara (policies RLS `admin_insert`/`admin_delete` supprimées) ; seul le toggle `is_displayed` reste éditable par les admins (`admin_update` conservé).
 
 | Colonne | Type | Notes |
 |---|---|---|
 | `name` | varchar | |
-| `external_reference_id` / `external_source` | varchar | référence Arpège |
-| `is_displayed` | boolean | |
-| `display_order` | integer | |
-| `arpege_config_fields` | jsonb | config formulaire Arpège |
+| `external_reference_id` / `external_source` | varchar | `'socle'` (sync) ou `'arpege'` (legacy) ; les refs Arpège sont conservées après adoption |
+| `is_displayed` | boolean | masquage local (seul champ éditable côté Clara) |
+| `display_order` | integer | ← `order_index` Socle |
+| `arpege_config_fields` | jsonb | config formulaire Arpège (conservée pour `create-arpege-demande`) |
+| `socle_id` | uuid | UUID Socle — clé d'idempotence, index unique partiel `(organization_id, socle_id)` |
+| `type` | varchar | `interne` \| `externe` |
+| `keywords` | jsonb | tableau de mots-clés |
+| `user_description` / `agent_description` | text | descriptions Socle (`short_description` → `description`) |
+| `input_duration_minutes` | integer | |
+| `socle_category_id` | uuid | UUID Socle de la catégorie (jointure logique via `socle_categories.socle_id`, sans FK) |
+| `requester_config` / `form_schema` / `knowledge_base` / `translations` | jsonb | blocs Socle stockés tels quels (UUID internes préservés) |
+| `synced_at` | timestamptz | dernière sync |
+| `obsoleted_at` | timestamptz | soft-delete : disparue du Socle ou embryon remplacé (jamais de DELETE — `action_tickets.procedure_id` est `ON DELETE RESTRICT`) |
+
+#### `socle_categories` / `socle_document_types`
+Miroirs du référentiel Socle, dupliqués par org Clara (`UNIQUE (organization_id, socle_id)`). Lecture seule côté client (pas de policy d'écriture utilisateur, seule l'edge function écrit via service_role). Colonnes : `socle_id`, `name`, `icon` (catégories uniquement), `synced_at`, `obsoleted_at`.
+
+#### `socle_organizations`
+Miroir de la **hiérarchie d'organisations** du Socle (sous-arbre du `socle_org_id` mappé, racine incluse — son `socle_parent_id` est neutralisé à NULL). `UNIQUE (organization_id, socle_id)`. **Les organisations sont les unités de traitement de Clara** (elles remplacent les services) : les champs Socle sont réécrasés par la sync nocturne, les champs de config Clara sont éditables par les admins (`admin_update`).
+
+| Colonne | Type | Notes |
+|---|---|---|
+| `socle_id` / `socle_parent_id` | uuid | hiérarchie — parenté logique socle→socle, sans FK |
+| `name` / `slug` / `type` | varchar | champs Socle |
+| `status` | varchar | statut Socle `active` \| `obsolete` (distinct de `obsoleted_at` = disparue du périmètre) |
+| `phone` / `email` / `address` / `logo_url` | text | coordonnées Socle affichées dans l'arbre |
+| `workflow_id` | uuid FK → workflows | **config Clara** : workflow des courriers reçus |
+| `reply_workflow_id` | uuid FK → workflows | **config Clara** : workflow des réponses |
+| `synced_at` / `obsoleted_at` | timestamptz | |
+
+La boîte IMAP d'une org est rattachée via `imap_settings.socle_organization_id`. Arbre + panneau de config : `src/components/SocleOrganizationTree.tsx` + `OrganizationConfigDialog.tsx` (sections « Organisations » de SettingsPage et OrgSettings) ; le nœud **racine** porte l'UI des paramètres globaux du tenant (fichier domiciliaire, « Différencier les adresses mail de réception par organisation » = `organizations.multiple_imap`, rétention/purge — stockage inchangé sur `organizations`). Service client : `src/services/socleOrgConfigService.ts`.
+
+#### `socle_organization_members` / `socle_organization_signatories`
+Membres et signataires d'une organisation (remplacent `service_members`/`service_signatories`). `UNIQUE (socle_organization_id, user_id|signatory_id)`, RLS select `is_member_of` / écriture `is_admin_of`. Les membres pilotent le filtrage des courriers (`useUserServiceFilter` — liste d'**UUIDs** d'orgs) ; les signataires alimentent le composer de réponse.
+
+#### `services` / `service_members` / `service_signatories` — **GELÉES**
+Remplacées par les organisations Socle (données migrées le 2026-07-11, conservées pour historique/rollback). Plus aucun flux d'écriture ; `fetch-inbound-emails` et `portal-form` gardent un fallback legacy en lecture.
+
+#### `socle_sync_runs`
+Journal des synchronisations Socle : une ligne par org et par run (`started_at`, `finished_at`, `status` running/success/error, `dry_run`, `counters` jsonb, `error`).
 
 #### `courier_tags`
 Dictionnaire de tags (étiquettes) de l'org. Les tags appliqués sont dans `couriers.metadata->'tags'` (array de noms).
@@ -329,6 +367,7 @@ Plusieurs par org si `organizations.multiple_imap = true`. Réception automatiqu
 | `folder` | text | `'INBOX'` par défaut |
 | `auto_fetch` | boolean | |
 | `label` | text | `'Principal'` par défaut |
+| `socle_organization_id` | uuid FK → socle_organizations | org propriétaire de la boîte — reportée sur les courriers entrants |
 | `last_fetch_at` / `last_error` | timestamptz/text | |
 
 ---

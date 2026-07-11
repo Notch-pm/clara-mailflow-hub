@@ -19,10 +19,21 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
-import { Loader2, Inbox, RefreshCw, PlugZap, Plus, Pencil, Trash2 } from "lucide-react";
+import { Loader2, Inbox, RefreshCw, PlugZap, Plus, Pencil, Trash2, Building2 } from "lucide-react";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
+import { listSocleOrganizationTree } from "@/services/socleSyncService";
+import { buildSocleOrgTree, flattenSocleOrgTree } from "@/lib/socleOrgTree";
+
+const NO_ORG_VALUE = "__none__";
 
 interface ImapForm {
   label: string;
@@ -33,6 +44,7 @@ interface ImapForm {
   use_tls: boolean;
   folder: string;
   auto_fetch: boolean;
+  socle_organization_id: string | null;
 }
 
 const defaultForm: ImapForm = {
@@ -44,6 +56,7 @@ const defaultForm: ImapForm = {
   use_tls: true,
   folder: "INBOX",
   auto_fetch: false,
+  socle_organization_id: null,
 };
 
 interface ImapSettingsRow extends ImapForm {
@@ -95,6 +108,17 @@ export default function ImapSettings({ orgId }: { orgId: string }) {
 
   const canAddMore = (org?.multiple_imap ?? false) || settings.length === 0;
 
+  // Organisations miroir Socle : sélecteur affiché seulement si le miroir est peuplé.
+  const { data: socleOrgs = [] } = useQuery({
+    queryKey: ["socle-organizations", orgId],
+    queryFn: () => listSocleOrganizationTree(orgId),
+    enabled: !!orgId,
+  });
+  const orgOptions = flattenSocleOrgTree(buildSocleOrgTree(socleOrgs)).filter(
+    (o) => o.status !== "obsolete" && o.obsoleted_at === null,
+  );
+  const orgNameById = new Map(socleOrgs.map((o) => [o.id, o.name]));
+
   function openAdd() {
     setEditingRow(null);
     setForm(defaultForm);
@@ -112,6 +136,7 @@ export default function ImapSettings({ orgId }: { orgId: string }) {
       use_tls: row.use_tls ?? true,
       folder: row.folder || "INBOX",
       auto_fetch: row.auto_fetch ?? false,
+      socle_organization_id: row.socle_organization_id ?? null,
     });
     setDialogOpen(true);
   }
@@ -240,6 +265,12 @@ export default function ImapSettings({ orgId }: { orgId: string }) {
                         <p className="text-xs text-muted-foreground truncate">
                           {row.username} — {row.host}:{row.port}
                         </p>
+                        {row.socle_organization_id && orgNameById.has(row.socle_organization_id) && (
+                          <p className="text-xs text-muted-foreground inline-flex items-center gap-1 mt-0.5">
+                            <Building2 className="h-3 w-3" />
+                            {orgNameById.get(row.socle_organization_id)}
+                          </p>
+                        )}
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
                         <Badge variant={row.auto_fetch ? "default" : "secondary"} className="text-xs">
@@ -412,6 +443,34 @@ export default function ImapSettings({ orgId }: { orgId: string }) {
                 />
               </div>
             </div>
+
+            {orgOptions.length > 0 && (
+              <div className="space-y-2">
+                <Label>Organisation</Label>
+                <Select
+                  value={form.socle_organization_id ?? NO_ORG_VALUE}
+                  onValueChange={(val) =>
+                    setForm({ ...form, socle_organization_id: val === NO_ORG_VALUE ? null : val })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="— Aucune —" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_ORG_VALUE}>— Aucune —</SelectItem>
+                    {orgOptions.map((o) => (
+                      <SelectItem key={o.id} value={o.id}>
+                        {"  ".repeat(o.depth - 1)}
+                        {o.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Les courriers reçus sur cette boîte seront rattachés à cette organisation.
+                </p>
+              </div>
+            )}
 
             <div className="flex items-center justify-between rounded-lg border p-3">
               <div>

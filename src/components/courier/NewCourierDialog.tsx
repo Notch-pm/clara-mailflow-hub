@@ -39,7 +39,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { createUsager } from "@/services/usagerService";
 import { createCourier } from "@/services/courierService";
 import { addParticipant } from "@/services/courierParticipantService";
-import { listServices } from "@/services/orgServiceService";
+import { assignableOrgs, listOrgsWithConfig } from "@/services/socleOrgConfigService";
 import { listTags } from "@/services/courierTagService";
 import { storage } from "@/services/storageService";
 import { extractCourierInfo, runFullAnalysis } from "@/services/courierAnalysisService";
@@ -147,8 +147,9 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
   }, [pendingFiles]);
 
   const { data: services } = useQuery({
-    queryKey: ["org-services", organizationId],
-    queryFn: () => listServices(organizationId),
+    queryKey: ["socle-orgs-config", organizationId],
+    queryFn: () => listOrgsWithConfig(organizationId),
+    select: assignableOrgs,
     enabled: !!organizationId && open,
   });
 
@@ -215,15 +216,19 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
       setErrors({});
 
       const service = services?.find((s) => s.id === serviceId);
-      if (!service) throw new Error("Service introuvable");
+      if (!service) throw new Error("Organisation introuvable");
 
-      const { data: initialState, error: stateErr } = await supabase
-        .from("workflow_states")
-        .select("id")
-        .eq("workflow_id", service.workflow_id)
-        .eq("is_initial", true)
-        .maybeSingle();
-      if (stateErr) throw stateErr;
+      let initialState: { id: string } | null = null;
+      if (service.workflow_id) {
+        const { data, error: stateErr } = await supabase
+          .from("workflow_states")
+          .select("id")
+          .eq("workflow_id", service.workflow_id)
+          .eq("is_initial", true)
+          .maybeSingle();
+        if (stateErr) throw stateErr;
+        initialState = data;
+      }
 
       const {
         data: { user },
@@ -245,10 +250,11 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
         subject: subject.trim(),
         received_at: receivedAtIso,
         assigned_service: service.name,
+        socle_organization_id: service.id,
         workflow_state_id: initialState?.id ?? null,
         metadata: {
           tags: selectedTags,
-          service_id: service.id,
+          socle_organization_id: service.id,
           ...(bodyText.trim() ? { body_text: bodyText.trim() } : {}),
         } as any,
         created_by: user?.id ?? null,
@@ -845,9 +851,9 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
                   </div>
                 </div>
 
-                {/* Service gestionnaire — en bas de la colonne droite */}
+                {/* Organisation gestionnaire — en bas de la colonne droite */}
                 <div className="space-y-2">
-                  <Label htmlFor="nc-service">Service gestionnaire *</Label>
+                  <Label htmlFor="nc-service">Organisation gestionnaire *</Label>
                   <Select value={serviceId} onValueChange={setServiceId}>
                     <SelectTrigger id="nc-service">
                       <SelectValue placeholder="Sélectionner un service" />

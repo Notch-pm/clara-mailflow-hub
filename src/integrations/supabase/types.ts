@@ -730,6 +730,7 @@ export type Database = {
           parent_courier_id: string | null
           received_at: string | null
           sent_at: string | null
+          socle_organization_id: string | null
           subject: string | null
           updated_at: string
           workflow_state_id: string | null
@@ -751,6 +752,7 @@ export type Database = {
           parent_courier_id?: string | null
           received_at?: string | null
           sent_at?: string | null
+          socle_organization_id?: string | null
           subject?: string | null
           updated_at?: string
           workflow_state_id?: string | null
@@ -772,6 +774,7 @@ export type Database = {
           parent_courier_id?: string | null
           received_at?: string | null
           sent_at?: string | null
+          socle_organization_id?: string | null
           subject?: string | null
           updated_at?: string
           workflow_state_id?: string | null
@@ -789,6 +792,13 @@ export type Database = {
             columns: ["parent_courier_id"]
             isOneToOne: false
             referencedRelation: "couriers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "couriers_socle_organization_id_fkey"
+            columns: ["socle_organization_id"]
+            isOneToOne: false
+            referencedRelation: "socle_organizations"
             referencedColumns: ["id"]
           },
           {
@@ -813,6 +823,7 @@ export type Database = {
           organization_id: string
           password: string
           port: number
+          socle_organization_id: string | null
           updated_at: string
           use_tls: boolean
           username: string
@@ -829,6 +840,7 @@ export type Database = {
           organization_id: string
           password?: string
           port?: number
+          socle_organization_id?: string | null
           updated_at?: string
           use_tls?: boolean
           username?: string
@@ -845,6 +857,7 @@ export type Database = {
           organization_id?: string
           password?: string
           port?: number
+          socle_organization_id?: string | null
           updated_at?: string
           use_tls?: boolean
           username?: string
@@ -855,6 +868,13 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "imap_settings_socle_organization_id_fkey"
+            columns: ["socle_organization_id"]
+            isOneToOne: false
+            referencedRelation: "socle_organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -1025,6 +1045,7 @@ export type Database = {
           reply_template_storage_key: string | null
           secondary_color: string | null
           slug: string
+          socle_org_id: string | null
           status: string
           updated_at: string
           usager_retention_days: number | null
@@ -1052,6 +1073,7 @@ export type Database = {
           reply_template_storage_key?: string | null
           secondary_color?: string | null
           slug: string
+          socle_org_id?: string | null
           status?: string
           updated_at?: string
           usager_retention_days?: number | null
@@ -1079,6 +1101,7 @@ export type Database = {
           reply_template_storage_key?: string | null
           secondary_color?: string | null
           slug?: string
+          socle_org_id?: string | null
           status?: string
           updated_at?: string
           usager_retention_days?: number | null
@@ -1126,6 +1149,7 @@ export type Database = {
           name: string
           organization_id: string
           service_id: string | null
+          socle_organization_id: string | null
           token: string
           updated_at: string
         }
@@ -1139,6 +1163,7 @@ export type Database = {
           name: string
           organization_id: string
           service_id?: string | null
+          socle_organization_id?: string | null
           token?: string
           updated_at?: string
         }
@@ -1152,6 +1177,7 @@ export type Database = {
           name?: string
           organization_id?: string
           service_id?: string | null
+          socle_organization_id?: string | null
           token?: string
           updated_at?: string
         }
@@ -1170,10 +1196,18 @@ export type Database = {
             referencedRelation: "services"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "portal_forms_socle_organization_id_fkey"
+            columns: ["socle_organization_id"]
+            isOneToOne: false
+            referencedRelation: "socle_organizations"
+            referencedColumns: ["id"]
+          },
         ]
       }
       procedures: {
         Row: {
+          agent_description: string | null
           arpege_config_fields: Json | null
           color: string | null
           created_at: string
@@ -1182,14 +1216,27 @@ export type Database = {
           display_order: number
           external_reference_id: string | null
           external_source: string | null
+          form_schema: Json | null
           icon: string | null
           id: string
+          input_duration_minutes: number | null
           is_displayed: boolean
+          keywords: Json | null
+          knowledge_base: Json | null
           name: string
+          obsoleted_at: string | null
           organization_id: string
+          requester_config: Json | null
+          socle_category_id: string | null
+          socle_id: string | null
+          synced_at: string | null
+          translations: Json | null
+          type: string | null
           updated_at: string
+          user_description: string | null
         }
         Insert: {
+          agent_description?: string | null
           arpege_config_fields?: Json | null
           color?: string | null
           created_at?: string
@@ -1198,14 +1245,27 @@ export type Database = {
           display_order?: number
           external_reference_id?: string | null
           external_source?: string | null
+          form_schema?: Json | null
           icon?: string | null
           id?: string
+          input_duration_minutes?: number | null
           is_displayed?: boolean
+          keywords?: Json | null
+          knowledge_base?: Json | null
           name: string
+          obsoleted_at?: string | null
           organization_id: string
+          requester_config?: Json | null
+          socle_category_id?: string | null
+          socle_id?: string | null
+          synced_at?: string | null
+          translations?: Json | null
+          type?: string | null
           updated_at?: string
+          user_description?: string | null
         }
         Update: {
+          agent_description?: string | null
           arpege_config_fields?: Json | null
           color?: string | null
           created_at?: string
@@ -1214,12 +1274,24 @@ export type Database = {
           display_order?: number
           external_reference_id?: string | null
           external_source?: string | null
+          form_schema?: Json | null
           icon?: string | null
           id?: string
+          input_duration_minutes?: number | null
           is_displayed?: boolean
+          keywords?: Json | null
+          knowledge_base?: Json | null
           name?: string
+          obsoleted_at?: string | null
           organization_id?: string
+          requester_config?: Json | null
+          socle_category_id?: string | null
+          socle_id?: string | null
+          synced_at?: string | null
+          translations?: Json | null
+          type?: string | null
           updated_at?: string
+          user_description?: string | null
         }
         Relationships: [
           {
@@ -1545,6 +1617,312 @@ export type Database = {
             foreignKeyName: "smtp_settings_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      socle_categories: {
+        Row: {
+          created_at: string
+          icon: string | null
+          id: string
+          name: string
+          obsoleted_at: string | null
+          organization_id: string
+          socle_id: string
+          synced_at: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          icon?: string | null
+          id?: string
+          name: string
+          obsoleted_at?: string | null
+          organization_id: string
+          socle_id: string
+          synced_at?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          icon?: string | null
+          id?: string
+          name?: string
+          obsoleted_at?: string | null
+          organization_id?: string
+          socle_id?: string
+          synced_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "socle_categories_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      socle_document_types: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          obsoleted_at: string | null
+          organization_id: string
+          socle_id: string
+          synced_at: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          obsoleted_at?: string | null
+          organization_id: string
+          socle_id: string
+          synced_at?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          obsoleted_at?: string | null
+          organization_id?: string
+          socle_id?: string
+          synced_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "socle_document_types_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      socle_organization_members: {
+        Row: {
+          created_at: string
+          id: string
+          organization_id: string
+          socle_organization_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          organization_id: string
+          socle_organization_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          organization_id?: string
+          socle_organization_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "socle_organization_members_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "socle_organization_members_socle_organization_id_fkey"
+            columns: ["socle_organization_id"]
+            isOneToOne: false
+            referencedRelation: "socle_organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "socle_organization_members_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      socle_organization_signatories: {
+        Row: {
+          created_at: string
+          id: string
+          organization_id: string
+          signatory_id: string
+          socle_organization_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          organization_id: string
+          signatory_id: string
+          socle_organization_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          organization_id?: string
+          signatory_id?: string
+          socle_organization_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "socle_organization_signatories_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "socle_organization_signatories_signatory_id_fkey"
+            columns: ["signatory_id"]
+            isOneToOne: false
+            referencedRelation: "signatories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "socle_organization_signatories_socle_organization_id_fkey"
+            columns: ["socle_organization_id"]
+            isOneToOne: false
+            referencedRelation: "socle_organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      socle_organizations: {
+        Row: {
+          address: string | null
+          created_at: string
+          email: string | null
+          id: string
+          logo_url: string | null
+          name: string
+          obsoleted_at: string | null
+          organization_id: string
+          phone: string | null
+          reply_workflow_id: string | null
+          slug: string | null
+          socle_id: string
+          socle_parent_id: string | null
+          status: string
+          synced_at: string
+          type: string | null
+          updated_at: string
+          workflow_id: string | null
+        }
+        Insert: {
+          address?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          logo_url?: string | null
+          name: string
+          obsoleted_at?: string | null
+          organization_id: string
+          phone?: string | null
+          reply_workflow_id?: string | null
+          slug?: string | null
+          socle_id: string
+          socle_parent_id?: string | null
+          status?: string
+          synced_at?: string
+          type?: string | null
+          updated_at?: string
+          workflow_id?: string | null
+        }
+        Update: {
+          address?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          logo_url?: string | null
+          name?: string
+          obsoleted_at?: string | null
+          organization_id?: string
+          phone?: string | null
+          reply_workflow_id?: string | null
+          slug?: string | null
+          socle_id?: string
+          socle_parent_id?: string | null
+          status?: string
+          synced_at?: string
+          type?: string | null
+          updated_at?: string
+          workflow_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "socle_organizations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "socle_organizations_reply_workflow_id_fkey"
+            columns: ["reply_workflow_id"]
+            isOneToOne: false
+            referencedRelation: "workflows"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "socle_organizations_workflow_id_fkey"
+            columns: ["workflow_id"]
+            isOneToOne: false
+            referencedRelation: "workflows"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      socle_sync_runs: {
+        Row: {
+          counters: Json | null
+          created_at: string
+          dry_run: boolean
+          error: string | null
+          finished_at: string | null
+          id: string
+          organization_id: string
+          started_at: string
+          status: string
+        }
+        Insert: {
+          counters?: Json | null
+          created_at?: string
+          dry_run?: boolean
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          organization_id: string
+          started_at?: string
+          status?: string
+        }
+        Update: {
+          counters?: Json | null
+          created_at?: string
+          dry_run?: boolean
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          organization_id?: string
+          started_at?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "socle_sync_runs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -3013,6 +3391,7 @@ export type Database = {
       }
       trigger_arpege_sync: { Args: never; Returns: number }
       trigger_fetch_inbound_emails: { Args: never; Returns: number }
+      trigger_socle_sync: { Args: never; Returns: number }
       unlockrows: { Args: { "": string }; Returns: number }
       updategeometrysrid: {
         Args: {

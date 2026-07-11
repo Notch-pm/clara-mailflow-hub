@@ -4,7 +4,8 @@ export interface CourierSearchParams {
   organizationId: string;
   direction?: "inbound" | "outbound" | null;
   workflowStateId?: string | null;
-  service?: string | null;
+  /** UUID de l'organisation gestionnaire (miroir Socle). */
+  socleOrganizationId?: string | null;
   keywords?: string | null;
   tagNames?: string[] | null;
   dateFrom?: string | null;
@@ -20,6 +21,7 @@ export interface CourierSearchResult {
   received_at: string;
   workflow_state_id: string | null;
   assigned_service: string | null;
+  socle_organization_id: string | null;
   organization_id: string;
   match_in: string[];
   total_count: number;
@@ -35,7 +37,7 @@ export async function searchCouriers(params: CourierSearchParams): Promise<Couri
     p_organization_id:    params.organizationId,
     p_direction:          params.direction ?? null,
     p_workflow_state_id:  params.workflowStateId ?? null,
-    p_service:            params.service ?? null,
+    p_socle_organization_id: params.socleOrganizationId ?? null,
     p_keywords:           params.keywords?.trim() || null,
     p_tag_names:          params.tagNames?.length ? params.tagNames : null,
     p_date_from:          params.dateFrom ?? null,

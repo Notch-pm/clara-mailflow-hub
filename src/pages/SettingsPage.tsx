@@ -1,33 +1,31 @@
 import { useState } from "react";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Users, ArrowLeft, GitBranch, Settings, Tags, Briefcase, ClipboardList, Mail, PenTool, FileText, Globe, MapPin, Sparkles, LucideIcon } from "lucide-react";
+import { Users, ArrowLeft, GitBranch, Settings, Tags, Building2, ClipboardList, Mail, PenTool, FileText, Globe, MapPin, Sparkles, LucideIcon } from "lucide-react";
 import UsersPage from "./UsersPage";
 import Workflows from "./Workflows";
 import ClassificationSettings from "./ClassificationSettings";
-import ServicesSettings from "./ServicesSettings";
 import ProceduresSettings from "./ProceduresSettings";
 import SignaturesSettings from "./SignaturesSettings";
 import ModeleSettings from "./ModeleSettings";
 import QuartiersSettings from "./QuartiersSettings";
 
 import ImapSettings from "@/components/ImapSettings";
-import GeneralSettings from "@/components/GeneralSettings";
+import SocleOrganizationTree from "@/components/SocleOrganizationTree";
 import PortalFormsSettings from "@/components/portal/PortalFormsSettings";
 import AiUsageSettings from "@/components/AiUsageSettings";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { ShieldAlert } from "lucide-react";
 
-type Section = "menu" | "general" | "utilisateurs" | "workflows" | "classification" | "services" | "demarches" | "emails" | "signatures" | "modeles" | "portail" | "quartiers" | "ia";
+type Section = "menu" | "organisations" | "utilisateurs" | "workflows" | "classification" | "demarches" | "emails" | "signatures" | "modeles" | "portail" | "quartiers" | "ia";
 
 const settingSections: { key: Section; title: string; description: string; icon: LucideIcon }[] = [
-  { key: "general", title: "Configuration générale", description: "Paramètres globaux de l'organisation", icon: Settings },
+  { key: "organisations", title: "Organisations", description: "Hiérarchie du Socle : workflows, boîtes IMAP, membres et signataires par organisation", icon: Building2 },
   { key: "utilisateurs", title: "Utilisateurs", description: "Gestion des membres et rôles", icon: Users },
   { key: "signatures", title: "Signatures et tampons", description: "Signataires et signatures manuscrites", icon: PenTool },
   { key: "emails", title: "Emails (IMAP)", description: "Réception automatique des emails comme courriers entrants", icon: Mail },
   { key: "workflows", title: "Workflows", description: "Processus de traitement du courrier", icon: GitBranch },
-  { key: "services", title: "Services", description: "Services de l'organisation et workflows associés", icon: Briefcase },
   { key: "demarches", title: "Démarches", description: "Liste des démarches administratives proposées", icon: ClipboardList },
   { key: "classification", title: "Classification", description: "Tags de classement des courriers", icon: Tags },
   { key: "quartiers", title: "Quartiers", description: "Découpage de la commune en quartiers", icon: MapPin },
@@ -37,12 +35,11 @@ const settingSections: { key: Section; title: string; description: string; icon:
 ];
 
 const sectionLabels: Record<string, string> = {
-  general: "Configuration générale",
+  organisations: "Organisations (Socle)",
   utilisateurs: "Utilisateurs et rôles",
   signatures: "Signatures et tampons",
   emails: "Emails — réception IMAP",
   workflows: "Workflows",
-  services: "Services",
   demarches: "Démarches administratives",
   classification: "Classification (tags)",
   quartiers: "Quartiers",
@@ -98,8 +95,8 @@ export default function SettingsPage() {
             <p className="text-muted-foreground">{sectionLabels[activeSection]}</p>
           </div>
         </div>
-        {activeSection === "general" && organizationId && (
-          <GeneralSettings orgId={organizationId} />
+        {activeSection === "organisations" && organizationId && (
+          <SocleOrganizationTree orgId={organizationId} />
         )}
         {activeSection === "utilisateurs" && <UsersPage />}
         {activeSection === "emails" && organizationId && (
@@ -108,7 +105,6 @@ export default function SettingsPage() {
         {activeSection === "workflows" && <Workflows />}
         {activeSection === "classification" && <ClassificationSettings />}
         {activeSection === "quartiers" && <QuartiersSettings />}
-        {activeSection === "services" && <ServicesSettings />}
         {activeSection === "demarches" && <ProceduresSettings />}
         {activeSection === "signatures" && <SignaturesSettings />}
         {activeSection === "modeles" && organizationId && (

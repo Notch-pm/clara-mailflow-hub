@@ -76,6 +76,8 @@ interface CreateReplyArgs {
   bodyHtml: string;
   parentSubject: string | null;
   assignedService: string | null;
+  /** UUID de l'organisation gestionnaire (recopiée du courrier parent). */
+  socleOrganizationId?: string | null;
   initialStateId: string | null;
   recipient?: { name?: string | null; email?: string | null; first_name?: string | null; last_name?: string | null } | null;
 }
@@ -96,6 +98,7 @@ export async function createReply(args: CreateReplyArgs): Promise<ReplyRecord> {
       channel: args.channel,
       subject,
       assigned_service: args.assignedService,
+      socle_organization_id: args.socleOrganizationId ?? null,
       workflow_state_id: args.initialStateId,
       // sent_at is required by the check_dates constraint on outbound couriers.
       // For drafts we use the creation timestamp as a placeholder; it gets

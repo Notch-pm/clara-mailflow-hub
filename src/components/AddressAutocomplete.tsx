@@ -19,7 +19,7 @@ interface AddressAutocompleteProps {
 /**
  * Champ adresse une ligne avec autocomplete BAN (Géoplateforme IGN).
  * Agnostique de react-hook-form : utilisable aussi bien dans un FormField
- * (Usagers.tsx) que branché sur un state React classique (GeneralSettings.tsx).
+ * (Usagers.tsx) que branché sur un state React classique.
  */
 export default function AddressAutocomplete({
   value,

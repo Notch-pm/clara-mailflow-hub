@@ -55,7 +55,7 @@ export default function CloseLinkedCouriersDialog({
     queryFn: async (): Promise<LinkedCourierRow[]> => {
       const { data: couriers, error } = await supabase
         .from("couriers")
-        .select("id, subject, chrono, workflow_state_id, assigned_service")
+        .select("id, subject, chrono, workflow_state_id, assigned_service, socle_organization_id")
         .in("id", linkedCourierIds);
       if (error) throw error;
 
@@ -70,18 +70,18 @@ export default function CloseLinkedCouriersDialog({
         : { data: [] as any[] };
       const stateById = new Map<string, any>((states ?? []).map((s) => [s.id, s]));
 
-      const serviceNames = Array.from(
-        new Set((couriers ?? []).map((c) => c.assigned_service).filter(Boolean)),
+      // Résolution du workflow via l'organisation gestionnaire (UUID)
+      const orgIds = Array.from(
+        new Set((couriers ?? []).map((c) => c.socle_organization_id).filter(Boolean)),
       ) as string[];
-      const { data: servicesRows } = serviceNames.length
+      const { data: servicesRows } = orgIds.length
         ? await supabase
-            .from("services")
-            .select("name, workflow_id")
-            .eq("organization_id", organizationId)
-            .in("name", serviceNames)
+            .from("socle_organizations")
+            .select("id, workflow_id")
+            .in("id", orgIds)
         : { data: [] as any[] };
-      const workflowByService = new Map<string, string | null>(
-        (servicesRows ?? []).map((s: any) => [s.name.toLowerCase(), s.workflow_id]),
+      const workflowByOrgId = new Map<string, string | null>(
+        (servicesRows ?? []).map((s: any) => [s.id, s.workflow_id]),
       );
 
       const workflowIds = Array.from(
@@ -110,7 +110,7 @@ export default function CloseLinkedCouriersDialog({
         const state = c.workflow_state_id ? stateById.get(c.workflow_state_id) ?? null : null;
         const workflowId =
           state?.workflow_id ??
-          (c.assigned_service ? workflowByService.get(c.assigned_service.toLowerCase()) ?? null : null);
+          (c.socle_organization_id ? workflowByOrgId.get(c.socle_organization_id) ?? null : null);
         const finalState = workflowId ? finalByWorkflow.get(workflowId) ?? null : null;
         return {
           id: c.id,

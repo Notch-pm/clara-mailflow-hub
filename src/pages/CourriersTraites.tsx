@@ -19,7 +19,7 @@ import { useOrganization } from "@/contexts/OrganizationContext";
 import { supabase } from "@/integrations/supabase/client";
 import type { CourierWithRelations } from "@/types/courier";
 import { listTags } from "@/services/courierTagService";
-import { listServices } from "@/services/orgServiceService";
+import { listOrgsWithConfig } from "@/services/socleOrgConfigService";
 import { useUserServiceFilter, applyServiceFilter } from "@/hooks/useUserServiceFilter";
 import { fetchAllCouriersByStatesForExport } from "@/services/courierService";
 import { readableTextColor } from "@/lib/tag-color";
@@ -61,8 +61,8 @@ export default function CourriersTraites() {
 
   // Org services & tags for filters
   const { data: services } = useQuery({
-    queryKey: ["org-services", organizationId],
-    queryFn: () => listServices(organizationId!),
+    queryKey: ["socle-orgs-config", organizationId],
+    queryFn: () => listOrgsWithConfig(organizationId!),
     enabled: !!organizationId,
   });
 
@@ -89,7 +89,7 @@ export default function CourriersTraites() {
       if (!organizationId || !stateIds.length) return [];
       let q = supabase
         .from("couriers")
-        .select("id, subject, direction, channel, received_at, sent_at, workflow_state_id, assigned_service, metadata, chrono, created_at, updated_at, courier_participants(id, role, name, email, usager_id)")
+        .select("id, subject, direction, channel, received_at, sent_at, workflow_state_id, assigned_service, socle_organization_id, metadata, chrono, created_at, updated_at, courier_participants(id, role, name, email, usager_id)")
         .eq("organization_id", organizationId)
         .eq("direction", "inbound")
         .in("workflow_state_id", stateIds)
@@ -137,7 +137,7 @@ export default function CourriersTraites() {
       let out = applyServiceFilter(list, userServiceFilter);
       if (serviceFilter !== "all") {
         const svc = services?.find((s) => s.id === serviceFilter);
-        if (svc) out = out.filter((c) => c.assigned_service === svc.name);
+        if (svc) out = out.filter((c) => c.socle_organization_id === svc.id);
       }
       if (stateFilter !== "all") {
         out = out.filter((c) => c.workflow_state_id === stateFilter);
@@ -221,9 +221,9 @@ export default function CourriersTraites() {
       },
       {
         accessorKey: "assigned_service",
-        header: ({ column }) => <DataTableColumnHeader column={column} title="Service" />,
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Organisation" />,
         cell: ({ row }) => <span className="text-sm">{row.original.assigned_service ?? "—"}</span>,
-        meta: { exportLabel: "Service" },
+        meta: { exportLabel: "Organisation" },
       },
       {
         id: "sender",
@@ -335,10 +335,10 @@ export default function CourriersTraites() {
               <Label className="text-xs text-muted-foreground whitespace-nowrap">Service</Label>
               <Select value={serviceFilter} onValueChange={setServiceFilter}>
                 <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Service" />
+                  <SelectValue placeholder="Organisation" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Tous les services</SelectItem>
+                  <SelectItem value="all">Toutes les organisations</SelectItem>
                   {(services ?? []).map((s) => (
                     <SelectItem key={s.id} value={s.id}>
                       {s.name}

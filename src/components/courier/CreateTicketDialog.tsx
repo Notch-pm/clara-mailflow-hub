@@ -582,10 +582,16 @@ export default function CreateTicketDialog({
     enabled: !!organizationId && open,
   });
 
-  const displayedProcedures = (procedures ?? []).filter((p) => p.is_displayed);
+  // Les démarches obsolètes (retirées du Socle / embryons remplacés) ne sont plus proposées.
+  const displayedProcedures = (procedures ?? []).filter((p) => p.is_displayed && !p.obsoleted_at);
   const selectedProcedure = displayedProcedures.find((p) => p.id === procedureId) ?? null;
 
-  const isArpege = selectedProcedure?.external_source === "arpege" && !isEdit;
+  // Le flux Arpège dépend de la présence effective des références Arpège
+  // (conservées après adoption par le Socle), pas de external_source.
+  const isArpege =
+    !!selectedProcedure?.external_reference_id &&
+    !!selectedProcedure?.arpege_config_fields &&
+    !isEdit;
   const arpegeFields = selectedProcedure?.arpege_config_fields?.ConfigInfoUsagerObligs ?? [];
   const formComponents = selectedProcedure?.arpege_config_fields?.FormComponents ?? [];
 
@@ -766,9 +772,11 @@ export default function CreateTicketDialog({
                         >
                           <Check className={cn("mr-2 h-4 w-4", procedureId === p.id ? "opacity-100" : "opacity-0")} />
                           {p.name}
-                          {p.external_source === "arpege" && (
+                          {p.external_source === "socle" ? (
+                            <span className="ml-auto text-[10px] text-muted-foreground">Socle</span>
+                          ) : p.external_source === "arpege" ? (
                             <span className="ml-auto text-[10px] text-muted-foreground">Arpège</span>
-                          )}
+                          ) : null}
                         </CommandItem>
                       ))}
                     </CommandGroup>

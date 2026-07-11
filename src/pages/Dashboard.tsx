@@ -69,7 +69,7 @@ export default function Dashboard() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("couriers")
-        .select("id, subject, received_at, created_at, updated_at, workflow_state_id, assigned_service")
+        .select("id, subject, received_at, created_at, updated_at, workflow_state_id, assigned_service, socle_organization_id")
         .eq("organization_id", organizationId!)
         .eq("direction", "inbound");
       if (error) throw error;

@@ -8,10 +8,10 @@
 
 - **Recevoir** des courriers (saisie manuelle + lecture automatique de boîtes mails IMAP, configurées par service).
 - **Analyser** chaque courrier (OCR des pièces jointes + LLM via Lovable AI Gateway) : résumé, intentions, sentiment, actions suggérées.
-- **Traiter** via workflows configurables (états + transitions), tags, assignation à un service, tickets d'action.
+- **Traiter** via workflows configurables (états + transitions), tags, assignation à une **organisation** (hiérarchie synchronisée depuis le Socle — les organisations remplacent les anciens « services »), tickets d'action.
 - **Répondre** : brouillon généré par IA, signature électronique (image), envoi via SMTP de l'organisation.
 - **Tracer** : historique d'événements, notes, liens entre courriers, références séquentielles annuelles.
-- **Référentiels** : usagers (expéditeurs/destinataires), signataires, modèles, démarches (sync nocturne depuis **Arpège**).
+- **Référentiels** : usagers (expéditeurs/destinataires), signataires, modèles, démarches (sync nocturne depuis le **Socle**, le référentiel central de la gamme — plus de paramétrage des démarches dans Clara).
 
 Multi-tenant strict : toute donnée est scopée par `organization_id`. Repo : <https://github.com/Notch-pm/clara-mailflow-hub>.
 

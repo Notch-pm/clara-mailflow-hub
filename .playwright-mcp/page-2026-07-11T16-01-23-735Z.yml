@@ -1,0 +1,23 @@
+- generic [ref=e2]:
+  - region "Notifications (F8)":
+    - list
+  - region "Notifications alt+T"
+  - generic [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - img "Notch" [ref=e7]
+        - generic [ref=e8]:
+          - heading "Clara" [level=3] [ref=e9]
+          - paragraph [ref=e10]: Gestion du courrier administratif
+      - paragraph [ref=e11]: Connectez-vous pour accéder à votre espace
+    - generic [ref=e12]:
+      - generic [ref=e13]:
+        - generic [ref=e14]:
+          - text: Email
+          - textbox "Email" [ref=e15]:
+            - /placeholder: agent@organisation.fr
+        - generic [ref=e16]:
+          - text: Mot de passe
+          - textbox "Mot de passe" [ref=e17]
+        - button "Se connecter" [ref=e18] [cursor=pointer]
+      - button "Mot de passe oublié ?" [ref=e20] [cursor=pointer]

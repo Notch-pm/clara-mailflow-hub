@@ -46,7 +46,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { updateCourier, getCourierById } from "@/services/courierService";
 import { logEvent } from "@/services/courierEventService";
 import { listTags, type CourierTag } from "@/services/courierTagService";
-import { listServices, assignService } from "@/services/orgServiceService";
+import {
+  assignableOrgs,
+  assignOrganization,
+  listOrgsWithConfig,
+} from "@/services/socleOrgConfigService";
 import { useUserServiceFilter } from "@/hooks/useUserServiceFilter";
 import { getDocuments } from "@/services/courierDocumentService";
 import { addParticipant, updateParticipant } from "@/services/courierParticipantService";
@@ -246,67 +250,78 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
     (orgTags ?? []).map((t) => [t.name.toLowerCase(), t]),
   );
 
-  // Available services for the org
+  // Organisations (miroir Socle) assignables — remplacent les services.
   const { data: services } = useQuery({
-    queryKey: ["org-services", organizationId],
-    queryFn: () => listServices(organizationId),
+    queryKey: ["socle-orgs-config", organizationId],
+    queryFn: () => listOrgsWithConfig(organizationId),
     enabled: !!organizationId && open,
   });
 
   // Local override for assigned_service so the UI reflects the change immediately
-  // after the user picks a service (the parent prop is a snapshot and only updates
-  // after the next mailbox-couriers refetch resolves).
+  // after the user picks an organization (the parent prop is a snapshot and only
+  // updates after the next mailbox-couriers refetch resolves).
   const [localAssignedService, setLocalAssignedService] = useState<string | null>(
     courier?.assigned_service ?? null,
   );
-  // Same for workflow_state_id — when assigning a service we land in its initial
-  // state, and we need transitions to be queryable straight away (without waiting
-  // for the parent's snapshot to refetch and reach this component again).
+  // UUID de l'organisation gestionnaire — clé de résolution (le nom n'est qu'affichage).
+  const [localSocleOrgId, setLocalSocleOrgId] = useState<string | null>(
+    (courier?.socle_organization_id as string | null) ?? null,
+  );
+  // Same for workflow_state_id — when assigning an organization we land in its
+  // initial state, and we need transitions to be queryable straight away (without
+  // waiting for the parent's snapshot to refetch and reach this component again).
   const [localWorkflowStateId, setLocalWorkflowStateId] = useState<string | null>(
     courier?.workflow_state_id ?? null,
   );
   useEffect(() => {
     setLocalAssignedService(courier?.assigned_service ?? null);
+    setLocalSocleOrgId((courier?.socle_organization_id as string | null) ?? null);
     setLocalWorkflowStateId(courier?.workflow_state_id ?? null);
     setReplyState(null);
-  }, [courier?.id, courier?.assigned_service, courier?.workflow_state_id]);
+  }, [courier?.id, courier?.assigned_service, courier?.socle_organization_id, courier?.workflow_state_id]);
 
   const userServiceFilter = useUserServiceFilter();
 
-  // Si le courrier vient d'une config IMAP précise, restreindre les services proposés.
+  // Si le courrier vient d'une config IMAP précise, restreindre les organisations proposées.
   const imapSettingsId = (courier?.metadata?.imap_settings_id as string | null) ?? null;
   const availableServices = useMemo(() => {
     if (!services) return [];
-    let list = services;
+    let list = assignableOrgs(services);
     if (imapSettingsId) {
-      const linked = list.filter((s) => s.imap_settings_id === imapSettingsId);
+      const linked = list.filter((o) =>
+        (o.imap_configs ?? []).some((c) => c.id === imapSettingsId),
+      );
       if (linked.length > 0) list = linked;
     }
     if (userServiceFilter !== null) {
-      list = list.filter((s) => userServiceFilter.includes(s.name));
+      list = list.filter((o) => userServiceFilter.includes(o.id));
     }
-    // Always include the currently assigned service so the Select can display it,
-    // even if it was filtered out (e.g. different IMAP or service filter).
-    if (localAssignedService) {
-      const current = services.find(
-        (s) => s.name.toLowerCase() === localAssignedService.toLowerCase(),
-      );
-      if (current && !list.find((s) => s.id === current.id)) {
+    // Always include the currently assigned organization so the Select can display it,
+    // even if it was filtered out (e.g. different IMAP box or rights filter).
+    const currentId = localSocleOrgId;
+    if (currentId) {
+      const current = services.find((o) => o.id === currentId);
+      if (current && !list.find((o) => o.id === current.id)) {
         list = [current, ...list];
       }
     }
     return list;
-  }, [services, imapSettingsId, userServiceFilter, localAssignedService]);
+  }, [services, imapSettingsId, userServiceFilter, localSocleOrgId]);
 
-  // Resolve courier's current service from its name (assigned_service)
+  // Resolve courier's current organization by UUID (fallback nom pour l'existant legacy)
   const currentService = useMemo(() => {
-    if (!localAssignedService || !services) return null;
+    if (!services) return null;
+    if (localSocleOrgId) {
+      const byId = services.find((o) => o.id === localSocleOrgId);
+      if (byId) return byId;
+    }
+    if (!localAssignedService) return null;
     return (
       services.find(
-        (s) => s.name.toLowerCase() === localAssignedService.toLowerCase(),
+        (o) => o.name.toLowerCase() === localAssignedService.toLowerCase(),
       ) ?? null
     );
-  }, [localAssignedService, services]);
+  }, [localSocleOrgId, localAssignedService, services]);
 
   // Transitions from current state, scoped to the service's workflow
   const { data: transitions } = useQuery({
@@ -347,21 +362,22 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
   const isInitialState = !localWorkflowStateId || currentStateInfo?.is_initial === true;
 
   const serviceMutation = useMutation({
-    mutationFn: async (newServiceId: string) => {
+    mutationFn: async (newOrgId: string) => {
       if (!courier) return null;
-      const newService = services?.find((s) => s.id === newServiceId);
-      if (!newService) throw new Error("Service introuvable");
-      return assignService(organizationId, courier, newService);
+      const newOrg = services?.find((o) => o.id === newOrgId);
+      if (!newOrg) throw new Error("Organisation introuvable");
+      return assignOrganization(organizationId, courier, newOrg);
     },
-    onSuccess: (result) => {
+    onSuccess: (result, newOrgId) => {
       if (result?.name) setLocalAssignedService(result.name);
+      setLocalSocleOrgId(newOrgId);
       // Also update the local workflow state so transitions become queryable
       // immediately, without waiting for the parent's snapshot to refetch.
       setLocalWorkflowStateId(result?.initialStateId ?? null);
       queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
       queryClient.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
       queryClient.invalidateQueries({ queryKey: ["courier-events", courier?.id] });
-      toast.success("Service gestionnaire mis à jour");
+      toast.success("Organisation gestionnaire mise à jour");
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -369,37 +385,42 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
   const transferMutation = useMutation({
     mutationFn: async ({ targetServiceId, loseAccess }: { targetServiceId: string; loseAccess: boolean }) => {
       if (!courier) return null;
-      const targetService = services?.find((s) => s.id === targetServiceId);
-      if (!targetService) throw new Error("Service introuvable");
+      const targetOrg = services?.find((o) => o.id === targetServiceId);
+      if (!targetOrg) throw new Error("Organisation introuvable");
 
-      // Fetch initial state of target service's workflow
-      const { data: initial, error: stateErr } = await supabase
-        .from("workflow_states")
-        .select("id, name, category")
-        .eq("workflow_id", targetService.workflow_id)
-        .eq("is_initial", true)
-        .maybeSingle();
-      if (stateErr) throw stateErr;
+      // Fetch initial state of target organization's workflow
+      let initial: { id: string; name: string; category: string } | null = null;
+      if (targetOrg.workflow_id) {
+        const { data, error: stateErr } = await supabase
+          .from("workflow_states")
+          .select("id, name, category")
+          .eq("workflow_id", targetOrg.workflow_id)
+          .eq("is_initial", true)
+          .maybeSingle();
+        if (stateErr) throw stateErr;
+        initial = data as typeof initial;
+      }
 
       const previousService = courier.assigned_service ?? null;
       const currentMeta = courier.metadata ?? {};
       const { error: updateErr } = await updateCourier(organizationId, courier.id, {
-        assigned_service: targetService.name,
+        assigned_service: targetOrg.name,
+        socle_organization_id: targetOrg.id,
         workflow_state_id: initial?.id ?? null,
-        metadata: { ...currentMeta, service_id: targetService.id },
+        metadata: { ...currentMeta, socle_organization_id: targetOrg.id },
       });
       if (updateErr) throw updateErr;
 
       await logEvent(organizationId, courier.id, "service_transferred", {
         from: previousService,
-        to: targetService.name,
+        to: targetOrg.name,
       });
 
-      // Notify all members of the target service
+      // Notify all members of the target organization
       const { data: members } = await supabase
-        .from("service_members" as never)
+        .from("socle_organization_members")
         .select("user_id")
-        .eq("service_id", targetService.id);
+        .eq("socle_organization_id", targetOrg.id);
       if (members && (members as { user_id: string }[]).length > 0) {
         const subject = (courier as any).subject ?? "(sans objet)";
         const notifs = (members as { user_id: string }[]).map((m) => ({
@@ -412,7 +433,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
         await (supabase.from("notifications" as never) as any).insert(notifs);
       }
 
-      return { name: targetService.name, initialStateId: initial?.id ?? null, loseAccess };
+      return { name: targetOrg.name, initialStateId: initial?.id ?? null, loseAccess };
     },
     onSuccess: (result) => {
       setTransferConfirmOpen(false);
@@ -897,6 +918,14 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   )}
                 </div>
               )}
+              {courier.socle_organization?.name && (
+                <div className="flex items-center justify-between gap-2 py-0.5">
+                  <span className="text-muted-foreground text-sm shrink-0">Organisation</span>
+                  <span className="text-sm font-medium px-2 truncate">
+                    {courier.socle_organization.name}
+                  </span>
+                </div>
+              )}
               {isOutbound && courier.parent_courier_id && (
                 <div className="flex items-center justify-between gap-2 py-0.5">
                   <span className="text-muted-foreground text-sm shrink-0">Courrier lié</span>
@@ -1063,7 +1092,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
               </div>
 
               <div className="space-y-1">
-                <span className="text-muted-foreground text-sm">Service gestionnaire</span>
+                <span className="text-muted-foreground text-sm">Organisation gestionnaire</span>
                 <div className="min-w-0">
                   {readOnly ? (
                     <span className="text-sm font-medium truncate px-2 block">
@@ -1077,7 +1106,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                         <button
                           type="button"
                           className="inline-flex w-full items-center justify-between gap-1.5 rounded px-1.5 py-0.5 text-sm font-medium hover:bg-muted transition-colors"
-                          title={isInitialState ? "Affecter un service" : "Transférer à un autre service"}
+                          title={isInitialState ? "Affecter à une organisation" : "Transférer à une autre organisation"}
                         >
                           <span className="truncate">
                             {courier.assigned_service ?? (
@@ -1090,7 +1119,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                       <PopoverContent className="w-72 p-3 space-y-2" align="start">
                         {isInitialState ? (
                           <>
-                            <p className="text-xs text-muted-foreground">Affecter à un service</p>
+                            <p className="text-xs text-muted-foreground">Affecter à une organisation</p>
                             <Select
                               value={currentService?.id ?? ""}
                               onValueChange={(v) => {
@@ -1100,7 +1129,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                               disabled={serviceMutation.isPending}
                             >
                               <SelectTrigger>
-                                <SelectValue placeholder="Sélectionner un service" />
+                                <SelectValue placeholder="Sélectionner une organisation" />
                               </SelectTrigger>
                               <SelectContent>
                                 {availableServices.map((s) => (
@@ -1117,14 +1146,14 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                             </Select>
                             {courier.assigned_service && !currentService && (
                               <p className="text-xs text-muted-foreground italic">
-                                Service actuel « {courier.assigned_service} » introuvable.
+                                Organisation actuelle « {courier.assigned_service} » introuvable.
                               </p>
                             )}
                           </>
                         ) : (
                           <>
                             <p className="text-xs text-muted-foreground">
-                              Transférer à un autre service. Le courrier sera remis à l'état initial.
+                              Transférer à une autre organisation. Le courrier sera remis à l'état initial.
                             </p>
                             <Select
                               value=""
@@ -1136,14 +1165,14 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                               disabled={transferMutation.isPending}
                             >
                               <SelectTrigger>
-                                <SelectValue placeholder="Choisir un service…" />
+                                <SelectValue placeholder="Choisir une organisation…" />
                               </SelectTrigger>
                               <SelectContent>
-                                {(services ?? [])
-                                  .filter((s) => s.name !== localAssignedService)
-                                  .map((s) => (
-                                    <SelectItem key={s.id} value={s.id}>
-                                      {s.name}
+                                {assignableOrgs(services ?? [])
+                                  .filter((o) => o.id !== currentService?.id)
+                                  .map((o) => (
+                                    <SelectItem key={o.id} value={o.id}>
+                                      {o.name}
                                     </SelectItem>
                                   ))}
                               </SelectContent>
@@ -1240,7 +1269,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 <AlertDialogDescription>
                   Vous allez transférer ce courrier à :{" "}
                   <strong>
-                    {services?.find((s) => s.id === transferTargetServiceId)?.name ?? ""}
+                    {services?.find((o) => o.id === transferTargetServiceId)?.name ?? ""}
                   </strong>
                   . Elle sera alors remise à l'état initial. En fonction de la configuration des droits, elle pourrait vous être rendue inaccessible.
                 </AlertDialogDescription>
@@ -1250,8 +1279,8 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 <AlertDialogAction
                   disabled={transferMutation.isPending}
                   onClick={() => {
-                    const targetName = services?.find((s) => s.id === transferTargetServiceId)?.name ?? "";
-                    const loseAccess = userServiceFilter !== null && !userServiceFilter.includes(targetName);
+                    const loseAccess =
+                      userServiceFilter !== null && !userServiceFilter.includes(transferTargetServiceId);
                     transferMutation.mutate({ targetServiceId: transferTargetServiceId, loseAccess });
                   }}
                 >
@@ -1308,6 +1337,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                     organizationId={organizationId}
                     parentSubject={courier.subject ?? null}
                     assignedService={localAssignedService}
+                    socleOrganizationId={localSocleOrgId}
                     sender={sender ?? null}
                     readOnly={readOnly}
                     onStateChange={setReplyState}

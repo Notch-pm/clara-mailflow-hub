@@ -34,7 +34,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useAuth } from "@/contexts/AuthContext";
-import { listServices } from "@/services/orgServiceService";
+import { assignableOrgs, listOrgsWithConfig } from "@/services/socleOrgConfigService";
 import {
   getPortalForms,
   createPortalForm,
@@ -64,8 +64,9 @@ export default function PortalFormsSettings() {
   });
 
   const { data: services } = useQuery({
-    queryKey: ["services", orgId],
-    queryFn: () => listServices(orgId),
+    queryKey: ["socle-orgs-config", orgId],
+    queryFn: () => listOrgsWithConfig(orgId),
+    select: assignableOrgs,
     enabled: !!orgId,
   });
 
@@ -75,7 +76,7 @@ export default function PortalFormsSettings() {
         organization_id: orgId,
         name: formName.trim(),
         description: formDesc.trim() || null,
-        service_id: formServiceId || null,
+        socle_organization_id: formServiceId || null,
         allowed_origins: formOrigins.trim()
           ? formOrigins.split("\n").map((l) => l.trim()).filter(Boolean)
           : null,
@@ -182,11 +183,12 @@ export default function PortalFormsSettings() {
                       <Badge variant={form.is_active ? "default" : "secondary"}>
                         {form.is_active ? "Actif" : "Inactif"}
                       </Badge>
-                      {form.service_id && services?.find((s) => s.id === form.service_id)?.name && (
-                        <Badge variant="outline" className="text-xs">
-                          {services.find((s) => s.id === form.service_id)!.name}
-                        </Badge>
-                      )}
+                      {form.socle_organization_id &&
+                        services?.find((s) => s.id === form.socle_organization_id)?.name && (
+                          <Badge variant="outline" className="text-xs">
+                            {services.find((s) => s.id === form.socle_organization_id)!.name}
+                          </Badge>
+                        )}
                     </div>
                     {form.description && (
                       <CardDescription className="text-xs">{form.description}</CardDescription>
@@ -273,14 +275,14 @@ export default function PortalFormsSettings() {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="pf-service">
-                Service destinataire <span className="text-muted-foreground text-xs">(optionnel)</span>
+                Organisation destinataire <span className="text-muted-foreground text-xs">(optionnel)</span>
               </Label>
               <Select value={formServiceId || "none"} onValueChange={(v) => setFormServiceId(v === "none" ? "" : v)}>
                 <SelectTrigger id="pf-service">
-                  <SelectValue placeholder="Aucun service spécifique" />
+                  <SelectValue placeholder="Aucune organisation spécifique" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">Aucun service spécifique</SelectItem>
+                  <SelectItem value="none">Aucune organisation spécifique</SelectItem>
                   {services?.map((s) => (
                     <SelectItem key={s.id} value={s.id}>
                       {s.name}
