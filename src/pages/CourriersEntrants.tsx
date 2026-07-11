@@ -94,9 +94,9 @@ export default function CourriersEntrants() {
       },
       {
         accessorKey: "assigned_service",
-        header: ({ column }) => <DataTableColumnHeader column={column} title="Service" />,
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Organisation" />,
         cell: ({ row }) => <span className="text-sm">{row.original.assigned_service ?? "—"}</span>,
-        meta: { exportLabel: "Service" },
+        meta: { exportLabel: "Organisation" },
       },
       {
         id: "received_at",

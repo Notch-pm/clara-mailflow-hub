@@ -388,17 +388,30 @@ async function analyzeCourier(
     .select("id, name, external_source")
     .eq("organization_id", orgId)
     .eq("is_displayed", true)
+    .is("obsoleted_at", null) // exclut les démarches retirées du Socle (soft-delete)
     .order("display_order", { ascending: true });
   const procedureList = (orgProcedures ?? []) as Array<{ id: string; name: string; external_source: string | null }>;
 
-  // Services disponibles — pour suggérer le service gestionnaire
-  const { data: orgServices } = await admin
-    .from("services")
+  // Organisations disponibles (miroir Socle) — pour suggérer l'organisation gestionnaire.
+  // Fallback services (legacy) si le miroir est vide.
+  const { data: socleOrgRows } = await admin
+    .from("socle_organizations")
     .select("id, name")
-    .eq("organization_id", orgId);
-  const serviceNames: string[] = (orgServices ?? [])
+    .eq("organization_id", orgId)
+    .eq("status", "active")
+    .is("obsoleted_at", null);
+  let serviceNames: string[] = (socleOrgRows ?? [])
     .map((s: { name: string }) => s.name)
-    .filter((n) => typeof n === "string" && n.trim().length > 0);
+    .filter((n: string) => typeof n === "string" && n.trim().length > 0);
+  if (serviceNames.length === 0) {
+    const { data: orgServices } = await admin
+      .from("services")
+      .select("id, name")
+      .eq("organization_id", orgId);
+    serviceNames = (orgServices ?? [])
+      .map((s: { name: string }) => s.name)
+      .filter((n: string) => typeof n === "string" && n.trim().length > 0);
+  }
 
   // Corps de l'email (si présent dans metadata)
   const meta = (courier.metadata ?? {}) as Record<string, unknown>;

@@ -12,14 +12,15 @@ Toutes en Deno, dans `supabase/functions/<name>/index.ts`. Toutes doivent :
 |---|---|---|---|
 | `analyze-courier` | OCR + analyse LLM des courriers. Routes via query `?action=ocr-courier` ou `?action=analyze`. | JWT user, vérifie membership de l'org du courrier. | `LOVABLE_API_KEY` |
 | `draft-reply` | Génère un brouillon HTML de réponse via LLM. | JWT user. | `LOVABLE_API_KEY` |
-| `fetch-inbound-emails` | Poll IMAP, crée des couriers inbound. | JWT user admin OU service role. | Lit `imap_settings` (chiffré en DB). |
+| `fetch-inbound-emails` | Poll IMAP, crée des couriers inbound. Auto-assignation par l'**organisation** de la boîte (`imap_settings.socle_organization_id` → nom + workflow de l'org) ; fallback legacy `services.imap_settings_id`. | JWT user admin OU service role. | Lit `imap_settings` (chiffré en DB). |
 | `send-courier-reply` | Envoie une réponse via SMTP de l'org. | JWT user. | Lit `smtp_settings`. |
 | `send-test-email` | Test de config SMTP. | JWT user admin. | Idem. |
 | `send-password-reset` | Envoie un mail de reset à un user **de la même org** (ou superadmin). | JWT user. Vérifie que la cible est dans une org commune. | `RESEND_API_KEY` (ou SMTP). |
 | `invite-user` | Crée un user + envoie invitation, lié à une org. | JWT admin de l'org cible. | `RESEND_API_KEY`. |
 | `auth-email-hook` | Hook Supabase Auth pour customiser les emails (confirmation, magic link...). | Webhook Supabase signé. | Secret hook Supabase. |
 | `storage-documents` | Proxy signé pour servir un document du bucket privé `clara-documents` avec vérification d'accès. | JWT user, vérifie membership. | — |
-| `sync-arpege-services` | Upsert des démarches depuis Arpège dans `procedures`. | Service role JWT OU admin user OU `x-cron-secret`. | `CRON_SECRET`, `ARPEGE_*`. |
+| `sync-socle-referentiel` | Sync nocturne du référentiel Socle (source de vérité des démarches) : **hiérarchie d'organisations** (sous-arbre du `socle_org_id` mappé → miroir `socle_organizations`), catégories, types de documents, démarches activées par org (`?enabled_for=`). Upsert idempotent par `socle_id`, adoption des embryons par nom, soft-delete des disparus. Body `{organization_id?, background?, dry_run?}` ; `?action=list-organizations` pour le mapping superadmin. | `x-cron-secret` OU service role OU JWT (superadmin, ou admin restreint à son org). | `SOCLE_API_KEY`, `SOCLE_API_URL` (optionnel). |
+| `sync-arpege-services` | Upsert des démarches depuis Arpège dans `procedures`. **Décommissionnée du cron** (remplacée par la sync Socle) — déclenchement manuel encore possible. | Service role JWT OU admin user OU `x-cron-secret`. | `CRON_SECRET`, `ARPEGE_*`. |
 | `sync-arpege-appointments` | Sync RDV Arpège (lecture seule actuellement). | Idem. | Idem. |
 | `test-arpege-connection` | Test de connexion à l'API Arpège pour une org. | Admin de l'org cible. | `ARPEGE_*`. |
 

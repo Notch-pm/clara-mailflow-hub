@@ -2,7 +2,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { CourierDirection, CourierChannel, CourierInsert, CourierUpdate, CourierWithRelations } from "@/types/courier";
 
 const LIST_SELECT =
-  "id, subject, direction, channel, received_at, sent_at, workflow_state_id, assigned_service, metadata, chrono, created_at, updated_at, courier_participants(id, role, name, email, usager_id)";
+  "id, subject, direction, channel, received_at, sent_at, workflow_state_id, assigned_service, socle_organization_id, socle_organization:socle_organizations(id, name), metadata, chrono, created_at, updated_at, courier_participants(id, role, name, email, usager_id)";
 
 /** Taille de page utilisée pour récupérer l'intégralité des résultats filtrés (export). */
 const EXPORT_PAGE_SIZE = 500;
@@ -97,7 +97,7 @@ export async function fetchAllCouriersByStatesForExport(
 export async function getCourierById(organizationId: string, courierId: string) {
   return supabase
     .from("couriers")
-    .select("*, courier_participants(*), courier_documents(*), courier_events(*), courier_links(*)")
+    .select("*, socle_organization:socle_organizations(id, name), courier_participants(*), courier_documents(*), courier_events(*), courier_links(*)")
     .eq("organization_id", organizationId)
     .eq("id", courierId)
     .single();

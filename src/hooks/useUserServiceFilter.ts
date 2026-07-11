@@ -3,9 +3,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 /**
- * Returns the list of service names the current user is allowed to see.
+ * Returns the list of organization UUIDs (miroir Socle) the current user belongs to.
  * - null  → no restriction (admin / superadmin sees everything)
- * - string[] → user can only see couriers with assigned_service IN this list OR assigned_service IS NULL
+ * - string[] → user can only see couriers with socle_organization_id IN this list
+ *   OR socle_organization_id IS NULL (courriers non assignés visibles par tous)
  */
 export function useUserServiceFilter(): string[] | null {
   const { profile, membership, user } = useAuth();
@@ -14,36 +15,36 @@ export function useUserServiceFilter(): string[] | null {
   const isOrgAdmin = membership?.role === "admin" || membership?.role === "administrateur";
   const shouldFilter = !isSuperAdmin && !isOrgAdmin;
 
-  const { data: serviceNames } = useQuery({
+  const { data: orgIds } = useQuery({
     queryKey: ["user-service-filter", user?.id, membership?.organization_id],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("service_members" as never)
-        .select("services:service_id(name)")
+        .from("socle_organization_members")
+        .select("socle_organization_id")
         .eq("user_id", user!.id);
       if (error) throw error;
-      return ((data ?? []) as { services: { name: string } | null }[])
-        .map((r) => r.services?.name)
-        .filter((n): n is string => !!n);
+      return ((data ?? []) as { socle_organization_id: string }[])
+        .map((r) => r.socle_organization_id)
+        .filter(Boolean);
     },
     enabled: shouldFilter && !!user?.id,
     staleTime: 60_000,
   });
 
   if (!shouldFilter) return null;
-  return serviceNames ?? [];
+  return orgIds ?? [];
 }
 
 /**
- * Applies the service filter to a list of couriers.
- * Couriers with no assigned_service are always visible.
+ * Applies the organization filter (UUIDs) to a list of couriers.
+ * Couriers with no organization are always visible.
  */
-export function applyServiceFilter<T extends { assigned_service?: string | null }>(
+export function applyServiceFilter<T extends { socle_organization_id?: string | null }>(
   couriers: T[],
-  serviceFilter: string[] | null,
+  orgFilter: string[] | null,
 ): T[] {
-  if (serviceFilter === null) return couriers;
+  if (orgFilter === null) return couriers;
   return couriers.filter(
-    (c) => !c.assigned_service || serviceFilter.includes(c.assigned_service),
+    (c) => !c.socle_organization_id || orgFilter.includes(c.socle_organization_id),
   );
 }

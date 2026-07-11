@@ -33,7 +33,7 @@ import {
 import { cn } from "@/lib/utils";
 import { readableTextColor } from "@/lib/tag-color";
 import { Check, FileText, MoveRight, Plus, Trash2, X } from "lucide-react";
-import type { OrgService } from "@/services/orgServiceService";
+import type { SocleOrgWithConfig as OrgService } from "@/services/socleOrgConfigService";
 import type { CourierTag } from "@/services/courierTagService";
 
 interface BulkFile {
@@ -351,7 +351,7 @@ export default function BulkStep4Verify({
               <TableHead className="min-w-[140px]">Expéditeur</TableHead>
               <TableHead className="min-w-[120px]">Destinataire</TableHead>
               <TableHead className="min-w-[160px]">
-                Service gestionnaire <span className="text-destructive">*</span>
+                Organisation gestionnaire <span className="text-destructive">*</span>
               </TableHead>
               <TableHead className="min-w-[140px]">Tags</TableHead>
               <TableHead className="min-w-[160px]">Documents</TableHead>

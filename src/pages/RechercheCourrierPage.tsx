@@ -16,7 +16,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { supabase } from "@/integrations/supabase/client";
-import { listServices } from "@/services/orgServiceService";
+import { listOrgsWithConfig } from "@/services/socleOrgConfigService";
 import { listTags, type CourierTag } from "@/services/courierTagService";
 import { searchCouriers, type CourierSearchResult } from "@/services/courierSearchService";
 import { readableTextColor } from "@/lib/tag-color";
@@ -222,15 +222,15 @@ function FilterPanel({
       </div>
 
       <div className="space-y-1">
-        <Label className="text-xs text-muted-foreground">Service</Label>
+        <Label className="text-xs text-muted-foreground">Organisation</Label>
         <Select value={service} onValueChange={setService}>
           <SelectTrigger className="h-8 text-sm">
             <SelectValue placeholder="Tous" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Tous</SelectItem>
+            <SelectItem value="all">Toutes</SelectItem>
             {services.map((s) => (
-              <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
+              <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -322,8 +322,8 @@ export default function RechercheCourrierPage() {
 
   // Services
   const { data: services = [] } = useQuery({
-    queryKey: ["org-services", organizationId],
-    queryFn: () => listServices(organizationId),
+    queryKey: ["socle-orgs-config", organizationId],
+    queryFn: () => listOrgsWithConfig(organizationId),
     enabled: !!organizationId,
   });
 
@@ -354,7 +354,7 @@ export default function RechercheCourrierPage() {
         keywords: debouncedKeywords || null,
         direction: direction !== "all" ? direction as "inbound" | "outbound" : null,
         workflowStateId: stateId !== "all" ? stateId : null,
-        service: service !== "all" ? service : null,
+        socleOrganizationId: service !== "all" ? service : null,
         tagNames: selectedTags.length ? selectedTags : null,
         dateFrom: dateFrom || null,
         dateTo: dateTo || null,

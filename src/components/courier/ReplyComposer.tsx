@@ -34,7 +34,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { listServices } from "@/services/orgServiceService";
+import { listOrgsWithConfig } from "@/services/socleOrgConfigService";
 import { supabase } from "@/integrations/supabase/client";
 import {
   listRepliesForCourier,
@@ -74,6 +74,8 @@ interface Props {
   organizationId: string;
   parentSubject: string | null;
   assignedService: string | null;
+  /** UUID de l'organisation gestionnaire (miroir Socle) — clé de résolution. */
+  socleOrganizationId?: string | null;
   sender: CourierParticipant | null;
   readOnly?: boolean;
   onStateChange?: (state: { name: string; category: string | null } | null) => void;
@@ -90,6 +92,7 @@ export default function ReplyComposer({
   organizationId,
   parentSubject,
   assignedService,
+  socleOrganizationId,
   sender,
   readOnly,
   onStateChange,
@@ -102,17 +105,23 @@ export default function ReplyComposer({
   const senderEmail = sender?.email?.trim() || null;
   const canEmail = !!senderEmail;
 
-  // ─── Services & workflow ────────────────────────────────────────────
+  // ─── Organisations (miroir Socle) & workflow ────────────────────────
   const { data: services } = useQuery({
-    queryKey: ["org-services", organizationId],
-    queryFn: () => listServices(organizationId),
+    queryKey: ["socle-orgs-config", organizationId],
+    queryFn: () => listOrgsWithConfig(organizationId),
     enabled: !!organizationId,
   });
 
+  // Organisation gestionnaire résolue par UUID (fallback nom pour l'existant legacy)
   const currentService = useMemo(() => {
-    if (!assignedService || !services) return null;
-    return services.find((s) => s.name.toLowerCase() === assignedService.toLowerCase()) ?? null;
-  }, [assignedService, services]);
+    if (!services) return null;
+    if (socleOrganizationId) {
+      const byId = services.find((o) => o.id === socleOrganizationId);
+      if (byId) return byId;
+    }
+    if (!assignedService) return null;
+    return services.find((o) => o.name.toLowerCase() === assignedService.toLowerCase()) ?? null;
+  }, [socleOrganizationId, assignedService, services]);
 
   const replyWorkflowId = currentService?.reply_workflow_id ?? null;
 
@@ -185,14 +194,14 @@ export default function ReplyComposer({
     [replies, activeReplyId],
   );
 
-  // ─── Signatories ────────────────────────────────────────────────────
+  // ─── Signatories (de l'organisation gestionnaire) ───────────────────
   const { data: serviceSignatories = [] } = useQuery({
-    queryKey: ["service-signatories-detailed", currentService?.id],
+    queryKey: ["socle-org-signatories-detailed", currentService?.id],
     queryFn: async (): Promise<ServiceSignatory[]> => {
       const { data, error } = await supabase
-        .from("service_signatories")
+        .from("socle_organization_signatories")
         .select("signatory:signatories(id, first_name, last_name, title, user_id, signature_storage_key)")
-        .eq("service_id", currentService!.id);
+        .eq("socle_organization_id", currentService!.id);
       if (error) throw error;
       return ((data ?? []) as ServiceSignatoryJoinRow[])
         .map((r) => (Array.isArray(r.signatory) ? r.signatory[0] : r.signatory))
@@ -318,7 +327,8 @@ export default function ReplyComposer({
       channel,
       bodyHtml: body,
       parentSubject,
-      assignedService,
+      assignedService: currentService?.name ?? assignedService,
+      socleOrganizationId: currentService?.id ?? socleOrganizationId ?? null,
       initialStateId: workflow?.initialState?.id ?? null,
       recipient: sender
         ? { name: sender.name, email: sender.email, first_name: sender.first_name, last_name: sender.last_name }
@@ -517,18 +527,18 @@ export default function ReplyComposer({
     doTransition.isPending || sendEmail.isPending || doDelete.isPending || isPrintingWithTemplate ||
     doSignAndAdvance.isPending || doSendAndAdvance.isPending;
 
-  // ─── Early exits (no service / no workflow) ─────────────────────────
+  // ─── Early exits (no organization / no workflow) ────────────────────
   if (!currentService) {
     return (
       <div className="text-sm text-muted-foreground italic">
-        Aucun service gestionnaire n'est assigné à ce courrier. Assignez un service pour rédiger une réponse.
+        Aucune organisation gestionnaire n'est assignée à ce courrier. Assignez une organisation pour rédiger une réponse.
       </div>
     );
   }
   if (!replyWorkflowId) {
     return (
       <div className="text-sm text-muted-foreground italic">
-        Aucun workflow de réponse n'est configuré pour le service « {currentService.name} ».
+        Aucun workflow de réponse n'est configuré pour l'organisation « {currentService.name} ».
       </div>
     );
   }

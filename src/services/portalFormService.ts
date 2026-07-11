@@ -6,7 +6,10 @@ const db = supabase as any;
 export interface PortalForm {
   id: string;
   organization_id: string;
+  /** Legacy (services gelés) — remplacé par socle_organization_id. */
   service_id: string | null;
+  /** Organisation (miroir Socle) destinataire des soumissions. */
+  socle_organization_id: string | null;
   token: string;
   name: string;
   description: string | null;
@@ -20,7 +23,7 @@ export interface PortalForm {
 
 export interface PortalFormInsert {
   organization_id: string;
-  service_id?: string | null;
+  socle_organization_id?: string | null;
   name: string;
   description?: string | null;
   allowed_origins?: string[] | null;
@@ -45,7 +48,7 @@ export async function createPortalForm(data: PortalFormInsert) {
 export async function updatePortalForm(
   organizationId: string,
   formId: string,
-  patch: Partial<Pick<PortalForm, "name" | "description" | "is_active" | "allowed_origins" | "service_id">>,
+  patch: Partial<Pick<PortalForm, "name" | "description" | "is_active" | "allowed_origins" | "socle_organization_id">>,
 ) {
   return db
     .from("portal_forms")

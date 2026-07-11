@@ -255,26 +255,52 @@ async function processOrganization(
       initialStateId = initState?.id ?? null;
     }
 
-    // Services liés à cette configuration IMAP.
-    const { data: linkedServices } = await admin
-      .from("services")
-      .select("id, name, workflow_id")
-      .eq("organization_id", s.organization_id)
-      .eq("imap_settings_id", s.id);
-
+    // Auto-assignation : l'organisation (miroir Socle) propriétaire de la boîte est
+    // prioritaire ; fallback legacy sur le lien services.imap_settings_id tant que
+    // toutes les boîtes ne sont pas rattachées à une organisation.
     let autoService: { name: string; workflowStateId: string | null } | null = null;
-    if (linkedServices?.length === 1) {
-      const svc = linkedServices[0] as { id: string; name: string; workflow_id: string };
-      const { data: initState } = await admin
-        .from("workflow_states")
-        .select("id")
-        .eq("workflow_id", svc.workflow_id)
-        .eq("is_initial", true)
+    if (s.socle_organization_id) {
+      const { data: socleOrg } = await admin
+        .from("socle_organizations")
+        .select("id, name, workflow_id")
+        .eq("id", s.socle_organization_id)
         .maybeSingle();
-      autoService = {
-        name: svc.name,
-        workflowStateId: (initState as any)?.id ?? null,
-      };
+      if (socleOrg) {
+        let orgInitStateId: string | null = null;
+        if ((socleOrg as any).workflow_id) {
+          const { data: initState } = await admin
+            .from("workflow_states")
+            .select("id")
+            .eq("workflow_id", (socleOrg as any).workflow_id)
+            .eq("is_initial", true)
+            .maybeSingle();
+          orgInitStateId = (initState as any)?.id ?? null;
+        }
+        autoService = { name: (socleOrg as any).name, workflowStateId: orgInitStateId };
+      }
+    }
+
+    if (!autoService) {
+      // Legacy : services liés à cette configuration IMAP (tables services gelées).
+      const { data: linkedServices } = await admin
+        .from("services")
+        .select("id, name, workflow_id")
+        .eq("organization_id", s.organization_id)
+        .eq("imap_settings_id", s.id);
+
+      if (linkedServices?.length === 1) {
+        const svc = linkedServices[0] as { id: string; name: string; workflow_id: string };
+        const { data: initState } = await admin
+          .from("workflow_states")
+          .select("id")
+          .eq("workflow_id", svc.workflow_id)
+          .eq("is_initial", true)
+          .maybeSingle();
+        autoService = {
+          name: svc.name,
+          workflowStateId: (initState as any)?.id ?? null,
+        };
+      }
     }
 
     // Utilise last_fetch_at comme point de départ (fallback : 7 jours).
@@ -341,6 +367,8 @@ async function processOrganization(
             subject,
             received_at: receivedAt,
             assigned_service: autoService?.name ?? null,
+            // Organisation (miroir Socle) propriétaire de la boîte → tracée sur le courrier
+            socle_organization_id: s.socle_organization_id ?? null,
             workflow_state_id: autoService?.workflowStateId ?? initialStateId,
             metadata: {
               email_message_id: messageId,

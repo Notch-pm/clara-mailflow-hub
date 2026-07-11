@@ -9,7 +9,7 @@ import { useOrganization } from "@/contexts/OrganizationContext";
 import { supabase } from "@/integrations/supabase/client";
 import { createCourier } from "@/services/courierService";
 import { addParticipant } from "@/services/courierParticipantService";
-import { listServices } from "@/services/orgServiceService";
+import { assignableOrgs, listOrgsWithConfig } from "@/services/socleOrgConfigService";
 import { listTags } from "@/services/courierTagService";
 import { storage } from "@/services/storageService";
 import { extractCourierInfo } from "@/services/courierAnalysisService";
@@ -130,8 +130,9 @@ export default function BulkImport() {
   }
 
   const { data: services = [] } = useQuery({
-    queryKey: ["org-services", organizationId],
-    queryFn: () => listServices(organizationId!),
+    queryKey: ["socle-orgs-config", organizationId],
+    queryFn: () => listOrgsWithConfig(organizationId!),
+    select: assignableOrgs,
     enabled: !!organizationId,
   });
 
@@ -269,10 +270,11 @@ export default function BulkImport() {
           subject: draft.title || "Courrier importé",
           received_at: new Date().toISOString(),
           assigned_service: service?.name ?? draft.serviceName ?? null,
+          socle_organization_id: service?.id ?? null,
           workflow_state_id: workflowStateId,
           metadata: {
             tags: draft.tags,
-            service_id: service?.id ?? null,
+            socle_organization_id: service?.id ?? null,
             ...(draft.bodyText.trim() ? { body_text: draft.bodyText.trim() } : {}),
           } as any,
           created_by: user?.id ?? null,

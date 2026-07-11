@@ -35,4 +35,6 @@ export interface CourierWithRelations extends Courier {
   courier_documents?: CourierDocument[];
   courier_events?: CourierEvent[];
   courier_links?: CourierLink[];
+  /** Organisation (miroir Socle) d'origine — jointe via socle_organization_id. */
+  socle_organization?: { id: string; name: string } | null;
 }

@@ -26,6 +26,8 @@ export interface ArpegeConfigFields {
   FormComponents: ArpegeFormComponent[] | null;
 }
 
+// Les démarches sont synchronisées depuis le Socle (référentiel central) :
+// Clara ne les crée/modifie plus, à l'exception du toggle de visibilité local.
 export interface Procedure {
   id: string;
   organization_id: string;
@@ -41,11 +43,25 @@ export interface Procedure {
   updated_at: string;
   created_by: string | null;
   arpege_config_fields: ArpegeConfigFields | null;
+  // Champs Socle
+  socle_id: string | null;
+  type: string | null;
+  keywords: string[] | null;
+  user_description: string | null;
+  agent_description: string | null;
+  input_duration_minutes: number | null;
+  socle_category_id: string | null;
+  requester_config: unknown;
+  form_schema: unknown;
+  knowledge_base: unknown;
+  translations: unknown;
+  synced_at: string | null;
+  obsoleted_at: string | null;
 }
 
 export async function listProcedures(orgId: string): Promise<Procedure[]> {
   const { data, error } = await supabase
-    .from("procedures" as any)
+    .from("procedures")
     .select("*")
     .eq("organization_id", orgId)
     .order("display_order", { ascending: true })
@@ -54,49 +70,17 @@ export async function listProcedures(orgId: string): Promise<Procedure[]> {
   return (data ?? []) as unknown as Procedure[];
 }
 
-export async function createProcedure(
-  orgId: string,
-  payload: { name: string; description?: string | null; icon?: string | null; color?: string | null },
-): Promise<Procedure> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+/**
+ * Seule écriture autorisée côté Clara : le masquage local d'une démarche.
+ * Tous les autres champs appartiennent au Socle et sont réécrasés par la sync nocturne.
+ */
+export async function updateProcedureVisibility(id: string, isDisplayed: boolean): Promise<Procedure> {
   const { data, error } = await supabase
-    .from("procedures" as any)
-    .insert({
-      organization_id: orgId,
-      name: payload.name.trim(),
-      description: payload.description?.trim() || null,
-      icon: payload.icon || null,
-      color: payload.color || null,
-      created_by: user?.id ?? null,
-    } as any)
-    .select("*")
-    .single();
-  if (error) throw error;
-  return data as unknown as Procedure;
-}
-
-export async function updateProcedure(
-  id: string,
-  payload: Partial<Pick<Procedure, "name" | "description" | "icon" | "color" | "is_displayed" | "display_order">>,
-): Promise<Procedure> {
-  const update: Record<string, unknown> = { ...payload };
-  if (typeof update.name === "string") update.name = (update.name as string).trim();
-  if (typeof update.description === "string") {
-    update.description = (update.description as string).trim() || null;
-  }
-  const { data, error } = await supabase
-    .from("procedures" as any)
-    .update(update as any)
+    .from("procedures")
+    .update({ is_displayed: isDisplayed })
     .eq("id", id)
     .select("*")
     .single();
   if (error) throw error;
   return data as unknown as Procedure;
-}
-
-export async function deleteProcedure(id: string): Promise<void> {
-  const { error } = await supabase.from("procedures" as any).delete().eq("id", id);
-  if (error) throw error;
 }

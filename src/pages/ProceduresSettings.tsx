@@ -3,10 +3,15 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   listProcedures,
-  updateProcedure,
-  deleteProcedure,
+  updateProcedureVisibility,
   type Procedure,
 } from "@/services/procedureService";
+import {
+  getLastSyncRun,
+  listSocleCategories,
+  triggerSocleSync,
+  type SocleSyncResult,
+} from "@/services/socleSyncService";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,19 +27,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Plus, Pencil, Trash2, FileText, Search, Import } from "lucide-react";
+import { FileText, Search, Import, RefreshCw, Landmark } from "lucide-react";
 import { toast } from "sonner";
-import { ProcedureFormDialog } from "@/components/ProcedureFormDialog";
 
 interface Props {
   organizationId?: string;
@@ -43,6 +37,19 @@ interface Props {
 
 function isUrl(v: string | null | undefined): boolean {
   return !!v && (v.startsWith("http://") || v.startsWith("https://"));
+}
+
+function formatSyncDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("fr-FR", { dateStyle: "long" }) +
+    " à " +
+    new Date(iso).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+}
+
+function syncSummaryMessage(result: SocleSyncResult): string {
+  const r = result.results?.[0];
+  if (!r?.counters) return result.message;
+  const p = r.counters.procedures;
+  return `Démarches : ${p.created} créée(s), ${p.adopted} rapprochée(s), ${p.updated} mise(s) à jour, ${p.obsoleted} obsolète(s), ${p.unchanged} inchangée(s).`;
 }
 
 export default function ProceduresSettings({ organizationId, isAdminOverride }: Props) {
@@ -55,10 +62,6 @@ export default function ProceduresSettings({ organizationId, isAdminOverride }: 
 
   const [search, setSearch] = useState("");
   const [showHidden, setShowHidden] = useState(false);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [editing, setEditing] = useState<Procedure | null>(null);
-  const [deleting, setDeleting] = useState<Procedure | null>(null);
 
   const { data: procedures = [], isLoading } = useQuery({
     queryKey: ["procedures", orgId],
@@ -66,35 +69,45 @@ export default function ProceduresSettings({ organizationId, isAdminOverride }: 
     enabled: !!orgId,
   });
 
+  const { data: categories = [] } = useQuery({
+    queryKey: ["socle-categories", orgId],
+    queryFn: () => listSocleCategories(orgId!),
+    enabled: !!orgId,
+  });
+
+  const { data: lastSync } = useQuery({
+    queryKey: ["socle-last-sync", orgId],
+    queryFn: () => getLastSyncRun(orgId!),
+    enabled: !!orgId,
+  });
+
+  const categoryNames = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of categories) map.set(c.socle_id, c.name);
+    return map;
+  }, [categories]);
+
   const updateMutation = useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: Partial<Procedure> }) =>
-      updateProcedure(id, payload),
+    mutationFn: ({ id, isDisplayed }: { id: string; isDisplayed: boolean }) =>
+      updateProcedureVisibility(id, isDisplayed),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["procedures", orgId] });
     },
     onError: (e: Error) => toast.error("Erreur : " + e.message),
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => deleteProcedure(id),
-    onSuccess: () => {
+  const syncMutation = useMutation({
+    mutationFn: () => triggerSocleSync(orgId),
+    onSuccess: (result) => {
+      toast.success("Synchronisation Socle terminée", {
+        description: syncSummaryMessage(result),
+      });
       queryClient.invalidateQueries({ queryKey: ["procedures", orgId] });
-      toast.success("Démarche supprimée");
-      setDeleteOpen(false);
-      setDeleting(null);
+      queryClient.invalidateQueries({ queryKey: ["socle-categories", orgId] });
+      queryClient.invalidateQueries({ queryKey: ["socle-last-sync", orgId] });
     },
-    onError: (e: Error) => toast.error("Erreur : " + e.message),
+    onError: (e: Error) => toast.error("Échec de la synchronisation : " + e.message),
   });
-
-  function openCreate() {
-    setEditing(null);
-    setDialogOpen(true);
-  }
-
-  function openEdit(p: Procedure) {
-    setEditing(p);
-    setDialogOpen(true);
-  }
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -106,8 +119,8 @@ export default function ProceduresSettings({ organizationId, isAdminOverride }: 
     );
   }, [procedures, search]);
 
-  const visible = filtered.filter((p) => p.is_displayed);
-  const hidden = filtered.filter((p) => !p.is_displayed);
+  const visible = filtered.filter((p) => p.is_displayed && !p.obsoleted_at);
+  const hidden = filtered.filter((p) => !p.is_displayed || p.obsoleted_at);
 
   if (!orgId) {
     return <p className="text-sm text-muted-foreground">Aucune organisation sélectionnée.</p>;
@@ -121,13 +134,24 @@ export default function ProceduresSettings({ organizationId, isAdminOverride }: 
         <div>
           <h2 className="text-xl font-bold tracking-tight">Démarches</h2>
           <p className="text-muted-foreground text-sm">
-            Liste des démarches administratives proposées par l'organisation.
+            Les démarches sont gérées dans le Socle et synchronisées automatiquement chaque nuit.
+            {lastSync?.finished_at && lastSync.status === "success" && (
+              <> Dernière synchronisation : {formatSyncDate(lastSync.finished_at)}.</>
+            )}
+            {lastSync?.status === "error" && (
+              <span className="text-destructive"> Dernière synchronisation en échec.</span>
+            )}
           </p>
         </div>
         {isAdmin && (
-          <Button onClick={openCreate} className="gap-2">
-            <Plus className="h-4 w-4" />
-            Ajouter une démarche
+          <Button
+            onClick={() => syncMutation.mutate()}
+            disabled={syncMutation.isPending}
+            variant="outline"
+            className="gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${syncMutation.isPending ? "animate-spin" : ""}`} />
+            {syncMutation.isPending ? "Synchronisation…" : "Synchroniser maintenant"}
           </Button>
         )}
       </div>
@@ -159,7 +183,11 @@ export default function ProceduresSettings({ organizationId, isAdminOverride }: 
           {filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-40 text-muted-foreground gap-2">
               <FileText className="h-8 w-8" />
-              <p>{search ? "Aucun résultat" : "Aucune démarche configurée"}</p>
+              <p>
+                {search
+                  ? "Aucun résultat"
+                  : "Aucune démarche synchronisée — vérifiez le mapping Socle de l'organisation"}
+              </p>
             </div>
           ) : (
             <div className="space-y-6">
@@ -168,8 +196,8 @@ export default function ProceduresSettings({ organizationId, isAdminOverride }: 
                   <TableHeader>
                     <TableRow>
                       <TableHead>Démarche</TableHead>
+                      <TableHead className="w-40">Catégorie</TableHead>
                       <TableHead className="w-24 text-center">Visible</TableHead>
-                      {isAdmin && <TableHead className="w-28 text-right">Actions</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -177,14 +205,10 @@ export default function ProceduresSettings({ organizationId, isAdminOverride }: 
                       <ProcedureRow
                         key={p.id}
                         procedure={p}
+                        categoryName={p.socle_category_id ? categoryNames.get(p.socle_category_id) : undefined}
                         isAdmin={!!isAdmin}
-                        onEdit={openEdit}
-                        onDelete={(proc) => {
-                          setDeleting(proc);
-                          setDeleteOpen(true);
-                        }}
                         onToggle={(proc, val) =>
-                          updateMutation.mutate({ id: proc.id, payload: { is_displayed: val } })
+                          updateMutation.mutate({ id: proc.id, isDisplayed: val })
                         }
                       />
                     ))}
@@ -208,8 +232,8 @@ export default function ProceduresSettings({ organizationId, isAdminOverride }: 
                       <TableHeader>
                         <TableRow>
                           <TableHead>Démarche</TableHead>
+                          <TableHead className="w-40">Catégorie</TableHead>
                           <TableHead className="w-24 text-center">Visible</TableHead>
-                          {isAdmin && <TableHead className="w-28 text-right">Actions</TableHead>}
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -217,18 +241,11 @@ export default function ProceduresSettings({ organizationId, isAdminOverride }: 
                           <ProcedureRow
                             key={p.id}
                             procedure={p}
+                            categoryName={p.socle_category_id ? categoryNames.get(p.socle_category_id) : undefined}
                             isAdmin={!!isAdmin}
                             faded
-                            onEdit={openEdit}
-                            onDelete={(proc) => {
-                              setDeleting(proc);
-                              setDeleteOpen(true);
-                            }}
                             onToggle={(proc, val) =>
-                              updateMutation.mutate({
-                                id: proc.id,
-                                payload: { is_displayed: val },
-                              })
+                              updateMutation.mutate({ id: proc.id, isDisplayed: val })
                             }
                           />
                         ))}
@@ -241,55 +258,24 @@ export default function ProceduresSettings({ organizationId, isAdminOverride }: 
           )}
         </CardContent>
       </Card>
-
-      <ProcedureFormDialog
-        open={dialogOpen}
-        onOpenChange={(open) => {
-          setDialogOpen(open);
-          if (!open) setEditing(null);
-        }}
-        orgId={orgId}
-        procedure={editing}
-      />
-
-      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Supprimer cette démarche ?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Cette action est irréversible. La démarche « {deleting?.name} » sera définitivement supprimée.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => deleting && deleteMutation.mutate(deleting.id)}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Supprimer
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }
 
 function ProcedureRow({
   procedure,
+  categoryName,
   isAdmin,
   faded,
-  onEdit,
-  onDelete,
   onToggle,
 }: {
   procedure: Procedure;
+  categoryName?: string;
   isAdmin: boolean;
   faded?: boolean;
-  onEdit: (p: Procedure) => void;
-  onDelete: (p: Procedure) => void;
   onToggle: (p: Procedure, val: boolean) => void;
 }) {
+  const isObsolete = !!procedure.obsoleted_at;
   return (
     <TableRow className={faded ? "opacity-60" : ""}>
       <TableCell>
@@ -311,10 +297,25 @@ function ProcedureRow({
           <div className="min-w-0 space-y-1">
             <div className="flex items-center gap-2">
               <span className="font-medium truncate">{procedure.name}</span>
-              {procedure.external_source && (
+              {procedure.external_source === "socle" ? (
+                <Badge variant="secondary" className="text-[10px] gap-1 px-1.5 py-0 h-5 shrink-0">
+                  <Landmark className="h-3 w-3" />
+                  Socle
+                </Badge>
+              ) : procedure.external_source ? (
                 <Badge variant="secondary" className="text-[10px] gap-1 px-1.5 py-0 h-5 shrink-0">
                   <Import className="h-3 w-3" />
                   {procedure.external_source === "arpege" ? "Arpège" : procedure.external_source}
+                </Badge>
+              ) : null}
+              {procedure.type && (
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 shrink-0">
+                  {procedure.type === "interne" ? "Interne" : procedure.type === "externe" ? "Externe" : procedure.type}
+                </Badge>
+              )}
+              {isObsolete && (
+                <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-5 shrink-0">
+                  Obsolète
                 </Badge>
               )}
             </div>
@@ -324,32 +325,16 @@ function ProcedureRow({
           </div>
         </div>
       </TableCell>
+      <TableCell className="text-sm text-muted-foreground">
+        {categoryName ?? "—"}
+      </TableCell>
       <TableCell className="text-center">
         <Switch
           checked={procedure.is_displayed}
           onCheckedChange={(val) => onToggle(procedure, val)}
-          disabled={!isAdmin}
+          disabled={!isAdmin || isObsolete}
         />
       </TableCell>
-      {isAdmin && (
-        <TableCell className="text-right">
-          <div className="flex justify-end gap-1">
-            <Button variant="ghost" size="icon" onClick={() => onEdit(procedure)} title="Modifier" aria-label="Modifier la démarche">
-              <Pencil className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => onDelete(procedure)}
-              title="Supprimer"
-              aria-label="Supprimer la démarche"
-              className="text-destructive hover:text-destructive"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
-        </TableCell>
-      )}
     </TableRow>
   );
 }

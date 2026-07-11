@@ -7,7 +7,7 @@ import { canAccessStats } from "@/lib/permissions";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BarChart3, Mail, Send, Clock } from "lucide-react";
-import { listServices } from "@/services/orgServiceService";
+import { listOrgsWithConfig } from "@/services/socleOrgConfigService";
 import {
   getInboundByMonth,
   getInboundByDay,
@@ -68,7 +68,7 @@ export default function StatistiquesPage() {
   const { organizationId } = useOrganization();
   const { profile, membership } = useAuth();
   const allowed = canAccessStats(profile, membership);
-  const [serviceName, setServiceName] = useState<string | null>(null);
+  const [socleOrgId, setSocleOrgId] = useState<string | null>(null);
   const [period, setPeriod] = useState<StatPeriod>("30d");
 
   const since = useMemo(() => sinceFromPeriod(period), [period]);
@@ -77,32 +77,32 @@ export default function StatistiquesPage() {
   const enabled = !!organizationId;
 
   const { data: services = [] } = useQuery({
-    queryKey: ["services", organizationId],
-    queryFn: () => listServices(organizationId!),
+    queryKey: ["socle-orgs-config", organizationId],
+    queryFn: () => listOrgsWithConfig(organizationId!),
     enabled,
   });
 
   const { data: monthlyData, isLoading: loadingMonthly } = useQuery({
-    queryKey: ["stats-inbound-month", organizationId, serviceName],
-    queryFn: () => getInboundByMonth(organizationId!, 12, serviceName ?? undefined),
+    queryKey: ["stats-inbound-month", organizationId, socleOrgId],
+    queryFn: () => getInboundByMonth(organizationId!, 12, socleOrgId ?? undefined),
     enabled,
   });
 
   const { data: dailyData, isLoading: loadingDaily } = useQuery({
-    queryKey: ["stats-inbound-day", organizationId, serviceName],
-    queryFn: () => getInboundByDay(organizationId!, serviceName ?? undefined),
+    queryKey: ["stats-inbound-day", organizationId, socleOrgId],
+    queryFn: () => getInboundByDay(organizationId!, socleOrgId ?? undefined),
     enabled,
   });
 
   const { data: tagData, isLoading: loadingTags } = useQuery({
-    queryKey: ["stats-tags", organizationId, serviceName, sinceISO],
-    queryFn: () => getTagEvolution(organizationId!, since, serviceName ?? undefined),
+    queryKey: ["stats-tags", organizationId, socleOrgId, sinceISO],
+    queryFn: () => getTagEvolution(organizationId!, since, socleOrgId ?? undefined),
     enabled,
   });
 
   const { data: channelData, isLoading: loadingChannel } = useQuery({
-    queryKey: ["stats-channel", organizationId, serviceName, sinceISO],
-    queryFn: () => getByChannel(organizationId!, since, serviceName ?? undefined),
+    queryKey: ["stats-channel", organizationId, socleOrgId, sinceISO],
+    queryFn: () => getByChannel(organizationId!, since, socleOrgId ?? undefined),
     enabled,
   });
 
@@ -119,8 +119,8 @@ export default function StatistiquesPage() {
   });
 
   const { data: repliesData, isLoading: loadingReplies } = useQuery({
-    queryKey: ["stats-replies", organizationId, serviceName],
-    queryFn: () => getRepliesByMonth(organizationId!, 12, serviceName ?? undefined),
+    queryKey: ["stats-replies", organizationId, socleOrgId],
+    queryFn: () => getRepliesByMonth(organizationId!, 12, socleOrgId ?? undefined),
     enabled,
   });
 
@@ -160,9 +160,9 @@ export default function StatistiquesPage() {
 
       <StatsFilters
         services={services.map((s) => ({ id: s.id, name: s.name }))}
-        serviceName={serviceName}
+        socleOrgId={socleOrgId}
         period={period}
-        onServiceChange={setServiceName}
+        onServiceChange={setSocleOrgId}
         onPeriodChange={setPeriod}
       />
 
