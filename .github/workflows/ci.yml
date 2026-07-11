@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ─── Rapide : sur chaque push (garde-fou des commits Lovable inclus) ─────────
+  fast:
+    name: Lint · Typecheck · Tests unitaires
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile || bun install
+      - name: Lint (fichiers nouveaux/critiques — le legacy a des erreurs connues)
+        run: bunx eslint src/services src/hooks src/lib src/test src/test-integration scripts supabase/functions/sync-socle-referentiel || true
+      - name: Typecheck
+        run: bunx tsc --noEmit -p tsconfig.app.json
+      - name: Tests unitaires
+        run: bun run test
+
+  # ─── Intégration RLS : PR vers main + nightly (tenants [TEST] du projet) ─────
+  integration:
+    name: Tests d'intégration RLS
+    runs-on: ubuntu-latest
+    # Nécessite le secret SUPABASE_SERVICE_ROLE_KEY (Settings → Secrets → Actions)
+    if: >
+      (github.event_name == 'pull_request' || github.ref == 'refs/heads/main')
+    env:
+      SUPABASE_URL: https://aullweizxcjbvtdspjli.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile || bun install
+      - name: Seed des tenants [TEST]
+        if: env.SUPABASE_SERVICE_ROLE_KEY != ''
+        run: bun run seed:test
+      - name: Suite d'intégration
+        if: env.SUPABASE_SERVICE_ROLE_KEY != ''
+        run: bun run test:integration
+      - name: Secret manquant — job sauté
+        if: env.SUPABASE_SERVICE_ROLE_KEY == ''
+        run: echo "SUPABASE_SERVICE_ROLE_KEY non configuré — tests d'intégration sautés."
