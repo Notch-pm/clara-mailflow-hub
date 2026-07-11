@@ -13,7 +13,8 @@
     "test:watch": "vitest",
     "seed:test": "bun scripts/seed-test-env.ts",
     "test:integration": "vitest run -c vitest.integration.config.ts",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "audit": "knip --no-progress"
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.0.0",
@@ -105,6 +106,14 @@
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.38.0",
     "vite": "^5.4.19",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "knip": "^5"
+  },
+  "knip": {
+    "ignore": [
+      "supabase/functions/**",
+      "src/components/ui/**",
+      "src/pages/CourriersEntrants.tsx"
+    ]
   }
 }
