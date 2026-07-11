@@ -55,9 +55,12 @@ jobs:
         run: echo "SUPABASE_SERVICE_ROLE_KEY non configuré — tests d'intégration sautés."
 
   # ─── E2E Playwright : parcours critiques (PR vers main) ──────────────────────
+  # `needs: integration` : les deux jobs seedent les MÊMES tenants [TEST] du
+  # projet partagé — en parallèle, leurs purges/créations se percutent (FK).
   e2e:
     name: E2E Playwright
     runs-on: ubuntu-latest
+    needs: integration
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     env:
       SUPABASE_URL: https://aullweizxcjbvtdspjli.supabase.co
