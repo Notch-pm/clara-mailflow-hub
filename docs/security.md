@@ -47,10 +47,17 @@ Pour servir un document privé : passer par l'edge function `storage-documents` 
 
 ## Risques acceptés / comportements intentionnels
 
-- **`user-avatars` bucket public** : assumé, contenu non sensible.
+- **`user-avatars` bucket public** : assumé, contenu non sensible (le listing du bucket est possible — advisor 0025 accepté).
 - **Helpers `SECURITY DEFINER`** exposés (`is_member_of`, `is_admin_of`, `is_superadmin`, `has_role`, `current_user_orgs`, `set_updated_at`) : nécessaires aux policies, anonymous n'a rien à lire.
+- **`search_couriers`** : SECURITY DEFINER exposée à `authenticated` (voulu — garde `is_member_of` interne) ; EXECUTE révoqué pour `PUBLIC`/`anon` (migration `20260711210000`). ⚠️ **À chaque re-création de la fonction, re-révoquer PUBLIC** : `CREATE FUNCTION` re-grante EXECUTE à PUBLIC par défaut.
+- **postgis** (`spatial_ref_sys` sans RLS, `st_estimatedextent` SECURITY DEFINER exécutable) : grants détenus par `supabase_admin`, non révocables côté projet. Exposition limitée à des métadonnées géométriques (`quartiers`) — accepté.
 - **Realtime channels** : scoping configuré côté Dashboard Supabase (Realtime Policies), RLS sur `realtime.messages` filtre par `user_id`.
 - **Leaked password protection** : à activer dans Supabase Dashboard → Auth → Policies (non scriptable par migration).
+
+## Rotation des secrets
+
+- **`cron_secret`** (Vault) : tourné le 2026-07-11 (l'ancienne valeur figurait en clair dans la migration `20260417133227` — ne JAMAIS mettre une valeur de secret dans une migration). Procédure : `SELECT vault.update_secret((SELECT id FROM vault.secrets WHERE name='cron_secret'), '<nouvelle valeur>');` puis vérifier ancien → 401 / nouveau → 200 sur une edge function cron.
+- **Mots de passe IMAP/SMTP en clair en DB** : dette P1 connue (chantier chiffrement, cf. `docs/technical-debt.md`).
 
 ## Checklist avant de merger une feature
 
