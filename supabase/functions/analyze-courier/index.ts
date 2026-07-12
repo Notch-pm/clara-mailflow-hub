@@ -17,6 +17,18 @@ import {
   cleanSenderFields,
   hasSenderData,
 } from "../_shared/courierFieldSuggestions.ts";
+import {
+  attachSoclePrefill,
+  buildProcedureCatalog,
+  planPrefillCalls,
+  sanitizePrefillArguments,
+  selectPrefillCandidates,
+  splitPrefillCall,
+  type PrefillCall,
+  type PrefillProcedureSource,
+  type ProcedureCatalogEntry,
+  type SanitizedPrefill,
+} from "./logic.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -31,7 +43,10 @@ const MISTRAL_CHAT_URL = "https://api.mistral.ai/v1/chat/completions";
 const MISTRAL_AGENT_URL = "https://api.mistral.ai/v1/agents/completions";
 const OCR_MODEL = "mistral-ocr-latest";
 const CHAT_MODEL = "mistral-large-latest";
-const ANALYSIS_AGENT_ID = "ag_019d9b92d28872079534f45f246671ed";
+// Agent Mistral d'extraction structurée — surchargable sans redéploiement via
+// le secret MISTRAL_EXTRACTION_AGENT_ID (repli : agent historique).
+const ANALYSIS_AGENT_ID = Deno.env.get("MISTRAL_EXTRACTION_AGENT_ID") ??
+  "ag_019d9b92d28872079534f45f246671ed";
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -382,15 +397,21 @@ async function analyzeCourier(
     .map((t: { name: string }) => t.name)
     .filter((n) => typeof n === "string" && n.trim().length > 0);
 
-  // Procédures disponibles — pour suggérer un préremplissage ciblé
+  // Démarches disponibles — données Socle incluses : descriptions/mots-clés
+  // pour la pertinence des recommandations, form_schema/knowledge_base pour
+  // l'appel de préremplissage ciblé.
   const { data: orgProcedures } = await admin
     .from("procedures")
-    .select("id, name, external_source")
+    .select(
+      "id, name, external_source, external_reference_id, arpege_config_fields, keywords, agent_description, description, form_schema, knowledge_base",
+    )
     .eq("organization_id", orgId)
     .eq("is_displayed", true)
     .is("obsoleted_at", null) // exclut les démarches retirées du Socle (soft-delete)
     .order("display_order", { ascending: true });
-  const procedureList = (orgProcedures ?? []) as Array<{ id: string; name: string; external_source: string | null }>;
+  const procedureList = (orgProcedures ?? []) as Array<
+    ProcedureCatalogEntry & PrefillProcedureSource
+  >;
 
   // Organisations disponibles (miroir Socle) — pour suggérer l'organisation gestionnaire.
   // Fallback services (legacy) si le miroir est vide.
@@ -449,9 +470,7 @@ async function analyzeCourier(
     ? availableTagNames.map((n) => `- ${n}`).join("\n")
     : "(aucun tag défini — laisse intents vide)";
 
-  const procedureListForPrompt = procedureList.length > 0
-    ? procedureList.map((p) => `- [id: ${p.id}] ${p.name}${p.external_source === "arpege" ? " (Arpège)" : ""}`).join("\n")
-    : "(aucune procédure définie)";
+  const procedureListForPrompt = buildProcedureCatalog(procedureList);
 
   const systemPrompt = `Tu es un assistant expert en gestion de courrier administratif. Analyse le contenu fourni et restitue UNIQUEMENT via l'outil "report_analysis" :
 - summary: résumé concis (2-3 phrases) du contenu
@@ -459,7 +478,7 @@ async function analyzeCourier(
 - sentiment: ton/état d'esprit du rédacteur, parmi: neutre, courtois, urgent, mécontent, agressif, satisfait, inquiet
 - suggested_actions: 2 à 5 actions concrètes que l'organisation devrait entreprendre. Pour chaque action :
   • label: description courte de l'action
-  • procedure_id: si une procédure de la liste correspond à l'action, indique son id exact. Sinon null.
+  • procedure_id: si une démarche de la liste correspond réellement à l'action (vérifie la cohérence avec sa description et ses mots-clés, pas seulement son nom), indique son id exact. Sinon null. Ne force jamais une correspondance approximative.
   • prefill: si des données personnelles sont identifiables dans le courrier (nom, prénom, email, téléphone, date de naissance, civilité), extrais-les ici pour pré-remplir le formulaire. N'invente aucune donnée absente du courrier.
 ${SUGGESTED_FIELDS_PROMPT_RULES}
 Sois factuel, en français. Si le corps de l'email et les pièces jointes coexistent, traite-les comme un tout cohérent. Ne retourne que ce qui est clairement identifiable — ne devine rien.
@@ -622,6 +641,104 @@ ${serviceNames.length ? serviceNames.join(", ") : "(aucun)"}`;
       })
     : [];
 
+  // ── Appel(s) 2 (ciblés, non bloquants) : préremplissage des démarches Socle ──
+  // Uniquement pour les démarches Socle natives recommandées ayant des champs
+  // de formulaire. Le schéma du tool est généré depuis leur form_schema (labels
+  // et options portés par le schéma, pas de rappel dans le prompt) ; au-delà
+  // d'un seuil de taille, la planification scinde en un appel par démarche, et
+  // un appel groupé qui échoue est rejoué scindé. La sortie est revalidée avant
+  // stockage. En cas d'échec final, l'analyse est stockée sans socle_prefill.
+  let actionsToStore: Array<(typeof safeActions)[number] & { socle_prefill?: unknown }> = safeActions;
+  let prefillTokens = 0;
+  const prefillCandidates = selectPrefillCandidates(safeActions, procedureList);
+  const prefillQueue: PrefillCall[] = planPrefillCalls(prefillCandidates);
+  if (prefillQueue.length > 1) {
+    console.warn(`report_prefill: schéma trop large — scission en ${prefillQueue.length} appels`);
+  }
+
+  const runPrefillCall = async (call: PrefillCall) => {
+    const prefillSystemPrompt = `Tu prépares le préremplissage de formulaires de démarches administratives à partir du contenu d'un courrier. Restitue UNIQUEMENT via l'outil "report_prefill", dont le schéma décrit chaque champ et ses options.
+Pour chaque démarche :
+- audience : nature du demandeur (citoyen, entreprise ou association) si elle est claire d'après le courrier, sinon chaîne vide.
+- form : pour chaque champ, la valeur extraite du courrier. N'invente RIEN : chaîne vide (ou tableau vide) pour tout champ dont la valeur n'est pas clairement présente. Champs à options : le CODE exact, jamais le libellé. Dates au format YYYY-MM-DD.
+Appuie-toi sur les connaissances fournies pour interpréter les champs, et respecte les garde-fous.
+
+${call.tool.promptBlock}`;
+    const prefillUserPrompt = userPrompt.slice(0, call.contentMax);
+
+    return await withAiUsageGuard<{ parsed: unknown; tokensUsed: number | null }>({
+      admin,
+      organizationId: orgId,
+      provider: "mistral",
+      resourceType: "agent",
+      estimatedTokens: estimateTextTokens(prefillSystemPrompt.length + prefillUserPrompt.length, 400),
+      userId,
+      run: async () => {
+        const resp = await fetch(MISTRAL_AGENT_URL, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${mistralKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            agent_id: ANALYSIS_AGENT_ID,
+            messages: [
+              { role: "system", content: prefillSystemPrompt },
+              { role: "user", content: prefillUserPrompt },
+            ],
+            tools: [
+              {
+                type: "function",
+                function: {
+                  name: "report_prefill",
+                  description: "Retourne le préremplissage des formulaires de démarches",
+                  parameters: call.tool.toolParameters,
+                },
+              },
+            ],
+            tool_choice: { type: "function", function: { name: "report_prefill" } },
+          }),
+        });
+        if (!resp.ok) {
+          const t = await resp.text();
+          throw new Error(`Mistral prefill ${resp.status}: ${t.slice(0, 200)}`);
+        }
+        const data = await resp.json();
+        const toolCall = data?.choices?.[0]?.message?.tool_calls?.[0];
+        if (!toolCall?.function?.arguments) throw new Error("Réponse Mistral inattendue (pas de tool_call prefill)");
+        const args = JSON.parse(toolCall.function.arguments) as unknown;
+        const actual = data?.usage?.total_tokens ?? null;
+        return { result: { parsed: args, tokensUsed: actual }, actualTokens: actual };
+      },
+    });
+  };
+
+  const sanitizedAll: Record<string, SanitizedPrefill> = {};
+  while (prefillQueue.length > 0) {
+    const call = prefillQueue.shift()!;
+    try {
+      const { parsed: rawPrefill, tokensUsed: t2 } = await runPrefillCall(call);
+      Object.assign(sanitizedAll, sanitizePrefillArguments(rawPrefill, call.procedures));
+      prefillTokens += t2 ?? 0;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (e instanceof AiQuotaExceededError) {
+        console.warn("report_prefill interrompu (quota IA atteint):", msg);
+        break;
+      }
+      const split = splitPrefillCall(call);
+      if (split.length > 0) {
+        console.warn(`report_prefill groupé échoué — repli en ${split.length} appels scindés:`, msg);
+        prefillQueue.push(...split);
+      } else {
+        console.warn("report_prefill échoué (non bloquant):", msg);
+      }
+    }
+  }
+  if (Object.keys(sanitizedAll).length > 0) {
+    actionsToStore = attachSoclePrefill(safeActions, sanitizedAll);
+  }
+
   // Sécurité : le service suggéré doit appartenir aux services de l'org.
   const safeSuggestedService = validateAgainstNames(parsed.suggested_service_name, serviceNames);
   const safeSuggestedSubject = nullIfEmpty(parsed.suggested_subject);
@@ -638,13 +755,13 @@ ${serviceNames.length ? serviceNames.join(", ") : "(aucun)"}`;
         summary: parsed.summary,
         intents: safeIntents,
         sentiment: parsed.sentiment,
-        suggested_actions: safeActions,
+        suggested_actions: actionsToStore,
         suggested_subject: safeSuggestedSubject,
         suggested_service_name: safeSuggestedService,
         suggested_recipient_name: safeSuggestedRecipient,
         suggested_sender: safeSuggestedSender,
         model: `agent:${ANALYSIS_AGENT_ID}`,
-        tokens_used: tokensUsed,
+        tokens_used: tokensUsed == null && prefillTokens === 0 ? null : (tokensUsed ?? 0) + prefillTokens,
       },
       { onConflict: "courier_id" },
     )

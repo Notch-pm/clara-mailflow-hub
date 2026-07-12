@@ -10,7 +10,7 @@ Toutes en Deno, dans `supabase/functions/<name>/index.ts`. Toutes doivent :
 
 | Function | Rôle | Auth | Secrets utilisés |
 |---|---|---|---|
-| `analyze-courier` | OCR + analyse LLM des courriers. Routes via query `?action=ocr-courier` ou `?action=analyze`. | JWT user, vérifie membership de l'org du courrier. | `LOVABLE_API_KEY` |
+| `analyze-courier` | OCR + analyse LLM des courriers (API Mistral, agent fixe). Routes via query `?action=ocr-courier` ou `?action=analyze`. L'analyse injecte le catalogue de démarches enrichi (mots-clés + description agent du Socle) puis, si des démarches Socle à formulaire sont recommandées, un 2ᵉ appel ciblé (`report_prefill`, ≤3 démarches, base de connaissance condensée) produit le `socle_prefill` des actions suggérées. Logique pure dans `logic.ts`. | JWT user, vérifie membership de l'org du courrier. | `MISTRAL_API_KEY` |
 | `draft-reply` | Génère un brouillon HTML de réponse via LLM. | JWT user. | `LOVABLE_API_KEY` |
 | `fetch-inbound-emails` | Poll IMAP, crée des couriers inbound. Auto-assignation par l'**organisation** de la boîte (`imap_settings.socle_organization_id` → nom + workflow de l'org) ; fallback legacy `services.imap_settings_id`. | JWT user admin OU service role. | Lit `imap_settings` (chiffré en DB). |
 | `send-courier-reply` | Envoie une réponse via SMTP de l'org. | JWT user. | Lit `smtp_settings`. |

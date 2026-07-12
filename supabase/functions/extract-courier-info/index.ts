@@ -20,7 +20,10 @@ const BUCKET = "clara-documents";
 const MISTRAL_OCR_URL = "https://api.mistral.ai/v1/ocr";
 const MISTRAL_AGENT_URL = "https://api.mistral.ai/v1/agents/completions";
 const OCR_MODEL = "mistral-ocr-latest";
-const ANALYSIS_AGENT_ID = "ag_019d9b92d28872079534f45f246671ed";
+// Agent Mistral d'extraction structurée — surchargable sans redéploiement via
+// le secret MISTRAL_EXTRACTION_AGENT_ID (repli : agent historique).
+const ANALYSIS_AGENT_ID = Deno.env.get("MISTRAL_EXTRACTION_AGENT_ID") ??
+  "ag_019d9b92d28872079534f45f246671ed";
 
 interface FileInput {
   name: string;

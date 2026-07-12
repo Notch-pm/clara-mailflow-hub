@@ -9,7 +9,12 @@ const corsHeaders = {
 };
 
 const MISTRAL_CHAT_URL = "https://api.mistral.ai/v1/chat/completions";
+const MISTRAL_AGENT_URL = "https://api.mistral.ai/v1/agents/completions";
 const CHAT_MODEL = "mistral-large-latest";
+// Si le secret est posé, la rédaction passe par l'agent Mistral « rédaction »
+// (ton et typologie AR/suivi/clôture portés par son prompt, modifiables dans
+// la console Mistral sans redéploiement). Sinon : chat/completions historique.
+const REDACTION_AGENT_ID = Deno.env.get("MISTRAL_REDACTION_AGENT_ID") ?? null;
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -118,12 +123,16 @@ Deno.serve(async (req) => {
         }).join("\n")
       : "Aucune action liée.";
 
-    // Build prompt
-    const systemPrompt = `Tu es un assistant expert en rédaction de courrier administratif.
+    // Build prompt — via l'agent, le ton et la typologie AR/suivi/clôture
+    // viennent de son prompt : Clara n'envoie que les contraintes de sortie.
+    const outputConstraints = `Retourne UNIQUEMENT le corps de la lettre en HTML, avec des balises <p>, <strong>, <em>, <ul>, <li> uniquement.
+N'inclus pas les coordonnées, la date, l'objet, la formule d'appel ni la formule de politesse finale.`;
+    const systemPrompt = REDACTION_AGENT_ID
+      ? outputConstraints
+      : `Tu es un assistant expert en rédaction de courrier administratif.
 Contexte : Rédaction de réponse à un courrier entrant.
 Ta réponse doit être professionnelle, claire et adaptée au type de réponse demandé.
-Retourne UNIQUEMENT le corps de la lettre en HTML, avec des balises <p>, <strong>, <em>, <ul>, <li> uniquement.
-N'inclus pas les coordonnées, la date, l'objet, la formule d'appel ni la formule de politesse finale.`;
+${outputConstraints}`;
 
     const userPrompt = `Type de réponse : ${responseType}
 ${additionalInstructions ? `Instructions complémentaires : ${additionalInstructions}` : ""}
@@ -147,25 +156,25 @@ Rédige maintenant le corps de la lettre de réponse.`;
       admin,
       organizationId: orgId,
       provider: "mistral",
-      resourceType: "chat",
+      resourceType: REDACTION_AGENT_ID ? "agent" : "chat",
       estimatedTokens: estimateTextTokens(systemPrompt.length + userPrompt.length, 1500),
       userId: user.id,
       run: async () => {
-        const chatResp = await fetch(MISTRAL_CHAT_URL, {
+        const messages = [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ];
+        const chatResp = await fetch(REDACTION_AGENT_ID ? MISTRAL_AGENT_URL : MISTRAL_CHAT_URL, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${mistralKey}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            model: CHAT_MODEL,
-            messages: [
-              { role: "system", content: systemPrompt },
-              { role: "user", content: userPrompt },
-            ],
-            temperature: 0.4,
-            max_tokens: 1500,
-          }),
+          body: JSON.stringify(
+            REDACTION_AGENT_ID
+              ? { agent_id: REDACTION_AGENT_ID, messages, max_tokens: 1500 }
+              : { model: CHAT_MODEL, messages, temperature: 0.4, max_tokens: 1500 },
+          ),
         });
 
         if (!chatResp.ok) {
