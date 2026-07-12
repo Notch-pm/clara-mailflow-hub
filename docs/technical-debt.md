@@ -11,14 +11,14 @@
 | `search_couriers` exécutable par `anon` (grant PUBLIC re-créé avec la fonction) | ✅ corrigé (`20260711210000`) — ⚠️ à re-vérifier après CHAQUE re-création de fonction |
 | Rotation `cron_secret` (valeur en clair dans la migration `20260417133227`) | ✅ tourné le 2026-07-11 (Vault) |
 | `portal_form_submissions` sans policy explicite | ✅ policy service_role + commentaire |
-| Leaked password protection (Dashboard → Auth → Providers → Password) | ⏳ **action utilisateur** |
-| Secret GitHub `SUPABASE_SERVICE_ROLE_KEY` (jobs integration/e2e de la CI) | ⏳ **action utilisateur** |
+| Leaked password protection (Dashboard → Auth → Providers → Password) | ⏳ **action utilisateur** — l'advisor sécurité la voit toujours désactivée au 2026-07-12 |
+| Secret GitHub `SUPABASE_SERVICE_ROLE_KEY` (jobs integration/e2e de la CI) | ✅ (CI verte depuis le run #4) |
 
 ## P1 — Sécurité / correctness
 
 1. **Mots de passe IMAP/SMTP en clair en DB** (`imap_settings.password`, `smtp_settings`) — chiffrer (Vault par ligne ou pgsodium) + adapter `fetch-inbound-emails`, `send-courier-reply`, `send-test-email`. Gros item, à planifier seul.
-2. **RLS `auth_rls_initplan` (32 policies)** : `auth.uid()`/`current_setting()` ré-évalués par ligne → remplacer par `(select auth.uid())` dans les policies concernées (users, notifications, etc.). Gain de perfs + pattern advisor. Migration mécanique, testable par la suite d'intégration.
-3. **`multiple_permissive_policies` (29 cas)** : policies redondantes empilées (héritage des refontes successives) — consolider une policy par (table, rôle, action). À faire table par table avec la suite RLS en garde-fou.
+2. ~~**RLS `auth_rls_initplan` (32 policies)**~~ ✅ corrigé (`20260712090000_rls_consolidation_advisors`) — wrap `(select auth.uid())` + helpers.
+3. ~~**`multiple_permissive_policies` (29 cas)**~~ ✅ corrigé (même migration) — une policy par (table, rôle, action), `service_role_full` recréées `TO service_role`, durcissement des policies `users` (voir `docs/database-rls.md`).
 4. **20 FK sans index** (`action_tickets.created_by`, `courier_documents.organization_id`, …) : ajouter les index couvrants ; **20 index jamais utilisés** à supprimer (attention : le projet n'a pas encore de trafic réel, re-vérifier avant suppression).
 
 ## P2 — Code mort (knip, faux positifs exclus)
@@ -52,7 +52,7 @@
 ## Ordre recommandé
 
 1. Actions utilisateur P0 (2 clics + 1 secret GitHub).
-2. P1.2 + P1.3 (consolidation RLS) — une migration, validée par `test:integration`.
+2. ~~P1.2 + P1.3 (consolidation RLS)~~ ✅ 2026-07-12.
 3. P2 code mort (une PR knip).
 4. P2.1 factorisation des listes (une PR, validée par E2E).
 5. P1.1 chiffrement IMAP/SMTP (chantier dédié).

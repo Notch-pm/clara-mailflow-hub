@@ -1,6 +1,7 @@
 # Clara — RLS & fonctions de sécurité
 
 > Source de vérité extraite du remote Supabase le 2026-05-22.
+> Dernière mise à jour : 2026-07-12 (migration `20260712090000_rls_consolidation_advisors`).
 > À mettre à jour après toute migration qui touche aux policies ou aux fonctions.
 
 ## 🚨 Sécurité — action requise
@@ -17,7 +18,11 @@
 | `is_admin_of` | `(uuid) → bool` | `is_superadmin(auth.uid()) OR` membre org avec rôle `admin`/`administrateur` |
 | `is_member_of` | `(uuid) → bool` | `is_superadmin(auth.uid()) OR` membre actif de l'org |
 
-**Règle d'or** : toute nouvelle policy doit utiliser `is_member_of` ou `is_admin_of` — jamais un `EXISTS` inline sur `organization_users`, jamais `x-org-id` en dur.
+**Règles d'or** :
+- toute nouvelle policy utilise `is_member_of` ou `is_admin_of` — jamais un `EXISTS` inline sur `organization_users`, jamais `x-org-id` en dur ;
+- jamais `auth.uid()` / `auth.role()` / `current_setting()` nus dans une policy : toujours wrappés `(select auth.uid())` (advisor `auth_rls_initplan`) — inutile pour les helpers, qui les encapsulent déjà ;
+- une seule policy permissive par (table, rôle, action) (advisor `multiple_permissive_policies`) : `is_member_of`/`is_admin_of` incluent le superadmin, ne pas empiler de policy superadmin en plus ;
+- les policies `service_role_full` sont déclarées `TO service_role` (jamais sans `TO`, sinon elles s'évaluent aussi pour `authenticated`).
 
 ### Trigger anti-escalade
 `users_prevent_superadmin_escalation` — bloque tout `UPDATE SET is_superadmin` si `auth.uid()` n'est pas superadmin. En contexte migration (`auth.uid() = NULL`), il faut désactiver/réactiver le trigger autour de l'UPDATE :
@@ -72,51 +77,62 @@ Pour les tables en écriture admin seulement, `auth_insert/update/delete` utilis
 #### `organizations`
 | Policy | CMD | Condition |
 |---|---|---|
-| `superadmin_select_orgs` | SELECT | `EXISTS(users WHERE is_superadmin)` |
-| `superadmin_insert_orgs` | INSERT | `EXISTS(users WHERE is_superadmin)` |
-| `superadmin_update_orgs` | UPDATE | `EXISTS(users WHERE is_superadmin)` |
-| `superadmin_delete_orgs` | DELETE | `EXISTS(users WHERE is_superadmin)` |
-| `users_read_own_org` | SELECT | membre via `organization_users` |
-| `org_admin_update_own_org` | UPDATE | admin via `organization_users` |
+| `org_select` | SELECT | `is_member_of(id)` |
+| `org_admin_update` | UPDATE | `is_admin_of(id)` |
+| `superadmin_insert_orgs` | INSERT | `is_superadmin((select auth.uid()))` |
+| `superadmin_delete_orgs` | DELETE | `is_superadmin((select auth.uid()))` |
 
 #### `organization_users`
 | Policy | CMD | Condition |
 |---|---|---|
-| `superadmin_all` | ALL | `is_superadmin(auth.uid())` |
-| `admins_read_org_members` | SELECT | `is_admin_of(organization_id)` |
+| `org_users_select` | SELECT | `user_id = (select auth.uid()) OR is_admin_of(organization_id)` |
 | `admins_insert_members` | INSERT | `is_admin_of(organization_id)` |
 | `admins_update_members` | UPDATE | `is_admin_of(organization_id)` |
 | `admins_delete_members` | DELETE | `is_admin_of(organization_id)` |
-| `users_read_own_memberships` | SELECT | `user_id = auth.uid()` |
-| `auth_select/insert/update/delete` | * | **`x-org-id` header** ⚠️ (legacy) |
-| `service_role_full` | ALL | `true` |
+| `service_role_full` | ALL | `true` (`TO service_role`) |
 
 #### `imap_settings`
 | Policy | CMD | Condition |
 |---|---|---|
-| `superadmin_all_imap` | ALL | `is_superadmin(auth.uid())` |
-| `org_admin_write_imap` | ALL | membre `organization_users` avec rôle admin ⚠️ (inline, pas `is_admin_of`) |
-| `org_admin_read_imap` | SELECT | idem ⚠️ |
-| `service_role_full_imap` | ALL | `true` |
+| `imap_admin` | ALL | `is_admin_of(organization_id)` |
+| `service_role_full_imap` | ALL | `true` (`TO service_role`) |
 
-#### `service_members`
+#### `smtp_settings`
 | Policy | CMD | Condition |
 |---|---|---|
-| `service_members_select` | SELECT | **`x-org-id` header** ⚠️ |
-| `service_members_insert` | INSERT | **`x-org-id` header** ⚠️ |
-| `service_members_delete` | DELETE | **`x-org-id` header** ⚠️ |
+| `smtp_admin` | ALL | `is_admin_of(organization_id)` |
+| `service_role_full_smtp` | ALL | `true` (`TO service_role`) |
+
+#### `service_members` (table gelée, legacy Socle)
+| Policy | CMD | Condition |
+|---|---|---|
+| `service_members_select` | SELECT | `is_member_of(organization_id)` |
+| `service_members_insert` | INSERT | `is_admin_of(organization_id)` |
+| `service_members_delete` | DELETE | `is_admin_of(organization_id)` |
 
 #### `notifications`
 | Policy | CMD | Condition |
 |---|---|---|
-| `notifications_select_own` | SELECT | `user_id = auth.uid()` |
-| `notifications_update_own` | UPDATE | `user_id = auth.uid()` |
+| `notifications_select_own` | SELECT | `user_id = (select auth.uid())` |
+| `notifications_update_own` | UPDATE | `user_id = (select auth.uid())` |
+| `notifications_delete_own` | DELETE | `user_id = (select auth.uid())` |
 
 #### `users`
+Pas d'`organization_id` sur cette table → policies spécifiques (une par action) :
+
 | Policy | CMD | Condition |
 |---|---|---|
-| `superadmin_all_users` | ALL | `is_superadmin(auth.uid())` |
-| `service_role_full_users` | ALL | `true` |
+| `users_select` | SELECT | soi-même, superadmin, ou membre d'une org partagée (`EXISTS` sur `organization_users`, soumis à sa RLS : un membre voit ses collègues via un admin uniquement) |
+| `users_insert` | INSERT | superadmin, ou header `x-org-id` présent **et** `is_superadmin = false` |
+| `users_update` | UPDATE | soi-même, superadmin, ou admin d'une org du user cible ; `WITH CHECK` interdit `is_superadmin = true` aux non-superadmins (en plus du trigger) |
+| `service_role_full_users` | ALL | `true` (`TO service_role`) |
+
+#### `ai_usage_quotas`
+| Policy | CMD | Condition |
+|---|---|---|
+| `auth_select` | SELECT | `is_member_of(organization_id)` |
+| `superadmin_insert/update/delete` | INSERT/UPDATE/DELETE | `is_superadmin((select auth.uid()))` (les lignes globales `organization_id NULL` restent superadmin-only) |
+| `service_role_full` | ALL | `true` (`TO service_role`) |
 
 ---
 
@@ -128,6 +144,16 @@ Les 5 anomalies ci-dessous ont été corrigées :
 - `imap_settings.org_admin_*` → `is_admin_of`
 - `organization_integrations.superadmin_all_integrations` → supprimée (redondante)
 - `organizations.*` → `is_superadmin(auth.uid())`
+
+## Consolidation advisors (migration 20260712090000)
+
+Résout les 32 lints `auth_rls_initplan` et les 29 `multiple_permissive_policies` :
+- 8 policies `service_role_full` déclarées sans `TO` (donc évaluées aussi pour `authenticated`) recréées `TO service_role` : `portal_form_submissions`, `portal_forms`, `socle_*` ;
+- `auth.uid()` / `current_setting()` wrappés `(select ...)` partout où ils restaient nus ;
+- policies superadmin redondantes supprimées (`organization_users.superadmin_all`, `smtp_settings.superadmin_all_smtp` — les helpers incluent le superadmin) ;
+- fusion par action sur `users`, `organizations`, `organization_users`, `ai_usage_quotas` ;
+- `courier_relations` normalisée sur le pattern standard (dernier scoping x-org-id supprimé) ;
+- durcissements au passage : les branches x-org-id de `users` (`org_members_select`/`org_members_update`) ne vérifiaient pas l'appartenance du demandeur à l'org du header (énumération/écriture cross-org) → remplacées par « admin d'une org du user cible » ; l'INSERT `users` n'autorise plus `is_superadmin = true` pour un non-superadmin.
 
 ---
 
