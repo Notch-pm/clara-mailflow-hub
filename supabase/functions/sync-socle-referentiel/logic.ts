@@ -423,6 +423,35 @@ export function mapSocleOrganization(org: SocleOrgApi, syncedAt: string) {
   };
 }
 
+// ── Identité du tenant ──
+// L'organisation racine du Socle fixe le nom, le slug et le logo de
+// l'organisation Clara : plus d'édition côté Clara (seules les couleurs restent).
+
+export interface TenantIdentityFields {
+  name?: string;
+  slug?: string;
+  logo_url?: string | null;
+}
+
+/**
+ * Champs d'identité à recopier de l'org racine Socle vers `organizations`.
+ * Retourne null si rien ne change. Le slug n'est écrasé que si le Socle en
+ * fournit un (unicité + lowercase imposés côté Clara — normalisé ici).
+ */
+export function planTenantIdentityUpdate(
+  current: { name: string; slug: string | null; logo_url: string | null },
+  root: SocleOrgApi,
+): TenantIdentityFields | null {
+  const fields: TenantIdentityFields = {};
+  if (current.name !== root.name) fields.name = root.name;
+  const rootSlug = root.slug?.trim().toLowerCase() || null;
+  if (rootSlug && (current.slug ?? null) !== rootSlug) fields.slug = rootSlug;
+  if ((current.logo_url ?? null) !== (root.logo_url ?? null)) {
+    fields.logo_url = root.logo_url ?? null;
+  }
+  return Object.keys(fields).length > 0 ? fields : null;
+}
+
 export function countersFromOrgPlan(plan: OrgSyncPlan): EntityCounters {
   return {
     created: plan.toInsert.length,

@@ -21,15 +21,15 @@ interface OrgRow {
   secondary_color: string | null;
 }
 
+// Nom, slug et logo sont fixés par l'organisation racine du Socle (sync) :
+// seules les couleurs restent éditables côté Clara.
 interface OrgForm {
   name: string;
-  slug: string;
-  logo_url: string;
   primary_color: string;
   secondary_color: string;
 }
 
-const emptyForm: OrgForm = { name: "", slug: "", logo_url: "", primary_color: "", secondary_color: "" };
+const emptyForm: OrgForm = { name: "", primary_color: "", secondary_color: "" };
 
 export default function OrganizationsAdmin() {
   const navigate = useNavigate();
@@ -52,21 +52,17 @@ export default function OrganizationsAdmin() {
     mutationFn: async (values: OrgForm & { id?: string }) => {
       if (values.id) {
         const { error } = await supabase.from("organizations").update({
-          name: values.name,
-          slug: values.slug,
-          logo_url: values.logo_url || null,
           primary_color: values.primary_color || null,
           secondary_color: values.secondary_color || null,
-        } as any).eq("id", values.id);
+        }).eq("id", values.id);
         if (error) throw error;
       } else {
         const { error } = await supabase.from("organizations").insert({
           name: values.name,
-          slug: values.slug || values.name.toLowerCase().replace(/\s+/g, "-"),
-          logo_url: values.logo_url || null,
+          slug: values.name.toLowerCase().replace(/\s+/g, "-"),
           primary_color: values.primary_color || null,
           secondary_color: values.secondary_color || null,
-        } as any);
+        });
         if (error) throw error;
       }
     },
@@ -101,8 +97,6 @@ export default function OrganizationsAdmin() {
     setEditingOrg(org);
     setForm({
       name: org.name,
-      slug: org.slug,
-      logo_url: org.logo_url || "",
       primary_color: org.primary_color || "",
       secondary_color: org.secondary_color || "",
     });
@@ -117,7 +111,7 @@ export default function OrganizationsAdmin() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.name.trim()) return;
+    if (!editingOrg && !form.name.trim()) return;
     upsertMutation.mutate({ ...form, id: editingOrg?.id });
   }
 
@@ -205,18 +199,31 @@ export default function OrganizationsAdmin() {
             <DialogTitle>{editingOrg ? "Modifier l'organisation" : "Nouvelle organisation"}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label>Nom *</Label>
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
-            </div>
-            <div className="space-y-2">
-              <Label>Slug</Label>
-              <Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} placeholder="mon-organisation" />
-            </div>
-            <div className="space-y-2">
-              <Label>URL du logo</Label>
-              <Input value={form.logo_url} onChange={(e) => setForm({ ...form, logo_url: e.target.value })} placeholder="https://..." />
-            </div>
+            {editingOrg ? (
+              <div className="flex items-start gap-3 rounded-md border bg-muted/50 p-3">
+                {editingOrg.logo_url ? (
+                  <img src={editingOrg.logo_url} alt={editingOrg.name} className="h-10 w-10 rounded object-contain shrink-0" />
+                ) : (
+                  <Building2 className="h-6 w-6 text-muted-foreground shrink-0" />
+                )}
+                <div className="min-w-0">
+                  <p className="font-medium">{editingOrg.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Slug : {editingOrg.slug} — le nom, le slug et le logo sont définis par
+                    l'organisation principale du Socle et mis à jour à chaque synchronisation.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label>Nom *</Label>
+                <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+                <p className="text-xs text-muted-foreground">
+                  Une fois l'organisation mappée au Socle, le nom, le slug et le logo seront
+                  remplacés par ceux de l'organisation principale à chaque synchronisation.
+                </p>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Couleur principale</Label>

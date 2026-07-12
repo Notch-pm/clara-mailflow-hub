@@ -1,7 +1,10 @@
 import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Users, ArrowLeft, GitBranch, Settings, Tags, Building2, ClipboardList, Mail, PenTool, FileText, Globe, MapPin, Sparkles, LucideIcon } from "lucide-react";
+import { Users, ArrowLeft, GitBranch, Settings, Tags, Building2, ClipboardList, Mail, PenTool, FileText, Globe, MapPin, Sparkles, RefreshCw, LucideIcon } from "lucide-react";
+import { toast } from "sonner";
+import { triggerSocleSync, type SocleSyncResult } from "@/services/socleSyncService";
 import UsersPage from "./UsersPage";
 import Workflows from "./Workflows";
 import ClassificationSettings from "./ClassificationSettings";
@@ -34,6 +37,23 @@ const settingSections: { key: Section; title: string; description: string; icon:
   { key: "ia", title: "Consommation IA", description: "Suivi de la consommation des appels IA (lecture seule)", icon: Sparkles },
 ];
 
+const syncCounterLabels = [
+  { key: "organizations", label: "Organisations" },
+  { key: "categories", label: "Catégories" },
+  { key: "document_types", label: "Types de documents" },
+  { key: "procedures", label: "Démarches" },
+] as const;
+
+function syncSummaryMessage(result: SocleSyncResult): string {
+  const counters = result.results?.[0]?.counters;
+  if (!counters) return result.message;
+  const parts = syncCounterLabels.map(({ key, label }) => {
+    const c = counters[key];
+    return `${label} : ${c.created + c.updated + c.adopted + c.obsoleted}`;
+  });
+  return `Éléments modifiés — ${parts.join(", ")}.`;
+}
+
 const sectionLabels: Record<string, string> = {
   organisations: "Organisations (Socle)",
   utilisateurs: "Utilisateurs et rôles",
@@ -52,9 +72,29 @@ export default function SettingsPage() {
   const [activeSection, setActiveSection] = useState<Section>("menu");
   const { organizationId } = useOrganization();
   const { profile, membership } = useAuth();
+  const queryClient = useQueryClient();
   const isSuperAdmin = profile?.is_superadmin === true;
   const isOrgAdmin = membership?.role === "admin" || membership?.role === "administrateur";
   const isAllowed = isSuperAdmin || isOrgAdmin;
+
+  const socleSyncMutation = useMutation({
+    mutationFn: () => triggerSocleSync(organizationId!),
+    onSuccess: (result) => {
+      const orgResult = result.results?.[0];
+      if (orgResult?.status === "error") {
+        toast.error("Échec de la synchronisation Socle : " + (orgResult.error ?? "erreur inconnue"));
+        return;
+      }
+      toast.success("Synchronisation Socle terminée", {
+        description: syncSummaryMessage(result),
+      });
+      // Rafraîchit toutes les données miroir du Socle (préfixes, toutes orgs confondues).
+      for (const key of ["socle-organizations", "socle-orgs-config", "socle-categories", "socle-last-sync", "procedures", "procedures-displayed"]) {
+        queryClient.invalidateQueries({ queryKey: [key] });
+      }
+    },
+    onError: (e: Error) => toast.error("Échec de la synchronisation Socle : " + e.message),
+  });
 
   if (!isAllowed) {
     return (
@@ -120,12 +160,25 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <Settings className="h-6 w-6 text-primary" />
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Paramètres</h1>
-          <p className="text-muted-foreground">Configuration générale de l'application</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Settings className="h-6 w-6 text-primary" />
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Paramètres</h1>
+            <p className="text-muted-foreground">Configuration générale de l'application</p>
+          </div>
         </div>
+        {organizationId && (
+          <Button
+            onClick={() => socleSyncMutation.mutate()}
+            disabled={socleSyncMutation.isPending}
+            variant="outline"
+            className="gap-2 shrink-0"
+          >
+            <RefreshCw className={`h-4 w-4 ${socleSyncMutation.isPending ? "animate-spin" : ""}`} />
+            {socleSyncMutation.isPending ? "Synchronisation en cours…" : "Synchronisation Socle"}
+          </Button>
+        )}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

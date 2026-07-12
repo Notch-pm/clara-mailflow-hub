@@ -23,6 +23,7 @@ import {
   planMirrorSync,
   planOrganizationSync,
   planProcedureSync,
+  planTenantIdentityUpdate,
   type EntityCounters,
   type MirrorItem,
   type MirrorRow,
@@ -224,7 +225,7 @@ Deno.serve(async (req) => {
     // Organisations Clara mappées au Socle.
     let query = supabaseAdmin
       .from("organizations")
-      .select("id, name, socle_org_id")
+      .select("id, name, slug, logo_url, socle_org_id")
       .not("socle_org_id", "is", null);
     if (filterOrgId) query = query.eq("id", filterOrgId);
     const { data: orgs, error: orgsError } = await query;
@@ -271,6 +272,8 @@ Deno.serve(async (req) => {
 interface ClaraOrg {
   id: string;
   name: string;
+  slug: string | null;
+  logo_url: string | null;
   socle_org_id: string;
 }
 
@@ -362,13 +365,29 @@ async function syncOrg(
   syncedAt: string,
 ): Promise<{ counters: OrgSyncResult["counters"]; warnings: string[] }> {
   // 0) Miroir de la hiérarchie d'organisations (sous-arbre du socle_org_id mappé).
+  const subtree = filterSubtree(allOrganizations, org.socle_org_id);
   const organizationsCounters = await syncOrganizations(
     supabaseAdmin,
     org,
-    filterSubtree(allOrganizations, org.socle_org_id),
+    subtree,
     dryRun,
     syncedAt,
   );
+
+  // 0bis) Identité du tenant : l'org racine du Socle fixe nom, slug et logo
+  // de l'organisation Clara (seules les couleurs restent gérées côté Clara).
+  const root = subtree.find((o) => o.id === org.socle_org_id);
+  const identity = root ? planTenantIdentityUpdate(org, root) : null;
+  if (identity && !dryRun) {
+    const { error: identityError } = await supabaseAdmin
+      .from("organizations")
+      .update(identity)
+      .eq("id", org.id);
+    if (identityError) throw new Error(`identité organisation: ${identityError.message}`);
+    console.log(
+      `[sync-socle] org ${org.name}: identité mise à jour depuis la racine Socle (${Object.keys(identity).join(", ")})`,
+    );
+  }
 
   // 1) Miroirs catégories + types de documents.
   const categoriesCounters = await syncMirror(
