@@ -27,6 +27,12 @@ export interface SuggestedAction {
     TEL_FIXE?: string;
     TEL_MOBILE?: string;
   };
+  /** Préremplissage d'une démarche Socle (audience + valeurs par clé de champ
+   *  du form_schema), produit par l'appel ciblé d'analyze-courier. */
+  socle_prefill?: {
+    audience?: string | null;
+    form?: Record<string, unknown> | null;
+  } | null;
 }
 
 export interface SuggestedSender {

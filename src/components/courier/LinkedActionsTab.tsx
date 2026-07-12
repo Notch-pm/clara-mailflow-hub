@@ -268,6 +268,7 @@ export default function LinkedActionsTab({ courierId, organizationId, readOnly =
         organizationId={organizationId}
         initialProcedureId={suggestedAction?.procedure_id ?? undefined}
         initialArpegeValues={suggestedAction?.prefill}
+        initialSoclePrefill={suggestedAction?.socle_prefill ?? undefined}
         ticket={editingTicket}
       />
     </div>

@@ -42,6 +42,7 @@ export interface ActionTicket {
   assignee_id: string | null;
   arpege_demande_ref: string | null;
   arpege_demande_status: string | null;
+  socle_data: unknown;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -85,6 +86,8 @@ export async function createTicket(payload: {
   procedureId: string;
   description?: string | null;
   assigneeId?: string | null;
+  /** Valeurs saisies pour une démarche Socle (demandeur + formulaire), voir socle-form.ts. */
+  socleData?: unknown;
 }): Promise<ActionTicket> {
   const {
     data: { user },
@@ -97,6 +100,7 @@ export async function createTicket(payload: {
       procedure_id: payload.procedureId,
       description: payload.description?.trim() || null,
       assignee_id: payload.assigneeId ?? null,
+      socle_data: payload.socleData ?? null,
       created_by: user?.id ?? null,
     } as any)
     .select("*")

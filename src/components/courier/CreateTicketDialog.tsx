@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Loader2, Check, ChevronsUpDown, X, User, FileText, Upload, File as FileIcon } from "lucide-react";
+import { Loader2, Check, ChevronsUpDown, X, User, FileText } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -43,9 +43,32 @@ import {
 } from "@/services/actionTicketService";
 import { logEvent } from "@/services/courierEventService";
 import { getDocuments } from "@/services/courierDocumentService";
-import { storage } from "@/services/storageService";
 import { getOrgMembers } from "@/services/userService";
+import { getParticipants } from "@/services/courierParticipantService";
+import { getUsager } from "@/services/usagerService";
 import { UserAvatar } from "@/components/UserAvatar";
+import PiecesJointesField from "./PiecesJointesField";
+import { SocleFormFields, SocleRequesterForm } from "./SocleDemandeForm";
+import {
+  buildSocleDemandeData,
+  enabledAudiences,
+  formRequiredMet,
+  parseFormSchema,
+  parseRequesterConfig,
+  requesterRequiredMet,
+  type Audience,
+  type FormValues,
+} from "@/lib/socle-form";
+import {
+  applySocleFormPrefill,
+  arpegePrefillToSocleRequester,
+  mergeNonEmpty,
+  resolveAudience,
+  usagerToArpegeValues,
+  usagerToSocleRequester,
+  type SenderParticipantLike,
+  type SoclePrefill,
+} from "@/lib/prefill-mapping";
 import type { CourierDocument } from "@/types/courier";
 
 interface Props {
@@ -56,6 +79,8 @@ interface Props {
   initialDescription?: string;
   initialProcedureId?: string;
   initialArpegeValues?: Record<string, string>;
+  /** Préremplissage Socle de l'action suggérée (audience + valeurs par clé). */
+  initialSoclePrefill?: SoclePrefill | null;
   ticket?: ActionTicketWithProcedure | null;
 }
 
@@ -154,132 +179,6 @@ function ArpegeForm({
           </div>
         );
       })}
-    </div>
-  );
-}
-
-// ── Pieces jointes field ────────────────────────────────────────────────────
-
-function formatSize(bytes: number | null): string {
-  if (!bytes) return "";
-  if (bytes < 1024) return `${bytes} o`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} Ko`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
-}
-
-function PiecesJointesField({
-  dataId,
-  label,
-  required,
-  helpText,
-  courierDocs,
-  selectedIds,
-  onToggle,
-  orgId,
-  courierId,
-  onNewDoc,
-}: {
-  dataId: string;
-  label: string;
-  required: boolean;
-  helpText?: string;
-  courierDocs: CourierDocument[];
-  selectedIds: string[];
-  onToggle: (id: string) => void;
-  orgId: string;
-  courierId: string;
-  onNewDoc: (doc: CourierDocument) => void;
-}) {
-  const [uploading, setUploading] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  const handleFiles = async (files: FileList | null) => {
-    if (!files?.length) return;
-    setUploading(true);
-    try {
-      for (const file of Array.from(files)) {
-        const doc = await storage.upload(orgId, courierId, file, "attachment");
-        onNewDoc(doc);
-      }
-    } catch {
-      toast.error("Erreur lors de l'upload du fichier");
-    } finally {
-      setUploading(false);
-      if (inputRef.current) inputRef.current.value = "";
-    }
-  };
-
-  return (
-    <div className="space-y-2">
-      <div className="space-y-0.5">
-        <Label className="text-xs text-muted-foreground">
-          {label}
-          {required && <span className="text-destructive ml-0.5">*</span>}
-        </Label>
-        {helpText && <p className="text-[10px] text-muted-foreground/70">{helpText}</p>}
-      </div>
-
-      <div className={cn(
-        "rounded-md border",
-        courierDocs.length === 0 && "border-dashed",
-      )}>
-        {courierDocs.length === 0 ? (
-          <div className="p-3 text-center text-xs text-muted-foreground">
-            Aucun document disponible — utilisez le bouton ci-dessous pour en ajouter.
-          </div>
-        ) : (
-          <div className="divide-y max-h-44 overflow-y-auto">
-            {courierDocs.map((doc) => {
-              const checked = selectedIds.includes(doc.id);
-              const name = doc.file_name ?? doc.storage_key.split("/").pop() ?? "fichier";
-              return (
-                <label
-                  key={doc.id}
-                  className={cn(
-                    "flex items-center gap-2.5 px-3 py-2 cursor-pointer transition-colors text-sm",
-                    checked ? "bg-primary/5" : "hover:bg-muted/40",
-                  )}
-                >
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 shrink-0 accent-primary"
-                    checked={checked}
-                    onChange={() => onToggle(doc.id)}
-                  />
-                  <FileIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  <span className="flex-1 truncate">{name}</span>
-                  {doc.file_size && (
-                    <span className="text-xs text-muted-foreground shrink-0">
-                      {formatSize(doc.file_size)}
-                    </span>
-                  )}
-                </label>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      <input
-        ref={inputRef}
-        type="file"
-        multiple
-        className="hidden"
-        onChange={(e) => handleFiles(e.target.files)}
-      />
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="h-8 text-xs"
-        disabled={uploading}
-        onClick={() => inputRef.current?.click()}
-      >
-        {uploading
-          ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Upload en cours…</>
-          : <><Upload className="h-3.5 w-3.5 mr-1.5" />Ajouter un fichier depuis l'ordinateur</>
-        }
-      </Button>
     </div>
   );
 }
@@ -397,7 +296,6 @@ function ArpegeBusinessForm({
                 return (
                   <div key={c.DataId} className="col-span-2">
                     <PiecesJointesField
-                      dataId={c.DataId}
                       label={c.Libelle}
                       required={required}
                       helpText={c.LibelleAide || undefined}
@@ -545,6 +443,7 @@ export default function CreateTicketDialog({
   initialDescription = "",
   initialProcedureId,
   initialArpegeValues,
+  initialSoclePrefill,
   ticket = null,
 }: Props) {
   const qc = useQueryClient();
@@ -557,6 +456,9 @@ export default function CreateTicketDialog({
   const [arpegeValues, setArpegeValues] = useState<Record<string, string>>({});
   const [businessValues, setBusinessValues] = useState<Record<string, unknown>>({});
   const [piecesJointes, setPiecesJointes] = useState<Record<string, string[]>>({});
+  const [socleAudience, setSocleAudience] = useState<Audience | null>(null);
+  const [socleRequesterValues, setSocleRequesterValues] = useState<Record<string, string>>({});
+  const [socleFormValues, setSocleFormValues] = useState<FormValues>({});
 
   useEffect(() => {
     if (open) {
@@ -573,6 +475,9 @@ export default function CreateTicketDialog({
       }
       setBusinessValues({});
       setPiecesJointes({});
+      setSocleAudience(null);
+      setSocleRequesterValues({});
+      setSocleFormValues({});
     }
   }, [open, initialDescription, initialProcedureId, initialArpegeValues, isEdit, ticket]);
 
@@ -595,14 +500,115 @@ export default function CreateTicketDialog({
   const arpegeFields = selectedProcedure?.arpege_config_fields?.ConfigInfoUsagerObligs ?? [];
   const formComponents = selectedProcedure?.arpege_config_fields?.FormComponents ?? [];
 
-  const hasPiecesJointesField = isArpege &&
-    flattenComponents(formComponents).some(({ component: c }) => c.Type === "Pieces_jointes");
+  // Démarche Socle « native » (sans config Arpège) : rendu du contrat Socle
+  // (requester_config + form_schema) à la création uniquement.
+  const isSocle = !isEdit && !isArpege && selectedProcedure?.external_source === "socle";
+  const socleConfig = useMemo(
+    () =>
+      isSocle && selectedProcedure?.requester_config
+        ? parseRequesterConfig(selectedProcedure.requester_config)
+        : null,
+    [isSocle, selectedProcedure],
+  );
+  const socleSchema = useMemo(
+    () => parseFormSchema(isSocle ? selectedProcedure?.form_schema : null),
+    [isSocle, selectedProcedure],
+  );
+  const socleAudiencesList = useMemo(
+    () => (socleConfig ? enabledAudiences(socleConfig) : []),
+    [socleConfig],
+  );
+  const hasSocleRequester = socleAudiencesList.length > 0;
+  const hasSocleFormFields = socleSchema.content.length > 0;
+  const showSocleForm = hasSocleRequester || hasSocleFormFields;
+  // Le public sélectionné, ou le premier activé par défaut.
+  const currentAudience: Audience | null =
+    socleAudience && socleAudiencesList.includes(socleAudience)
+      ? socleAudience
+      : socleAudiencesList[0] ?? null;
+
+  const hasPiecesJointesField =
+    (isArpege &&
+      flattenComponents(formComponents).some(({ component: c }) => c.Type === "Pieces_jointes")) ||
+    socleSchema.content.some((n) =>
+      "kind" in n ? n.fields.some((f) => f.type === "attachment") : n.type === "attachment",
+    );
 
   const { data: courierDocs = [] } = useQuery({
     queryKey: ["courier-documents", courierId],
     queryFn: () => getDocuments(courierId),
     enabled: hasPiecesJointesField && open,
   });
+
+  // Expéditeur structuré du courrier (participant sender → usager lié) :
+  // source prioritaire du préremplissage demandeur, devant l'extraction LLM.
+  const { data: participants, isLoading: loadingParticipants } = useQuery({
+    queryKey: ["courier-participants", courierId],
+    queryFn: () => getParticipants(courierId),
+    enabled: open && !isEdit && !!courierId,
+  });
+  const senderParticipant = useMemo(
+    () =>
+      ((participants ?? []) as Array<SenderParticipantLike & { role?: string }>).find(
+        (p) => p.role === "sender",
+      ) ?? null,
+    [participants],
+  );
+  const { data: senderUsager } = useQuery({
+    queryKey: ["usager", senderParticipant?.usager_id],
+    queryFn: () => getUsager(senderParticipant!.usager_id!),
+    enabled: open && !isEdit && !!senderParticipant?.usager_id,
+  });
+
+  // Application du préremplissage — une seule fois par (ouverture, démarche),
+  // pour ne jamais écraser une saisie en cours.
+  const prefillAppliedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      prefillAppliedRef.current = null;
+      return;
+    }
+    if (isEdit || !procedureId || !selectedProcedure) return;
+    if (loadingParticipants) return;
+    // Un usager est attendu : attendre son chargement avant d'appliquer.
+    if (senderParticipant?.usager_id && senderUsager === undefined) return;
+    if (prefillAppliedRef.current === procedureId) return;
+    prefillAppliedRef.current = procedureId;
+
+    const usager = senderUsager ?? null;
+
+    if (isArpege) {
+      setArpegeValues(
+        mergeNonEmpty(usagerToArpegeValues(usager, senderParticipant), initialArpegeValues ?? {}),
+      );
+      return;
+    }
+    if (!showSocleForm) return;
+
+    // Le préremplissage de formulaire est spécifique à la démarche de l'action
+    // suggérée ; l'identité du demandeur vaut pour toute démarche.
+    const fromSuggestion = procedureId === initialProcedureId ? initialSoclePrefill : null;
+    if (socleConfig) {
+      setSocleAudience(
+        resolveAudience(socleAudiencesList, usager?.category ?? null, fromSuggestion?.audience ?? null),
+      );
+    }
+    setSocleRequesterValues(
+      mergeNonEmpty(
+        usagerToSocleRequester(usager, senderParticipant),
+        arpegePrefillToSocleRequester(initialArpegeValues),
+      ),
+    );
+    if (fromSuggestion?.form) {
+      setSocleFormValues(applySocleFormPrefill(socleSchema, fromSuggestion.form));
+    }
+  }, [
+    open, isEdit, procedureId, selectedProcedure, isArpege, showSocleForm,
+    socleConfig, socleAudiencesList, socleSchema, loadingParticipants,
+    senderParticipant, senderUsager, initialArpegeValues, initialSoclePrefill,
+    initialProcedureId,
+  ]);
 
   const { data: members, isLoading: loadingMembers } = useQuery({
     queryKey: ["org-members", organizationId],
@@ -650,6 +656,14 @@ export default function CreateTicketDialog({
     formComponents.length === 0 ||
     businessRequiredMet(formComponents, businessValues, piecesJointes);
 
+  const socleObligatoryMet =
+    !showSocleForm ||
+    ((!hasSocleRequester ||
+      (!!socleConfig &&
+        !!currentAudience &&
+        requesterRequiredMet(socleConfig, currentAudience, socleRequesterValues))) &&
+      (!hasSocleFormFields || formRequiredMet(socleSchema, socleFormValues, piecesJointes)));
+
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (isEdit && ticket) {
@@ -680,12 +694,24 @@ export default function CreateTicketDialog({
         return created;
       }
 
+      const socleData = showSocleForm
+        ? buildSocleDemandeData({
+            config: hasSocleRequester ? socleConfig : null,
+            audience: hasSocleRequester ? currentAudience : null,
+            requesterValues: socleRequesterValues,
+            schema: socleSchema,
+            formValues: socleFormValues,
+            attachments: piecesJointes,
+          })
+        : null;
+
       const created = await createTicket({
         organizationId,
         courierId,
         procedureId,
         description,
         assigneeId,
+        socleData,
       });
       await logEvent(organizationId, courierId, "ticket_created", {
         ticket_id: created.id,
@@ -707,7 +733,8 @@ export default function CreateTicketDialog({
   const canSubmit =
     !!procedureId &&
     !saveMutation.isPending &&
-    (!isArpege || (arpegeObligatoryMet && bizObligatoryMet));
+    (!isArpege || (arpegeObligatoryMet && bizObligatoryMet)) &&
+    socleObligatoryMet;
 
   const hasBothForms = isArpege && arpegeFields.length > 0 && formComponents.length > 0;
   const hasArpegeOnly = isArpege && arpegeFields.length > 0 && formComponents.length === 0;
@@ -718,7 +745,7 @@ export default function CreateTicketDialog({
       <DialogContent
         className={cn(
           "flex flex-col max-h-[92vh]",
-          isArpege ? "sm:max-w-3xl" : "sm:max-w-lg",
+          isArpege ? "sm:max-w-3xl" : showSocleForm ? "sm:max-w-2xl" : "sm:max-w-lg",
         )}
       >
         <DialogHeader className="shrink-0 pb-2">
@@ -767,6 +794,10 @@ export default function CreateTicketDialog({
                             setArpegeValues({});
                             setBusinessValues({});
                             setPiecesJointes({});
+                            setSocleAudience(null);
+                            setSocleRequesterValues({});
+                            setSocleFormValues({});
+                            prefillAppliedRef.current = null; // ré-applique le prefill pour la démarche choisie
                             setProcedurePopoverOpen(false);
                           }}
                         >
@@ -830,6 +861,49 @@ export default function CreateTicketDialog({
                 onNewDoc={handleNewDoc}
                 orgId={organizationId}
                 courierId={courierId}
+              />
+            </div>
+          )}
+
+          {/* Démarche Socle : champs demandeur + formulaire du contrat */}
+          {hasSocleRequester && socleConfig && currentAudience && (
+            <div className="space-y-3">
+              <SectionHeader
+                icon={User}
+                title="Demandeur"
+                subtitle="Informations attendues sur le demandeur"
+              />
+              <SocleRequesterForm
+                config={socleConfig}
+                audience={currentAudience}
+                onAudienceChange={setSocleAudience}
+                values={socleRequesterValues}
+                onChange={(key, value) =>
+                  setSocleRequesterValues((prev) => ({ ...prev, [key]: value }))
+                }
+              />
+            </div>
+          )}
+
+          {hasSocleFormFields && (
+            <div className="space-y-3">
+              <SectionHeader
+                icon={FileText}
+                title="Formulaire"
+                subtitle="Informations spécifiques à la démarche"
+              />
+              <SocleFormFields
+                schema={socleSchema}
+                values={socleFormValues}
+                onChange={(fieldId, value) =>
+                  setSocleFormValues((prev) => ({ ...prev, [fieldId]: value }))
+                }
+                attachments={piecesJointes}
+                onToggleAttachment={togglePieceJointe}
+                courierDocs={courierDocs}
+                orgId={organizationId}
+                courierId={courierId}
+                onNewDoc={handleNewDoc}
               />
             </div>
           )}
@@ -925,7 +999,13 @@ export default function CreateTicketDialog({
           </Button>
           <Button onClick={() => saveMutation.mutate()} disabled={!canSubmit}>
             {saveMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-            {isEdit ? "Enregistrer" : isArpege ? "Créer la demande Arpège" : "Créer le ticket"}
+            {isEdit
+              ? "Enregistrer"
+              : isArpege
+                ? "Créer la demande Arpège"
+                : showSocleForm
+                  ? "Créer la demande"
+                  : "Créer le ticket"}
           </Button>
         </DialogFooter>
       </DialogContent>
