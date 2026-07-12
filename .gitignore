@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# Variables d'environnement — jamais de secret dans le repo
+.env
+.env.*
+!.env.example
+
 # Lock files — Bun est le seul gestionnaire de paquets utilisé
 package-lock.json
 bun.lockb
