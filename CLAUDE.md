@@ -13,7 +13,7 @@
 - **Tracer** : historique d'événements, notes, liens entre courriers, références séquentielles annuelles.
 - **Référentiels** : usagers (expéditeurs/destinataires), signataires, modèles, démarches (sync nocturne depuis le **Socle**, le référentiel central de la gamme — plus de paramétrage des démarches dans Clara).
 
-Multi-tenant strict : toute donnée est scopée par `organization_id`. Repo : <https://github.com/Notch-pm/clara-mailflow-hub>.
+Multi-tenant strict : toute donnée est scopée par `organization_id`. Repo (privé) : <https://github.com/Notch-pm/clara-mailflow-hub>.
 
 ## Stack (résumé)
 

@@ -2,6 +2,7 @@
 
 ## Modèle d'accès
 
+- **Repo GitHub privé** (depuis le 2026-07-12). Ça ne relâche **pas** la règle « aucun secret dans git » : `.env` reste hors suivi, seul `.env.example` (valeurs publiques) est versionné.
 - **Auth** : Supabase Auth (email/password, magic link, reset). Pas de SSO actuellement.
 - **Multi-tenant** : isolation forte par `organization_id`. Une fuite cross-org est une régression critique.
 - **Rôles** :
