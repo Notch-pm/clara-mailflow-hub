@@ -2,53 +2,49 @@ import { describe, expect, it } from "vitest";
 import {
   applySocleFormPrefill,
   arpegePrefillToSocleRequester,
-  formatUsagerAddressInline,
+  contactToArpegeValues,
+  contactToSocleRequester,
+  contactTypeToAudience,
+  formatContactAddressInline,
   isFrenchMobile,
   mergeNonEmpty,
   resolveAudience,
-  usagerToArpegeValues,
-  usagerToSocleRequester,
 } from "../../lib/prefill-mapping";
 import { parseFormSchema } from "../../lib/socle-form";
-import type { Usager } from "../../services/usagerService";
+import type { SocleContact } from "../../services/socleContactService";
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
-function makeUsager(overrides: Partial<Usager> = {}): Usager {
+function makeContact(overrides: Partial<SocleContact> = {}): SocleContact {
   return {
-    id: "u1",
-    organization_id: "org1",
-    category: "citoyen",
-    civilite: "madame",
+    id: "c1",
+    organization_id: "org-racine",
+    contact_type: "personne",
+    civility: "madame",
     first_name: "Jeanne",
     last_name: "Dupont",
-    email: "jeanne@exemple.fr",
-    phone: "06 12 34 56 78",
-    created_at: "",
-    updated_at: "",
-    created_by: null,
-    quartier_id: null,
-    quartier_auto: false,
-    usual_name: null,
+    usage_name: null,
     birth_date: null,
-    death_date: null,
-    family_status: null,
-    marriage_date: null,
-    pacs_date: null,
-    arrival_date: null,
-    departure_date: null,
-    nationality: null,
-    address_number: "12",
-    address_btq: "bis",
-    address_street: "rue des Lilas",
-    address_building: null,
-    address_apartment: null,
-    address_complement: null,
-    address_postal_code: "13200",
-    address_city: "Arles",
-    address_lat: null,
-    address_lon: null,
-    phone_2: null,
+    legal_name: null,
+    siret: null,
+    display_name: "Dupont Jeanne",
+    email: "jeanne@exemple.fr",
+    mobile_phone: "06 12 34 56 78",
+    landline_phone: null,
+    address_line1: "12 bis rue des Lilas",
+    address_line2: null,
+    postal_code: "13200",
+    city: "Arles",
+    country: "France",
+    preferred_channel: null,
+    consent_email: false,
+    consent_sms: false,
+    internal_notes: null,
+    status: "active",
+    roles: [],
+    external_references: [],
+    created_at: null,
+    updated_at: null,
     ...overrides,
   };
 }
@@ -78,13 +74,14 @@ const SCHEMA = parseFormSchema({
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-describe("formatUsagerAddressInline / isFrenchMobile / mergeNonEmpty", () => {
-  it("adresse structurée jointe sur une ligne", () => {
-    expect(formatUsagerAddressInline(makeUsager())).toBe("12 bis rue des Lilas, 13200 Arles");
-    expect(formatUsagerAddressInline(makeUsager({
-      address_number: null, address_btq: null, address_street: null,
-      address_postal_code: null, address_city: null,
+describe("formatContactAddressInline / isFrenchMobile / mergeNonEmpty", () => {
+  it("adresse du contact jointe sur une ligne", () => {
+    expect(formatContactAddressInline(makeContact())).toBe("12 bis rue des Lilas, 13200 Arles");
+    expect(formatContactAddressInline(makeContact({
+      address_line1: null, address_line2: null, postal_code: null, city: null,
     }))).toBe("");
+    expect(formatContactAddressInline(makeContact({ address_line2: "Bât. B" })))
+      .toBe("12 bis rue des Lilas, Bât. B, 13200 Arles");
   });
 
   it("heuristique mobile 06/07 avec ou sans indicatif", () => {
@@ -102,9 +99,9 @@ describe("formatUsagerAddressInline / isFrenchMobile / mergeNonEmpty", () => {
 
 // ── Sources structurées → clés demandeur ────────────────────────────────────
 
-describe("usagerToSocleRequester", () => {
-  it("mappe l'usager vers les clés Socle (civilite au même format)", () => {
-    const values = usagerToSocleRequester(makeUsager(), null);
+describe("contactToSocleRequester", () => {
+  it("mappe le contact Socle vers les clés demandeur (civilité au même format)", () => {
+    const values = contactToSocleRequester(makeContact(), null);
     expect(values).toEqual({
       civilite: "madame",
       nom_naissance: "Dupont",
@@ -116,9 +113,9 @@ describe("usagerToSocleRequester", () => {
     });
   });
 
-  it("l'usager prime sur le participant, qui comble les trous", () => {
-    const values = usagerToSocleRequester(
-      makeUsager({ email: null }),
+  it("le contact prime sur le participant, qui comble les trous", () => {
+    const values = contactToSocleRequester(
+      makeContact({ email: null }),
       { last_name: "Autre", email: "participant@exemple.fr", address: "1 rue X" },
     );
     expect(values.nom_naissance).toBe("Dupont");
@@ -126,9 +123,18 @@ describe("usagerToSocleRequester", () => {
     expect(values.adresse).toBe("12 bis rue des Lilas, 13200 Arles");
   });
 
-  it("catégorie entreprise → raison_sociale ; téléphone fixe reconnu", () => {
-    const values = usagerToSocleRequester(
-      makeUsager({ category: "entreprise", last_name: "ACME SAS", phone: "04 90 11 22 33" }),
+  it("structure → raison_sociale depuis legal_name ; fixe/mobile natifs du contact", () => {
+    const values = contactToSocleRequester(
+      makeContact({
+        contact_type: "entreprise",
+        civility: null,
+        first_name: null,
+        last_name: null,
+        legal_name: "ACME SAS",
+        display_name: "ACME SAS",
+        mobile_phone: null,
+        landline_phone: "04 90 11 22 33",
+      }),
       { organization: "ACME (participant)" },
     );
     expect(values.raison_sociale).toBe("ACME SAS");
@@ -136,18 +142,18 @@ describe("usagerToSocleRequester", () => {
     expect(values.tel_portable).toBeUndefined();
   });
 
-  it("sans usager : valeurs du participant seul", () => {
-    expect(usagerToSocleRequester(null, { first_name: "Ali", phone: "07 00 00 00 00" })).toEqual({
+  it("sans contact : valeurs du participant seul (heuristique mobile)", () => {
+    expect(contactToSocleRequester(null, { first_name: "Ali", phone: "07 00 00 00 00" })).toEqual({
       prenoms: "Ali",
       tel_portable: "07 00 00 00 00",
     });
   });
 });
 
-describe("usagerToArpegeValues", () => {
-  it("mappe civilité, noms, date de naissance et mobile vers les codes Arpège", () => {
-    const values = usagerToArpegeValues(
-      makeUsager({ usual_name: "Martin", birth_date: "1990-05-01" }),
+describe("contactToArpegeValues", () => {
+  it("mappe civilité, noms, date de naissance et téléphones vers les codes Arpège", () => {
+    const values = contactToArpegeValues(
+      makeContact({ usage_name: "Martin", birth_date: "1990-05-01", landline_phone: "04 90 00 00 00" }),
       null,
     );
     expect(values).toEqual({
@@ -158,8 +164,9 @@ describe("usagerToArpegeValues", () => {
       DATE_NAISSANCE: "1990-05-01",
       EMAIL: "jeanne@exemple.fr",
       TEL_MOBILE: "06 12 34 56 78",
+      TEL_FIXE: "04 90 00 00 00",
     });
-    expect(usagerToArpegeValues(makeUsager({ civilite: "monsieur" }), null).CIVILITE).toBe("M");
+    expect(contactToArpegeValues(makeContact({ civility: "monsieur" }), null).CIVILITE).toBe("M");
   });
 });
 
@@ -185,10 +192,18 @@ describe("arpegePrefillToSocleRequester", () => {
   });
 });
 
-// ── resolveAudience ─────────────────────────────────────────────────────────
+// ── Audience ────────────────────────────────────────────────────────────────
 
-describe("resolveAudience", () => {
-  it("catégorie usager > déduction LLM > premier public activé", () => {
+describe("contactTypeToAudience / resolveAudience", () => {
+  it("mappe le type de contact Socle vers un public de démarche", () => {
+    expect(contactTypeToAudience("personne")).toBe("citoyen");
+    expect(contactTypeToAudience("entreprise")).toBe("entreprise");
+    expect(contactTypeToAudience("association")).toBe("association");
+    expect(contactTypeToAudience("administration")).toBeNull();
+    expect(contactTypeToAudience(null)).toBeNull();
+  });
+
+  it("type du contact > déduction LLM > premier public activé", () => {
     expect(resolveAudience(["citoyen", "entreprise"], "entreprise", "citoyen")).toBe("entreprise");
     expect(resolveAudience(["citoyen", "entreprise"], null, "entreprise")).toBe("entreprise");
     expect(resolveAudience(["citoyen", "entreprise"], null, null)).toBe("citoyen");

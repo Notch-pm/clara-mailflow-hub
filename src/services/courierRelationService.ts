@@ -29,7 +29,7 @@ export interface RelatedCourierSummary {
     role: string;
     name: string | null;
     email: string | null;
-    usager_id: string | null;
+    socle_contact_id: string | null;
   }>;
 }
 
@@ -47,7 +47,7 @@ export interface AiLinkSuggestion {
 }
 
 const RELATED_SELECT =
-  "id, subject, chrono, received_at, sent_at, direction, assigned_service, metadata, courier_participants(id, role, name, email, usager_id)";
+  "id, subject, chrono, received_at, sent_at, direction, assigned_service, metadata, courier_participants(id, role, name, email, socle_contact_id)";
 
 /**
  * Returns all relations (both sides) for a given courier, joined with the
@@ -197,7 +197,7 @@ function extractSubjectTokens(subject: string | null | undefined): Set<string> {
  * couriers of the same organization in a sliding window.
  *
  * Scoring:
- *  - same sender usager_id  → +50
+ *  - same sender socle_contact_id (contact Socle)  → +50
  *  - same sender email      → +30
  *  - per common subject word→ +12
  *  - very close subject      → +20
@@ -253,9 +253,9 @@ export async function computeSimilarCouriers(
     const reasons: string[] = [];
 
     const candSender = cand.courier_participants.find((p) => p.role === "sender");
-    if (refSender?.usager_id && candSender?.usager_id === refSender.usager_id) {
+    if (refSender?.socle_contact_id && candSender?.socle_contact_id === refSender.socle_contact_id) {
       score += 50;
-      reasons.push("Même usager");
+      reasons.push("Même contact");
     } else if (
       refSender?.email &&
       candSender?.email &&
@@ -313,7 +313,7 @@ export async function computeSimilarCouriers(
     //  - exige au moins un signal de contenu (tag OU mot d'objet commun)
     //  - même usager + signal de contenu → seuil bas
     //  - signal de contenu sans même usager → seuil plus élevé
-    const sameSender = reasons.includes("Même usager") || reasons.includes("Même email expéditeur");
+    const sameSender = reasons.includes("Même contact") || reasons.includes("Même email expéditeur");
     const hasContentSignal = commonTags.length > 0 || commonSubject.length > 0;
     if (!hasContentSignal) continue;
     const hasStrongSubjectSignal = sameNormalizedSubject || commonSubject.length >= 2;

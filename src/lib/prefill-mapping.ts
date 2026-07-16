@@ -1,11 +1,11 @@
 /**
  * Préremplissage des formulaires de demande (CreateTicketDialog) : mappings
- * entre les sources de données (usager lié à l'expéditeur, participant sender
- * brut, extraction LLM de l'analyse) et les clés des formulaires demandeur
- * Socle et Arpège, plus l'application du préremplissage LLM au form_schema.
- * Logique pure, sans dépendance React/Supabase.
+ * entre les sources de données (contact Socle lié à l'expéditeur, participant
+ * sender brut, extraction LLM de l'analyse) et les clés des formulaires
+ * demandeur Socle et Arpège, plus l'application du préremplissage LLM au
+ * form_schema. Logique pure, sans dépendance React/Supabase.
  */
-import type { Usager } from "@/services/usagerService";
+import type { SocleContact } from "@/services/socleContactService";
 import {
   isSection,
   type Audience,
@@ -22,7 +22,7 @@ export interface SenderParticipantLike {
   phone?: string | null;
   address?: string | null;
   organization?: string | null;
-  usager_id?: string | null;
+  socle_contact_id?: string | null;
 }
 
 /** Prefill LLM historique (clés Arpège), tel que stocké dans suggested_actions. */
@@ -41,12 +41,10 @@ export interface SoclePrefill {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Adresse structurée d'un usager sur une ligne (même logique que Usagers.tsx). */
-export function formatUsagerAddressInline(u: Usager): string {
-  const line1 = [u.address_number, u.address_btq, u.address_street].filter(Boolean).join(" ");
-  const line2 = [u.address_building, u.address_apartment].filter(Boolean).join(" ");
-  const line3 = [u.address_postal_code, u.address_city].filter(Boolean).join(" ");
-  return [line1, line2, u.address_complement, line3]
+/** Adresse d'un contact Socle sur une ligne. */
+export function formatContactAddressInline(c: SocleContact): string {
+  const line3 = [c.postal_code, c.city].filter(Boolean).join(" ");
+  return [c.address_line1, c.address_line2, line3]
     .filter((l) => l && l.trim().length > 0)
     .join(", ");
 }
@@ -83,10 +81,12 @@ function phoneEntries(phone: string | null | undefined, keys: { mobile: string; 
 
 /**
  * Valeurs demandeur Socle depuis les données structurées du courrier.
- * Priorité usager lié > participant sender brut, champ par champ.
+ * Priorité contact Socle lié > participant sender brut, champ par champ.
+ * Le contact distingue mobile/fixe nativement ; pour le participant brut,
+ * l'heuristique isFrenchMobile répartit l'unique numéro.
  */
-export function usagerToSocleRequester(
-  usager: Usager | null,
+export function contactToSocleRequester(
+  contact: SocleContact | null,
   participant: SenderParticipantLike | null,
 ): Record<string, string> {
   const fromParticipant: Record<string, string> = participant
@@ -100,29 +100,30 @@ export function usagerToSocleRequester(
       }
     : {};
 
-  if (!usager) return fromParticipant;
+  if (!contact) return fromParticipant;
 
-  const address = formatUsagerAddressInline(usager);
-  const fromUsager: Record<string, string> = {
-    ...(usager.civilite ? { civilite: usager.civilite } : {}),
-    ...(usager.last_name?.trim() ? { nom_naissance: usager.last_name.trim() } : {}),
-    ...((usager.usual_name ?? usager.last_name)?.trim()
-      ? { nom_usuel: (usager.usual_name ?? usager.last_name)!.trim() }
+  const address = formatContactAddressInline(contact);
+  const fromContact: Record<string, string> = {
+    ...(contact.civility ? { civilite: contact.civility } : {}),
+    ...(contact.last_name?.trim() ? { nom_naissance: contact.last_name.trim() } : {}),
+    ...((contact.usage_name ?? contact.last_name)?.trim()
+      ? { nom_usuel: (contact.usage_name ?? contact.last_name)!.trim() }
       : {}),
-    ...(usager.first_name?.trim() ? { prenoms: usager.first_name.trim() } : {}),
-    ...(usager.email?.trim() ? { courriel: usager.email.trim() } : {}),
+    ...(contact.first_name?.trim() ? { prenoms: contact.first_name.trim() } : {}),
+    ...(contact.email?.trim() ? { courriel: contact.email.trim() } : {}),
     ...(address ? { adresse: address } : {}),
-    ...(usager.category !== "citoyen" && usager.last_name?.trim()
-      ? { raison_sociale: usager.last_name.trim() }
+    ...(contact.contact_type !== "personne" && contact.legal_name?.trim()
+      ? { raison_sociale: contact.legal_name.trim() }
       : {}),
-    ...phoneEntries(usager.phone, { mobile: "tel_portable", fixe: "tel_fixe" }),
+    ...(contact.mobile_phone?.trim() ? { tel_portable: contact.mobile_phone.trim() } : {}),
+    ...(contact.landline_phone?.trim() ? { tel_fixe: contact.landline_phone.trim() } : {}),
   };
-  return mergeNonEmpty(fromUsager, fromParticipant);
+  return mergeNonEmpty(fromContact, fromParticipant);
 }
 
 /** Valeurs demandeur Arpège (codes CIVILITE/NOM_USUEL/…) depuis les mêmes sources. */
-export function usagerToArpegeValues(
-  usager: Usager | null,
+export function contactToArpegeValues(
+  contact: SocleContact | null,
   participant: SenderParticipantLike | null,
 ): Record<string, string> {
   const fromParticipant: Record<string, string> = participant
@@ -134,20 +135,21 @@ export function usagerToArpegeValues(
       }
     : {};
 
-  if (!usager) return fromParticipant;
+  if (!contact) return fromParticipant;
 
-  const fromUsager: Record<string, string> = {
-    ...(usager.civilite === "madame" ? { CIVILITE: "MME" } : usager.civilite === "monsieur" ? { CIVILITE: "M" } : {}),
-    ...(usager.last_name?.trim() ? { NOM_NAISSANCE: usager.last_name.trim() } : {}),
-    ...((usager.usual_name ?? usager.last_name)?.trim()
-      ? { NOM_USUEL: (usager.usual_name ?? usager.last_name)!.trim() }
+  const fromContact: Record<string, string> = {
+    ...(contact.civility === "madame" ? { CIVILITE: "MME" } : contact.civility === "monsieur" ? { CIVILITE: "M" } : {}),
+    ...(contact.last_name?.trim() ? { NOM_NAISSANCE: contact.last_name.trim() } : {}),
+    ...((contact.usage_name ?? contact.last_name)?.trim()
+      ? { NOM_USUEL: (contact.usage_name ?? contact.last_name)!.trim() }
       : {}),
-    ...(usager.first_name?.trim() ? { PRENOMS: usager.first_name.trim() } : {}),
-    ...(usager.birth_date ? { DATE_NAISSANCE: usager.birth_date } : {}),
-    ...(usager.email?.trim() ? { EMAIL: usager.email.trim() } : {}),
-    ...phoneEntries(usager.phone, { mobile: "TEL_MOBILE", fixe: "TEL_FIXE" }),
+    ...(contact.first_name?.trim() ? { PRENOMS: contact.first_name.trim() } : {}),
+    ...(contact.birth_date ? { DATE_NAISSANCE: contact.birth_date } : {}),
+    ...(contact.email?.trim() ? { EMAIL: contact.email.trim() } : {}),
+    ...(contact.mobile_phone?.trim() ? { TEL_MOBILE: contact.mobile_phone.trim() } : {}),
+    ...(contact.landline_phone?.trim() ? { TEL_FIXE: contact.landline_phone.trim() } : {}),
   };
-  return mergeNonEmpty(fromUsager, fromParticipant);
+  return mergeNonEmpty(fromContact, fromParticipant);
 }
 
 /** Convertit le prefill LLM historique (clés Arpège) vers les clés demandeur Socle. */
@@ -171,15 +173,33 @@ export function arpegePrefillToSocleRequester(prefill: ArpegePrefill | null | un
 // ── Audience ────────────────────────────────────────────────────────────────
 
 /**
- * Public présélectionné : catégorie de l'usager lié > déduction LLM > premier
+ * Public candidat d'après le type du contact Socle. `administration` n'a pas
+ * d'équivalent parmi les publics des démarches → null (on retombe sur le LLM
+ * puis le premier public activé).
+ */
+export function contactTypeToAudience(contactType: string | null | undefined): Audience | null {
+  switch (contactType) {
+    case "personne":
+      return "citoyen";
+    case "entreprise":
+      return "entreprise";
+    case "association":
+      return "association";
+    default:
+      return null;
+  }
+}
+
+/**
+ * Public présélectionné : type du contact lié > déduction LLM > premier
  * public activé. Une candidate absente des publics activés est ignorée.
  */
 export function resolveAudience(
   enabled: Audience[],
-  usagerCategory?: string | null,
+  contactAudience?: string | null,
   llmAudience?: string | null,
 ): Audience | null {
-  for (const candidate of [usagerCategory, llmAudience]) {
+  for (const candidate of [contactAudience, llmAudience]) {
     if (candidate && (enabled as string[]).includes(candidate)) return candidate as Audience;
   }
   return enabled[0] ?? null;

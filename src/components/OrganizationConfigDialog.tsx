@@ -187,7 +187,7 @@ export default function OrganizationConfigDialog({ open, onOpenChange, org, orgI
             {org.name}
           </DialogTitle>
           <DialogDescription>
-            Libellé et coordonnées sont gérés dans le Socle. Configurez ici le traitement
+            Libellé et coordonnées sont gérés dans le référentiel. Configurez ici le traitement
             des courriers de cette organisation.
           </DialogDescription>
         </DialogHeader>
@@ -376,23 +376,20 @@ export default function OrganizationConfigDialog({ open, onOpenChange, org, orgI
 function RootOrgSettings({ orgId }: { orgId: string }) {
   const queryClient = useQueryClient();
   const [courierRetention, setCourierRetention] = useState("");
-  const [usagerRetention, setUsagerRetention] = useState("");
 
   const { data: org } = useQuery({
     queryKey: ["org-general", orgId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("organizations")
-        .select("id, multiple_imap, domiciliary_file_enabled, courier_retention_days, usager_retention_days")
+        .select("id, multiple_imap, courier_retention_days")
         .eq("id", orgId)
         .single();
       if (error) throw error;
       return data as unknown as {
         id: string;
         multiple_imap: boolean;
-        domiciliary_file_enabled: boolean;
         courier_retention_days: number | null;
-        usager_retention_days: number | null;
       };
     },
     enabled: !!orgId,
@@ -401,7 +398,6 @@ function RootOrgSettings({ orgId }: { orgId: string }) {
   useEffect(() => {
     if (!org) return;
     setCourierRetention(org.courier_retention_days != null ? String(org.courier_retention_days) : "");
-    setUsagerRetention(org.usager_retention_days != null ? String(org.usager_retention_days) : "");
   }, [org]);
 
   const toggleMutation = useMutation({
@@ -414,22 +410,6 @@ function RootOrgSettings({ orgId }: { orgId: string }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["org-general", orgId] });
-      toast.success("Configuration enregistrée");
-    },
-    onError: (e: Error) => toast.error("Erreur : " + e.message),
-  });
-
-  const domiciliaryToggleMutation = useMutation({
-    mutationFn: async (value: boolean) => {
-      const { error } = await supabase
-        .from("organizations")
-        .update({ domiciliary_file_enabled: value })
-        .eq("id", orgId);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["org-general", orgId] });
-      queryClient.invalidateQueries({ queryKey: ["org-domiciliary-file-enabled", orgId] });
       toast.success("Configuration enregistrée");
     },
     onError: (e: Error) => toast.error("Erreur : " + e.message),
@@ -448,7 +428,6 @@ function RootOrgSettings({ orgId }: { orgId: string }) {
         .from("organizations")
         .update({
           courier_retention_days: parse(courierRetention),
-          usager_retention_days: parse(usagerRetention),
         })
         .eq("id", orgId);
       if (error) throw error;
@@ -480,24 +459,6 @@ function RootOrgSettings({ orgId }: { orgId: string }) {
         />
       </div>
 
-      <div className="flex items-center justify-between rounded-lg border p-3 gap-3">
-        <div className="flex items-start gap-2">
-          <Home className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-          <div>
-            <Label className="text-sm font-medium">Mode fichier domiciliaire</Label>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Informations supplémentaires sur les usagers (nom usuel, dates de naissance/décès,
-              situation familiale, dates d'arrivée/départ, nationalité, adresse détaillée, second téléphone).
-            </p>
-          </div>
-        </div>
-        <Switch
-          checked={org?.domiciliary_file_enabled ?? false}
-          disabled={domiciliaryToggleMutation.isPending}
-          onCheckedChange={(val) => domiciliaryToggleMutation.mutate(val)}
-        />
-      </div>
-
       <div className="rounded-lg border p-3 space-y-3">
         <Label className="text-sm font-medium">Conservation et purge</Label>
         <div className="grid grid-cols-2 gap-3">
@@ -513,20 +474,6 @@ function RootOrgSettings({ orgId }: { orgId: string }) {
               value={courierRetention}
               onChange={(e) => setCourierRetention(e.target.value)}
               placeholder="Ex. 365"
-            />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="root-usager-retention" className="text-xs text-muted-foreground">
-              Usagers inactifs (jours)
-            </Label>
-            <Input
-              id="root-usager-retention"
-              type="number"
-              min={1}
-              step={1}
-              value={usagerRetention}
-              onChange={(e) => setUsagerRetention(e.target.value)}
-              placeholder="Ex. 1095"
             />
           </div>
         </div>

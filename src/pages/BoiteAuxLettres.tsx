@@ -101,7 +101,7 @@ export default function BoiteAuxLettres() {
       if (!organizationId || !initialStateIds?.length) return [];
       let query = supabase
         .from("couriers")
-        .select("id, subject, direction, channel, received_at, sent_at, workflow_state_id, assigned_service, socle_organization_id, metadata, chrono, created_at, updated_at, courier_participants(id, role, name, email, usager_id)")
+        .select("id, subject, direction, channel, received_at, sent_at, workflow_state_id, assigned_service, socle_organization_id, metadata, chrono, created_at, updated_at, courier_participants(id, role, name, email, socle_contact_id)")
         .eq("organization_id", organizationId)
         .eq("direction", "inbound")
         .in("workflow_state_id", initialStateIds)
@@ -124,7 +124,7 @@ export default function BoiteAuxLettres() {
       if (!organizationId) return [];
       let query = supabase
         .from("couriers")
-        .select("id, subject, direction, channel, received_at, sent_at, workflow_state_id, assigned_service, socle_organization_id, metadata, chrono, created_at, updated_at, courier_participants(id, role, name, email, usager_id)")
+        .select("id, subject, direction, channel, received_at, sent_at, workflow_state_id, assigned_service, socle_organization_id, metadata, chrono, created_at, updated_at, courier_participants(id, role, name, email, socle_contact_id)")
         .eq("organization_id", organizationId)
         .eq("direction", "inbound")
         .is("workflow_state_id", null)

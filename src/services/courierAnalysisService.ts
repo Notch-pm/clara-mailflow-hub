@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import type { SocleContact } from "@/services/socleContactService";
 
 export interface CourierDocumentExtract {
   id: string;
@@ -66,23 +67,14 @@ export interface FilePayload {
   content_base64: string;
 }
 
-export interface MatchedUsager {
-  id: string;
-  first_name: string | null;
-  last_name: string | null;
-  email: string | null;
-  phone: string | null;
-  category: string;
-  civilite: string | null;
-}
-
 export interface ExtractCourierInfoResult {
   suggested_subject: string | null;
   sender: SuggestedSender;
   recipient_name: string | null;
   suggested_service_name: string | null;
   suggested_tag_names: string[];
-  matched_usager: MatchedUsager | null;
+  /** Contact Socle rapproché par email (fiche complète sérialisée par contacts-api). */
+  matched_contact: SocleContact | null;
   extracted_text: string | null;
   quota_exceeded?: boolean;
 }

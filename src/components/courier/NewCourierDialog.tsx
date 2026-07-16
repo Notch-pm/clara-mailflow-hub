@@ -36,22 +36,20 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { readableTextColor } from "@/lib/tag-color";
 import { supabase } from "@/integrations/supabase/client";
-import { createUsager } from "@/services/usagerService";
 import { createCourier } from "@/services/courierService";
 import { addParticipant } from "@/services/courierParticipantService";
 import { assignableOrgs, listOrgsWithConfig } from "@/services/socleOrgConfigService";
 import { listTags } from "@/services/courierTagService";
 import { storage } from "@/services/storageService";
 import { extractCourierInfo, runFullAnalysis } from "@/services/courierAnalysisService";
-import UsagerPicker from "@/components/courier/UsagerPicker";
-import type { Usager, UsagerCategory } from "@/services/usagerService";
+import ContactPicker from "@/components/courier/ContactPicker";
+import {
+  createContact,
+  SOCLE_CONTACT_TYPE_LABELS,
+  type SocleContact,
+  type SocleContactCivility,
+} from "@/services/socleContactService";
 import type { CourierChannel } from "@/types/courier";
-
-const categoryLabels: Record<UsagerCategory, string> = {
-  citoyen: "Citoyen",
-  entreprise: "Entreprise",
-  association: "Association",
-};
 
 const channelOptions: { value: CourierChannel; label: string }[] = [
   { value: "paper", label: "Papier" },
@@ -92,7 +90,8 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
   const [receivedAt, setReceivedAt] = useState(() =>
     new Date().toISOString().slice(0, 10),
   );
-  const [senderUsager, setSenderUsager] = useState<Usager | null>(null);
+  const [senderContact, setSenderContact] = useState<SocleContact | null>(null);
+  const [extractedCivility, setExtractedCivility] = useState<SocleContactCivility | "">("");
   const [recipientName, setRecipientName] = useState("");
   const [serviceId, setServiceId] = useState<string>("");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -120,7 +119,8 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
     setSubject("");
     setChannel("paper");
     setReceivedAt(new Date().toISOString().slice(0, 10));
-    setSenderUsager(null);
+    setSenderContact(null);
+    setExtractedCivility("");
     setRecipientName("");
     setServiceId("");
     setSelectedTags([]);
@@ -262,17 +262,17 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
       if (cErr) throw cErr;
       if (!courier) throw new Error("Création échouée");
 
-      if (senderUsager) {
+      if (senderContact) {
         await addParticipant({
           courier_id: courier.id,
           organization_id: organizationId,
           role: "sender",
-          name: [senderUsager.first_name, senderUsager.last_name].filter(Boolean).join(" ").trim() || null,
-          first_name: senderUsager.first_name,
-          last_name: senderUsager.last_name,
-          email: senderUsager.email,
-          phone: senderUsager.phone,
-          usager_id: senderUsager.id,
+          name: senderContact.display_name,
+          first_name: senderContact.first_name,
+          last_name: senderContact.last_name ?? senderContact.legal_name,
+          email: senderContact.email,
+          phone: senderContact.mobile_phone ?? senderContact.landline_phone,
+          socle_contact_id: senderContact.id,
         });
       }
       if (recipientName.trim()) {
@@ -358,8 +358,8 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
       }
 
       // Pre-fill sender
-      if (result.matched_usager) {
-        setSenderUsager(result.matched_usager as any);
+      if (result.matched_contact) {
+        setSenderContact(result.matched_contact);
         setExtractedSender(null);
         filled.push("expéditeur reconnu");
       } else if (result.sender.first_name || result.sender.last_name) {
@@ -720,8 +720,8 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
 
               {/* Colonne droite — Expéditeur, Destinataire, Tags */}
               <div className="space-y-4">
-                {/* Extracted sender banner (OCR result not matched to an existing usager) */}
-                {extractedSender && !senderUsager && (
+                {/* Extracted sender banner (OCR result not matched to a Socle contact) */}
+                {extractedSender && !senderContact && (
                   <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
                     <p className="text-xs font-medium text-primary">Expéditeur extrait par l'analyse</p>
                     <div className="text-xs text-muted-foreground space-y-0.5">
@@ -731,29 +731,44 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
                       {extractedSender.email && <div>{extractedSender.email}</div>}
                       {extractedSender.phone && <div>{extractedSender.phone}</div>}
                     </div>
+                    {/* Le Socle exige la civilité pour créer une personne. */}
+                    <Select
+                      value={extractedCivility || undefined}
+                      onValueChange={(v) => setExtractedCivility(v as SocleContactCivility)}
+                    >
+                      <SelectTrigger className="h-7 text-xs">
+                        <SelectValue placeholder="Civilité (requise pour créer)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="madame">Madame</SelectItem>
+                        <SelectItem value="monsieur">Monsieur</SelectItem>
+                      </SelectContent>
+                    </Select>
                     <Button
                       type="button"
                       size="sm"
                       variant="outline"
                       className="w-full h-7 text-xs"
+                      disabled={!extractedCivility}
                       onClick={async () => {
                         try {
-                          const created = await createUsager(organizationId, {
-                            category: "citoyen",
+                          const created = await createContact(organizationId, {
+                            contact_type: "personne",
+                            civility: extractedCivility || null,
                             first_name: extractedSender.first_name,
-                            last_name: extractedSender.last_name,
+                            last_name: extractedSender.last_name || extractedSender.email,
                             email: extractedSender.email,
-                            phone: extractedSender.phone,
+                            mobile_phone: extractedSender.phone,
                           });
-                          setSenderUsager(created as any);
+                          setSenderContact(created);
                           setExtractedSender(null);
-                          toast.success("Usager créé et sélectionné");
+                          toast.success("Contact créé dans le référentiel et sélectionné");
                         } catch (e) {
                           toast.error((e as Error).message);
                         }
                       }}
                     >
-                      Créer et sélectionner cet usager
+                      Créer ce contact dans le référentiel
                     </Button>
                     <button
                       type="button"
@@ -766,17 +781,19 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
                 )}
 
                 <div className="space-y-2">
-                  <Label>Expéditeur (usager)</Label>
-                  <UsagerPicker
+                  <Label>Expéditeur (contact du référentiel)</Label>
+                  <ContactPicker
                     organizationId={organizationId}
-                    value={senderUsager}
-                    onChange={setSenderUsager}
+                    value={senderContact}
+                    onChange={setSenderContact}
                   />
-                  {senderUsager && (
+                  {senderContact && (
                     <div className="text-xs text-muted-foreground space-y-0.5 pt-1">
-                      <div><span className="font-medium">Nature :</span> {categoryLabels[senderUsager.category]}</div>
-                      {senderUsager.email && <div><span className="font-medium">Email :</span> {senderUsager.email}</div>}
-                      {senderUsager.phone && <div><span className="font-medium">Téléphone :</span> {senderUsager.phone}</div>}
+                      <div><span className="font-medium">Type :</span> {SOCLE_CONTACT_TYPE_LABELS[senderContact.contact_type]}</div>
+                      {senderContact.email && <div><span className="font-medium">Email :</span> {senderContact.email}</div>}
+                      {(senderContact.mobile_phone || senderContact.landline_phone) && (
+                        <div><span className="font-medium">Téléphone :</span> {senderContact.mobile_phone ?? senderContact.landline_phone}</div>
+                      )}
                     </div>
                   )}
                 </div>

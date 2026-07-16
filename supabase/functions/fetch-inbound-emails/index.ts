@@ -399,7 +399,8 @@ async function processOrganization(
 
         const participants: any[] = [];
         if (senderEmail) {
-          // L'usager sera créé uniquement lors du passage en instruction (côté frontend).
+          // Données brutes du From: — le rapprochement avec un contact Socle se
+          // fait au passage en instruction (côté frontend), jamais ici.
           participants.push({
             organization_id: s.organization_id,
             courier_id: courier.id,
@@ -408,7 +409,7 @@ async function processOrganization(
             first_name: senderFirstName,
             last_name: senderLastName || senderEmail,
             email: senderEmail,
-            usager_id: null,
+            socle_contact_id: null,
           });
         }
         participants.push({

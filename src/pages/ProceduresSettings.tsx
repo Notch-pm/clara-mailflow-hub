@@ -99,7 +99,7 @@ export default function ProceduresSettings({ organizationId, isAdminOverride }: 
   const syncMutation = useMutation({
     mutationFn: () => triggerSocleSync(orgId),
     onSuccess: (result) => {
-      toast.success("Synchronisation Socle terminée", {
+      toast.success("Synchronisation du référentiel terminée", {
         description: syncSummaryMessage(result),
       });
       queryClient.invalidateQueries({ queryKey: ["procedures", orgId] });
@@ -134,7 +134,7 @@ export default function ProceduresSettings({ organizationId, isAdminOverride }: 
         <div>
           <h2 className="text-xl font-bold tracking-tight">Démarches</h2>
           <p className="text-muted-foreground text-sm">
-            Les démarches sont gérées dans le Socle et synchronisées automatiquement chaque nuit.
+            Les démarches sont gérées dans le référentiel central et synchronisées automatiquement chaque nuit.
             {lastSync?.finished_at && lastSync.status === "success" && (
               <> Dernière synchronisation : {formatSyncDate(lastSync.finished_at)}.</>
             )}
@@ -186,7 +186,7 @@ export default function ProceduresSettings({ organizationId, isAdminOverride }: 
               <p>
                 {search
                   ? "Aucun résultat"
-                  : "Aucune démarche synchronisée — vérifiez le mapping Socle de l'organisation"}
+                  : "Aucune démarche synchronisée — vérifiez le rattachement de l'organisation au référentiel"}
               </p>
             </div>
           ) : (

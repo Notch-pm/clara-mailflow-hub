@@ -3,7 +3,7 @@
 ## 1. Saisie & réception des courriers
 
 ### Saisie manuelle
-- Dialogue `NewCourierDialog.tsx` : direction, canal, sujet, expéditeur/destinataire (via `UsagerPicker`), pièces jointes.
+- Dialogue `NewCourierDialog.tsx` : direction, canal, sujet, expéditeur/destinataire (via `ContactPicker`, branché sur le référentiel de contacts du Socle), pièces jointes.
 - Création via `courierService.createCourier` → numérotation automatique (`courier_sequences` annuel par direction).
 
 ### Réception automatique IMAP
@@ -45,8 +45,10 @@ Service client : `src/services/courierAnalysisService.ts`.
 
 ## 5. Référentiels
 
-### Usagers (`Usagers.tsx`)
-- Annuaire centralisé des personnes connues (citoyens, partenaires…). Auto-alimenté depuis `courier_participants`. Recherche fulltext + édition.
+### Contacts (`Contacts.tsx`, route `/contacts`)
+- **Référentiel servi par le Socle** (source de vérité — plus aucun stockage local d'identité). Liste/recherche (nom, email exact), fiche, création/édition, archivage/restauration via l'edge function `socle-contacts` (proxy de `contacts-api`), service client unique `socleContactService.ts`.
+- La fiche affiche aussi les **courriers liés** (donnée Clara : `courier_participants.socle_contact_id`) et les **relations entre contacts** (« est Gérant de… » / « … est Gérant de ce contact »), éditables via le référentiel ; ces relations apparaissent aussi sur les participants d'un courrier et sous l'expéditeur dans le panneau courrier.
+- Rapprochement automatique de l'expéditeur par email au passage en instruction (best-effort, jamais bloquant) ; pas d'auto-création (le Socle exige la civilité pour une personne).
 
 ### Signataires (`SignaturesSettings.tsx`)
 - Table `signatories` + bucket `signatures`. Chaque signataire a une image PNG transparente utilisée dans les réponses.

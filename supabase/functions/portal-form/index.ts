@@ -245,7 +245,7 @@ Deno.serve(async (req) => {
         last_name: lastName,
         email: senderEmail?.trim() || null,
         phone: senderPhone?.trim() || null,
-        usager_id: null,
+        socle_contact_id: null,
         metadata: {
           category: senderCategory,
           ...(isCitoyen && senderCivilite?.trim() ? { civilite: senderCivilite.trim() } : {}),

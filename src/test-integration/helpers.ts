@@ -31,7 +31,6 @@ export interface TenantFixture {
   signatoryId: string;
   couriers: { assigned: string; root: string; unassigned: string };
   tagId: string;
-  usagerId: string;
 }
 
 function readDotEnv(name: string): string | undefined {

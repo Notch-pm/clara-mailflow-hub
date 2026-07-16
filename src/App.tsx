@@ -20,7 +20,7 @@ const WorkflowDetail = lazy(() => import("@/pages/WorkflowDetail"));
 const StatistiquesPage = lazy(() => import("@/pages/StatistiquesPage"));
 import SettingsPage from "@/pages/SettingsPage";
 import MonProfil from "@/pages/MonProfil";
-import Usagers from "@/pages/Usagers";
+import Contacts from "@/pages/Contacts";
 import RechercheCourrierPage from "@/pages/RechercheCourrierPage";
 import Login from "@/pages/Login";
 import ResetPassword from "@/pages/ResetPassword";
@@ -154,8 +154,8 @@ const App = () => (
                   <Route path="/workflows/:id" element={<Suspense fallback={<LoadingScreen />}><WorkflowDetail /></Suspense>} />
                   <Route path="/parametres" element={<SettingsPage />} />
                   <Route path="/mon-profil" element={<MonProfil />} />
-                  <Route path="/usagers" element={<Usagers />} />
-                  <Route path="/usagers/:id" element={<Usagers />} />
+                  <Route path="/contacts" element={<Contacts />} />
+                  <Route path="/contacts/:id" element={<Contacts />} />
                   <Route path="/recherche" element={<RechercheCourrierPage />} />
                   <Route path="/import-en-masse" element={<BulkImport />} />
                   <Route path="/statistiques" element={<Suspense fallback={<LoadingScreen />}><StatistiquesPage /></Suspense>} />

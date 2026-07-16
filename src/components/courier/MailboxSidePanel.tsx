@@ -54,7 +54,7 @@ import {
 import { useUserServiceFilter } from "@/hooks/useUserServiceFilter";
 import { getDocuments } from "@/services/courierDocumentService";
 import { addParticipant, updateParticipant } from "@/services/courierParticipantService";
-import { findMatchingUsager, createUsager } from "@/services/usagerService";
+import { contactRelationLines, findContactByEmail, getContact } from "@/services/socleContactService";
 import { cn } from "@/lib/utils";
 import { readableTextColor } from "@/lib/tag-color";
 import DocumentManager from "./DocumentManager";
@@ -162,6 +162,22 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
   const participants = courier?.courier_participants ?? [];
   const sender = participants.find((p) => p.role === "sender");
   const recipient = participants.find((p) => p.role === "recipient");
+
+  // Fiche référentiel de l'expéditeur lié : affiche ses relations sous le nom
+  // (ex. « Gérant — Boulangerie du Forum SARL »). Best-effort, jamais bloquant.
+  const { data: senderContact } = useQuery({
+    queryKey: ["socle-contact", organizationId, sender?.socle_contact_id],
+    queryFn: async () => {
+      try {
+        return await getContact(organizationId, sender!.socle_contact_id!);
+      } catch {
+        return null;
+      }
+    },
+    enabled: open && !!organizationId && !!sender?.socle_contact_id,
+    staleTime: 30_000,
+  });
+  const senderRelationLines = senderContact ? contactRelationLines(senderContact) : [];
 
   const countBadge = (n: number) => (
     <span className="inline-flex items-center justify-center rounded-full bg-primary/15 text-primary px-1.5 text-[10px] font-medium leading-none min-w-[18px] h-[18px]">
@@ -480,7 +496,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
         to_name: toStateRow?.name ?? fromState?.name ?? null,
       });
 
-      // First time entering a processing state → instruction_started + usager creation.
+      // First time entering a processing state → instruction_started + contact match.
       if (
         toStateRow?.category === "processing" &&
         fromStateRow?.category !== "processing"
@@ -489,28 +505,21 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
           state_name: toStateRow.name,
         });
 
-        // Créer/lier l'usager expéditeur s'il n'est pas encore rattaché.
+        // Rapprochement automatique de l'expéditeur avec un contact Socle par
+        // email (best-effort : un Socle indisponible ne bloque jamais le passage
+        // en instruction). Pas d'auto-création : le Socle exige la civilité
+        // pour une personne — l'agent crée/associe la fiche via les participants.
         const senderParticipant = courier.courier_participants?.find(
           (p) => p.role === "sender",
         );
-        if (senderParticipant && !senderParticipant.usager_id) {
-          const matched = await findMatchingUsager(organizationId, {
-            email: senderParticipant.email,
-            phone: senderParticipant.phone,
-          });
-          let usagerId: string | null = matched?.id ?? null;
-          if (!usagerId && (senderParticipant.last_name || senderParticipant.email)) {
-            const created = await createUsager(organizationId, {
-              category: "citoyen",
-              first_name: senderParticipant.first_name ?? null,
-              last_name: senderParticipant.last_name || senderParticipant.email || "",
-              email: senderParticipant.email ?? null,
-              phone: senderParticipant.phone ?? null,
-            });
-            usagerId = created.id;
-          }
-          if (usagerId) {
-            await updateParticipant(senderParticipant.id, { usager_id: usagerId });
+        if (senderParticipant && !senderParticipant.socle_contact_id && senderParticipant.email) {
+          try {
+            const matched = await findContactByEmail(organizationId, senderParticipant.email);
+            if (matched) {
+              await updateParticipant(senderParticipant.id, { socle_contact_id: matched.id });
+            }
+          } catch (e) {
+            console.warn("Rapprochement contact Socle impossible :", e);
           }
         }
       }
@@ -522,7 +531,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
       queryClient.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
       queryClient.invalidateQueries({ queryKey: ["instruction-couriers"] });
       queryClient.invalidateQueries({ queryKey: ["courier-events", courier?.id] });
-      queryClient.invalidateQueries({ queryKey: ["usagers"] });
+      queryClient.invalidateQueries({ queryKey: ["courier-participants", courier?.id] });
       toast.success("Courrier déplacé");
 
       // If we just closed this courier and it has linked couriers that are
@@ -963,21 +972,26 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                       onSave={(v) => upsertParticipant("sender", { name: v.trim() || null })}
                       displayClassName="font-semibold"
                     />
-                    {sender?.usager_id && (
+                    {sender?.socle_contact_id && (
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Link
-                            to={`/usagers/${sender.usager_id}`}
+                            to={`/contacts/${sender.socle_contact_id}`}
                             onClick={() => onOpenChange(false)}
                             className="absolute right-0 top-0 inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:text-primary hover:bg-muted transition-colors bg-background"
-                            aria-label="Voir tous les courriers de cet expéditeur"
+                            aria-label="Voir la fiche contact et ses courriers"
                           >
                             <ExternalLink className="h-3.5 w-3.5" />
                           </Link>
                         </TooltipTrigger>
-                        <TooltipContent>Voir tous les courriers de cet expéditeur</TooltipContent>
+                        <TooltipContent>Voir la fiche contact et ses courriers</TooltipContent>
                       </Tooltip>
                     )}
+                    {senderRelationLines.map((line) => (
+                      <div key={line.key} className="text-xs text-muted-foreground truncate">
+                        {line.text}
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>

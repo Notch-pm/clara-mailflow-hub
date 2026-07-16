@@ -65,7 +65,7 @@ export default function SocleIntegrationSettings({ orgId }: { orgId: string }) {
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("Mapping Socle enregistré");
+      toast.success("Rattachement au référentiel enregistré");
       queryClient.invalidateQueries({ queryKey: ["organization-socle-mapping", orgId] });
     },
     onError: (e: Error) => toast.error("Erreur : " + e.message),
@@ -82,9 +82,9 @@ export default function SocleIntegrationSettings({ orgId }: { orgId: string }) {
             <Landmark className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <CardTitle className="text-base">Intégration Socle</CardTitle>
+            <CardTitle className="text-base">Intégration au référentiel</CardTitle>
             <CardDescription>
-              Organisation du Socle dont les démarches activées sont synchronisées chaque nuit.
+              Organisation du référentiel dont les démarches activées sont synchronisées chaque nuit.
             </CardDescription>
           </div>
         </div>
@@ -93,7 +93,7 @@ export default function SocleIntegrationSettings({ orgId }: { orgId: string }) {
         {socleListError ? (
           <div className="space-y-2">
             <Label htmlFor="socle-org-id">
-              Identifiant de l'organisation Socle (UUID)
+              Identifiant de l'organisation dans le référentiel (UUID)
             </Label>
             <Input
               id="socle-org-id"
@@ -102,13 +102,13 @@ export default function SocleIntegrationSettings({ orgId }: { orgId: string }) {
               onChange={(e) => setManualId(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">
-              La liste des organisations Socle n'a pas pu être chargée (fonction non déployée
+              La liste des organisations du référentiel n'a pas pu être chargée (fonction non déployée
               ou clé API absente) — saisissez l'identifiant manuellement.
             </p>
           </div>
         ) : (
           <div className="space-y-2">
-            <Label>Organisation Socle</Label>
+            <Label>Organisation du référentiel</Label>
             <Select value={selected} onValueChange={setSelected}>
               <SelectTrigger className="w-full sm:w-96">
                 <SelectValue placeholder="Choisir une organisation" />

@@ -12,6 +12,31 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       action_tickets: {
@@ -26,6 +51,7 @@ export type Database = {
           id: string
           organization_id: string
           procedure_id: string
+          socle_data: Json | null
           status: string
           updated_at: string
         }
@@ -40,6 +66,7 @@ export type Database = {
           id?: string
           organization_id: string
           procedure_id: string
+          socle_data?: Json | null
           status?: string
           updated_at?: string
         }
@@ -54,6 +81,7 @@ export type Database = {
           id?: string
           organization_id?: string
           procedure_id?: string
+          socle_data?: Json | null
           status?: string
           updated_at?: string
         }
@@ -543,7 +571,7 @@ export type Database = {
           organization_id: string
           phone: string | null
           role: Database["public"]["Enums"]["participant_role"]
-          usager_id: string | null
+          socle_contact_id: string | null
         }
         Insert: {
           address?: string | null
@@ -559,7 +587,7 @@ export type Database = {
           organization_id: string
           phone?: string | null
           role: Database["public"]["Enums"]["participant_role"]
-          usager_id?: string | null
+          socle_contact_id?: string | null
         }
         Update: {
           address?: string | null
@@ -575,7 +603,7 @@ export type Database = {
           organization_id?: string
           phone?: string | null
           role?: Database["public"]["Enums"]["participant_role"]
-          usager_id?: string | null
+          socle_contact_id?: string | null
         }
         Relationships: [
           {
@@ -1031,7 +1059,6 @@ export type Database = {
           contact_email: string | null
           courier_retention_days: number | null
           created_at: string
-          domiciliary_file_enabled: boolean
           id: string
           logo_url: string | null
           metadata: Json
@@ -1048,7 +1075,6 @@ export type Database = {
           socle_org_id: string | null
           status: string
           updated_at: string
-          usager_retention_days: number | null
           website: string | null
         }
         Insert: {
@@ -1059,7 +1085,6 @@ export type Database = {
           contact_email?: string | null
           courier_retention_days?: number | null
           created_at?: string
-          domiciliary_file_enabled?: boolean
           id?: string
           logo_url?: string | null
           metadata?: Json
@@ -1076,7 +1101,6 @@ export type Database = {
           socle_org_id?: string | null
           status?: string
           updated_at?: string
-          usager_retention_days?: number | null
           website?: string | null
         }
         Update: {
@@ -1087,7 +1111,6 @@ export type Database = {
           contact_email?: string | null
           courier_retention_days?: number | null
           created_at?: string
-          domiciliary_file_enabled?: boolean
           id?: string
           logo_url?: string | null
           metadata?: Json
@@ -1104,7 +1127,6 @@ export type Database = {
           socle_org_id?: string | null
           status?: string
           updated_at?: string
-          usager_retention_days?: number | null
           website?: string | null
         }
         Relationships: []
@@ -1296,47 +1318,6 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "procedures_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      quartiers: {
-        Row: {
-          color: string | null
-          created_at: string
-          created_by: string | null
-          geom: unknown
-          id: string
-          name: string
-          organization_id: string
-          updated_at: string
-        }
-        Insert: {
-          color?: string | null
-          created_at?: string
-          created_by?: string | null
-          geom: unknown
-          id?: string
-          name: string
-          organization_id: string
-          updated_at?: string
-        }
-        Update: {
-          color?: string | null
-          created_at?: string
-          created_by?: string | null
-          geom?: unknown
-          id?: string
-          name?: string
-          organization_id?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "quartiers_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
@@ -1952,128 +1933,6 @@ export type Database = {
         }
         Relationships: []
       }
-      usagers: {
-        Row: {
-          address_apartment: string | null
-          address_btq: string | null
-          address_building: string | null
-          address_city: string | null
-          address_complement: string | null
-          address_lat: number | null
-          address_lon: number | null
-          address_number: string | null
-          address_postal_code: string | null
-          address_street: string | null
-          arrival_date: string | null
-          birth_date: string | null
-          category: Database["public"]["Enums"]["usager_category"]
-          civilite: Database["public"]["Enums"]["usager_civilite"] | null
-          created_at: string
-          created_by: string | null
-          death_date: string | null
-          departure_date: string | null
-          email: string | null
-          family_status:
-            | Database["public"]["Enums"]["usager_family_status"]
-            | null
-          first_name: string | null
-          id: string
-          last_name: string | null
-          marriage_date: string | null
-          nationality: string | null
-          organization_id: string
-          pacs_date: string | null
-          phone: string | null
-          phone_2: string | null
-          quartier_auto: boolean
-          quartier_id: string | null
-          updated_at: string
-          usual_name: string | null
-        }
-        Insert: {
-          address_apartment?: string | null
-          address_btq?: string | null
-          address_building?: string | null
-          address_city?: string | null
-          address_complement?: string | null
-          address_lat?: number | null
-          address_lon?: number | null
-          address_number?: string | null
-          address_postal_code?: string | null
-          address_street?: string | null
-          arrival_date?: string | null
-          birth_date?: string | null
-          category?: Database["public"]["Enums"]["usager_category"]
-          civilite?: Database["public"]["Enums"]["usager_civilite"] | null
-          created_at?: string
-          created_by?: string | null
-          death_date?: string | null
-          departure_date?: string | null
-          email?: string | null
-          family_status?:
-            | Database["public"]["Enums"]["usager_family_status"]
-            | null
-          first_name?: string | null
-          id?: string
-          last_name?: string | null
-          marriage_date?: string | null
-          nationality?: string | null
-          organization_id: string
-          pacs_date?: string | null
-          phone?: string | null
-          phone_2?: string | null
-          quartier_auto?: boolean
-          quartier_id?: string | null
-          updated_at?: string
-          usual_name?: string | null
-        }
-        Update: {
-          address_apartment?: string | null
-          address_btq?: string | null
-          address_building?: string | null
-          address_city?: string | null
-          address_complement?: string | null
-          address_lat?: number | null
-          address_lon?: number | null
-          address_number?: string | null
-          address_postal_code?: string | null
-          address_street?: string | null
-          arrival_date?: string | null
-          birth_date?: string | null
-          category?: Database["public"]["Enums"]["usager_category"]
-          civilite?: Database["public"]["Enums"]["usager_civilite"] | null
-          created_at?: string
-          created_by?: string | null
-          death_date?: string | null
-          departure_date?: string | null
-          email?: string | null
-          family_status?:
-            | Database["public"]["Enums"]["usager_family_status"]
-            | null
-          first_name?: string | null
-          id?: string
-          last_name?: string | null
-          marriage_date?: string | null
-          nationality?: string | null
-          organization_id?: string
-          pacs_date?: string | null
-          phone?: string | null
-          phone_2?: string | null
-          quartier_auto?: boolean
-          quartier_id?: string | null
-          updated_at?: string
-          usual_name?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "usagers_quartier_id_fkey"
-            columns: ["quartier_id"]
-            isOneToOne: false
-            referencedRelation: "quartiers"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       users: {
         Row: {
           avatar_url: string | null
@@ -2437,22 +2296,6 @@ export type Database = {
             }
             Returns: string
           }
-      create_quartier_from_geojson: {
-        Args: {
-          p_color: string
-          p_geojson: Json
-          p_name: string
-          p_org_id: string
-        }
-        Returns: string
-      }
-      create_quartiers_batch: {
-        Args: { p_items: Json; p_org_id: string }
-        Returns: {
-          quartier_id: string
-          quartier_name: string
-        }[]
-      }
       current_user_orgs: { Args: never; Returns: string[] }
       disablelongtransactions: { Args: never; Returns: string }
       dropgeometrycolumn:
@@ -2590,15 +2433,6 @@ export type Database = {
       is_admin_of: { Args: { _org: string }; Returns: boolean }
       is_member_of: { Args: { _org: string }; Returns: boolean }
       is_superadmin: { Args: { _user_id: string }; Returns: boolean }
-      list_quartiers_geojson: {
-        Args: { p_org_id: string }
-        Returns: {
-          color: string
-          geojson: Json
-          id: string
-          name: string
-        }[]
-      }
       longtransactionsenabled: { Args: never; Returns: boolean }
       populate_geometry_columns:
         | { Args: { tbl_oid: unknown; use_typmod?: boolean }; Returns: number }
@@ -2641,14 +2475,6 @@ export type Database = {
       postgis_version: { Args: never; Returns: string }
       postgis_wagyu_version: { Args: never; Returns: string }
       purge_expired_data: { Args: never; Returns: Json }
-      quartier_for_point: {
-        Args: { p_lat: number; p_lon: number; p_org_id: string }
-        Returns: string
-      }
-      recalculate_usager_quartiers: {
-        Args: { p_org_id: string }
-        Returns: undefined
-      }
       release_stale_ai_reservations: {
         Args: { p_max_age_minutes?: number }
         Returns: number
@@ -2676,7 +2502,7 @@ export type Database = {
           p_limit?: number
           p_offset?: number
           p_organization_id: string
-          p_service?: string
+          p_socle_organization_id?: string
           p_tag_names?: string[]
           p_workflow_state_id?: string
         }
@@ -2687,60 +2513,10 @@ export type Database = {
           match_in: string[]
           organization_id: string
           received_at: string
+          socle_organization_id: string
           subject: string
           total_count: number
           workflow_state_id: string
-        }[]
-      }
-      search_usagers: {
-        Args: {
-          p_birthday_years?: number[]
-          p_limit?: number
-          p_marriage_anniv_years?: number[]
-          p_max_inbound?: number
-          p_min_inbound?: number
-          p_offset?: number
-          p_org_id: string
-          p_quartier_ids?: string[]
-          p_search?: string
-          p_sent_from?: string
-          p_sent_to?: string
-        }
-        Returns: {
-          address_apartment: string
-          address_btq: string
-          address_building: string
-          address_city: string
-          address_complement: string
-          address_lat: number
-          address_lon: number
-          address_number: string
-          address_postal_code: string
-          address_street: string
-          arrival_date: string
-          birth_date: string
-          category: Database["public"]["Enums"]["usager_category"]
-          civilite: Database["public"]["Enums"]["usager_civilite"]
-          created_at: string
-          created_by: string
-          death_date: string
-          departure_date: string
-          email: string
-          family_status: Database["public"]["Enums"]["usager_family_status"]
-          first_name: string
-          id: string
-          inbound_count: number
-          last_name: string
-          marriage_date: string
-          nationality: string
-          organization_id: string
-          pacs_date: string
-          phone: string
-          phone_2: string
-          quartier_auto: boolean
-          quartier_id: string
-          updated_at: string
-          usual_name: string
         }[]
       }
       settle_ai_usage: {
@@ -3329,7 +3105,11 @@ export type Database = {
         Returns: unknown
       }
       stats_by_channel: {
-        Args: { p_org_id: string; p_service_name?: string; p_since?: string }
+        Args: {
+          p_org_id: string
+          p_since?: string
+          p_socle_organization_id?: string
+        }
         Returns: {
           channel: string
           count: number
@@ -3340,17 +3120,22 @@ export type Database = {
         Returns: {
           count: number
           service_name: string
+          socle_organization_id: string
         }[]
       }
       stats_inbound_by_day: {
-        Args: { p_org_id: string; p_service_name?: string }
+        Args: { p_org_id: string; p_socle_organization_id?: string }
         Returns: {
           count: number
           day: string
         }[]
       }
       stats_inbound_by_month: {
-        Args: { p_months?: number; p_org_id: string; p_service_name?: string }
+        Args: {
+          p_months?: number
+          p_org_id: string
+          p_socle_organization_id?: string
+        }
         Returns: {
           count: number
           month: string
@@ -3363,30 +3148,30 @@ export type Database = {
           avg_days_to_processed: number
           courier_count: number
           service_name: string
+          socle_organization_id: string
         }[]
       }
       stats_replies_by_month: {
-        Args: { p_months?: number; p_org_id: string; p_service_name?: string }
+        Args: {
+          p_months?: number
+          p_org_id: string
+          p_socle_organization_id?: string
+        }
         Returns: {
           count: number
           month: string
         }[]
       }
       stats_tag_evolution: {
-        Args: { p_org_id: string; p_service_name?: string; p_since?: string }
+        Args: {
+          p_org_id: string
+          p_since?: string
+          p_socle_organization_id?: string
+        }
         Returns: {
           count: number
           period: string
           tag_name: string
-        }[]
-      }
-      stats_usagers_by_quartier: {
-        Args: { p_org_id: string }
-        Returns: {
-          color: string
-          count: number
-          quartier_id: string
-          quartier_name: string
         }[]
       }
       trigger_arpege_sync: { Args: never; Returns: number }
@@ -3403,16 +3188,6 @@ export type Database = {
         }
         Returns: string
       }
-      usagers_outside_quartiers: {
-        Args: { p_org_id: string }
-        Returns: {
-          address_lat: number
-          address_lon: number
-          first_name: string
-          id: string
-          last_name: string
-        }[]
-      }
     }
     Enums: {
       courier_channel: "paper" | "email" | "portal"
@@ -3422,14 +3197,6 @@ export type Database = {
       document_type: "original" | "response" | "attachment"
       participant_role: "sender" | "recipient" | "cc"
       sync_status: "pending" | "synced" | "error"
-      usager_category: "citoyen" | "entreprise" | "association"
-      usager_civilite: "madame" | "monsieur"
-      usager_family_status:
-        | "celibataire"
-        | "marie"
-        | "pacse"
-        | "inconnu"
-        | "divorce"
       workflow_category: "pending" | "processing" | "processed" | "archived"
       workflow_type: "inbound" | "reply"
     }
@@ -3565,6 +3332,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       courier_channel: ["paper", "email", "portal"],
@@ -3574,15 +3344,6 @@ export const Constants = {
       document_type: ["original", "response", "attachment"],
       participant_role: ["sender", "recipient", "cc"],
       sync_status: ["pending", "synced", "error"],
-      usager_category: ["citoyen", "entreprise", "association"],
-      usager_civilite: ["madame", "monsieur"],
-      usager_family_status: [
-        "celibataire",
-        "marie",
-        "pacse",
-        "inconnu",
-        "divorce",
-      ],
       workflow_category: ["pending", "processing", "processed", "archived"],
       workflow_type: ["inbound", "reply"],
     },

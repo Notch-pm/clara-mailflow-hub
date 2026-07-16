@@ -30,8 +30,8 @@ Définies dans `src/App.tsx`. Trois zones : publique, super-admin, utilisateur a
 | `/parametres` | `SettingsPage` | Hub vers sous-paramètres. |
 | `/mon-profil` | `MonProfil` | Profil utilisateur. |
 | `/liens` | `Liens` | Liens utiles configurables. |
-| `/usagers` | `Usagers` | Annuaire des usagers. |
-| `/usagers/:id` | `Usagers` | Fiche usager. |
+| `/contacts` | `Contacts` | Annuaire des contacts (référentiel Socle via contacts-api). |
+| `/contacts/:id` | `Contacts` | Fiche contact (données Socle + courriers liés). |
 
 ## Sous-pages paramètres
 

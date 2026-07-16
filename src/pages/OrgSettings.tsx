@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Users as UsersIcon, Mail, Plug, Tags, ClipboardList, GitBranch, MapPin, Sparkles, Building2, LucideIcon } from "lucide-react";
+import { ArrowLeft, Users as UsersIcon, Mail, Plug, Tags, ClipboardList, GitBranch, Sparkles, Building2, LucideIcon } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import UsersPage from "./UsersPage";
 import SmtpSettings from "@/components/SmtpSettings";
@@ -15,19 +15,17 @@ import ClassificationSettings from "./ClassificationSettings";
 import ProceduresSettings from "./ProceduresSettings";
 import SocleIntegrationSettings from "@/components/SocleIntegrationSettings";
 import SocleOrganizationTree from "@/components/SocleOrganizationTree";
-import QuartiersSettings from "./QuartiersSettings";
 import AiUsageSettings from "@/components/AiUsageSettings";
 
-type Section = "menu" | "utilisateurs" | "smtp" | "integrations" | "classification" | "demarches" | "organisations" | "quartiers" | "ia";
+type Section = "menu" | "utilisateurs" | "smtp" | "integrations" | "classification" | "demarches" | "organisations" | "ia";
 
 const settingSections: { key: Section; title: string; description: string; icon: LucideIcon }[] = [
-  { key: "organisations", title: "Organisations", description: "Hiérarchie du Socle : workflows, boîtes IMAP, membres et signataires par organisation", icon: Building2 },
+  { key: "organisations", title: "Organisations", description: "Hiérarchie des organisations du référentiel : workflows, boîtes IMAP, membres et signataires par organisation", icon: Building2 },
   { key: "utilisateurs", title: "Utilisateurs", description: "Gestion des utilisateurs et rôles", icon: UsersIcon },
   { key: "smtp", title: "Emails (SMTP / IMAP)", description: "Envoi de notifications et réception automatique des courriers", icon: Mail },
   { key: "integrations", title: "Intégrations", description: "Connexions aux partenaires externes (Arpège…)", icon: Plug },
-  { key: "demarches", title: "Démarches", description: "Démarches synchronisées depuis le Socle (référentiel central)", icon: ClipboardList },
+  { key: "demarches", title: "Démarches", description: "Démarches synchronisées depuis le référentiel central", icon: ClipboardList },
   { key: "classification", title: "Classification", description: "Tags de classement des courriers", icon: Tags },
-  { key: "quartiers", title: "Quartiers", description: "Découpage de la commune en quartiers", icon: MapPin },
   { key: "ia", title: "Consommation IA", description: "Plafond et consommation des appels IA (OCR, analyse, brouillons)", icon: Sparkles },
 ];
 
@@ -38,9 +36,8 @@ const sectionLabels: Record<string, string> = {
   smtp: "Emails — SMTP (envoi) & IMAP (réception)",
   integrations: "Intégrations externes",
   demarches: "Démarches administratives",
-  organisations: "Organisations (Socle)",
+  organisations: "Organisations (référentiel)",
   classification: "Classification (tags)",
-  quartiers: "Quartiers",
   ia: "Consommation IA",
 };
 
@@ -100,9 +97,6 @@ export default function OrgSettings() {
           </div>
         )}
         {activeSection === "organisations" && <SocleOrganizationTree orgId={orgId!} isAdminOverride />}
-        {activeSection === "quartiers" && (
-          <QuartiersSettings organizationId={orgId!} isAdminOverride />
-        )}
         {activeSection === "ia" && <AiUsageSettings organizationId={orgId!} editable />}
       </div>
     );

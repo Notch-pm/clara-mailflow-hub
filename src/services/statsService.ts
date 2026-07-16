@@ -11,13 +11,6 @@ export interface StatProcessingPoint {
   avg_days_to_processed: number | null;
   courier_count: number;
 }
-export interface StatQuartierPoint {
-  quartier_id: string | null;
-  quartier_name: string;
-  color: string | null;
-  count: number;
-}
-
 async function rpc<T>(fn: string, params: Record<string, unknown>): Promise<T[]> {
   const { data, error } = await (supabase.rpc as unknown as (
     fn: string,
@@ -107,8 +100,3 @@ export async function getProcessingTimes(
   });
 }
 
-export async function getUsagersByQuartier(orgId: string): Promise<StatQuartierPoint[]> {
-  return rpc<StatQuartierPoint>("stats_usagers_by_quartier", {
-    p_org_id: orgId,
-  });
-}

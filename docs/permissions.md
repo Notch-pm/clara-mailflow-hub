@@ -50,7 +50,7 @@
 | `/courriers-archives` | Archivés | États `archived` |
 | `/courriers-sortants` | Sortants | Réponses + courriers outbound |
 | `/courrier/:id` | Détail courrier | Contenu, IA, historique, notes, liens, réponses |
-| `/usagers`, `/usagers/:id` | Annuaire usagers | Consultation + édition |
+| `/contacts`, `/contacts/:id` | Annuaire des contacts (référentiel Socle) | Consultation + édition via contacts-api |
 | `/recherche` | Recherche transverse | — |
 | `/statistiques` | Statistiques | Lecture seule |
 | `/import-en-masse` | Import en masse | Création de courriers en lot |
@@ -74,14 +74,13 @@ Accessibles depuis `/parametres` :
 
 | Sous-page | Périmètre |
 |---|---|
-| **Configuration générale** | Nom, logo, durées de conservation courriers / usagers |
+| **Configuration générale** | Nom, logo, durée de conservation des courriers |
 | **Utilisateurs** (`UsersPage`) | Inviter, désactiver, changer rôle, marquer signataire |
 | **Services** (`ServicesSettings`) | Créer/éditer services internes + IMAP par service |
 | **Classification / Workflows** | Workflows, états, transitions, catégories, tags |
 | **Modèles de réponse** | CRUD modèles |
 | **Signataires** | CRUD signataires + upload image signature |
 | **Démarches** (`ProceduresSettings`) | CRUD + synchronisation Arpège |
-| **Quartiers** | Référentiel géographique |
 | **SMTP / IMAP organisation** | Configuration email |
 | **Intégrations** (`OrgIntegrations`) | Arpège (URL, client_id, secret) |
 | **Formulaires portail** | Création / diffusion de formulaires publics |

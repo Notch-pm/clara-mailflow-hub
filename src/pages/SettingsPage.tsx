@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Users, ArrowLeft, GitBranch, Settings, Tags, Building2, ClipboardList, Mail, PenTool, FileText, Globe, MapPin, Sparkles, RefreshCw, LucideIcon } from "lucide-react";
+import { Users, ArrowLeft, GitBranch, Settings, Tags, Building2, ClipboardList, Mail, PenTool, FileText, Globe, Sparkles, RefreshCw, LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { triggerSocleSync, type SocleSyncResult } from "@/services/socleSyncService";
 import UsersPage from "./UsersPage";
@@ -11,7 +11,6 @@ import ClassificationSettings from "./ClassificationSettings";
 import ProceduresSettings from "./ProceduresSettings";
 import SignaturesSettings from "./SignaturesSettings";
 import ModeleSettings from "./ModeleSettings";
-import QuartiersSettings from "./QuartiersSettings";
 
 import ImapSettings from "@/components/ImapSettings";
 import SocleOrganizationTree from "@/components/SocleOrganizationTree";
@@ -21,17 +20,16 @@ import { useOrganization } from "@/contexts/OrganizationContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { ShieldAlert } from "lucide-react";
 
-type Section = "menu" | "organisations" | "utilisateurs" | "workflows" | "classification" | "demarches" | "emails" | "signatures" | "modeles" | "portail" | "quartiers" | "ia";
+type Section = "menu" | "organisations" | "utilisateurs" | "workflows" | "classification" | "demarches" | "emails" | "signatures" | "modeles" | "portail" | "ia";
 
 const settingSections: { key: Section; title: string; description: string; icon: LucideIcon }[] = [
-  { key: "organisations", title: "Organisations", description: "Hiérarchie du Socle : workflows, boîtes IMAP, membres et signataires par organisation", icon: Building2 },
+  { key: "organisations", title: "Organisations", description: "Hiérarchie des organisations du référentiel : workflows, boîtes IMAP, membres et signataires par organisation", icon: Building2 },
   { key: "utilisateurs", title: "Utilisateurs", description: "Gestion des membres et rôles", icon: Users },
   { key: "signatures", title: "Signatures et tampons", description: "Signataires et signatures manuscrites", icon: PenTool },
   { key: "emails", title: "Emails (IMAP)", description: "Réception automatique des emails comme courriers entrants", icon: Mail },
   { key: "workflows", title: "Workflows", description: "Processus de traitement du courrier", icon: GitBranch },
   { key: "demarches", title: "Démarches", description: "Liste des démarches administratives proposées", icon: ClipboardList },
   { key: "classification", title: "Classification", description: "Tags de classement des courriers", icon: Tags },
-  { key: "quartiers", title: "Quartiers", description: "Découpage de la commune en quartiers", icon: MapPin },
   { key: "modeles", title: "Modèles de documents", description: "Modèle Word pour les courriers papier", icon: FileText },
   { key: "portail", title: "Portail citoyen", description: "Formulaires intégrables sur votre site web", icon: Globe },
   { key: "ia", title: "Consommation IA", description: "Suivi de la consommation des appels IA (lecture seule)", icon: Sparkles },
@@ -55,14 +53,13 @@ function syncSummaryMessage(result: SocleSyncResult): string {
 }
 
 const sectionLabels: Record<string, string> = {
-  organisations: "Organisations (Socle)",
+  organisations: "Organisations (référentiel)",
   utilisateurs: "Utilisateurs et rôles",
   signatures: "Signatures et tampons",
   emails: "Emails — réception IMAP",
   workflows: "Workflows",
   demarches: "Démarches administratives",
   classification: "Classification (tags)",
-  quartiers: "Quartiers",
   modeles: "Modèles de documents",
   portail: "Portail citoyen — formulaires",
   ia: "Consommation IA",
@@ -82,10 +79,10 @@ export default function SettingsPage() {
     onSuccess: (result) => {
       const orgResult = result.results?.[0];
       if (orgResult?.status === "error") {
-        toast.error("Échec de la synchronisation Socle : " + (orgResult.error ?? "erreur inconnue"));
+        toast.error("Échec de la synchronisation du référentiel : " + (orgResult.error ?? "erreur inconnue"));
         return;
       }
-      toast.success("Synchronisation Socle terminée", {
+      toast.success("Synchronisation du référentiel terminée", {
         description: syncSummaryMessage(result),
       });
       // Rafraîchit toutes les données miroir du Socle (préfixes, toutes orgs confondues).
@@ -93,7 +90,7 @@ export default function SettingsPage() {
         queryClient.invalidateQueries({ queryKey: [key] });
       }
     },
-    onError: (e: Error) => toast.error("Échec de la synchronisation Socle : " + e.message),
+    onError: (e: Error) => toast.error("Échec de la synchronisation du référentiel : " + e.message),
   });
 
   if (!isAllowed) {
@@ -144,7 +141,6 @@ export default function SettingsPage() {
         )}
         {activeSection === "workflows" && <Workflows />}
         {activeSection === "classification" && <ClassificationSettings />}
-        {activeSection === "quartiers" && <QuartiersSettings />}
         {activeSection === "demarches" && <ProceduresSettings />}
         {activeSection === "signatures" && <SignaturesSettings />}
         {activeSection === "modeles" && organizationId && (
@@ -176,7 +172,7 @@ export default function SettingsPage() {
             className="gap-2 shrink-0"
           >
             <RefreshCw className={`h-4 w-4 ${socleSyncMutation.isPending ? "animate-spin" : ""}`} />
-            {socleSyncMutation.isPending ? "Synchronisation en cours…" : "Synchronisation Socle"}
+            {socleSyncMutation.isPending ? "Synchronisation en cours…" : "Synchronisation du référentiel"}
           </Button>
         )}
       </div>

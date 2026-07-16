@@ -21,7 +21,6 @@ beforeAll(async () => {
 // Tables métier lisibles par un simple membre (policy is_member_of)
 const MEMBER_READABLE_TABLES = [
   "couriers",
-  "usagers",
   "courier_tags",
   "workflows",
   "workflow_states",
@@ -148,7 +147,7 @@ describe("Isolation en écriture (cross-tenant rejeté)", () => {
 describe("Anonyme : aucune donnée accessible", () => {
   it("couriers/organizations/socle_organizations : 0 ligne sans authentification", async () => {
     const anon = anonClient();
-    for (const table of ["couriers", "organizations", "socle_organizations", "usagers"]) {
+    for (const table of ["couriers", "organizations", "socle_organizations"]) {
       const { data } = await anon.from(table).select("*").limit(10);
       expect(data ?? []).toEqual([]);
     }

@@ -22,7 +22,7 @@ const baseNavItems: NavItem[] = [
   { title: "Courriers traités", url: "/courriers-traites", icon: CheckCircle2 },
   { title: "Courriers archivés", url: "/courriers-archives", icon: Archive },
   { title: "Courriers sortants", url: "/courriers-sortants", icon: Send },
-  { title: "Usagers", url: "/usagers", icon: Users },
+  { title: "Contacts", url: "/contacts", icon: Users },
   { title: "Recherche", url: "/recherche", icon: Search },
   { title: "Statistiques", url: "/statistiques", icon: BarChart3 },
 ];

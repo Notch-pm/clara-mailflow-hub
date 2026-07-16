@@ -8,6 +8,7 @@ import {
   validateAgainstNames,
   cleanSenderFields,
 } from "../_shared/courierFieldSuggestions.ts";
+import { contactsApiKeyForOrg, fetchContactsApi } from "../_shared/socleContactsClient.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -368,30 +369,39 @@ ${combinedText}`;
     const senderEmail = sender.email;
     const senderLastName = sender.last_name;
 
-    // Match sender against usagers (email first, then last_name)
-    let matchedUsager = null;
+    // Rapprochement de l'expéditeur avec un contact du référentiel Socle
+    // (email exact d'abord, puis nom dans display_name). Best-effort : un Socle
+    // indisponible ne fait pas échouer l'extraction.
+    let matchedContact: unknown = null;
 
     if (senderEmail || senderLastName) {
-      if (senderEmail) {
-        const { data } = await admin
-          .from("usagers")
-          .select("id, first_name, last_name, email, phone, category, civilite")
-          .eq("organization_id", orgId)
-          .ilike("email", senderEmail)
-          .limit(1)
-          .maybeSingle();
-        if (data) matchedUsager = data;
-      }
-
-      if (!matchedUsager && senderLastName) {
-        const { data } = await admin
-          .from("usagers")
-          .select("id, first_name, last_name, email, phone, category, civilite")
-          .eq("organization_id", orgId)
-          .ilike("last_name", senderLastName)
-          .limit(1)
-          .maybeSingle();
-        if (data) matchedUsager = data;
+      try {
+        const { data: org } = await admin
+          .from("organizations")
+          .select("socle_org_id")
+          .eq("id", orgId)
+          .single();
+        const contactsKey = contactsApiKeyForOrg(org?.socle_org_id as string | null);
+        if (contactsKey) {
+          if (senderEmail) {
+            const { body } = await fetchContactsApi(contactsKey, {
+              method: "GET",
+              path: `/v1/contacts?email=${encodeURIComponent(senderEmail)}&limit=1`,
+              idempotent: true,
+            });
+            if (Array.isArray(body) && body.length > 0) matchedContact = body[0];
+          }
+          if (!matchedContact && senderLastName) {
+            const { body } = await fetchContactsApi(contactsKey, {
+              method: "GET",
+              path: `/v1/contacts?search=${encodeURIComponent(senderLastName)}&limit=1`,
+              idempotent: true,
+            });
+            if (Array.isArray(body) && body.length > 0) matchedContact = body[0];
+          }
+        }
+      } catch (e) {
+        console.warn("extract-courier-info: rapprochement contact Socle impossible:", e);
       }
     }
 
@@ -401,7 +411,7 @@ ${combinedText}`;
       recipient_name: nullIfEmpty(extracted.recipient_name),
       suggested_service_name: suggestedService,
       suggested_tag_names: suggestedTags,
-      matched_usager: matchedUsager,
+      matched_contact: matchedContact,
       extracted_text: extractedText.slice(0, 10_000),
       // true si certains fichiers du lot n'ont pas pu être OCRisés faute de quota
       // (mais l'extraction a quand même pu se faire sur les fichiers déjà traités).

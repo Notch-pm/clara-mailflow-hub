@@ -45,7 +45,7 @@ import { logEvent } from "@/services/courierEventService";
 import { getDocuments } from "@/services/courierDocumentService";
 import { getOrgMembers } from "@/services/userService";
 import { getParticipants } from "@/services/courierParticipantService";
-import { getUsager } from "@/services/usagerService";
+import { getContact, type SocleContact } from "@/services/socleContactService";
 import { UserAvatar } from "@/components/UserAvatar";
 import PiecesJointesField from "./PiecesJointesField";
 import { SocleFormFields, SocleRequesterForm } from "./SocleDemandeForm";
@@ -62,10 +62,11 @@ import {
 import {
   applySocleFormPrefill,
   arpegePrefillToSocleRequester,
+  contactToArpegeValues,
+  contactToSocleRequester,
+  contactTypeToAudience,
   mergeNonEmpty,
   resolveAudience,
-  usagerToArpegeValues,
-  usagerToSocleRequester,
   type SenderParticipantLike,
   type SoclePrefill,
 } from "@/lib/prefill-mapping";
@@ -540,7 +541,7 @@ export default function CreateTicketDialog({
     enabled: hasPiecesJointesField && open,
   });
 
-  // Expéditeur structuré du courrier (participant sender → usager lié) :
+  // Expéditeur structuré du courrier (participant sender → contact Socle lié) :
   // source prioritaire du préremplissage demandeur, devant l'extraction LLM.
   const { data: participants, isLoading: loadingParticipants } = useQuery({
     queryKey: ["courier-participants", courierId],
@@ -554,10 +555,18 @@ export default function CreateTicketDialog({
       ) ?? null,
     [participants],
   );
-  const { data: senderUsager } = useQuery({
-    queryKey: ["usager", senderParticipant?.usager_id],
-    queryFn: () => getUsager(senderParticipant!.usager_id!),
-    enabled: open && !isEdit && !!senderParticipant?.usager_id,
+  // Best-effort : un Socle indisponible ou une fiche supprimée ne doit jamais
+  // bloquer la création de demande (on retombe sur le participant brut).
+  const { data: senderContact } = useQuery<SocleContact | null>({
+    queryKey: ["socle-contact", organizationId, senderParticipant?.socle_contact_id],
+    queryFn: async () => {
+      try {
+        return await getContact(organizationId, senderParticipant!.socle_contact_id!);
+      } catch {
+        return null;
+      }
+    },
+    enabled: open && !isEdit && !!senderParticipant?.socle_contact_id,
   });
 
   // Application du préremplissage — une seule fois par (ouverture, démarche),
@@ -571,16 +580,16 @@ export default function CreateTicketDialog({
     }
     if (isEdit || !procedureId || !selectedProcedure) return;
     if (loadingParticipants) return;
-    // Un usager est attendu : attendre son chargement avant d'appliquer.
-    if (senderParticipant?.usager_id && senderUsager === undefined) return;
+    // Un contact Socle est attendu : attendre son chargement avant d'appliquer.
+    if (senderParticipant?.socle_contact_id && senderContact === undefined) return;
     if (prefillAppliedRef.current === procedureId) return;
     prefillAppliedRef.current = procedureId;
 
-    const usager = senderUsager ?? null;
+    const contact = senderContact ?? null;
 
     if (isArpege) {
       setArpegeValues(
-        mergeNonEmpty(usagerToArpegeValues(usager, senderParticipant), initialArpegeValues ?? {}),
+        mergeNonEmpty(contactToArpegeValues(contact, senderParticipant), initialArpegeValues ?? {}),
       );
       return;
     }
@@ -591,12 +600,16 @@ export default function CreateTicketDialog({
     const fromSuggestion = procedureId === initialProcedureId ? initialSoclePrefill : null;
     if (socleConfig) {
       setSocleAudience(
-        resolveAudience(socleAudiencesList, usager?.category ?? null, fromSuggestion?.audience ?? null),
+        resolveAudience(
+          socleAudiencesList,
+          contactTypeToAudience(contact?.contact_type),
+          fromSuggestion?.audience ?? null,
+        ),
       );
     }
     setSocleRequesterValues(
       mergeNonEmpty(
-        usagerToSocleRequester(usager, senderParticipant),
+        contactToSocleRequester(contact, senderParticipant),
         arpegePrefillToSocleRequester(initialArpegeValues),
       ),
     );
@@ -606,7 +619,7 @@ export default function CreateTicketDialog({
   }, [
     open, isEdit, procedureId, selectedProcedure, isArpege, showSocleForm,
     socleConfig, socleAudiencesList, socleSchema, loadingParticipants,
-    senderParticipant, senderUsager, initialArpegeValues, initialSoclePrefill,
+    senderParticipant, senderContact, initialArpegeValues, initialSoclePrefill,
     initialProcedureId,
   ]);
 

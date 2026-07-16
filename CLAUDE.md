@@ -11,7 +11,7 @@
 - **Traiter** via workflows configurables (états + transitions), tags, assignation à une **organisation** (hiérarchie synchronisée depuis le Socle — les organisations remplacent les anciens « services »), tickets d'action.
 - **Répondre** : brouillon généré par IA, signature électronique (image), envoi via SMTP de l'organisation.
 - **Tracer** : historique d'événements, notes, liens entre courriers, références séquentielles annuelles.
-- **Référentiels** : usagers (expéditeurs/destinataires), signataires, modèles, démarches (sync nocturne depuis le **Socle**, le référentiel central de la gamme — plus de paramétrage des démarches dans Clara).
+- **Référentiels** : contacts/usagers (servis par l’API du **Socle** — aucune identité stockée dans Clara, seulement des références `socle_contact_id`), signataires, modèles, démarches (sync nocturne depuis le Socle — plus de paramétrage des démarches dans Clara).
 
 Multi-tenant strict : toute donnée est scopée par `organization_id`. Repo (privé) : <https://github.com/Notch-pm/clara-mailflow-hub>.
 
@@ -57,7 +57,7 @@ docs/             # Documentation détaillée pour Claude Code (ce répertoire)
 |---|---|
 | `docs/data-model.md` | Schéma DB, RLS multi-tenant, conventions tables/colonnes. |
 | `docs/features.md` | Détail des grandes fonctionnalités (courriers, workflows, IA, réponses, Arpège). |
-| `docs/edge-functions.md` | Liste des 12 edge functions, leur rôle, leurs secrets. |
+| `docs/edge-functions.md` | Liste des edge functions, leur rôle, leurs secrets. |
 | `docs/routes.md` | Map URL → page → rôle requis. |
 | `docs/conventions.md` | Style de code, design system, patterns récurrents. |
 | `docs/security.md` | Modèle de sécurité, RLS, secrets, ce qui est public intentionnellement. |

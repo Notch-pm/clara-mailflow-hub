@@ -62,7 +62,7 @@ async function cleanup() {
       "imap_settings", "smtp_settings", "portal_forms",
       "socle_organizations", "socle_categories", "socle_document_types", "socle_sync_runs",
       "workflow_transitions", "workflow_states", "workflows",
-      "courier_tags", "usagers", "signatories", "service_members", "service_signatories",
+      "courier_tags", "signatories", "service_members", "service_signatories",
       "services", "notifications", "procedures", "organization_users",
     ];
     for (const table of tablesByOrg) {
@@ -132,7 +132,6 @@ interface TenantFixture {
   signatoryId: string;
   couriers: { assigned: string; root: string; unassigned: string };
   tagId: string;
-  usagerId: string;
 }
 
 async function seedTenant(letter: "Alpha" | "Beta"): Promise<TenantFixture> {
@@ -241,9 +240,6 @@ async function seedTenant(letter: "Alpha" | "Beta"): Promise<TenantFixture> {
   const tag = await insertOne<{ id: string }>("courier_tags", {
     organization_id: org.id, name: `${TEST_PREFIX} Tag ${letter}`, color: "#0acf83",
   });
-  const usager = await insertOne<{ id: string }>("usagers", {
-    organization_id: org.id, first_name: "Usager", last_name: `${TEST_PREFIX} ${letter}`,
-  });
 
   return {
     orgId: org.id, name,
@@ -253,7 +249,7 @@ async function seedTenant(letter: "Alpha" | "Beta"): Promise<TenantFixture> {
     replyStates: { initial: rInitial.id, signature: rSignature.id, final: rFinal.id },
     signatoryId: signatory.id,
     couriers: { assigned: courierAssigned.id, root: courierRoot.id, unassigned: courierUnassigned.id },
-    tagId: tag.id, usagerId: usager.id,
+    tagId: tag.id,
   };
 }
 
