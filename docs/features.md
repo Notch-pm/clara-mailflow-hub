@@ -49,6 +49,7 @@ Service client : `src/services/courierAnalysisService.ts`.
 - **Référentiel servi par le Socle** (source de vérité — plus aucun stockage local d'identité). Liste/recherche (nom, email exact), fiche, création/édition, archivage/restauration via l'edge function `socle-contacts` (proxy de `contacts-api`), service client unique `socleContactService.ts`.
 - La fiche affiche aussi les **courriers liés** (donnée Clara : `courier_participants.socle_contact_id`) et les **relations entre contacts** (« est Gérant de… » / « … est Gérant de ce contact »), éditables via le référentiel ; ces relations apparaissent aussi sur les participants d'un courrier et sous l'expéditeur dans le panneau courrier.
 - Rapprochement automatique de l'expéditeur par email au passage en instruction (best-effort, jamais bloquant) ; pas d'auto-création (le Socle exige la civilité pour une personne).
+- **L'expéditeur du panneau courrier est un sélecteur d'usager** (`ContactPicker`, plus de saisie libre du nom dans la colonne latérale) : sélectionner une fiche renseigne `socle_contact_id` et aligne nom/email/téléphone/adresse du participant sur le référentiel ; « Aucun contact » dissocie sans effacer ce que porte le courrier.
 
 ### Détection de doublons à la saisie
 

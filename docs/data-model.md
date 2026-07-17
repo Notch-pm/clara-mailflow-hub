@@ -306,8 +306,9 @@ tables `usagers` et `quartiers` (et leurs RPC, enums, colonnes `organizations.do
 
 - Clara ne stocke que la **référence** `courier_participants.socle_contact_id` (uuid Socle, sans FK).
 - Lecture/écriture des fiches : edge function **`socle-contacts`** (proxy vers `contacts-api`
-  du Socle) — point de passage unique, clé API scope `contacts` côté serveur
-  (`SOCLE_CONTACTS_API_KEYS`, JSON `{ socle_org_id: clé }` — une clé par org racine Socle).
+  du Socle) — point de passage unique. Liaison par la **clé plateforme unique** `SOCLE_API_KEY`
+  (scopes read+contacts, non liée à une organisation côté Socle) : le proxy transmet le tenant
+  visé via l'en-tête `X-Organization-Id`, le référentiel servi étant celui de sa **racine**.
 - Service client unique : `src/services/socleContactService.ts`. Page annuaire : `/contacts`.
 - Le référentiel vit au niveau de l'**org racine** Socle : les tenants Clara mappés sous la
   même racine (ex. ACCM et Marie d'Arles) partagent le même référentiel de contacts.
