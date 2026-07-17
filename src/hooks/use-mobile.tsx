@@ -7,11 +7,13 @@ export function useIsMobile() {
 
   React.useEffect(() => {
     const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
-    const onChange = () => {
-      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
+    // Pendant un drag, innerWidth peut être en retard d'une frame sur la media
+    // query : se fier à `matches` (même source de vérité que le `md:` Tailwind).
+    const onChange = (e: MediaQueryListEvent) => {
+      setIsMobile(e.matches);
     };
     mql.addEventListener("change", onChange);
-    setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
+    setIsMobile(mql.matches);
     return () => mql.removeEventListener("change", onChange);
   }, []);
 
