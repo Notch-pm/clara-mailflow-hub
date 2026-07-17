@@ -29,16 +29,25 @@ export function loadFixtures(): E2eFixtures {
   return JSON.parse(readFileSync(p, "utf8")) as E2eFixtures;
 }
 
-function readDotEnv(name: string): string {
-  const m = readFileSync(join(process.cwd(), ".env"), "utf8").match(
-    new RegExp(`^${name}="?([^"\\n]+)"?`, "m"),
-  );
-  if (!m) throw new Error(`${name} absent de .env`);
-  return m[1];
+function readDotEnv(name: string): string | undefined {
+  const p = join(process.cwd(), ".env");
+  if (!existsSync(p)) return undefined;
+  const m = readFileSync(p, "utf8").match(new RegExp(`^${name}="?([^"\\n]+)"?`, "m"));
+  return m?.[1];
 }
 
-const SUPABASE_URL = readDotEnv("VITE_SUPABASE_URL");
-const ANON_KEY = readDotEnv("VITE_SUPABASE_PUBLISHABLE_KEY");
+// En CI, il n'y a pas de .env (gitignoré) : URL et clé anon arrivent par
+// l'environnement du job (cf. .github/workflows/ci.yml).
+const SUPABASE_URL =
+  process.env.VITE_SUPABASE_URL ?? process.env.SUPABASE_URL ?? readDotEnv("VITE_SUPABASE_URL") ?? "";
+const ANON_KEY =
+  process.env.VITE_SUPABASE_PUBLISHABLE_KEY ??
+  process.env.SUPABASE_ANON_KEY ??
+  readDotEnv("VITE_SUPABASE_PUBLISHABLE_KEY") ??
+  "";
+if (!SUPABASE_URL || !ANON_KEY) {
+  throw new Error("URL/clé anon Supabase introuvables (.env local ou variables d'environnement).");
+}
 const PROJECT_REF = new URL(SUPABASE_URL).hostname.split(".")[0];
 
 /**

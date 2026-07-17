@@ -27,6 +27,17 @@ export const TEST_PASSWORD = process.env.TEST_USER_PASSWORD ?? "ClaraTest!2026";
 const TEST_EMAIL_DOMAIN = "test.clara.local";
 const TEST_PREFIX = "[TEST]";
 
+/**
+ * Racine « [TEST] » du Socle (projet qhrokbkyxgcvkbpmbmna) : le tenant Alpha
+ * naît RATTACHÉ au référentiel de test — contacts, doublons et sync manuelle
+ * fonctionnent dès le seed. Beta reste non rattaché (cas « organisation hors
+ * référentiel »). NB : une sync réelle renomme ensuite le tenant du nom de la
+ * racine Socle et remplace les miroirs factices ci-dessous — sans incidence
+ * sur les suites, qui reseedent toujours avant de s'exécuter.
+ */
+const SOCLE_TEST_ROOT_ID =
+  process.env.SOCLE_TEST_ORG_ID ?? "b605d41d-3f0b-41d3-bc76-e70237407dcf";
+
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
@@ -141,6 +152,7 @@ async function seedTenant(letter: "Alpha" | "Beta"): Promise<TenantFixture> {
 
   const org = await insertOne<{ id: string }>("organizations", {
     name, slug, status: "active",
+    ...(letter === "Alpha" ? { socle_org_id: SOCLE_TEST_ROOT_ID } : {}),
   });
 
   // Workflows (principal + réponse) avec états et transitions
