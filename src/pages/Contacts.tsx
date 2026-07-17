@@ -22,6 +22,7 @@ import {
   User,
 } from "lucide-react";
 import { useOrganization } from "@/contexts/OrganizationContext";
+import DuplicateContactsAlert from "@/components/contacts/DuplicateContactsAlert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -182,15 +183,18 @@ interface ContactFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSaved: (contact: SocleContact) => void;
+  /** Reprendre un doublon détecté à la création plutôt que de créer la fiche. */
+  onSelectExisting?: (contact: SocleContact) => void;
 }
 
-function ContactFormDialog({ organizationId, contact, open, onOpenChange, onSaved }: ContactFormDialogProps) {
+function ContactFormDialog({ organizationId, contact, open, onOpenChange, onSaved, onSelectExisting }: ContactFormDialogProps) {
   const isEdit = contact !== null;
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     values: contactToFormValues(contact),
   });
-  const contactType = form.watch("contact_type");
+  const values = form.watch();
+  const contactType = values.contact_type;
   const isPerson = contactType === "personne";
 
   const mutation = useMutation({
@@ -221,6 +225,26 @@ function ContactFormDialog({ organizationId, contact, open, onOpenChange, onSave
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit((v) => mutation.mutate(v))} className="space-y-4">
+            {!isEdit && onSelectExisting && (
+              <DuplicateContactsAlert
+                organizationId={organizationId}
+                draft={{
+                  contact_type: values.contact_type,
+                  first_name: values.first_name,
+                  last_name: values.last_name,
+                  usage_name: values.usage_name,
+                  legal_name: values.legal_name,
+                  siret: values.siret,
+                  birth_date: values.birth_date,
+                  email: values.email,
+                  mobile_phone: values.mobile_phone,
+                  landline_phone: values.landline_phone,
+                }}
+                onSelect={onSelectExisting}
+                selectLabel="Ouvrir la fiche"
+              />
+            )}
+
             <FormField
               control={form.control}
               name="contact_type"
@@ -1111,6 +1135,10 @@ function ContactsList() {
         onSaved={(saved) => {
           qc.invalidateQueries({ queryKey: ["socle-contacts"] });
           navigate(`/contacts/${saved.id}`);
+        }}
+        onSelectExisting={(existing) => {
+          setCreateOpen(false);
+          navigate(`/contacts/${existing.id}`);
         }}
       />
     </div>

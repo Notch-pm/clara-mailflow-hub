@@ -43,6 +43,7 @@
 2. **Composants géants** : `MailboxSidePanel.tsx` (61 Ko), `ReplyComposer.tsx` (46 Ko), `NewCourierDialog.tsx` (40 Ko) — découper en sous-composants/hooks (une PR chacun). (`Usagers.tsx` soldé le 2026-07-16 : remplacé par `Contacts.tsx` branché sur le Socle.)
 3. **131 casts `as any`/`as never`** alors que le client Supabase est typé (`Database`) — la majorité date d'avant la régénération des types. Cible < 30.
 4. `couriers.metadata` fourre-tout (tags, body, imap_settings_id, socle_organization_id dupliqué) — schéma à documenter, puis promouvoir les champs stables en colonnes.
+5. **Rapprochement de contacts à faire porter par le Socle** (ajouté le 2026-07-17 avec la détection de doublons). `contacts-api` ne filtre que sur `search` (ilike sur `display_name`, sensible aux accents) et `email` exact : Clara ramène donc des candidats par préfixe de nom puis rapproche côté client (`lib/contact-duplicates.ts`), avec des angles morts assumés (doublon au téléphone seul, faute sur le début du nom, accents) et 2 à 4 appels au proxy par saisie. Côté Socle, un filtre `phone` normalisé et/ou un endpoint de rapprochement (`pg_trgm` sur `display_name`) supprimerait les trois angles morts et ramènerait la détection à un seul appel. **Chantier côté Socle** (autre projet/repo) : ne pas le traiter par déploiement MCP depuis Clara, au risque de désynchroniser le repo du Socle. Voir `docs/features.md` § Détection de doublons.
 
 ## Config audit
 

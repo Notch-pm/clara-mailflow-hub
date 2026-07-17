@@ -50,6 +50,21 @@ Service client : `src/services/courierAnalysisService.ts`.
 - La fiche affiche aussi les **courriers liés** (donnée Clara : `courier_participants.socle_contact_id`) et les **relations entre contacts** (« est Gérant de… » / « … est Gérant de ce contact »), éditables via le référentiel ; ces relations apparaissent aussi sur les participants d'un courrier et sous l'expéditeur dans le panneau courrier.
 - Rapprochement automatique de l'expéditeur par email au passage en instruction (best-effort, jamais bloquant) ; pas d'auto-création (le Socle exige la civilité pour une personne).
 
+### Détection de doublons à la saisie
+
+Toute surface qui peut créer une identité propose d'abord les fiches existantes qui ressemblent à la saisie : formulaire contact (`Contacts.tsx`), création rapide du `ContactPicker`, et ajout/édition d'un participant (`ParticipantManager`). Composant unique : `components/contacts/DuplicateContactsAlert.tsx`.
+
+- **Motifs** (`lib/contact-duplicates.ts`, logique pure) : même email, même téléphone (formats normalisés — `+33 6…`, `06…` et `0033…` se rejoignent), même SIRET, nom+prénom identiques, nom très proche (distance d'édition ≥ 0,82). Une **date de naissance identique ne suffit jamais** : elle ne fait que renforcer un autre motif. Un homonyme de nom de famille seul n'est pas proposé.
+- **Sélectionner une fiche** l'associe (participant : `socle_contact_id`) ou l'ouvre (page Contacts) au lieu d'en créer une nouvelle.
+- **Best-effort** : référentiel injoignable → aucune alerte, la saisie continue. La détection assiste, elle ne bloque jamais.
+
+**Angles morts assumés**, imposés par l'API contacts du Socle (`list` ne filtre que sur `search` = ilike sur `display_name`, et `email` = égalité exacte ; ni filtre téléphone, ni recherche floue côté serveur). Les candidats sont donc ramenés par email exact + préfixe du nom (4 car.) + prénom, puis rapprochés côté client :
+- un doublon au **téléphone seul**, sans email ni nom rapprochable, n'est pas détecté ;
+- une **faute sur les premières lettres du nom** *et* sur le prénom échappe aux deux filets ;
+- un **accent divergent** dans le nom (`Dupônt` vs `Dupont`) échappe au ilike, qui est sensible aux accents.
+
+Lever ces angles morts suppose un point d'entrée de rapprochement côté Socle (filtre téléphone, ou `pg_trgm` sur les noms) — cf. `docs/technical-debt.md`.
+
 ### Signataires (`SignaturesSettings.tsx`)
 - Table `signatories` + bucket `signatures`. Chaque signataire a une image PNG transparente utilisée dans les réponses.
 

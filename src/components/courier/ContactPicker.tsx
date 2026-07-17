@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
+import DuplicateContactsAlert from "@/components/contacts/DuplicateContactsAlert";
 
 /** Nom affiché d'un contact Socle (display_name calculé côté Socle). */
 export function contactDisplay(c: SocleContact): string {
@@ -195,9 +196,26 @@ export default function ContactPicker({ organizationId, value, onChange, types, 
       </Popover>
 
       <Dialog open={createOpen} onOpenChange={(o) => { setCreateOpen(o); if (!o) resetCreate(); }}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Nouveau contact (référentiel)</DialogTitle></DialogHeader>
           <div className="space-y-4">
+            <DuplicateContactsAlert
+              organizationId={organizationId}
+              draft={{
+                contact_type: c_type,
+                first_name: c_type === "personne" ? c_first : null,
+                last_name: c_type === "personne" ? c_last : null,
+                legal_name: c_type !== "personne" ? c_last : null,
+                email: c_email,
+                mobile_phone: c_phone,
+              }}
+              onSelect={(contact) => {
+                onChange(contact);
+                setCreateOpen(false);
+                resetCreate();
+                toast.success("Contact existant sélectionné");
+              }}
+            />
             <div className="space-y-2">
               <Label>Type *</Label>
               <Select value={c_type} onValueChange={(v) => setCType(v as SocleContactType)}>

@@ -24,6 +24,7 @@ import {
   type SocleContact,
 } from "@/services/socleContactService";
 import ContactPicker, { contactDisplay } from "@/components/courier/ContactPicker";
+import DuplicateContactsAlert from "@/components/contacts/DuplicateContactsAlert";
 import type { CourierParticipant } from "@/types/courier";
 
 const ROLES = [
@@ -241,6 +242,12 @@ export default function ParticipantManager({ courierId, organizationId }: Partic
 
   const isPending = addMutation.isPending || updateMutation.isPending;
 
+  // Un participant déjà rattaché au référentiel ne peut plus créer de doublon :
+  // l'alerte ne sert que tant qu'aucune fiche n'est associée.
+  const watchedValues = form.watch();
+  const hasContactLink =
+    contactLink.mode === "set" || (contactLink.mode === "keep" && !!editingContactId);
+
   const linkedContact = linkedContactQuery.data ?? null;
   const linkedContactMissing = linkedContactQuery.isError && isContactNotFound(linkedContactQuery.error);
 
@@ -353,12 +360,26 @@ export default function ParticipantManager({ courierId, organizationId }: Partic
       )}
 
       <Dialog open={dialogOpen} onOpenChange={(open) => !open && resetAndClose()}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editing ? "Modifier le participant" : "Ajouter un participant"}</DialogTitle>
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              {!hasContactLink && (
+                <DuplicateContactsAlert
+                  organizationId={organizationId}
+                  draft={{
+                    first_name: watchedValues.first_name,
+                    last_name: watchedValues.last_name,
+                    email: watchedValues.email,
+                    phone: watchedValues.phone,
+                  }}
+                  onSelect={(contact) => setContactLink({ mode: "set", contact })}
+                  selectLabel="Associer"
+                />
+              )}
+
               <FormField control={form.control} name="role" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Rôle</FormLabel>
