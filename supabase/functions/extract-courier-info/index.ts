@@ -381,14 +381,15 @@ ${combinedText}`;
           .select("socle_org_id")
           .eq("id", orgId)
           .single();
-        const contactsKey = contactsApiKeyForOrg(org?.socle_org_id as string | null);
+        const socleOrgId = (org?.socle_org_id as string | null) ?? null;
+        const contactsKey = contactsApiKeyForOrg(socleOrgId);
         if (contactsKey) {
           if (senderEmail) {
             const { body } = await fetchContactsApi(contactsKey, {
               method: "GET",
               path: `/v1/contacts?email=${encodeURIComponent(senderEmail)}&limit=1`,
               idempotent: true,
-            });
+            }, { socleOrgId });
             if (Array.isArray(body) && body.length > 0) matchedContact = body[0];
           }
           if (!matchedContact && senderLastName) {
@@ -396,7 +397,7 @@ ${combinedText}`;
               method: "GET",
               path: `/v1/contacts?search=${encodeURIComponent(senderLastName)}&limit=1`,
               idempotent: true,
-            });
+            }, { socleOrgId });
             if (Array.isArray(body) && body.length > 0) matchedContact = body[0];
           }
         }

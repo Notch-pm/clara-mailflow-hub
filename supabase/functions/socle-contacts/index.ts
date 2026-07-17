@@ -8,8 +8,11 @@
  *
  * Auth : JWT utilisateur, membre actif de l'organisation demandée (ou superadmin).
  *
- * Body : { action: "list"|"get"|"create"|"update"|"archive"|"restore"|"roles",
+ * Body : { action: "list"|"get"|"match"|"create"|"update"|"archive"|"restore"|"roles",
  *          organization_id: uuid, id?: uuid, payload?: object, filters?: object }
+ *
+ * `match` (rapprochement d'identités pour la détection de doublons) est en
+ * lecture seule malgré son POST : aucune fiche créée ni modifiée.
  *
  * Réponse : relaie le statut et le corps du Socle (erreurs au format
  * `{ error: { code, message } }`). Particularités :
@@ -131,7 +134,9 @@ Deno.serve(async (req) => {
     const built = buildSocleRequest(action, { id, payload, filters });
     if (!built.ok) return errorResponse("bad_request", built.message, 400);
 
-    const { status, body: socleBody } = await fetchContactsApi(apiKey, built.request);
+    const { status, body: socleBody } = await fetchContactsApi(apiKey, built.request, {
+      socleOrgId: org?.socle_org_id as string | null,
+    });
     return jsonResponse(socleBody, status);
   } catch (e) {
     if (e instanceof SocleContactsAuthError) {

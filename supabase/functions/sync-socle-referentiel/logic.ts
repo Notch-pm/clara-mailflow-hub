@@ -355,6 +355,42 @@ export function filterSubtree(orgs: SocleOrgApi[], rootSocleId: string): SocleOr
   return result;
 }
 
+/**
+ * Racine (organisation principale) d'une organisation du référentiel, par
+ * remontée des parent_id. Le catalogue (catégories, types de pièces — comme
+ * les contacts) vit au niveau de la racine : c'est elle qui borne le
+ * référentiel d'un tenant, même mappé sur une sous-organisation. Protégé
+ * contre les cycles ; null si l'organisation est absente de la liste.
+ */
+export function rootOrgId(orgs: SocleOrgApi[], socleOrgId: string): string | null {
+  const byId = new Map(orgs.map((o) => [o.id, o]));
+  let current = byId.get(socleOrgId);
+  if (!current) return null;
+  const seen = new Set<string>([current.id]);
+  while (current.parent_id) {
+    const parent = byId.get(current.parent_id);
+    if (!parent || seen.has(parent.id)) break;
+    seen.add(parent.id);
+    current = parent;
+  }
+  return current.id;
+}
+
+/**
+ * Restreint un catalogue (catégories, types de pièces) aux entrées de la
+ * racine d'un tenant. Indispensable dès que la clé API voit plusieurs
+ * organisations principales (clé plateforme) : sans ce filtre, le catalogue
+ * d'une racine fuiterait dans les tenants des autres. Les entrées sans
+ * organisation (catalogue global éventuel) sont conservées.
+ */
+export function catalogueForRoot<T extends { organization_id: string | null }>(
+  items: T[],
+  rootId: string | null,
+): T[] {
+  if (!rootId) return [];
+  return items.filter((i) => i.organization_id === rootId || i.organization_id === null);
+}
+
 export interface OrgSyncPlan {
   toInsert: SocleOrgApi[];
   toUpdate: Array<{ existingId: string; org: SocleOrgApi }>;
