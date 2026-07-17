@@ -54,12 +54,19 @@ import {
 import { useUserServiceFilter } from "@/hooks/useUserServiceFilter";
 import { getDocuments } from "@/services/courierDocumentService";
 import { addParticipant, updateParticipant } from "@/services/courierParticipantService";
-import { contactRelationLines, findContactByEmail, getContact } from "@/services/socleContactService";
+import {
+  contactRelationLines,
+  findContactByEmail,
+  getContact,
+  type SocleContact,
+} from "@/services/socleContactService";
+import { formatContactAddressInline } from "@/lib/prefill-mapping";
 import { cn } from "@/lib/utils";
 import { readableTextColor } from "@/lib/tag-color";
 import DocumentManager from "./DocumentManager";
 import DocumentViewer from "./DocumentViewer";
 import InlineEditField from "./InlineEditField";
+import ContactPicker, { contactDisplay } from "./ContactPicker";
 import CourierNotes from "./CourierNotes";
 import FloatingNotesPanel from "./FloatingNotesPanel";
 import { listNotes, type CourierNote } from "@/services/courierNoteService";
@@ -74,6 +81,9 @@ import CloseLinkedCouriersDialog from "./CloseLinkedCouriersDialog";
 import { listRepliesForCourier } from "@/services/courierReplyService";
 import { listRelationsForCourier } from "@/services/courierRelationService";
 import type { CourierChannel, CourierParticipant, WorkflowTransition, WorkflowState, WorkflowCategory } from "@/types/courier";
+
+/** Champs d'un participant modifiables depuis la colonne latérale. */
+type ParticipantFields = Parameters<typeof updateParticipant>[1];
 
 const channelLabels: Record<CourierChannel, string> = {
   paper: "Papier",
@@ -644,7 +654,8 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
 
   async function upsertParticipant(
     role: "sender" | "recipient",
-    fields: { name?: string | null; email?: string | null },
+    fields: ParticipantFields,
+    successMsg = "Modifié",
   ) {
     if (!courier) return;
     const existing = participants.find((p) => p.role === role);
@@ -655,24 +666,50 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
       } else {
         // Don't create empty participants
         const hasContent =
-          (fields.name && fields.name.trim()) ||
-          (fields.email && fields.email.trim());
+          fields.name?.trim() || fields.email?.trim() || fields.socle_contact_id;
         if (!hasContent) return;
         await addParticipant({
           courier_id: courier.id,
           organization_id: organizationId,
           role,
-          name: fields.name ?? null,
-          email: fields.email ?? null,
+          ...fields,
         });
       }
       queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
       queryClient.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
-      toast.success("Modifié");
+      queryClient.invalidateQueries({ queryKey: ["courier", courier.id] });
+      queryClient.invalidateQueries({ queryKey: ["courier-participants", courier.id] });
+      toast.success(successMsg);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Erreur lors de la modification");
       throw err;
     }
+  }
+
+  /**
+   * Rattache l'expéditeur du courrier à une fiche du référentiel Socle : les
+   * champs du participant sont alignés sur la fiche, qui fait foi sur
+   * l'identité. `null` dissocie la fiche sans effacer ce que porte le courrier.
+   */
+  async function linkSenderContact(contact: SocleContact | null) {
+    if (!contact) {
+      await upsertParticipant("sender", { socle_contact_id: null }, "Expéditeur dissocié");
+      return;
+    }
+    const address = formatContactAddressInline(contact);
+    await upsertParticipant(
+      "sender",
+      {
+        socle_contact_id: contact.id,
+        name: contactDisplay(contact),
+        first_name: contact.first_name,
+        last_name: contact.last_name ?? contact.legal_name,
+        email: contact.email,
+        phone: contact.mobile_phone ?? contact.landline_phone,
+        address: address || null,
+      },
+      "Expéditeur associé au référentiel",
+    );
   }
 
   if (!courier) return null;
@@ -962,31 +999,36 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                     )}
                   </span>
                 ) : (
-                  <div className="relative pr-7">
-                    <InlineEditField
-                      label=""
-                      value={sender?.name ?? ""}
-                      placeholder="Nom de l'expéditeur"
-                      maxLength={150}
-                      readOnly={readOnly}
-                      onSave={(v) => upsertParticipant("sender", { name: v.trim() || null })}
-                      displayClassName="font-semibold"
-                    />
-                    {sender?.socle_contact_id && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Link
-                            to={`/contacts/${sender.socle_contact_id}`}
-                            onClick={() => onOpenChange(false)}
-                            className="absolute right-0 top-0 inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:text-primary hover:bg-muted transition-colors bg-background"
-                            aria-label="Voir la fiche contact et ses courriers"
-                          >
-                            <ExternalLink className="h-3.5 w-3.5" />
-                          </Link>
-                        </TooltipTrigger>
-                        <TooltipContent>Voir la fiche contact et ses courriers</TooltipContent>
-                      </Tooltip>
-                    )}
+                  <div className="space-y-1 min-w-0">
+                    <div className="flex items-center gap-1 min-w-0">
+                      <div className="min-w-0 flex-1">
+                        {/* L'identité vient du référentiel : on choisit une fiche,
+                            on ne saisit plus le nom à la main. */}
+                        <ContactPicker
+                          organizationId={organizationId}
+                          value={senderContact ?? null}
+                          onChange={linkSenderContact}
+                          disabled={readOnly}
+                          fallbackLabel={sender?.name ?? undefined}
+                          triggerClassName="h-8 px-2 [&>span]:font-semibold"
+                        />
+                      </div>
+                      {sender?.socle_contact_id && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Link
+                              to={`/contacts/${sender.socle_contact_id}`}
+                              onClick={() => onOpenChange(false)}
+                              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-primary hover:bg-muted transition-colors"
+                              aria-label="Voir la fiche contact et ses courriers"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </Link>
+                          </TooltipTrigger>
+                          <TooltipContent>Voir la fiche contact et ses courriers</TooltipContent>
+                        </Tooltip>
+                      )}
+                    </div>
                     {senderRelationLines.map((line) => (
                       <div key={line.key} className="text-xs text-muted-foreground truncate">
                         {line.text}
