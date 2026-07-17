@@ -1,4 +1,10 @@
 import { supabase } from "@/integrations/supabase/client";
+import {
+  buildMatchPayload,
+  hasDuplicateSignal,
+  type ContactDraft,
+  type DuplicateReason,
+} from "@/lib/contact-duplicates";
 
 /**
  * Contacts du référentiel Socle — point d'appel UNIQUE côté client.
@@ -208,7 +214,7 @@ export function contactRelationLines(
 }
 
 interface InvokeBody {
-  action: "list" | "get" | "create" | "update" | "archive" | "restore" | "roles";
+  action: "list" | "get" | "match" | "create" | "update" | "archive" | "restore" | "roles";
   organization_id: string;
   id?: string;
   payload?: Record<string, unknown>;
@@ -309,6 +315,43 @@ export async function findContactByEmail(
   if (!cleaned) return null;
   const matches = await listContacts(organizationId, { email: cleaned, limit: 1 });
   return matches[0] ?? null;
+}
+
+/** Candidat au rapprochement — forme exacte de `ContactMatch` (contacts-api). */
+export interface DuplicateCandidate {
+  contact: SocleContact;
+  reasons: DuplicateReason[];
+  /**
+   * Classement uniquement : le barème appartient au Socle et peut évoluer. Ne
+   * comparer les scores qu'au sein d'une même réponse, jamais à un seuil.
+   */
+  score: number;
+}
+
+/**
+ * Doublons potentiels d'une saisie dans le référentiel : le rapprochement est
+ * fait par le Socle (`POST /v1/contacts/match`), qui renvoie les fiches
+ * ressemblantes déjà classées avec leurs motifs. Clara ne compare plus rien
+ * localement.
+ *
+ * Best-effort : un référentiel injoignable ne remonte aucun doublon plutôt que
+ * de faire échouer la saisie — la détection assiste, elle ne bloque jamais.
+ */
+export async function findPotentialDuplicates(
+  organizationId: string,
+  draft: ContactDraft,
+  opts: { excludeIds?: string[]; limit?: number } = {},
+): Promise<DuplicateCandidate[]> {
+  if (!organizationId || !hasDuplicateSignal(draft)) return [];
+  try {
+    return await invokeSocleContacts<DuplicateCandidate[]>({
+      action: "match",
+      organization_id: organizationId,
+      payload: buildMatchPayload(draft, opts),
+    });
+  } catch {
+    return [];
+  }
 }
 
 const EXPORT_PAGE_SIZE = 500;

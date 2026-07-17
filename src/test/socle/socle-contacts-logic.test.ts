@@ -94,6 +94,16 @@ describe("buildSocleRequest", () => {
     expect(buildSocleRequest("get", {}).ok).toBe(false);
   });
 
+  it("match → POST /v1/contacts/match, rejouable car sans effet de bord", () => {
+    const payload = { last_name: "Dupont", phones: ["0612345678"] };
+    expect(buildSocleRequest("match", { payload })).toEqual({
+      ok: true,
+      request: { method: "POST", path: "/v1/contacts/match", body: payload, idempotent: true },
+    });
+    expect(buildSocleRequest("match", {}).ok).toBe(false);
+    expect(buildSocleRequest("match", { payload: [1] }).ok).toBe(false);
+  });
+
   it("create → POST non rejouable avec payload obligatoire", () => {
     const payload = { contact_type: "personne", civility: "madame", last_name: "Test" };
     expect(buildSocleRequest("create", { payload })).toEqual({

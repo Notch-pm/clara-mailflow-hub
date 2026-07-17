@@ -50,6 +50,20 @@ Service client : `src/services/courierAnalysisService.ts`.
 - La fiche affiche aussi les **courriers liés** (donnée Clara : `courier_participants.socle_contact_id`) et les **relations entre contacts** (« est Gérant de… » / « … est Gérant de ce contact »), éditables via le référentiel ; ces relations apparaissent aussi sur les participants d'un courrier et sous l'expéditeur dans le panneau courrier.
 - Rapprochement automatique de l'expéditeur par email au passage en instruction (best-effort, jamais bloquant) ; pas d'auto-création (le Socle exige la civilité pour une personne).
 
+### Détection de doublons à la saisie
+
+Toute surface qui peut créer une identité propose d'abord les fiches existantes qui ressemblent à la saisie : formulaire contact (`Contacts.tsx`), création rapide du `ContactPicker`, et ajout/édition d'un participant (`ParticipantManager`). Composant unique : `components/contacts/DuplicateContactsAlert.tsx`.
+
+**Le rapprochement appartient au Socle** (`POST /v1/contacts/match`, action `match` du proxy `socle-contacts`) : Clara décrit l'identité saisie, le Socle renvoie les fiches ressemblantes déjà classées avec leurs motifs. Aucun moteur de comparaison côté Clara — `lib/contact-duplicates.ts` ne fait plus que construire le payload (whitelist stricte : une clé inconnue vaut un 400) et garder la saisie trop maigre hors du réseau.
+
+- **Motifs** (vocabulaire du contrat) : `email` (exact, insensible à la casse), `phone` (chiffres significatifs — `+33 6…`, `06…` et `0033…` se rejoignent, comparé au mobile **et** au fixe), `siret`, `name_exact` (après unaccent — `Dupônt` = `Dupont`), `name_similar` (trigram ≥ 0,5 avec garde-fou sur le prénom, donc « Marie Dupont » n'est pas proposée pour « Jean Dupont »), `birth_date` (**jamais suffisant seul** : renfort de score).
+- **Score** : classement **au sein d'une même réponse uniquement**, jamais un seuil absolu — le barème appartient au Socle et peut évoluer.
+- **Au moins un critère** est requis (email, téléphone, SIRET, nom, raison sociale ou date de naissance) : un **prénom seul ne rapproche rien**. `hasDuplicateSignal` miroite cette règle pour ne pas partir en 400.
+- **Sélectionner une fiche** l'associe (participant : `socle_contact_id`) ou l'ouvre (page Contacts) au lieu d'en créer une nouvelle.
+- **Best-effort** : référentiel injoignable → aucune alerte, la saisie continue. La détection assiste, elle ne bloque jamais.
+
+Les angles morts de l'ancienne détection côté client (doublon au **téléphone seul**, faute sur les **premières lettres du nom**, **accent divergent**) sont levés depuis que le rapprochement est fait en SQL (`pg_trgm` + `unaccent`) — 2026-07-17.
+
 ### Signataires (`SignaturesSettings.tsx`)
 - Table `signatories` + bucket `signatures`. Chaque signataire a une image PNG transparente utilisée dans les réponses.
 

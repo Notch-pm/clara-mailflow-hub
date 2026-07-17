@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  catalogueForRoot,
   countersFromOrgPlan,
   filterSubtree,
   mapSocleOrganization,
   planOrganizationSync,
+  rootOrgId,
   type OrgMirrorRow,
   type SocleOrgApi,
 } from "../../../supabase/functions/sync-socle-referentiel/logic";
@@ -69,6 +71,45 @@ describe("filterSubtree", () => {
     const result = filterSubtree([root, xChild, y, x], "r");
     expect(result.length).toBeGreaterThanOrEqual(2);
     expect(new Set(result.map((o) => o.id)).size).toBe(result.length); // pas de doublon
+  });
+});
+
+describe("rootOrgId", () => {
+  it("remonte à la racine depuis une sous-organisation", () => {
+    expect(rootOrgId([ROOT, A, A1, B, OTHER], "a1")).toBe("root");
+  });
+
+  it("une racine est sa propre racine", () => {
+    expect(rootOrgId([ROOT, A, OTHER], "root")).toBe("root");
+    expect(rootOrgId([ROOT, A, OTHER], "other")).toBe("other");
+  });
+
+  it("organisation absente de la liste → null", () => {
+    expect(rootOrgId([ROOT, A], "inconnu")).toBeNull();
+  });
+
+  it("résiste aux cycles de parent_id", () => {
+    const x = makeOrg({ id: "x", parent_id: "y", name: "X" });
+    const y = makeOrg({ id: "y", parent_id: "x", name: "Y" });
+    expect(["x", "y"]).toContain(rootOrgId([x, y], "x"));
+  });
+});
+
+describe("catalogueForRoot", () => {
+  const items = [
+    { id: "c1", organization_id: "root", name: "État civil" },
+    { id: "c2", organization_id: "other", name: "Autre racine" },
+    { id: "c3", organization_id: null, name: "Global" },
+  ];
+
+  it("ne garde que le catalogue de la racine du tenant (et le global)", () => {
+    // Deux racines dans le périmètre (clé plateforme) : pas de fuite croisée.
+    expect(catalogueForRoot(items, "root").map((i) => i.id)).toEqual(["c1", "c3"]);
+    expect(catalogueForRoot(items, "other").map((i) => i.id)).toEqual(["c2", "c3"]);
+  });
+
+  it("racine inconnue → catalogue vide", () => {
+    expect(catalogueForRoot(items, null)).toEqual([]);
   });
 });
 

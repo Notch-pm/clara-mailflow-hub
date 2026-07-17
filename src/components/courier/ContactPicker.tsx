@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
+import DuplicateContactsAlert from "@/components/contacts/DuplicateContactsAlert";
 
 /** Nom affiché d'un contact Socle (display_name calculé côté Socle). */
 export function contactDisplay(c: SocleContact): string {
@@ -33,6 +34,15 @@ interface Props {
   /** Restreint les types proposés — recherche ET création rapide (ex. cibles de relation). */
   types?: SocleContactType[];
   disabled?: boolean;
+  /**
+   * Libellé affiché à la place de « Sélectionner un contact… » quand aucune
+   * fiche n'est associée : sert à montrer la valeur déjà portée par le courrier
+   * (ex. nom de l'expéditeur tel que reçu) sans prétendre qu'elle est rattachée
+   * au référentiel.
+   */
+  fallbackLabel?: string;
+  /** Classes du bouton déclencheur (ex. hauteur réduite en colonne latérale). */
+  triggerClassName?: string;
 }
 
 /**
@@ -40,7 +50,15 @@ interface Props {
  * création rapide via l'API du Socle. Les données affichées viennent du Socle,
  * jamais d'un stockage local.
  */
-export default function ContactPicker({ organizationId, value, onChange, types, disabled }: Props) {
+export default function ContactPicker({
+  organizationId,
+  value,
+  onChange,
+  types,
+  disabled,
+  fallbackLabel,
+  triggerClassName,
+}: Props) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -130,7 +148,7 @@ export default function ContactPicker({ organizationId, value, onChange, types, 
             role="combobox"
             aria-expanded={open}
             disabled={disabled}
-            className="w-full justify-between font-normal"
+            className={cn("w-full justify-between font-normal", triggerClassName)}
           >
             {value ? (
               <span className="flex items-center gap-2 truncate">
@@ -139,13 +157,21 @@ export default function ContactPicker({ organizationId, value, onChange, types, 
                 </Badge>
                 <span className="truncate">{contactDisplay(value)}</span>
               </span>
+            ) : fallbackLabel ? (
+              <span className="truncate">{fallbackLabel}</span>
             ) : (
               <span className="text-muted-foreground">Sélectionner un contact…</span>
             )}
             <ChevronsUpDown className="h-4 w-4 opacity-50 shrink-0 ml-2" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+        {/* Le panneau est porté en portail : il peut être plus large que son
+            bouton (colonne latérale étroite) sans élargir la colonne. La
+            largeur du déclencheur ne sert donc que de minimum. */}
+        <PopoverContent
+          className="w-[min(24rem,calc(100vw-2rem))] min-w-[--radix-popover-trigger-width] p-0"
+          align="start"
+        >
           <Command shouldFilter={false}>
             <CommandInput
               placeholder="Rechercher par nom…"
@@ -169,14 +195,31 @@ export default function ContactPicker({ organizationId, value, onChange, types, 
                     key={c.id}
                     value={c.id}
                     onSelect={() => { onChange(c); setOpen(false); }}
-                    className="flex items-center gap-2"
+                    className="group flex items-start gap-2"
                   >
-                    <Check className={cn("h-4 w-4", value?.id === c.id ? "opacity-100" : "opacity-0")} />
-                    <Badge variant="secondary" className="shrink-0">
-                      {SOCLE_CONTACT_TYPE_LABELS[c.contact_type]}
-                    </Badge>
-                    <span className="truncate">{contactDisplay(c)}</span>
-                    {c.email && <span className="ml-auto text-xs text-muted-foreground truncate">{c.email}</span>}
+                    <Check
+                      className={cn(
+                        "h-4 w-4 mt-0.5 shrink-0",
+                        value?.id === c.id ? "opacity-100" : "opacity-0",
+                      )}
+                    />
+                    {/* Nom et email sur deux lignes : sur une seule, les deux se
+                        tronquent en se disputant la largeur. */}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary" className="shrink-0">
+                          {SOCLE_CONTACT_TYPE_LABELS[c.contact_type]}
+                        </Badge>
+                        <span className="truncate">{contactDisplay(c)}</span>
+                      </div>
+                      {c.email && (
+                        // Sur la ligne active, le fond passe en accent : un gris
+                        // « muted » y devient illisible.
+                        <div className="truncate text-xs text-muted-foreground group-data-[selected=true]:text-accent-foreground/80">
+                          {c.email}
+                        </div>
+                      )}
+                    </div>
                   </CommandItem>
                 ))}
               </CommandGroup>
@@ -195,9 +238,26 @@ export default function ContactPicker({ organizationId, value, onChange, types, 
       </Popover>
 
       <Dialog open={createOpen} onOpenChange={(o) => { setCreateOpen(o); if (!o) resetCreate(); }}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Nouveau contact (référentiel)</DialogTitle></DialogHeader>
           <div className="space-y-4">
+            <DuplicateContactsAlert
+              organizationId={organizationId}
+              draft={{
+                contact_type: c_type,
+                first_name: c_type === "personne" ? c_first : null,
+                last_name: c_type === "personne" ? c_last : null,
+                legal_name: c_type !== "personne" ? c_last : null,
+                email: c_email,
+                mobile_phone: c_phone,
+              }}
+              onSelect={(contact) => {
+                onChange(contact);
+                setCreateOpen(false);
+                resetCreate();
+                toast.success("Contact existant sélectionné");
+              }}
+            />
             <div className="space-y-2">
               <Label>Type *</Label>
               <Select value={c_type} onValueChange={(v) => setCType(v as SocleContactType)}>

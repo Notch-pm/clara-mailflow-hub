@@ -38,9 +38,19 @@ export function contactsApiBaseUrl(): string {
   ).replace(/\/+$/, "");
 }
 
-/** Clé API contacts du tenant (secret SOCLE_CONTACTS_API_KEYS, JSON socle_org_id → clé). */
+/**
+ * Clé API contacts du tenant. Cible : UNE clé plateforme (SOCLE_API_KEY,
+ * scopes read+contacts, non liée à une organisation) partagée par tous les
+ * tenants — le Socle et Clara sont chacun multi-tenant, la liaison est unique.
+ * La map par racine (SOCLE_CONTACTS_API_KEYS) reste prioritaire pendant la
+ * transition ; on la retirera une fois la clé plateforme en place.
+ */
 export function contactsApiKeyForOrg(socleOrgId: string | null | undefined): string | null {
-  return resolveApiKey(parseKeyMap(Deno.env.get("SOCLE_CONTACTS_API_KEYS")), socleOrgId);
+  if (!socleOrgId) return null;
+  return (
+    resolveApiKey(parseKeyMap(Deno.env.get("SOCLE_CONTACTS_API_KEYS")), socleOrgId) ??
+    (Deno.env.get("SOCLE_API_KEY")?.trim() || null)
+  );
 }
 
 function envelopeOf(body: unknown): { code: string; message: string } {
@@ -58,6 +68,7 @@ function envelopeOf(body: unknown): { code: string; message: string } {
 export async function fetchContactsApi(
   apiKey: string,
   request: SocleContactsRequest,
+  opts: { socleOrgId?: string | null } = {},
 ): Promise<{ status: number; body: unknown }> {
   const url = `${contactsApiBaseUrl()}${request.path}`;
   const maxAttempts = request.idempotent ? RETRY_DELAYS_MS.length + 1 : 1;
@@ -75,6 +86,10 @@ export async function fetchContactsApi(
         headers: {
           Authorization: `Bearer ${apiKey.trim()}`,
           Accept: "application/json",
+          // Tenant visé, pour une clé PLATEFORME (non liée à une organisation) :
+          // le référentiel servi est celui de la RACINE de cette org. Une clé
+          // liée à une organisation ignore cet en-tête.
+          ...(opts.socleOrgId ? { "X-Organization-Id": opts.socleOrgId } : {}),
           ...(request.body !== undefined ? { "Content-Type": "application/json" } : {}),
         },
         body: request.body !== undefined ? JSON.stringify(request.body) : undefined,

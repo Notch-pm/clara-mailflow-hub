@@ -43,6 +43,7 @@
 2. **Composants géants** : `MailboxSidePanel.tsx` (61 Ko), `ReplyComposer.tsx` (46 Ko), `NewCourierDialog.tsx` (40 Ko) — découper en sous-composants/hooks (une PR chacun). (`Usagers.tsx` soldé le 2026-07-16 : remplacé par `Contacts.tsx` branché sur le Socle.)
 3. **131 casts `as any`/`as never`** alors que le client Supabase est typé (`Database`) — la majorité date d'avant la régénération des types. Cible < 30.
 4. `couriers.metadata` fourre-tout (tags, body, imap_settings_id, socle_organization_id dupliqué) — schéma à documenter, puis promouvoir les champs stables en colonnes.
+5. ~~**Rapprochement de contacts à faire porter par le Socle**~~ ✅ 2026-07-17 — le Socle expose `POST /v1/contacts/match` (`pg_trgm` + `unaccent` en SQL). Clara délègue : un seul appel par saisie (action `match` du proxy), plus de moteur de comparaison local, les trois angles morts (téléphone seul, début du nom, accents) sont levés. Voir `docs/features.md` § Détection de doublons.
 
 ## Config audit
 

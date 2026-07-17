@@ -14,10 +14,12 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
+  catalogueForRoot,
   countersFromMirrorPlan,
   countersFromOrgPlan,
   countersFromProcedurePlan,
   filterSubtree,
+  rootOrgId,
   mapSocleOrganization,
   mapSocleProcedure,
   planMirrorSync,
@@ -295,7 +297,9 @@ async function runSync(supabaseAdmin: AdminClient, orgs: ClaraOrg[], dryRun: boo
   const syncedAt = new Date().toISOString();
   const results: OrgSyncResult[] = [];
 
-  // Référentiel du catalogue racine — récupéré une seule fois.
+  // Catalogue du périmètre de la clé — récupéré une seule fois. Avec une clé
+  // plateforme, ce périmètre couvre PLUSIEURS organisations principales :
+  // chaque tenant n'en mirrore que la part de SA racine (cf. syncOrg).
   const allOrganizations = (await fetchSocle("/v1/organizations")) as SocleOrgApi[];
   const categories = (await fetchSocle("/v1/categories")) as SocleCategory[];
   const documentTypes = (await fetchSocle("/v1/document-types")) as SocleDocumentType[];
@@ -389,12 +393,16 @@ async function syncOrg(
     );
   }
 
-  // 1) Miroirs catégories + types de documents.
+  // 1) Miroirs catégories + types de documents. Le catalogue vit à la RACINE
+  // de l'org mappée : on ne mirrore que la part de cette racine — avec une clé
+  // plateforme (multi-racines), le catalogue des autres principales ne doit
+  // pas fuiter dans ce tenant.
+  const rootId = rootOrgId(allOrganizations, org.socle_org_id);
   const categoriesCounters = await syncMirror(
     supabaseAdmin,
     "socle_categories",
     org.id,
-    categories.map((c) => ({ id: c.id, name: c.name, icon: c.icon ?? null })),
+    catalogueForRoot(categories, rootId).map((c) => ({ id: c.id, name: c.name, icon: c.icon ?? null })),
     dryRun,
     syncedAt,
     true,
@@ -403,7 +411,7 @@ async function syncOrg(
     supabaseAdmin,
     "socle_document_types",
     org.id,
-    documentTypes.map((d) => ({ id: d.id, name: d.name })),
+    catalogueForRoot(documentTypes, rootId).map((d) => ({ id: d.id, name: d.name })),
     dryRun,
     syncedAt,
     false,
