@@ -15,6 +15,7 @@
 export type SocleContactsAction =
   | "list"
   | "get"
+  | "match"
   | "create"
   | "update"
   | "archive"
@@ -26,7 +27,12 @@ export interface SocleContactsRequest {
   /** Chemin relatif à la base contacts-api, ex. `/v1/contacts?limit=20`. */
   path: string;
   body?: Record<string, unknown>;
-  /** Seuls les GET sont rejouables (retries) — jamais les écritures (doublons). */
+  /**
+   * Rejouable en cas d'échec réseau ou 5xx. Critère : l'absence d'effet de
+   * bord, pas le verbe HTTP — `/v1/contacts/match` est un POST (l'identité
+   * partielle passe mal en query string) mais ne crée ni ne modifie rien. Les
+   * écritures ne sont jamais rejouées, elles, au risque du doublon.
+   */
   idempotent: boolean;
 }
 
@@ -121,6 +127,15 @@ export function buildSocleRequest(action: unknown, params: BuildParams = {}): Bu
       if (!id) return { ok: false, message: "id de contact invalide (uuid attendu)." };
       return { ok: true, request: { method: "GET", path: `/v1/contacts/${id}`, idempotent: true } };
     }
+    case "match": {
+      const payload = requirePayload(params.payload);
+      if (!payload) return { ok: false, message: "payload de rapprochement manquant ou invalide." };
+      return {
+        // Lecture seule malgré le POST : rejouable sans risque.
+        ok: true,
+        request: { method: "POST", path: "/v1/contacts/match", body: payload, idempotent: true },
+      };
+    }
     case "create": {
       const payload = requirePayload(params.payload);
       if (!payload) return { ok: false, message: "payload de création manquant ou invalide." };
@@ -152,7 +167,8 @@ export function buildSocleRequest(action: unknown, params: BuildParams = {}): Bu
     default:
       return {
         ok: false,
-        message: "action inconnue (attendu : list, get, create, update, archive, restore, roles).",
+        message:
+          "action inconnue (attendu : list, get, match, create, update, archive, restore, roles).",
       };
   }
 }

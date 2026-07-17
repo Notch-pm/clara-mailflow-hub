@@ -54,16 +54,15 @@ Service client : `src/services/courierAnalysisService.ts`.
 
 Toute surface qui peut créer une identité propose d'abord les fiches existantes qui ressemblent à la saisie : formulaire contact (`Contacts.tsx`), création rapide du `ContactPicker`, et ajout/édition d'un participant (`ParticipantManager`). Composant unique : `components/contacts/DuplicateContactsAlert.tsx`.
 
-- **Motifs** (`lib/contact-duplicates.ts`, logique pure) : même email, même téléphone (formats normalisés — `+33 6…`, `06…` et `0033…` se rejoignent), même SIRET, nom+prénom identiques, nom très proche (distance d'édition ≥ 0,82). Une **date de naissance identique ne suffit jamais** : elle ne fait que renforcer un autre motif. Un homonyme de nom de famille seul n'est pas proposé.
+**Le rapprochement appartient au Socle** (`POST /v1/contacts/match`, action `match` du proxy `socle-contacts`) : Clara décrit l'identité saisie, le Socle renvoie les fiches ressemblantes déjà classées avec leurs motifs. Aucun moteur de comparaison côté Clara — `lib/contact-duplicates.ts` ne fait plus que construire le payload (whitelist stricte : une clé inconnue vaut un 400) et garder la saisie trop maigre hors du réseau.
+
+- **Motifs** (vocabulaire du contrat) : `email` (exact, insensible à la casse), `phone` (chiffres significatifs — `+33 6…`, `06…` et `0033…` se rejoignent, comparé au mobile **et** au fixe), `siret`, `name_exact` (après unaccent — `Dupônt` = `Dupont`), `name_similar` (trigram ≥ 0,5 avec garde-fou sur le prénom, donc « Marie Dupont » n'est pas proposée pour « Jean Dupont »), `birth_date` (**jamais suffisant seul** : renfort de score).
+- **Score** : classement **au sein d'une même réponse uniquement**, jamais un seuil absolu — le barème appartient au Socle et peut évoluer.
+- **Au moins un critère** est requis (email, téléphone, SIRET, nom, raison sociale ou date de naissance) : un **prénom seul ne rapproche rien**. `hasDuplicateSignal` miroite cette règle pour ne pas partir en 400.
 - **Sélectionner une fiche** l'associe (participant : `socle_contact_id`) ou l'ouvre (page Contacts) au lieu d'en créer une nouvelle.
 - **Best-effort** : référentiel injoignable → aucune alerte, la saisie continue. La détection assiste, elle ne bloque jamais.
 
-**Angles morts assumés**, imposés par l'API contacts du Socle (`list` ne filtre que sur `search` = ilike sur `display_name`, et `email` = égalité exacte ; ni filtre téléphone, ni recherche floue côté serveur). Les candidats sont donc ramenés par email exact + préfixe du nom (4 car.) + prénom, puis rapprochés côté client :
-- un doublon au **téléphone seul**, sans email ni nom rapprochable, n'est pas détecté ;
-- une **faute sur les premières lettres du nom** *et* sur le prénom échappe aux deux filets ;
-- un **accent divergent** dans le nom (`Dupônt` vs `Dupont`) échappe au ilike, qui est sensible aux accents.
-
-Lever ces angles morts suppose un point d'entrée de rapprochement côté Socle (filtre téléphone, ou `pg_trgm` sur les noms) — cf. `docs/technical-debt.md`.
+Les angles morts de l'ancienne détection côté client (doublon au **téléphone seul**, faute sur les **premières lettres du nom**, **accent divergent**) sont levés depuis que le rapprochement est fait en SQL (`pg_trgm` + `unaccent`) — 2026-07-17.
 
 ### Signataires (`SignaturesSettings.tsx`)
 - Table `signatories` + bucket `signatures`. Chaque signataire a une image PNG transparente utilisée dans les réponses.

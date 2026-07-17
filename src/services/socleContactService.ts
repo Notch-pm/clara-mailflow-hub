@@ -1,9 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import {
-  duplicateSearchFragments,
+  buildMatchPayload,
   hasDuplicateSignal,
-  matchContact,
-  normalizeEmail,
   type ContactDraft,
   type DuplicateReason,
 } from "@/lib/contact-duplicates";
@@ -216,7 +214,7 @@ export function contactRelationLines(
 }
 
 interface InvokeBody {
-  action: "list" | "get" | "create" | "update" | "archive" | "restore" | "roles";
+  action: "list" | "get" | "match" | "create" | "update" | "archive" | "restore" | "roles";
   organization_id: string;
   id?: string;
   payload?: Record<string, unknown>;
@@ -319,21 +317,22 @@ export async function findContactByEmail(
   return matches[0] ?? null;
 }
 
-/** Nombre de fiches ramenées par fragment de nom avant rapprochement local. */
-const DUPLICATE_CANDIDATE_LIMIT = 25;
-const DUPLICATE_RESULT_LIMIT = 5;
-
+/** Candidat au rapprochement — forme exacte de `ContactMatch` (contacts-api). */
 export interface DuplicateCandidate {
   contact: SocleContact;
   reasons: DuplicateReason[];
+  /**
+   * Classement uniquement : le barème appartient au Socle et peut évoluer. Ne
+   * comparer les scores qu'au sein d'une même réponse, jamais à un seuil.
+   */
   score: number;
 }
 
 /**
- * Doublons potentiels d'une saisie dans le référentiel : quelques requêtes
- * bornées (email exact + fragments de nom) puis rapprochement local (cf.
- * `lib/contact-duplicates.ts` — le Socle n'offre ni filtre téléphone ni
- * recherche floue).
+ * Doublons potentiels d'une saisie dans le référentiel : le rapprochement est
+ * fait par le Socle (`POST /v1/contacts/match`), qui renvoie les fiches
+ * ressemblantes déjà classées avec leurs motifs. Clara ne compare plus rien
+ * localement.
  *
  * Best-effort : un référentiel injoignable ne remonte aucun doublon plutôt que
  * de faire échouer la saisie — la détection assiste, elle ne bloque jamais.
@@ -344,40 +343,15 @@ export async function findPotentialDuplicates(
   opts: { excludeIds?: string[]; limit?: number } = {},
 ): Promise<DuplicateCandidate[]> {
   if (!organizationId || !hasDuplicateSignal(draft)) return [];
-
-  const base: SocleContactListFilters = {
-    status: "active",
-    ...(draft.contact_type ? { type: draft.contact_type } : {}),
-  };
-  const queries: Promise<SocleContact[]>[] = [];
-
-  const email = normalizeEmail(draft.email);
-  if (email.includes("@")) {
-    queries.push(listContacts(organizationId, { ...base, email, limit: DUPLICATE_RESULT_LIMIT }));
+  try {
+    return await invokeSocleContacts<DuplicateCandidate[]>({
+      action: "match",
+      organization_id: organizationId,
+      payload: buildMatchPayload(draft, opts),
+    });
+  } catch {
+    return [];
   }
-  for (const search of duplicateSearchFragments(draft)) {
-    queries.push(listContacts(organizationId, { ...base, search, limit: DUPLICATE_CANDIDATE_LIMIT }));
-  }
-
-  const pages = await Promise.all(queries.map((q) => q.catch(() => [] as SocleContact[])));
-
-  const excluded = new Set(opts.excludeIds ?? []);
-  const byId = new Map<string, SocleContact>();
-  for (const contact of pages.flat()) {
-    if (!excluded.has(contact.id)) byId.set(contact.id, contact);
-  }
-
-  return [...byId.values()]
-    .flatMap((contact) => {
-      const match = matchContact(draft, contact);
-      return match ? [{ contact, reasons: match.reasons, score: match.score }] : [];
-    })
-    .sort(
-      (a, b) =>
-        b.score - a.score ||
-        (a.contact.display_name ?? "").localeCompare(b.contact.display_name ?? "", "fr"),
-    )
-    .slice(0, opts.limit ?? DUPLICATE_RESULT_LIMIT);
 }
 
 const EXPORT_PAGE_SIZE = 500;
