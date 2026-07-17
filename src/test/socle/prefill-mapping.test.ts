@@ -43,6 +43,8 @@ function makeContact(overrides: Partial<SocleContact> = {}): SocleContact {
     status: "active",
     roles: [],
     external_references: [],
+    relations: [],
+    reverse_relations: [],
     created_at: null,
     updated_at: null,
     ...overrides,
