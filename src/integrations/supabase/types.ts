@@ -50,9 +50,10 @@ export type Database = {
           description: string | null
           id: string
           organization_id: string
-          procedure_id: string
+          procedure_id: string | null
           socle_data: Json | null
           status: string
+          title: string | null
           updated_at: string
         }
         Insert: {
@@ -65,9 +66,10 @@ export type Database = {
           description?: string | null
           id?: string
           organization_id: string
-          procedure_id: string
+          procedure_id?: string | null
           socle_data?: Json | null
           status?: string
+          title?: string | null
           updated_at?: string
         }
         Update: {
@@ -80,9 +82,10 @@ export type Database = {
           description?: string | null
           id?: string
           organization_id?: string
-          procedure_id?: string
+          procedure_id?: string | null
           socle_data?: Json | null
           status?: string
+          title?: string | null
           updated_at?: string
         }
         Relationships: [
