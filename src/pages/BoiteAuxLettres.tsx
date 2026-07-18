@@ -16,11 +16,25 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Search, Sparkles, Plus, Trash2, ArrowRightLeft, Upload } from "lucide-react";
+import { Search, Sparkles, Plus, Trash2, ArrowRightLeft, Upload, Weight } from "lucide-react";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { supabase } from "@/integrations/supabase/client";
 import { deleteCourier } from "@/services/courierService";
-import { useUserServiceFilter, applyServiceFilter } from "@/hooks/useUserServiceFilter";
+import type {
+  CourierListFilters,
+  CourierListRow,
+  CourierSortKey,
+} from "@/services/courierListService";
+import { useUserServiceFilter } from "@/hooks/useUserServiceFilter";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { useCourierList } from "@/hooks/useCourierList";
+import { DataTablePagination } from "@/components/data-table/data-table-pagination";
+import {
+  SortableHeader,
+  ariaSort,
+  type SortDirection,
+} from "@/components/data-table/data-table-column-header";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "@/hooks/use-toast";
 import MailboxSidePanel from "@/components/courier/MailboxSidePanel";
 import NewCourierDialog from "@/components/courier/NewCourierDialog";
@@ -41,8 +55,9 @@ export default function BoiteAuxLettres() {
   const { organizationId } = useOrganization();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const [courierToDelete, setCourierToDelete] = useState<CourierWithRelations | null>(null);
+  const [courierToDelete, setCourierToDelete] = useState<CourierListRow | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [tab, setTab] = useState<"all" | "transferred">("all");
 
   async function handleConfirmDelete() {
     if (!organizationId || !courierToDelete) return;
@@ -66,8 +81,9 @@ export default function BoiteAuxLettres() {
       setSelectedCourier(null);
     }
     setCourierToDelete(null);
+    // Une seule clé désormais : la requête « mailbox-unassigned » a fusionné
+    // avec celle-ci (paramètre includeNullState du RPC).
     queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
-    queryClient.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
   }
   const [search, setSearch] = useState("");
   const [selectedCourier, setSelectedCourier] = useState<CourierWithRelations | null>(null);
@@ -94,91 +110,49 @@ export default function BoiteAuxLettres() {
     enabled: !!organizationId,
   });
 
-  // 2. Fetch couriers at initial state
-  const { data: couriers, isLoading } = useQuery({
-    queryKey: ["mailbox-couriers", organizationId, initialStateIds, search],
-    queryFn: async () => {
-      if (!organizationId || !initialStateIds?.length) return [];
-      let query = supabase
-        .from("couriers")
-        .select("id, subject, direction, channel, received_at, sent_at, workflow_state_id, assigned_service, socle_organization_id, metadata, chrono, created_at, updated_at, courier_participants(id, role, name, email, socle_contact_id)")
-        .eq("organization_id", organizationId)
-        .eq("direction", "inbound")
-        .in("workflow_state_id", initialStateIds)
-        .order("received_at", { ascending: false })
-        .limit(100);
-
-      if (search) query = query.ilike("subject", `%${search}%`);
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return (data ?? []) as unknown as CourierWithRelations[];
-    },
-    enabled: !!organizationId && !!initialStateIds?.length,
-  });
-
-  // Also show couriers with no workflow_state (newly created, not yet assigned)
-  const { data: unassignedCouriers } = useQuery({
-    queryKey: ["mailbox-unassigned", organizationId, search],
-    queryFn: async () => {
-      if (!organizationId) return [];
-      let query = supabase
-        .from("couriers")
-        .select("id, subject, direction, channel, received_at, sent_at, workflow_state_id, assigned_service, socle_organization_id, metadata, chrono, created_at, updated_at, courier_participants(id, role, name, email, socle_contact_id)")
-        .eq("organization_id", organizationId)
-        .eq("direction", "inbound")
-        .is("workflow_state_id", null)
-        .order("received_at", { ascending: false })
-        .limit(100);
-
-      if (search) query = query.ilike("subject", `%${search}%`);
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return (data ?? []) as unknown as CourierWithRelations[];
-    },
-    enabled: !!organizationId,
-  });
-
   const serviceFilter = useUserServiceFilter();
+  const debouncedSearch = useDebouncedValue(search, 300);
 
-  const allCouriers = useMemo(() => {
-    const assigned = couriers ?? [];
-    const unassigned = unassignedCouriers ?? [];
-    const merged = [...unassigned, ...assigned].sort((a, b) => {
-      const da = a.received_at ?? a.created_at;
-      const db = b.received_at ?? b.created_at;
-      return new Date(db).getTime() - new Date(da).getTime();
-    });
-    return applyServiceFilter(merged, serviceFilter);
-  }, [couriers, unassignedCouriers, serviceFilter]);
+  // Une seule requête là où il y en avait deux (états initiaux + état NULL),
+  // fusionnées puis retriées en JS sur 100 lignes chacune : le tri combiné
+  // n'était donc pas celui des 200 courriers les plus récents.
+  // COALESCE(received_at, created_at) côté SQL reproduit le repli de l'ancien tri.
+  const filters = useMemo<CourierListFilters | null>(() => {
+    if (!organizationId || !initialStateIds?.length) return null;
+    return {
+      organizationId,
+      direction: "inbound",
+      workflowStateIds: initialStateIds,
+      includeNullState: true,
+      keywords: debouncedSearch || null,
+      prefixMatch: true,
+      visibleSocleOrganizationIds: serviceFilter,
+      // Onglet « Transférés » : filtre serveur, et non plus un partage de la
+      // page en deux tableaux — paginé, ce partage n'aurait montré que les
+      // transférés de la page courante.
+      transferredOnly: tab === "transferred" ? true : null,
+    };
+  }, [organizationId, initialStateIds, debouncedSearch, serviceFilter, tab]);
 
-  const allCourierIds = useMemo(() => allCouriers.map((c) => c.id), [allCouriers]);
-
-  const { data: transferredEventIds } = useQuery({
-    queryKey: ["mailbox-transferred-ids", allCourierIds],
-    queryFn: async () => {
-      if (!allCourierIds.length) return [];
-      const { data, error } = await supabase
-        .from("courier_events")
-        .select("courier_id")
-        .in("courier_id", allCourierIds)
-        .eq("event_type", "service_transferred");
-      if (error) throw error;
-      return [...new Set((data ?? []).map((e) => e.courier_id as string))];
-    },
-    enabled: allCourierIds.length > 0,
+  const list = useCourierList(filters, {
+    queryKeyPrefix: "mailbox-couriers",
+    defaultSort: { key: "received_at", dir: "desc" },
   });
 
-  const transferredIdSet = useMemo(
-    () => new Set(transferredEventIds ?? []),
-    [transferredEventIds],
-  );
+  // Cette page compose sa propre <Table> (colonne « nouveau », icônes de
+  // transfert et de volume) plutôt que d'utiliser DataTable : elle pilote donc
+  // le tri à la main, via le même état serveur que les autres listes.
+  function toggleSort(key: CourierSortKey, descFirst: boolean) {
+    const current = list.sorting[0];
+    const desc = current?.id === key ? !current.desc : descFirst;
+    list.onSortingChange([{ id: key, desc }]);
+  }
 
-  const { transferredCouriers, regularCouriers } = useMemo(() => ({
-    transferredCouriers: allCouriers.filter((c) => transferredIdSet.has(c.id)),
-    regularCouriers: allCouriers.filter((c) => !transferredIdSet.has(c.id)),
-  }), [allCouriers, transferredIdSet]);
+  function sortDirection(key: CourierSortKey): SortDirection {
+    const current = list.sorting[0];
+    if (current?.id !== key) return false;
+    return current.desc ? "desc" : "asc";
+  }
 
   // Étape 1 : capture le paramètre ?open= et nettoie l'URL immédiatement.
   // Séparé du reste pour éviter que le re-déclenchement sur allCouriers
@@ -213,38 +187,35 @@ export default function BoiteAuxLettres() {
     return () => { cancelled = true; };
   }, [pendingOpenId, organizationId]);
 
-  function isNew(courier: CourierWithRelations): boolean {
+  function isNew(courier: CourierListRow): boolean {
     if (!lastLogin) return false;
     const receivedAt = courier.received_at ?? courier.created_at;
     return new Date(receivedAt) > new Date(lastLogin);
   }
 
   // Arrivé pendant que l'utilisateur est sur cette page (via cron)
-  function isNewThisSession(courier: CourierWithRelations): boolean {
+  function isNewThisSession(courier: CourierListRow): boolean {
     const receivedAt = courier.received_at ?? courier.created_at;
     return new Date(receivedAt) > new Date(pageOpenTime.current);
   }
 
-  function getSender(courier: CourierWithRelations): { last: string; first: string } {
-    const p = courier.courier_participants?.find((p) => p.role === "sender");
-    if (!p) return { last: "—", first: "—" };
+  function getSender(courier: CourierListRow): { last: string; first: string } {
+    // Le RPC renvoie nom et prénom séparément, précisément pour cette colonne.
     return {
-      last: p.last_name ?? p.name ?? p.email ?? "—",
-      first: p.first_name ?? "—",
+      last: courier.sender_last_name ?? courier.sender_name ?? "—",
+      first: courier.sender_first_name ?? "—",
     };
   }
 
-  function getRecipient(courier: CourierWithRelations): string {
-    const p = courier.courier_participants?.find((p) => p.role === "recipient");
-    return p?.last_name ?? p?.name ?? p?.email ?? "—";
+  // Le panneau latéral attend un CourierWithRelations complet, que le RPC ne
+  // produit pas. On réutilise le chemin `pendingOpenId` déjà présent, qui
+  // recharge le courrier par identifiant : un aller-retour de plus au clic, et
+  // le panneau reçoit un enregistrement plus riche (documents, événements).
+  function handleRowClick(courier: CourierListRow) {
+    setPendingOpenId(courier.id);
   }
 
-  function handleRowClick(courier: CourierWithRelations) {
-    setSelectedCourier(courier);
-    setPanelOpen(true);
-  }
-
-  function renderRow(c: CourierWithRelations) {
+  function renderRow(c: CourierListRow) {
     const isNewCourier = isNew(c);
     const isJustArrived = isNewThisSession(c);
     const sender = getSender(c);
@@ -269,9 +240,28 @@ export default function BoiteAuxLettres() {
             : "—"}
         </TableCell>
         <TableCell className="text-sm font-medium max-w-[280px] truncate">
-          {c.subject ?? "Sans titre"}
+          <span className="inline-flex items-center gap-1.5">
+            {/* Remplace l'encadré « Courriers transférés » : l'information reste
+                visible ligne par ligne, y compris dans l'onglet « Tous ». */}
+            {c.is_transferred && (
+              <ArrowRightLeft
+                className="h-3.5 w-3.5 shrink-0 text-secondary"
+                aria-label="Courrier transféré"
+              />
+            )}
+            {/* Ces courriers étaient auparavant rejetés à l'ingestion (limite
+                2 Mo). Ils entrent désormais, mais restent signalés : ce sont le
+                plus souvent des numérisations, longues à ouvrir et à analyser. */}
+            {c.is_large_email && (
+              <Weight
+                className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                aria-label="Courrier volumineux"
+              />
+            )}
+            {c.subject ?? "Sans titre"}
+          </span>
         </TableCell>
-        <TableCell className="text-sm font-medium">{getRecipient(c)}</TableCell>
+        <TableCell className="text-sm font-medium">{c.recipient_name ?? "—"}</TableCell>
         <TableCell className="text-sm font-medium">{sender.last}</TableCell>
         <TableCell className="text-sm">{sender.first}</TableCell>
         <TableCell className="w-10">
@@ -337,64 +327,71 @@ export default function BoiteAuxLettres() {
             Veuillez sélectionner une organisation pour voir les courriers.
           </CardContent>
         </Card>
-      ) : isLoading ? (
-        <Card>
-          <CardContent className="py-8 text-center text-muted-foreground">Chargement…</CardContent>
-        </Card>
-      ) : !allCouriers.length ? (
-        <Card>
-          <CardContent className="py-8 text-center text-muted-foreground">
-            Aucun courrier en attente dans la boîte aux lettres.
-          </CardContent>
-        </Card>
       ) : (
         <div className="space-y-4">
-          {transferredCouriers.length > 0 && (
-            <div className="space-y-3 rounded-lg border-2 border-secondary p-4">
-              <div className="flex items-center gap-2 text-base font-bold text-foreground">
-                <ArrowRightLeft className="h-5 w-5" />
-                Courriers transférés
-              </div>
-              <Card>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-10"></TableHead>
-                      <TableHead>Date de réception</TableHead>
-                      <TableHead>Objet</TableHead>
-                      <TableHead>Destinataire</TableHead>
-                      <TableHead>Nom expéditeur</TableHead>
-                      <TableHead>Prénom expéditeur</TableHead>
-                      <TableHead className="w-10"></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {transferredCouriers.map((c) => renderRow(c))}
-                  </TableBody>
-                </Table>
-              </Card>
-            </div>
-          )}
-          {regularCouriers.length > 0 && (
-            <Card>
+          {/* Les transférés étaient auparavant un second tableau, alimenté par un
+              partage client de la liste. Devenu un filtre serveur : paginé, un
+              partage n'aurait montré que les transférés de la page courante. */}
+          <Tabs value={tab} onValueChange={(v) => setTab(v as "all" | "transferred")}>
+            <TabsList>
+              <TabsTrigger value="all">Tous</TabsTrigger>
+              <TabsTrigger value="transferred">
+                <ArrowRightLeft className="h-4 w-4 mr-1.5" />
+                Transférés
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+
+          <Card>
+            {list.isLoading ? (
+              <CardContent className="py-8 text-center text-muted-foreground">Chargement…</CardContent>
+            ) : !list.rows.length ? (
+              <CardContent className="py-8 text-center text-muted-foreground">
+                {tab === "transferred"
+                  ? "Aucun courrier transféré."
+                  : "Aucun courrier en attente dans la boîte aux lettres."}
+              </CardContent>
+            ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-10"></TableHead>
-                    <TableHead>Date de réception</TableHead>
-                    <TableHead>Objet</TableHead>
+                    <TableHead aria-sort={ariaSort(sortDirection("received_at"))}>
+                      <SortableHeader
+                        title="Date de réception"
+                        direction={sortDirection("received_at")}
+                        onToggle={() => toggleSort("received_at", true)}
+                      />
+                    </TableHead>
+                    <TableHead aria-sort={ariaSort(sortDirection("subject"))}>
+                      <SortableHeader
+                        title="Objet"
+                        direction={sortDirection("subject")}
+                        onToggle={() => toggleSort("subject", false)}
+                      />
+                    </TableHead>
+                    {/* Destinataire et expéditeur ne sont pas triables : le RPC
+                        les tire de courier_participants APRÈS le découpage, sur
+                        la seule page retenue. */}
                     <TableHead>Destinataire</TableHead>
                     <TableHead>Nom expéditeur</TableHead>
                     <TableHead>Prénom expéditeur</TableHead>
                     <TableHead className="w-10"></TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody>
-                  {regularCouriers.map((c) => renderRow(c))}
-                </TableBody>
+                <TableBody>{list.rows.map((c) => renderRow(c))}</TableBody>
               </Table>
-            </Card>
-          )}
+            )}
+            <DataTablePagination
+              page={list.page}
+              pageCount={list.pageCount}
+              pageSize={list.pageSize}
+              totalCount={list.totalCount}
+              onPageChange={list.setPage}
+              onPageSizeChange={list.setPageSize}
+              isLoading={list.isFetching}
+            />
+          </Card>
         </div>
       )}
 
@@ -405,7 +402,7 @@ export default function BoiteAuxLettres() {
           open={panelOpen}
           onOpenChange={setPanelOpen}
           organizationId={organizationId}
-          onDelete={(c) => setCourierToDelete(c as unknown as CourierWithRelations)}
+          onDelete={(c) => setCourierToDelete(c as unknown as CourierListRow)}
           disableFullScreen
         />
       )}

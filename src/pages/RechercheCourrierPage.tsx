@@ -20,7 +20,7 @@ import { listOrgsWithConfig } from "@/services/socleOrgConfigService";
 import { listTags, type CourierTag } from "@/services/courierTagService";
 import { searchCouriers, type CourierSearchResult } from "@/services/courierSearchService";
 import { readableTextColor } from "@/lib/tag-color";
-import { useUserServiceFilter, applyServiceFilter } from "@/hooks/useUserServiceFilter";
+import { useUserServiceFilter } from "@/hooks/useUserServiceFilter";
 
 const PAGE_SIZE = 20;
 
@@ -340,6 +340,8 @@ export default function RechercheCourrierPage() {
     debouncedKeywords, direction, stateId, service, selectedTags.join(","), dateFrom, dateTo,
   ];
 
+  const userServiceFilter = useUserServiceFilter();
+
   const {
     data,
     isLoading,
@@ -347,7 +349,7 @@ export default function RechercheCourrierPage() {
     hasNextPage,
     fetchNextPage,
   } = useInfiniteQuery({
-    queryKey,
+    queryKey: [...queryKey, userServiceFilter?.join(",") ?? "all"],
     queryFn: ({ pageParam = 0 }) =>
       searchCouriers({
         organizationId,
@@ -355,6 +357,10 @@ export default function RechercheCourrierPage() {
         direction: direction !== "all" ? direction as "inbound" | "outbound" : null,
         workflowStateId: stateId !== "all" ? stateId : null,
         socleOrganizationId: service !== "all" ? service : null,
+        // Filtré en SQL désormais. Le filtre était appliqué en JS APRÈS la
+        // pagination : il retirait des lignes déjà comptées, ce qui faussait le
+        // total affiché et créait des trous dans le défilement infini.
+        visibleSocleOrganizationIds: userServiceFilter,
         tagNames: selectedTags.length ? selectedTags : null,
         dateFrom: dateFrom || null,
         dateTo: dateTo || null,
@@ -369,9 +375,7 @@ export default function RechercheCourrierPage() {
     enabled: !!organizationId,
   });
 
-  const userServiceFilter = useUserServiceFilter();
-  const rawResults: CourierSearchResult[] = data?.pages.flatMap((p) => p.results) ?? [];
-  const results = applyServiceFilter(rawResults, userServiceFilter);
+  const results: CourierSearchResult[] = data?.pages.flatMap((p) => p.results) ?? [];
   const totalCount = data?.pages[0]?.totalCount ?? 0;
 
   const loadMoreRef = useRef<HTMLDivElement>(null);

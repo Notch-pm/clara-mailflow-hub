@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { ColumnDef, Table as TanstackTable } from "@tanstack/react-table";
@@ -14,14 +14,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Download, Search, Archive, Loader2 } from "lucide-react";
+import { Download, Search, Archive } from "lucide-react";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { supabase } from "@/integrations/supabase/client";
-import type { CourierWithRelations } from "@/types/courier";
 import { listTags } from "@/services/courierTagService";
 import { listOrgsWithConfig } from "@/services/socleOrgConfigService";
-import { useUserServiceFilter, applyServiceFilter } from "@/hooks/useUserServiceFilter";
-import { fetchAllCouriersByStatesForExport } from "@/services/courierService";
+import { useUserServiceFilter } from "@/hooks/useUserServiceFilter";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { useCourierList } from "@/hooks/useCourierList";
+import {
+  fetchAllCouriersForExport,
+  type CourierListFilters,
+  type CourierListRow,
+} from "@/services/courierListService";
 import { readableTextColor } from "@/lib/tag-color";
 import { toast } from "sonner";
 import { DataTable } from "@/components/data-table/data-table";
@@ -36,7 +41,6 @@ export default function CourriersArchives() {
   const [search, setSearch] = useState("");
   const [serviceFilter, setServiceFilter] = useState<string>("all");
   const [tagFilter, setTagFilter] = useState<string>("all");
-  const [limit, setLimit] = useState(50);
 
   // Archived states for the org
   const { data: archivedStates } = useQuery({
@@ -82,28 +86,33 @@ export default function CourriersArchives() {
     [archivedStates],
   );
 
-  const { data: couriers, isLoading } = useQuery({
-    queryKey: ["archives-couriers", organizationId, stateIds, search, limit],
-    queryFn: async () => {
-      if (!organizationId || !stateIds.length) return [];
-      let q = supabase
-        .from("couriers")
-        .select("id, subject, direction, channel, received_at, sent_at, workflow_state_id, assigned_service, socle_organization_id, metadata, chrono, created_at, updated_at, courier_participants(id, role, name, email, socle_contact_id)")
-        .eq("organization_id", organizationId)
-        .eq("direction", "inbound")
-        .in("workflow_state_id", stateIds)
-        .order("updated_at", { ascending: false })
-        .limit(limit);
-      if (search) q = q.ilike("subject", `%${search}%`);
-      const { data, error } = await q;
-      if (error) throw error;
-      return (data ?? []) as unknown as CourierWithRelations[];
-    },
-    enabled: !!organizationId && !!stateIds.length,
+  const userServiceFilter = useUserServiceFilter();
+  const debouncedSearch = useDebouncedValue(search, 300);
+
+  const filters = useMemo<CourierListFilters | null>(() => {
+    if (!organizationId || !stateIds.length) return null;
+    return {
+      organizationId,
+      direction: "inbound",
+      workflowStateIds: stateIds,
+      socleOrganizationId: serviceFilter !== "all" ? serviceFilter : null,
+      tagNames: tagFilter !== "all" ? [tagFilter] : null,
+      keywords: debouncedSearch || null,
+      prefixMatch: true,
+      visibleSocleOrganizationIds: userServiceFilter,
+    };
+  }, [organizationId, stateIds, serviceFilter, tagFilter, debouncedSearch, userServiceFilter]);
+
+  // updated_at : les archivages les plus récents d'abord. À ne pas confondre
+  // avec la colonne « Date d'archivage » ci-dessous, calculée par une seconde
+  // requête sur la seule page affichée et donc intriable côté serveur.
+  const list = useCourierList(filters, {
+    queryKeyPrefix: "archives-couriers",
+    defaultSort: { key: "updated_at", dir: "desc" },
   });
 
-  // Latest "state_changed" event into an archived state for each courier
-  const courierIds = useMemo(() => (couriers ?? []).map((c) => c.id), [couriers]);
+  // Date d'archivage : dernier passage dans un état archivé, sur la page affichée.
+  const courierIds = useMemo(() => list.rows.map((c) => c.id), [list.rows]);
   const { data: archivedAtMap } = useQuery({
     queryKey: ["archives-archived-at", organizationId, courierIds, stateIds],
     queryFn: async () => {
@@ -129,53 +138,24 @@ export default function CourriersArchives() {
     enabled: !!organizationId && courierIds.length > 0 && stateIds.length > 0,
   });
 
-  const userServiceFilter = useUserServiceFilter();
 
-  const applyFilters = useCallback(
-    (list: CourierWithRelations[]): CourierWithRelations[] => {
-      let out = applyServiceFilter(list, userServiceFilter);
-      if (serviceFilter !== "all") {
-        const svc = services?.find((s) => s.id === serviceFilter);
-        if (svc) out = out.filter((c) => c.socle_organization_id === svc.id);
-      }
-      if (tagFilter !== "all") {
-        out = out.filter((c) => {
-          const t = (c.metadata as Record<string, unknown> | null)?.tags ?? [];
-          return Array.isArray(t) && t.some((x: string) => x.toLowerCase() === tagFilter.toLowerCase());
-        });
-      }
-      return out;
-    },
-    [userServiceFilter, serviceFilter, tagFilter, services],
-  );
-
-  const filtered = useMemo(() => applyFilters(couriers ?? []), [couriers, applyFilters]);
-
-  function getSender(c: CourierWithRelations): string {
-    const p = c.courier_participants?.find((x) => x.role === "sender");
-    if (!p) return "—";
-    const full = [p.first_name, p.last_name].filter(Boolean).join(" ");
-    return full || p.name || p.email || "—";
-  }
-
-  function getRecipient(c: CourierWithRelations): string {
-    const p = c.courier_participants?.find((x) => x.role === "recipient");
-    return p?.name ?? p?.email ?? "—";
-  }
-
-  function getTags(c: CourierWithRelations): string[] {
-    const t = (c.metadata as Record<string, unknown> | null)?.tags ?? [];
-    return Array.isArray(t) ? (t as string[]) : [];
-  }
-
-  const [tableInstance, setTableInstance] = useState<TanstackTable<CourierWithRelations> | null>(null);
+  const [tableInstance, setTableInstance] = useState<TanstackTable<CourierListRow> | null>(null);
   const [isExporting, setIsExporting] = useState(false);
 
-  const columns = useMemo<ColumnDef<CourierWithRelations>[]>(
+  // Le tri est SERVEUR (cf. useCourierList) : les en-têtes triables portent donc
+  // sur tout le jeu filtré. L'`id` de colonne EST la clé serveur — le renommer
+  // casse le tri.
+  //
+  // Restent `enableSorting: false` les colonnes que le RPC ne peut pas trier
+  // sans payer le prix que la pagination économise : expéditeur et destinataire
+  // viennent de jointures appliquées après le découpage, l'état demanderait une
+  // jointure de plus, et les tags sont un tableau jsonb.
+  const columns = useMemo<ColumnDef<CourierListRow>[]>(
     () => [
       {
         id: "received_at",
         accessorFn: (c) => (c.received_at ? new Date(c.received_at).toLocaleDateString("fr-FR") : ""),
+        sortDescFirst: true,
         header: ({ column }) => <DataTableColumnHeader column={column} title="Date de réception" />,
         cell: ({ row }) => (
           <span className="text-sm whitespace-nowrap">
@@ -190,7 +170,11 @@ export default function CourriersArchives() {
           const at = archivedAtMap?.[c.id];
           return at ? new Date(at).toLocaleDateString("fr-FR") : "";
         },
-        header: ({ column }) => <DataTableColumnHeader column={column} title="Date d'archivage" />,
+        // Non triable, et le rester : cette date vient de `courier_events`,
+        // chargée par une requête à part pour les seuls courriers de la page
+        // affichée. Le RPC ne la connaît pas.
+        enableSorting: false,
+        header: "Date d'archivage",
         cell: ({ row }) => {
           const at = archivedAtMap?.[row.original.id];
           return <span className="text-sm whitespace-nowrap">{at ? new Date(at).toLocaleDateString("fr-FR") : "—"}</span>;
@@ -208,7 +192,8 @@ export default function CourriersArchives() {
       {
         id: "state",
         accessorFn: (c) => stateById.get(c.workflow_state_id ?? "")?.name ?? "",
-        header: ({ column }) => <DataTableColumnHeader column={column} title="État" />,
+        enableSorting: false,
+        header: "État",
         cell: ({ row }) => {
           const name = stateById.get(row.original.workflow_state_id ?? "")?.name;
           return name ? <Badge variant="outline" className="text-xs">{name}</Badge> : null;
@@ -223,25 +208,28 @@ export default function CourriersArchives() {
       },
       {
         id: "sender",
-        accessorFn: getSender,
-        header: ({ column }) => <DataTableColumnHeader column={column} title="Expéditeur" />,
-        cell: ({ row }) => <span className="text-sm">{getSender(row.original)}</span>,
+        accessorFn: (c) => c.sender_name ?? "—",
+        enableSorting: false,
+        header: "Expéditeur",
+        cell: ({ row }) => <span className="text-sm">{row.original.sender_name ?? "—"}</span>,
         meta: { exportLabel: "Expéditeur" },
       },
       {
         id: "recipient",
-        accessorFn: getRecipient,
-        header: ({ column }) => <DataTableColumnHeader column={column} title="Destinataire" />,
-        cell: ({ row }) => <span className="text-sm">{getRecipient(row.original)}</span>,
+        accessorFn: (c) => c.recipient_name ?? "—",
+        enableSorting: false,
+        header: "Destinataire",
+        cell: ({ row }) => <span className="text-sm">{row.original.recipient_name ?? "—"}</span>,
         meta: { exportLabel: "Destinataire" },
       },
       {
         id: "tags",
-        accessorFn: (c) => getTags(c).join(", "),
-        header: ({ column }) => <DataTableColumnHeader column={column} title="Tags" />,
+        accessorFn: (c) => c.tags.join(", "),
+        enableSorting: false,
+        header: "Tags",
         cell: ({ row }) => (
           <div className="flex flex-wrap gap-1">
-            {getTags(row.original).map((t) => {
+            {row.original.tags.map((t) => {
               const color = tagByName.get(t.toLowerCase())?.color ?? null;
               return (
                 <span
@@ -262,20 +250,21 @@ export default function CourriersArchives() {
   );
 
   async function handleExportCsv() {
-    if (!organizationId || !tableInstance) return;
+    if (!list.filters || !tableInstance) return;
     setIsExporting(true);
     try {
-      const allRows = applyFilters(
-        await fetchAllCouriersByStatesForExport(organizationId, { stateIds, search: search || undefined }),
-      );
-      const csvColumns: CsvColumn<CourierWithRelations>[] = tableInstance
+      // list.filters et non `filters` : ceux-là portent le tri courant, le CSV
+      // sort donc dans l'ordre affiché à l'écran.
+      const { rows, truncated } = await fetchAllCouriersForExport(list.filters);
+      const csvColumns: CsvColumn<CourierListRow>[] = tableInstance
         .getVisibleLeafColumns()
         .map((col) => ({
           header: (col.columnDef.meta as { exportLabel?: string } | undefined)?.exportLabel ?? col.id,
-          accessor: (row) => (col.accessorFn as ((row: CourierWithRelations) => unknown) | undefined)?.(row) ?? "",
+          accessor: (row) => (col.accessorFn as ((row: CourierListRow) => unknown) | undefined)?.(row) ?? "",
         }));
-      const csv = buildCsv(allRows, csvColumns);
+      const csv = buildCsv(rows, csvColumns);
       downloadCsv(csv, `courriers-archives-${new Date().toISOString().slice(0, 10)}.csv`);
+      if (truncated) toast.warning("Export limité aux 20 000 premiers courriers.");
     } catch (e) {
       console.error(e);
       toast.error("Erreur lors de l'export du fichier.");
@@ -284,7 +273,7 @@ export default function CourriersArchives() {
     }
   }
 
-  function handleRowClick(c: CourierWithRelations) {
+  function handleRowClick(c: CourierListRow) {
     navigate(`/courrier/${c.id}`);
   }
 
@@ -304,7 +293,7 @@ export default function CourriersArchives() {
         <div className="flex items-center justify-end gap-2">
           {tableInstance && <DataTableGroupingSelect table={tableInstance} />}
           {tableInstance && <DataTableColumnToggle table={tableInstance} />}
-          <Button variant="outline" size="sm" onClick={handleExportCsv} disabled={isExporting || !filtered.length}>
+          <Button variant="outline" size="sm" onClick={handleExportCsv} disabled={isExporting || !list.totalCount}>
             <Download className="h-4 w-4 mr-1" />
             {isExporting ? "Export…" : "Exporter CSV"}
           </Button>
@@ -373,21 +362,23 @@ export default function CourriersArchives() {
       ) : (
         <DataTable
           columns={columns}
-          data={filtered}
-          isLoading={isLoading}
+          data={list.rows}
+          isLoading={list.isLoading}
           onRowClick={handleRowClick}
           onTableInstanceChange={setTableInstance}
+          sorting={list.sorting}
+          onSortingChange={list.onSortingChange}
           emptyMessage="Aucun courrier archivé."
+          pagination={{
+            page: list.page,
+            pageCount: list.pageCount,
+            pageSize: list.pageSize,
+            totalCount: list.totalCount,
+            onPageChange: list.setPage,
+            onPageSizeChange: list.setPageSize,
+            isLoading: list.isFetching,
+          }}
         />
-      )}
-
-      {organizationId && (couriers?.length ?? 0) >= limit && (
-        <div className="flex justify-center pt-2">
-          <Button variant="outline" onClick={() => setLimit((l) => l + 50)} disabled={isLoading}>
-            {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-            Charger 50 de plus
-          </Button>
-        </div>
       )}
     </div>
   );

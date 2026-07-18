@@ -21,8 +21,16 @@ import { DataTableColumnHeader } from "@/components/data-table/data-table-column
 import { DataTableColumnToggle } from "@/components/data-table/data-table-column-toggle";
 import { DataTableGroupingSelect } from "@/components/data-table/data-table-grouping-select";
 import { buildCsv, downloadCsv, type CsvColumn } from "@/components/data-table/csv-export";
-import { getCouriers, createCourier, fetchAllCouriersForExport } from "@/services/courierService";
-import type { CourierChannel, CourierWithRelations } from "@/types/courier";
+import { createCourier } from "@/services/courierService";
+import {
+  fetchAllCouriersForExport,
+  type CourierListFilters,
+  type CourierListRow,
+} from "@/services/courierListService";
+import { useUserServiceFilter } from "@/hooks/useUserServiceFilter";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { useCourierList } from "@/hooks/useCourierList";
+import type { CourierChannel } from "@/types/courier";
 
 const createCourierSchema = z.object({
   subject: z.string().min(1, "L'objet est obligatoire").max(500),
@@ -50,24 +58,39 @@ export default function CourriersEntrants() {
     defaultValues: { subject: "", channel: undefined, received_at: new Date().toISOString().slice(0, 16) },
   });
 
-  const { data: couriers, isLoading } = useQuery({
-    queryKey: ["couriers", "inbound", organizationId, search],
-    queryFn: async () => {
-      if (!organizationId) return [];
-      const { data, error } = await getCouriers(organizationId, {
-        direction: "inbound",
-        search: search || undefined,
-      });
-      if (error) throw error;
-      return (data ?? []) as unknown as CourierWithRelations[];
-    },
-    enabled: !!organizationId,
+  const userServiceFilter = useUserServiceFilter();
+  const debouncedSearch = useDebouncedValue(search, 300);
+
+  const filters = useMemo<CourierListFilters | null>(() => {
+    if (!organizationId) return null;
+    return {
+      organizationId,
+      direction: "inbound",
+      keywords: debouncedSearch || null,
+      prefixMatch: true,
+      // Cette page n'appliquait AUCUN filtre de service, contrairement à
+      // Sortants : un agent restreint y voyait donc les courriers des autres
+      // services. Changement de comportement volontaire.
+      visibleSocleOrganizationIds: userServiceFilter,
+    };
+  }, [organizationId, debouncedSearch, userServiceFilter]);
+
+  // created_at et non received_at : la saisie manuelle porte une date de
+  // réception qui peut être ancienne, un courrier créé ce matin doit rester en
+  // tête. Aucun en-tête ne l'affiche, donc aucune flèche n'est visible tant que
+  // l'utilisateur n'a pas trié lui-même.
+  const list = useCourierList(filters, {
+    queryKeyPrefix: "couriers-inbound",
+    defaultSort: { key: "created_at", dir: "desc" },
   });
 
-  const [tableInstance, setTableInstance] = useState<TanstackTable<CourierWithRelations> | null>(null);
+  const [tableInstance, setTableInstance] = useState<TanstackTable<CourierListRow> | null>(null);
   const [isExporting, setIsExporting] = useState(false);
 
-  const columns = useMemo<ColumnDef<CourierWithRelations>[]>(
+  // Le tri est SERVEUR (cf. useCourierList) : les en-têtes triables portent donc
+  // sur tout le jeu filtré. L'`id` de colonne EST la clé serveur — le renommer
+  // casse le tri. `enableSorting: false` marque ce que le RPC ne sait pas trier.
+  const columns = useMemo<ColumnDef<CourierListRow>[]>(
     () => [
       {
         accessorKey: "chrono",
@@ -86,7 +109,11 @@ export default function CourriersEntrants() {
       {
         id: "channel",
         accessorFn: (c) => channelLabels[c.channel as CourierChannel] ?? c.channel,
-        header: ({ column }) => <DataTableColumnHeader column={column} title="Canal" />,
+        // Le RPC trierait sur l'énumération SQL, dont l'ordre (paper, email,
+        // portal) n'est ni alphabétique ni celui des libellés affichés. Le
+        // groupement par canal rend déjà ce service.
+        enableSorting: false,
+        header: "Canal",
         cell: ({ row }) => (
           <Badge variant="outline">{channelLabels[row.original.channel as CourierChannel] ?? row.original.channel}</Badge>
         ),
@@ -101,6 +128,7 @@ export default function CourriersEntrants() {
       {
         id: "received_at",
         accessorFn: (c) => (c.received_at ? new Date(c.received_at).toLocaleDateString("fr-FR") : ""),
+        sortDescFirst: true,
         header: ({ column }) => <DataTableColumnHeader column={column} title="Reçu le" />,
         cell: ({ row }) => (
           <span className="text-sm">{row.original.received_at ? new Date(row.original.received_at).toLocaleDateString("fr-FR") : "—"}</span>
@@ -112,18 +140,21 @@ export default function CourriersEntrants() {
   );
 
   async function handleExportCsv() {
-    if (!organizationId || !tableInstance) return;
+    if (!list.filters || !tableInstance) return;
     setIsExporting(true);
     try {
-      const allRows = await fetchAllCouriersForExport(organizationId, { direction: "inbound", search: search || undefined });
-      const csvColumns: CsvColumn<CourierWithRelations>[] = tableInstance
+      // list.filters et non `filters` : ceux-là portent le tri courant, le CSV
+      // sort donc dans l'ordre affiché à l'écran.
+      const { rows, truncated } = await fetchAllCouriersForExport(list.filters);
+      const csvColumns: CsvColumn<CourierListRow>[] = tableInstance
         .getVisibleLeafColumns()
         .map((col) => ({
           header: (col.columnDef.meta as { exportLabel?: string } | undefined)?.exportLabel ?? col.id,
-          accessor: (row) => (col.accessorFn as ((row: CourierWithRelations) => unknown) | undefined)?.(row) ?? "",
+          accessor: (row) => (col.accessorFn as ((row: CourierListRow) => unknown) | undefined)?.(row) ?? "",
         }));
-      const csv = buildCsv(allRows, csvColumns);
+      const csv = buildCsv(rows, csvColumns);
       downloadCsv(csv, `courriers-entrants-${new Date().toISOString().slice(0, 10)}.csv`);
+      if (truncated) toast.warning("Export limité aux 20 000 premiers courriers.");
     } catch (e) {
       console.error(e);
       toast.error("Erreur lors de l'export du fichier.");
@@ -145,7 +176,7 @@ export default function CourriersEntrants() {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["couriers"] });
+      queryClient.invalidateQueries({ queryKey: ["couriers-inbound"] });
       toast.success("Courrier créé avec succès");
       form.reset();
       setDialogOpen(false);
@@ -218,7 +249,7 @@ export default function CourriersEntrants() {
         <div className="flex items-center justify-end gap-2">
           {tableInstance && <DataTableGroupingSelect table={tableInstance} />}
           {tableInstance && <DataTableColumnToggle table={tableInstance} />}
-          <Button variant="outline" size="sm" onClick={handleExportCsv} disabled={isExporting || !couriers?.length}>
+          <Button variant="outline" size="sm" onClick={handleExportCsv} disabled={isExporting || !list.totalCount}>
             <Download className="h-4 w-4 mr-1" />
             {isExporting ? "Export…" : "Exporter CSV"}
           </Button>
@@ -253,11 +284,22 @@ export default function CourriersEntrants() {
       ) : (
         <DataTable
           columns={columns}
-          data={couriers ?? []}
-          isLoading={isLoading}
+          data={list.rows}
+          isLoading={list.isLoading}
           onRowClick={(c) => navigate(`/courrier/${c.id}`)}
           onTableInstanceChange={setTableInstance}
+          sorting={list.sorting}
+          onSortingChange={list.onSortingChange}
           emptyMessage='Aucun courrier entrant. Cliquez sur "Nouveau courrier" pour commencer.'
+          pagination={{
+            page: list.page,
+            pageCount: list.pageCount,
+            pageSize: list.pageSize,
+            totalCount: list.totalCount,
+            onPageChange: list.setPage,
+            onPageSizeChange: list.setPageSize,
+            isLoading: list.isFetching,
+          }}
         />
       )}
     </div>

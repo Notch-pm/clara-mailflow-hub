@@ -9,6 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getDocuments } from "@/services/courierDocumentService";
 import { getCourierById, updateCourier } from "@/services/courierService";
+import { COURIER_LIST_QUERY_PREFIXES } from "@/services/courierListService";
 import { listTags } from "@/services/courierTagService";
 import { readableTextColor } from "@/lib/tag-color";
 import {
@@ -163,7 +164,42 @@ export default function ContentIntentsTab({ courierId, organizationId, readOnly 
     onSuccess: () => {
       toast.success("Tags appliqués au courrier");
       qc.invalidateQueries({ queryKey: ["courier", organizationId, courierId] });
-      qc.invalidateQueries({ queryKey: ["couriers"] });
+      // Les listes filtrent par tag côté serveur : elles doivent toutes être
+      // réinterrogées après une modification des tags.
+      COURIER_LIST_QUERY_PREFIXES.forEach((prefix) =>
+        qc.invalidateQueries({ queryKey: [prefix] }),
+      );
+      qc.invalidateQueries({ queryKey: ["courier-instruction"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  /**
+   * Titre suggéré par l'IA, proposé seulement s'il apporte quelque chose.
+   *
+   * Enjeu principal : un courrier numérisé arrive avec le titre générique
+   * « Courrier numérisé — à qualifier » posé par l'ingestion. Sans ce geste,
+   * l'analyse produisait bien un `suggested_subject`, mais il n'était affiché
+   * nulle part sur un courrier existant — l'agent devait retaper le titre.
+   */
+  const suggestedSubject = analysis?.suggested_subject?.trim() || null;
+  const canApplySubject =
+    !!suggestedSubject && suggestedSubject !== (courierData?.subject ?? "").trim();
+
+  const applySubjectMutation = useMutation({
+    mutationFn: async () => {
+      if (!suggestedSubject) return;
+      const { error } = await updateCourier(organizationId, courierId, {
+        subject: suggestedSubject,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Titre appliqué au courrier");
+      qc.invalidateQueries({ queryKey: ["courier", organizationId, courierId] });
+      COURIER_LIST_QUERY_PREFIXES.forEach((prefix) =>
+        qc.invalidateQueries({ queryKey: [prefix] }),
+      );
       qc.invalidateQueries({ queryKey: ["courier-instruction"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -345,6 +381,53 @@ export default function ContentIntentsTab({ courierId, organizationId, readOnly 
           </Card>
         ) : (
           <div className="space-y-3">
+            {(canApplySubject || analysis.suggested_sender?.name || analysis.suggested_service_name) && (
+              <Card className="p-3">
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                  Champs suggérés
+                </h4>
+                <div className="space-y-2">
+                  {canApplySubject && (
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-xs text-muted-foreground">Titre</p>
+                        <p className="text-sm font-medium break-words">{suggestedSubject}</p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="default"
+                        onClick={() => applySubjectMutation.mutate()}
+                        disabled={readOnly || applySubjectMutation.isPending}
+                        className="h-7 text-xs shrink-0"
+                      >
+                        {applySubjectMutation.isPending ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <Check className="h-3 w-3" />
+                        )}
+                        Appliquer
+                      </Button>
+                    </div>
+                  )}
+                  {/* Expéditeur et service restent indicatifs : les rattacher
+                      suppose un rapprochement avec le référentiel du Socle, qui
+                      se fait au passage en instruction. */}
+                  {analysis.suggested_sender?.name && (
+                    <div>
+                      <p className="text-xs text-muted-foreground">Expéditeur détecté</p>
+                      <p className="text-sm">{analysis.suggested_sender.name}</p>
+                    </div>
+                  )}
+                  {analysis.suggested_service_name && (
+                    <div>
+                      <p className="text-xs text-muted-foreground">Service suggéré</p>
+                      <p className="text-sm">{analysis.suggested_service_name}</p>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            )}
+
             {analysis.summary && (
               <Card className="p-3">
                 <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">

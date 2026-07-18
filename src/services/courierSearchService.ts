@@ -1,4 +1,12 @@
-import { supabase } from "@/integrations/supabase/client";
+import { fetchCourierListPage } from "@/services/courierListService";
+
+/**
+ * Recherche avancée de courriers (page Recherche).
+ *
+ * Adaptateur mince au-dessus de `courierListService`, qui détient désormais le
+ * seul binding vers le RPC `search_couriers`. Les types exportés ici sont
+ * conservés tels quels : `RechercheCourrierPage` compile sans modification.
+ */
 
 export interface CourierSearchParams {
   organizationId: string;
@@ -6,6 +14,12 @@ export interface CourierSearchParams {
   workflowStateId?: string | null;
   /** UUID de l'organisation gestionnaire (miroir Socle). */
   socleOrganizationId?: string | null;
+  /**
+   * Périmètre RBAC (`useUserServiceFilter()`). Appliqué en SQL : la page le
+   * filtrait auparavant en JS APRÈS la pagination, ce qui faussait le total
+   * affiché et faisait sauter des lignes dans le défilement infini.
+   */
+  visibleSocleOrganizationIds: string[] | null;
   keywords?: string | null;
   tagNames?: string[] | null;
   dateFrom?: string | null;
@@ -33,19 +47,29 @@ export interface CourierSearchPage {
 }
 
 export async function searchCouriers(params: CourierSearchParams): Promise<CourierSearchPage> {
-  const { data, error } = await (supabase as any).rpc("search_couriers", {
-    p_organization_id:    params.organizationId,
-    p_direction:          params.direction ?? null,
-    p_workflow_state_id:  params.workflowStateId ?? null,
-    p_socle_organization_id: params.socleOrganizationId ?? null,
-    p_keywords:           params.keywords?.trim() || null,
-    p_tag_names:          params.tagNames?.length ? params.tagNames : null,
-    p_date_from:          params.dateFrom ?? null,
-    p_date_to:            params.dateTo ?? null,
-    p_limit:              params.limit ?? 20,
-    p_offset:             params.offset ?? 0,
-  });
-  if (error) throw error;
-  const rows = (data ?? []) as CourierSearchResult[];
-  return { results: rows, totalCount: rows[0]?.total_count ?? 0 };
+  const limit = params.limit ?? 20;
+  const offset = params.offset ?? 0;
+
+  const { rows, totalCount } = await fetchCourierListPage(
+    {
+      organizationId: params.organizationId,
+      direction: params.direction ?? null,
+      workflowStateIds: params.workflowStateId ? [params.workflowStateId] : null,
+      socleOrganizationId: params.socleOrganizationId ?? null,
+      visibleSocleOrganizationIds: params.visibleSocleOrganizationIds,
+      keywords: params.keywords ?? null,
+      // La page Recherche garde la syntaxe websearch (guillemets, OR, -), là où
+      // les listes veulent la recherche par préfixe au fil de la frappe.
+      prefixMatch: false,
+      tagNames: params.tagNames ?? null,
+      dateFrom: params.dateFrom ?? null,
+      dateTo: params.dateTo ?? null,
+      sortBy: "received_at",
+    },
+    // `fetchCourierListPage` raisonne en pages ; cette API expose un offset brut.
+    Math.floor(offset / limit),
+    limit,
+  );
+
+  return { results: rows as unknown as CourierSearchResult[], totalCount };
 }

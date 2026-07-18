@@ -21,9 +21,16 @@ import { DataTableColumnHeader } from "@/components/data-table/data-table-column
 import { DataTableColumnToggle } from "@/components/data-table/data-table-column-toggle";
 import { DataTableGroupingSelect } from "@/components/data-table/data-table-grouping-select";
 import { buildCsv, downloadCsv, type CsvColumn } from "@/components/data-table/csv-export";
-import { getCouriers, createCourier, fetchAllCouriersForExport } from "@/services/courierService";
-import type { CourierChannel, CourierWithRelations } from "@/types/courier";
-import { useUserServiceFilter, applyServiceFilter } from "@/hooks/useUserServiceFilter";
+import { createCourier } from "@/services/courierService";
+import {
+  fetchAllCouriersForExport,
+  type CourierListFilters,
+  type CourierListRow,
+} from "@/services/courierListService";
+import type { CourierChannel } from "@/types/courier";
+import { useUserServiceFilter } from "@/hooks/useUserServiceFilter";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { useCourierList } from "@/hooks/useCourierList";
 
 const schema = z.object({
   subject: z.string().min(1, "L'objet est obligatoire").max(500),
@@ -47,23 +54,34 @@ export default function CourriersSortants() {
 
   const userServiceFilter = useUserServiceFilter();
 
-  const { data: rawCouriers, isLoading } = useQuery({
-    queryKey: ["couriers", "outbound", organizationId, search],
-    queryFn: async () => {
-      if (!organizationId) return [];
-      const { data, error } = await getCouriers(organizationId, { direction: "outbound", search: search || undefined });
-      if (error) throw error;
-      return (data ?? []) as unknown as CourierWithRelations[];
-    },
-    enabled: !!organizationId,
+  const debouncedSearch = useDebouncedValue(search, 300);
+
+  const filters = useMemo<CourierListFilters | null>(() => {
+    if (!organizationId) return null;
+    return {
+      organizationId,
+      direction: "outbound",
+      keywords: debouncedSearch || null,
+      prefixMatch: true,
+      visibleSocleOrganizationIds: userServiceFilter,
+    };
+  }, [organizationId, debouncedSearch, userServiceFilter]);
+
+  // created_at et non sent_at : un courrier en préparation n'a pas encore de
+  // date d'envoi, trier dessus le renverrait en fin de liste alors que c'est
+  // celui sur lequel on travaille.
+  const list = useCourierList(filters, {
+    queryKeyPrefix: "couriers-outbound",
+    defaultSort: { key: "created_at", dir: "desc" },
   });
 
-  const couriers = applyServiceFilter(rawCouriers ?? [], userServiceFilter);
-
-  const [tableInstance, setTableInstance] = useState<TanstackTable<CourierWithRelations> | null>(null);
+  const [tableInstance, setTableInstance] = useState<TanstackTable<CourierListRow> | null>(null);
   const [isExporting, setIsExporting] = useState(false);
 
-  const columns = useMemo<ColumnDef<CourierWithRelations>[]>(
+  // Le tri est SERVEUR (cf. useCourierList) : les en-têtes triables portent donc
+  // sur tout le jeu filtré. L'`id` de colonne EST la clé serveur — le renommer
+  // casse le tri. `enableSorting: false` marque ce que le RPC ne sait pas trier.
+  const columns = useMemo<ColumnDef<CourierListRow>[]>(
     () => [
       {
         accessorKey: "chrono",
@@ -82,7 +100,10 @@ export default function CourriersSortants() {
       {
         id: "channel",
         accessorFn: (c) => channelLabels[c.channel as CourierChannel] ?? c.channel,
-        header: ({ column }) => <DataTableColumnHeader column={column} title="Canal" />,
+        // Le RPC trierait sur l'énumération SQL, dont l'ordre n'est ni
+        // alphabétique ni celui des libellés affichés.
+        enableSorting: false,
+        header: "Canal",
         cell: ({ row }) => (
           <Badge variant="outline">{channelLabels[row.original.channel as CourierChannel] ?? row.original.channel}</Badge>
         ),
@@ -97,6 +118,7 @@ export default function CourriersSortants() {
       {
         id: "sent_at",
         accessorFn: (c) => (c.sent_at ? new Date(c.sent_at).toLocaleDateString("fr-FR") : ""),
+        sortDescFirst: true,
         header: ({ column }) => <DataTableColumnHeader column={column} title="Envoyé le" />,
         cell: ({ row }) => (
           <span className="text-sm">{row.original.sent_at ? new Date(row.original.sent_at).toLocaleDateString("fr-FR") : "—"}</span>
@@ -108,21 +130,21 @@ export default function CourriersSortants() {
   );
 
   async function handleExportCsv() {
-    if (!organizationId || !tableInstance) return;
+    if (!list.filters || !tableInstance) return;
     setIsExporting(true);
     try {
-      const allRows = applyServiceFilter(
-        await fetchAllCouriersForExport(organizationId, { direction: "outbound", search: search || undefined }),
-        userServiceFilter,
-      );
-      const csvColumns: CsvColumn<CourierWithRelations>[] = tableInstance
+      // list.filters et non `filters` : ceux-là portent le tri courant, le CSV
+      // sort donc dans l'ordre affiché à l'écran.
+      const { rows, truncated } = await fetchAllCouriersForExport(list.filters);
+      const csvColumns: CsvColumn<CourierListRow>[] = tableInstance
         .getVisibleLeafColumns()
         .map((col) => ({
           header: (col.columnDef.meta as { exportLabel?: string } | undefined)?.exportLabel ?? col.id,
-          accessor: (row) => (col.accessorFn as ((row: CourierWithRelations) => unknown) | undefined)?.(row) ?? "",
+          accessor: (row) => (col.accessorFn as ((row: CourierListRow) => unknown) | undefined)?.(row) ?? "",
         }));
-      const csv = buildCsv(allRows, csvColumns);
+      const csv = buildCsv(rows, csvColumns);
       downloadCsv(csv, `courriers-sortants-${new Date().toISOString().slice(0, 10)}.csv`);
+      if (truncated) toast.warning("Export limité aux 20 000 premiers courriers.");
     } catch (e) {
       console.error(e);
       toast.error("Erreur lors de l'export du fichier.");
@@ -144,7 +166,7 @@ export default function CourriersSortants() {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["couriers"] });
+      queryClient.invalidateQueries({ queryKey: ["couriers-outbound"] });
       toast.success("Courrier sortant créé");
       form.reset();
       setDialogOpen(false);
@@ -201,7 +223,7 @@ export default function CourriersSortants() {
         <div className="flex items-center justify-end gap-2">
           {tableInstance && <DataTableGroupingSelect table={tableInstance} />}
           {tableInstance && <DataTableColumnToggle table={tableInstance} />}
-          <Button variant="outline" size="sm" onClick={handleExportCsv} disabled={isExporting || !couriers?.length}>
+          <Button variant="outline" size="sm" onClick={handleExportCsv} disabled={isExporting || !list.totalCount}>
             <Download className="h-4 w-4 mr-1" />
             {isExporting ? "Export…" : "Exporter CSV"}
           </Button>
@@ -232,11 +254,22 @@ export default function CourriersSortants() {
       ) : (
         <DataTable
           columns={columns}
-          data={couriers ?? []}
-          isLoading={isLoading}
+          data={list.rows}
+          isLoading={list.isLoading}
           onRowClick={(c) => navigate(`/courrier/${c.id}`)}
           onTableInstanceChange={setTableInstance}
+          sorting={list.sorting}
+          onSortingChange={list.onSortingChange}
           emptyMessage="Aucun courrier sortant."
+          pagination={{
+            page: list.page,
+            pageCount: list.pageCount,
+            pageSize: list.pageSize,
+            totalCount: list.totalCount,
+            onPageChange: list.setPage,
+            onPageSizeChange: list.setPageSize,
+            isLoading: list.isFetching,
+          }}
         />
       )}
     </div>

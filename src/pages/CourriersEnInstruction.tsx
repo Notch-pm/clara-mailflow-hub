@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { ColumnDef, Table as TanstackTable } from "@tanstack/react-table";
@@ -19,8 +19,14 @@ import { useOrganization } from "@/contexts/OrganizationContext";
 import { supabase } from "@/integrations/supabase/client";
 import { listTags } from "@/services/courierTagService";
 import { listOrgsWithConfig } from "@/services/socleOrgConfigService";
-import { useUserServiceFilter, applyServiceFilter } from "@/hooks/useUserServiceFilter";
-import { fetchAllCouriersByStatesForExport } from "@/services/courierService";
+import { useUserServiceFilter } from "@/hooks/useUserServiceFilter";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { useCourierList } from "@/hooks/useCourierList";
+import {
+  fetchAllCouriersForExport,
+  type CourierListFilters,
+  type CourierListRow,
+} from "@/services/courierListService";
 import { DataTable } from "@/components/data-table/data-table";
 import { DataTableColumnHeader } from "@/components/data-table/data-table-column-header";
 import { DataTableColumnToggle } from "@/components/data-table/data-table-column-toggle";
@@ -29,7 +35,6 @@ import { buildCsv, downloadCsv, type CsvColumn } from "@/components/data-table/c
 
 import { readableTextColor } from "@/lib/tag-color";
 import { toast } from "sonner";
-import type { CourierWithRelations } from "@/types/courier";
 
 export default function CourriersEnInstruction() {
   const { organizationId } = useOrganization();
@@ -84,76 +89,53 @@ export default function CourriersEnInstruction() {
     [processingStates],
   );
 
-  const { data: couriers, isLoading } = useQuery({
-    queryKey: ["instruction-couriers", organizationId, stateIds, search],
-    queryFn: async () => {
-      if (!organizationId || !stateIds.length) return [];
-      let q = supabase
-        .from("couriers")
-        .select("id, subject, direction, channel, received_at, sent_at, workflow_state_id, assigned_service, socle_organization_id, metadata, chrono, created_at, updated_at, courier_participants(id, role, name, email, socle_contact_id)")
-        .eq("organization_id", organizationId)
-        .eq("direction", "inbound")
-        .in("workflow_state_id", stateIds)
-        .order("updated_at", { ascending: false })
-        .limit(200);
-      if (search) q = q.ilike("subject", `%${search}%`);
-      const { data, error } = await q;
-      if (error) throw error;
-      return (data ?? []) as unknown as CourierWithRelations[];
-    },
-    enabled: !!organizationId && !!stateIds.length,
+  const userServiceFilter = useUserServiceFilter();
+  const debouncedSearch = useDebouncedValue(search, 300);
+
+  // Tout est filtré en SQL. Auparavant service/état/tag étaient appliqués en JS
+  // sur les 200 lignes déjà chargées : choisir un tag ne cherchait donc que dans
+  // cette fenêtre, et la liste était incomplète dès quelques centaines de courriers.
+  const filters = useMemo<CourierListFilters | null>(() => {
+    if (!organizationId || !stateIds.length) return null;
+    return {
+      organizationId,
+      direction: "inbound",
+      // Un état choisi restreint l'ensemble ; l'intersection évite qu'une valeur
+      // obsolète du menu n'élargisse le périmètre de la page.
+      workflowStateIds:
+        stateFilter !== "all" && stateIds.includes(stateFilter) ? [stateFilter] : stateIds,
+      socleOrganizationId: serviceFilter !== "all" ? serviceFilter : null,
+      tagNames: tagFilter !== "all" ? [tagFilter] : null,
+      keywords: debouncedSearch || null,
+      prefixMatch: true,
+      visibleSocleOrganizationIds: userServiceFilter,
+    };
+  }, [organizationId, stateIds, stateFilter, serviceFilter, tagFilter, debouncedSearch, userServiceFilter]);
+
+  // updated_at : les dossiers qui viennent de bouger d'abord. Aucun en-tête ne
+  // porte cette colonne, aucune flèche n'est donc visible au chargement.
+  const list = useCourierList(filters, {
+    queryKeyPrefix: "instruction-couriers",
+    defaultSort: { key: "updated_at", dir: "desc" },
   });
 
-  const userServiceFilter = useUserServiceFilter();
-
-  const applyFilters = useCallback(
-    (list: CourierWithRelations[]): CourierWithRelations[] => {
-      let out = applyServiceFilter(list, userServiceFilter);
-      if (serviceFilter !== "all") {
-        const svc = services?.find((s) => s.id === serviceFilter);
-        if (svc) out = out.filter((c) => c.socle_organization_id === svc.id);
-      }
-      if (stateFilter !== "all") {
-        out = out.filter((c) => c.workflow_state_id === stateFilter);
-      }
-      if (tagFilter !== "all") {
-        out = out.filter((c) => {
-          const t = (c.metadata as { tags?: string[] } | null)?.tags ?? [];
-          return Array.isArray(t) && t.some((x: string) => x.toLowerCase() === tagFilter.toLowerCase());
-        });
-      }
-      return out;
-    },
-    [userServiceFilter, serviceFilter, stateFilter, tagFilter, services],
-  );
-
-  const filtered = useMemo(() => applyFilters(couriers ?? []), [couriers, applyFilters]);
-
-  function getSender(c: CourierWithRelations): string {
-    const p = c.courier_participants?.find((x) => x.role === "sender");
-    if (!p) return "—";
-    const full = [p.first_name, p.last_name].filter(Boolean).join(" ");
-    return full || p.name || p.email || "—";
-  }
-
-  function getRecipient(c: CourierWithRelations): string {
-    const p = c.courier_participants?.find((x) => x.role === "recipient");
-    return p?.name ?? p?.email ?? "—";
-  }
-
-  function getTags(c: CourierWithRelations): string[] {
-    const t = (c.metadata as { tags?: string[] } | null)?.tags ?? [];
-    return Array.isArray(t) ? t : [];
-  }
-
-  const [tableInstance, setTableInstance] = useState<TanstackTable<CourierWithRelations> | null>(null);
+  const [tableInstance, setTableInstance] = useState<TanstackTable<CourierListRow> | null>(null);
   const [isExporting, setIsExporting] = useState(false);
 
-  const columns = useMemo<ColumnDef<CourierWithRelations>[]>(
+  // Le tri est SERVEUR (cf. useCourierList) : les en-têtes triables portent donc
+  // sur tout le jeu filtré. L'`id` de colonne EST la clé serveur — le renommer
+  // casse le tri.
+  //
+  // Restent `enableSorting: false` les colonnes que le RPC ne peut pas trier
+  // sans payer le prix que la pagination économise : expéditeur et destinataire
+  // viennent de jointures appliquées après le découpage, l'état demanderait une
+  // jointure de plus, et les tags sont un tableau jsonb.
+  const columns = useMemo<ColumnDef<CourierListRow>[]>(
     () => [
       {
         id: "received_at",
         accessorFn: (c) => (c.received_at ? new Date(c.received_at).toLocaleDateString("fr-FR") : ""),
+        sortDescFirst: true,
         header: ({ column }) => <DataTableColumnHeader column={column} title="Date de réception" />,
         cell: ({ row }) => (
           <span className="text-sm whitespace-nowrap">
@@ -173,7 +155,8 @@ export default function CourriersEnInstruction() {
       {
         id: "state",
         accessorFn: (c) => stateById.get(c.workflow_state_id ?? "")?.name ?? "",
-        header: ({ column }) => <DataTableColumnHeader column={column} title="État" />,
+        enableSorting: false,
+        header: "État",
         cell: ({ row }) => {
           const name = stateById.get(row.original.workflow_state_id ?? "")?.name;
           return name ? <Badge variant="outline" className="text-xs">{name}</Badge> : null;
@@ -188,25 +171,28 @@ export default function CourriersEnInstruction() {
       },
       {
         id: "sender",
-        accessorFn: getSender,
-        header: ({ column }) => <DataTableColumnHeader column={column} title="Expéditeur" />,
-        cell: ({ row }) => <span className="text-sm">{getSender(row.original)}</span>,
+        accessorFn: (c) => c.sender_name ?? "—",
+        enableSorting: false,
+        header: "Expéditeur",
+        cell: ({ row }) => <span className="text-sm">{row.original.sender_name ?? "—"}</span>,
         meta: { exportLabel: "Expéditeur" },
       },
       {
         id: "recipient",
-        accessorFn: getRecipient,
-        header: ({ column }) => <DataTableColumnHeader column={column} title="Destinataire" />,
-        cell: ({ row }) => <span className="text-sm">{getRecipient(row.original)}</span>,
+        accessorFn: (c) => c.recipient_name ?? "—",
+        enableSorting: false,
+        header: "Destinataire",
+        cell: ({ row }) => <span className="text-sm">{row.original.recipient_name ?? "—"}</span>,
         meta: { exportLabel: "Destinataire" },
       },
       {
         id: "tags",
-        accessorFn: (c) => getTags(c).join(", "),
-        header: ({ column }) => <DataTableColumnHeader column={column} title="Tags" />,
+        accessorFn: (c) => c.tags.join(", "),
+        enableSorting: false,
+        header: "Tags",
         cell: ({ row }) => (
           <div className="flex flex-wrap gap-1">
-            {getTags(row.original).map((t) => {
+            {row.original.tags.map((t) => {
               const color = tagByName.get(t.toLowerCase())?.color ?? null;
               return (
                 <span
@@ -227,20 +213,22 @@ export default function CourriersEnInstruction() {
   );
 
   async function handleExportCsv() {
-    if (!organizationId || !tableInstance) return;
+    if (!list.filters || !tableInstance) return;
     setIsExporting(true);
     try {
-      const allRows = applyFilters(
-        await fetchAllCouriersByStatesForExport(organizationId, { stateIds, search: search || undefined }),
-      );
-      const csvColumns: CsvColumn<CourierWithRelations>[] = tableInstance
+      // Mêmes filtres ET même tri que le tableau : ce qui est exporté est
+      // exactement ce qui est affiché. L'ancien helper ignorait service/état/tag,
+      // obligeant la page à refiltrer le résultat en JS.
+      const { rows, truncated } = await fetchAllCouriersForExport(list.filters);
+      const csvColumns: CsvColumn<CourierListRow>[] = tableInstance
         .getVisibleLeafColumns()
         .map((col) => ({
           header: (col.columnDef.meta as { exportLabel?: string } | undefined)?.exportLabel ?? col.id,
-          accessor: (row) => (col.accessorFn as ((row: CourierWithRelations) => unknown) | undefined)?.(row) ?? "",
+          accessor: (row) => (col.accessorFn as ((row: CourierListRow) => unknown) | undefined)?.(row) ?? "",
         }));
-      const csv = buildCsv(allRows, csvColumns);
+      const csv = buildCsv(rows, csvColumns);
       downloadCsv(csv, `courriers-en-instruction-${new Date().toISOString().slice(0, 10)}.csv`);
+      if (truncated) toast.warning("Export limité aux 20 000 premiers courriers.");
     } catch (e) {
       console.error(e);
       toast.error("Erreur lors de l'export du fichier.");
@@ -249,7 +237,7 @@ export default function CourriersEnInstruction() {
     }
   }
 
-  function handleRowClick(c: CourierWithRelations) {
+  function handleRowClick(c: CourierListRow) {
     navigate(`/courrier/${c.id}`);
   }
 
@@ -269,7 +257,7 @@ export default function CourriersEnInstruction() {
         <div className="flex items-center justify-end gap-2">
           {tableInstance && <DataTableGroupingSelect table={tableInstance} />}
           {tableInstance && <DataTableColumnToggle table={tableInstance} />}
-          <Button variant="outline" size="sm" onClick={handleExportCsv} disabled={isExporting || !filtered.length}>
+          <Button variant="outline" size="sm" onClick={handleExportCsv} disabled={isExporting || !list.totalCount}>
             <Download className="h-4 w-4 mr-1" />
             {isExporting ? "Export…" : "Exporter CSV"}
           </Button>
@@ -355,11 +343,22 @@ export default function CourriersEnInstruction() {
       ) : (
         <DataTable
           columns={columns}
-          data={filtered}
-          isLoading={isLoading}
+          data={list.rows}
+          isLoading={list.isLoading}
           onRowClick={handleRowClick}
           onTableInstanceChange={setTableInstance}
+          sorting={list.sorting}
+          onSortingChange={list.onSortingChange}
           emptyMessage="Aucun courrier en cours d'instruction."
+          pagination={{
+            page: list.page,
+            pageCount: list.pageCount,
+            pageSize: list.pageSize,
+            totalCount: list.totalCount,
+            onPageChange: list.setPage,
+            onPageSizeChange: list.setPageSize,
+            isLoading: list.isFetching,
+          }}
         />
       )}
     </div>
