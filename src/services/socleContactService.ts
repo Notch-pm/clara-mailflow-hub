@@ -71,6 +71,17 @@ export interface SocleContactRelationInput {
   role_id: string;
 }
 
+/**
+ * Quartier de rattachement, résolu par le référentiel (nom + couleur prêts à
+ * afficher). Le rattachement est calculé là-bas à partir des coordonnées de
+ * l'adresse — Clara ne fait que le restituer.
+ */
+export interface SocleContactQuartier {
+  id: string;
+  name: string;
+  color: string | null;
+}
+
 /** Fiche contact telle que sérialisée par l'API contacts du Socle. */
 export interface SocleContact {
   id: string;
@@ -92,6 +103,12 @@ export interface SocleContact {
   postal_code: string | null;
   city: string | null;
   country: string;
+  /**
+   * Quartier de rattachement, `null` si l'adresse n'a pas pu être géolocalisée
+   * ou tombe hors des polygones du découpage. Champ optionnel : une fiche
+   * servie par une version antérieure de l'API ne le porte pas.
+   */
+  quartier?: SocleContactQuartier | null;
   preferred_channel: "email" | "telephone" | "courrier" | null;
   consent_email: boolean;
   consent_sms: boolean;

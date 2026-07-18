@@ -25,6 +25,7 @@ import {
 } from "@/services/socleContactService";
 import ContactPicker, { contactDisplay } from "@/components/courier/ContactPicker";
 import DuplicateContactsAlert from "@/components/contacts/DuplicateContactsAlert";
+import { QuartierBadge } from "@/components/contacts/QuartierBadge";
 import type { CourierParticipant } from "@/types/courier";
 
 const ROLES = [
@@ -316,6 +317,11 @@ export default function ParticipantManager({ courierId, organizationId }: Partic
                             {line.text}
                           </div>
                         ))}
+                      {contactsById[p.socle_contact_id]?.quartier && (
+                        <div className="pt-0.5">
+                          <QuartierBadge quartier={contactsById[p.socle_contact_id]!.quartier} />
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <span className="text-xs text-muted-foreground">—</span>

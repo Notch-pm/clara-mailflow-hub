@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import DuplicateContactsAlert from "@/components/contacts/DuplicateContactsAlert";
+import { QuartierBadge } from "@/components/contacts/QuartierBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -834,6 +835,10 @@ function ContactDetail({ contactId }: { contactId: string }) {
                 <InfoRow label="Code postal" value={contact.postal_code} />
                 <InfoRow label="Ville" value={contact.city} />
                 <InfoRow label="Pays" value={contact.country} />
+                <div>
+                  <div className="text-xs text-muted-foreground">Quartier</div>
+                  <div className="text-sm mt-0.5"><QuartierBadge quartier={contact.quartier} /></div>
+                </div>
               </div>
               <Separator />
               <div className="flex items-center gap-6 text-sm flex-wrap">
@@ -961,16 +966,21 @@ function ContactsList() {
     [debouncedSearch, typeFilter, statusFilter],
   );
 
+  // On demande PAGE_SIZE + 1 pour savoir s'il existe une page suivante, sans
+  // afficher la ligne excédentaire. Comparer `length === PAGE_SIZE` laissait
+  // « Suivant » actif quand la dernière page était exactement pleine, menant à
+  // une page vide. L'API du Socle ne renvoie pas de total, d'où cette astuce.
   const contactsQuery = useQuery({
     queryKey: ["socle-contacts", organizationId, filters, page],
     queryFn: () =>
-      listContacts(organizationId!, { ...filters, limit: PAGE_SIZE, offset: page * PAGE_SIZE }),
+      listContacts(organizationId!, { ...filters, limit: PAGE_SIZE + 1, offset: page * PAGE_SIZE }),
     enabled: !!organizationId,
     staleTime: 30_000,
   });
 
-  const contacts = contactsQuery.data ?? [];
-  const hasNextPage = contacts.length === PAGE_SIZE;
+  const fetched = contactsQuery.data ?? [];
+  const hasNextPage = fetched.length > PAGE_SIZE;
+  const contacts = hasNextPage ? fetched.slice(0, PAGE_SIZE) : fetched;
 
   async function handleExportCsv() {
     if (!organizationId) return;
@@ -986,6 +996,7 @@ function ContactsList() {
         { header: "Adresse", accessor: (c) => [c.address_line1, c.address_line2].filter(Boolean).join(", ") },
         { header: "Code postal", accessor: (c) => c.postal_code ?? "" },
         { header: "Ville", accessor: (c) => c.city ?? "" },
+        { header: "Quartier", accessor: (c) => c.quartier?.name ?? "" },
         { header: "SIRET", accessor: (c) => c.siret ?? "" },
         { header: "Statut", accessor: (c) => (c.status === "active" ? "Actif" : "Archivé") },
       ];
