@@ -11,6 +11,17 @@
 - Crée un `courier` `direction=inbound`, importe les pièces jointes dans le bucket `clara-documents`, crée les participants.
 - Déclenchée manuellement (bouton) ou par planification (à câbler côté cron si besoin).
 - Config UI : `src/components/ImapSettings.tsx`.
+- Plafond de 15 Mo par email (surchargeable par boîte). Au-delà de 2 Mo, le courrier porte `metadata.is_large_email` et s'affiche avec une icône « volumineux » dans la Boîte aux lettres.
+
+### Numérisation (copieur réseau)
+- **Pas d'accès matériel depuis le navigateur** : ni WebUSB, ni eSCL (pas de CORS côté scanner), et un agent local sur `localhost` se heurte au verrouillage réseau de Chrome (Local Network Access) et à l'interdiction de Safari. Le pont retenu est donc le **dépôt automatique**.
+- Le copieur est configuré en « scan vers email » sur une boîte dédiée, marquée **boîte de numérisation** (`imap_settings.is_scan_inbox`). Fonctionne avec tout scanner déjà installé, sans logiciel sur les postes ni licence.
+- Ingestion en mode scan : canal `paper`, pas de participant `sender` (l'adresse du copieur va dans `metadata.scan_device_email`), sujet neutre remplacé ensuite par `suggested_subject`, allowlist `scan_allowed_senders` — **sans elle, quiconque connaît l'adresse crée des courriers**.
+- L'OCR et l'analyse sont enfilés automatiquement (voir §2), puis l'agent qualifie le courrier depuis la Boîte aux lettres.
+- Réglages copieur recommandés : PDF (pas TIFF, non géré par l'OCR), 200–300 dpi, niveaux de gris, « un fichier par document » pour éviter d'avoir à découper les lots.
+
+### Import en masse
+- Page `BulkImport.tsx` (`/import-en-masse`), wizard 5 étapes : canal → documents → association → vérification → confirmation. Regroupement de fichiers par `groupId` (un courrier = N fichiers). Formats : PDF, JPG, PNG.
 
 ## 2. Analyse IA d'un courrier
 
@@ -24,6 +35,16 @@ Pipeline en deux étapes, déclenché depuis `CourierDetail` ou `SuggestedAction
    - Produit `summary`, `intents[]`, `sentiment`, `suggested_actions[]` → `courier_analyses`.
 
 Service client : `src/services/courierAnalysisService.ts`.
+
+### Déclenchement automatique (file d'attente)
+Les chemins d'**ingestion** ne peuvent pas océriser en ligne : c'est long, coûteux en quota, et une erreur ferait perdre tout un lot. Ils enfilent donc un job dans `courier_analysis_jobs`, consommé par l'edge function `process-analysis-queue` (cron 2 min).
+
+- Producteurs : `fetch-inbound-emails` (insert direct, service role) et `BulkImport` (RPC `enqueue_courier_analysis` via `src/services/courierAnalysisJobService.ts`).
+- Un seul job vivant par courrier (index unique partiel) : recliquer ou réimporter n'empile pas d'OCR concurrents.
+- Quota IA épuisé → job reporté au mois suivant **sans consommer de tentative**. Autres erreurs → 3 tentatives espacées de 5 min.
+- Indispensable à la numérisation : personne n'est devant l'écran pour cliquer « Analyser ».
+
+Les suggestions (`suggested_subject`, `suggested_sender`, `suggested_service_name`) sont exposées sur un courrier existant dans l'onglet « Contenu » (`ContentIntentsTab`), le titre étant applicable en un clic — c'est ce qui permet de qualifier un courrier numérisé arrivé sans titre exploitable.
 
 ### Rédaction de réponse IA
 - Edge function `draft-reply` : prend `courier_id`, `response_type`, instructions additionnelles → renvoie du HTML prêt à coller dans l'éditeur Tiptap.

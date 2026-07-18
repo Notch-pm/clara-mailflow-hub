@@ -35,3 +35,6 @@ bun.lockb
 src/test-integration/fixtures.json
 test-results/
 playwright-report/
+
+# Réglages Claude Code propres à la machine (contiennent des clés en clair)
+.claude/settings.local.json

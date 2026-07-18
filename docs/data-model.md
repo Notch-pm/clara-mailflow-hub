@@ -106,8 +106,22 @@ Table centrale. Tags stockés dans `metadata->'tags'` (tableau JSON de strings).
 | `parent_courier_id` | uuid FK → couriers | réponse à un courrier |
 | `assigned_service` | varchar | nom de l'organisation gestionnaire — **pure dénormalisation d'affichage** (toujours écrite en double, mais plus aucune logique ne compare ce texte) |
 | `socle_organization_id` | uuid FK → socle_organizations | organisation gestionnaire — **clé de toute la logique** : RPC `stats_*` (`p_socle_organization_id`), `search_couriers`, filtres de droits (`useUserServiceFilter` → UUIDs via `socle_organization_members`), résolutions dans le panneau courrier/composer |
-| `metadata` | jsonb | `tags: string[]`, `body_text`, etc. |
+| `metadata` | jsonb | `tags: string[]`, `body_text`, etc. — voir clés d'ingestion ci-dessous |
 | `fts_subject` / `fts_body` | tsvector | index full-text français |
+
+Clés `metadata` posées par l'ingestion IMAP (`fetch-inbound-emails`) :
+
+| Clé | Notes |
+|---|---|
+| `email_message_id` | clé de déduplication des imports |
+| `email_from` / `email_to` / `body_text` / `body_html` | bruts du message (les deux corps sont `null` en mode scan) |
+| `source` | `'imap'` \| `'scan'` \| `'portal'` |
+| `imap_settings_id` | boîte d'origine |
+| `email_size_bytes` | taille du message |
+| `is_large_email` | `true` au-delà de 2 Mo. **Exposé en colonne par le RPC `search_couriers`** et affiché en icône dans la Boîte aux lettres — les listes ne rapatrient pas le jsonb. |
+| `scan_device_email` | mode scan : adresse du copieur, jamais confondue avec l'expéditeur |
+| `needs_qualification` | mode scan : courrier à qualifier par un agent |
+| `ignored_attachments` | pièces jointes écartées (hors gabarit) |
 
 #### `courier_participants`
 Expéditeurs, destinataires, copies d'un courrier.
@@ -157,12 +171,35 @@ Analyse LLM par courrier (cache).
 | `suggested_actions` | jsonb array |
 | `model` / `tokens_used` | text / integer |
 
+#### `courier_analysis_jobs`
+File d'attente de l'analyse (OCR + LLM), consommée par l'edge function `process-analysis-queue` (cron 2 min).
+
+**Pourquoi une file.** Les chemins d'**ingestion** — réception IMAP, import en masse — ne peuvent pas océriser en ligne : c'est long, coûteux en quota IA, et une erreur ferait perdre tout un lot. Sans elle, seuls les courriers créés à la main via `NewCourierDialog` avaient des extraits. La numérisation rend le manque bloquant : personne n'est devant l'écran pour cliquer « Analyser ».
+
+| Colonne | Type | Notes |
+|---|---|---|
+| `organization_id` | uuid FK | |
+| `courier_id` | uuid FK → couriers | |
+| `kind` | text | `ocr` \| `analyze` \| `full` |
+| `status` | text | `pending` \| `running` \| `done` \| `failed` |
+| `attempts` | integer | abandon à 3 |
+| `last_error` | text | `'quota_exceeded'`, `'worker timeout'`, … |
+| `requested_by` | uuid FK → users | `NULL` pour un job produit par un ingesteur serveur |
+| `scheduled_at` | timestamptz | réessai différé |
+| `started_at` / `finished_at` | timestamptz | |
+
+Deux garde-fous à ne pas retirer :
+- **Index UNIQUE partiel** sur `courier_id WHERE status IN ('pending','running')` : réimporter ou recliquer « Analyser » n'empile pas d'OCR concurrents sur les mêmes documents (double facturation IA et écritures concurrentes sur `courier_document_extracts`).
+- **Quota IA épuisé** → job reporté au mois suivant **sans consommer de tentative**. Sans ce rollback, trois passages de cron condamneraient un courrier parfaitement analysable le mois suivant.
+
+RLS : lecture seule pour les membres du tenant. Aucune écriture cliente — l'enfilement passe par le RPC `enqueue_courier_analysis` (SECURITY DEFINER, re-vérifie l'appartenance), la consommation par `claim_analysis_jobs` / `requeue_stale_analysis_jobs`, réservés au `service_role`.
+
 #### `courier_events`
 Journal d'audit immuable.
 
 | Colonne | Type | Notes |
 |---|---|---|
-| `event_type` | varchar | ex. `'state_changed'` |
+| `event_type` | varchar | ex. `'state_changed'`, `'email_received'`, `'scan_received'` — **varchar libre, pas un enum** : ajouter un type ne demande aucune migration |
 | `payload` | jsonb | ex. `{ "from_id": "...", "to_id": "..." }` pour state_changed |
 | `created_by` | uuid FK → users | |
 
@@ -319,8 +356,18 @@ tables `usagers` et `quartiers` (et leurs RPC, enums, colonnes `organizations.do
   d'un courrier et l'expéditeur du panneau courrier.
 - Suppression côté Socle : `contacts-api` n'expose qu'archive/restore ; un contact
   disparu (hard delete SQL) rend un 404 que l'UI gère (proposition de dissociation).
-- Quartiers : fonctionnalité retirée de Clara, **portage prévu côté Socle**
-  (référence : `references/clara-quartiers/` dans le repo Socle).
+- **Quartiers** : la fonctionnalité a quitté Clara le 2026-07-16 et vit désormais **côté
+  Socle** (table `quartiers` PostGIS, découpage par racine, import GeoJSON). Clara la
+  **consomme en lecture seule** depuis le 2026-07-18 : la fiche contact porte un objet
+  `quartier` (`id`, `name`, `color`) déjà **résolu** par `contacts-api` — pas d'UUID à
+  traduire, pas d'appel supplémentaire (`GET /v1/quartiers` du référentiel ne sert qu'au
+  catalogue et aux géométries, hors de proportion pour un libellé). Affiché par
+  `src/components/contacts/QuartierBadge.tsx` sur la fiche `/contacts`, les participants
+  d'un courrier et l'expéditeur du panneau courrier ; colonne « Quartier » à l'export CSV.
+  Le rattachement lui-même (géocodage BAN de l'adresse puis point-dans-polygone) est
+  **entièrement calculé par le Socle** — Clara ne saisit ni ne modifie ce champ.
+  ⚠️ Le champ est **optionnel** dans `SocleContact` : une fiche servie par une version de
+  `contacts-api` antérieure au 2026-07-18 ne le porte pas.
 
 ---
 
@@ -341,6 +388,12 @@ Plusieurs par org si `organizations.multiple_imap = true`. Réception automatiqu
 | `label` | text | `'Principal'` par défaut |
 | `socle_organization_id` | uuid FK → socle_organizations | org propriétaire de la boîte — reportée sur les courriers entrants |
 | `last_fetch_at` / `last_error` | timestamptz/text | |
+| `is_scan_inbox` | boolean, défaut `false` | **Boîte de numérisation** : boîte alimentée par un copieur réseau, pas par des correspondants. Bascule l'ingestion en mode scan (voir ci-dessous). |
+| `scan_allowed_senders` | text[] | Adresses des copieurs autorisés à déposer. `NULL` = aucune restriction — **à éviter** : quiconque connaît l'adresse pourrait créer des courriers dans le tenant. |
+| `max_email_bytes` | integer | Plafond par email pour cette boîte. `NULL` = plafond global de l'edge function (15 Mo). |
+
+**Mode boîte de numérisation** (`is_scan_inbox = true`), appliqué par `fetch-inbound-emails` :
+`channel = 'paper'` (l'email n'est qu'un transport), **aucun participant `sender`** (le copieur n'est pas l'expéditeur — son adresse va dans `metadata.scan_device_email`), sujet remplacé par « Courrier numérisé — à qualifier » (le sujet MFP est du bruit), corps non indexé, et un `courier_analysis_jobs` enfilé dès qu'une pièce jointe est stockée.
 
 ---
 
@@ -357,13 +410,14 @@ Connexions OAuth/API tierces (Arpège…).
 | `is_active` | boolean |
 
 #### `action_tickets`
-Tâches dérivées d'un courrier, liées à une procédure.
+Tâches dérivées d'un courrier, liées ou non à une procédure (action libre).
 
 | Colonne | Type | Notes |
 |---|---|---|
 | `courier_id` | uuid FK | immuable (trigger) |
-| `procedure_id` | uuid FK → procedures | |
-| `assignee_id` | uuid FK → users | |
+| `procedure_id` | uuid FK → procedures | nullable : action libre sans démarche |
+| `title` | text | titre de l'action — exigé côté formulaire quand `procedure_id` est null |
+| `assignee_id` | uuid FK → users | nullable en DB (tickets Arpège) ; exigé côté formulaire pour les tickets Clara |
 | `status` | text | `'open'` par défaut |
 | `arpege_demande_ref` / `arpege_demande_status` | text | |
 

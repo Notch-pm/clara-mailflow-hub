@@ -20,13 +20,17 @@
 2. ~~**RLS `auth_rls_initplan` (32 policies)**~~ ✅ corrigé (`20260712090000_rls_consolidation_advisors`) — wrap `(select auth.uid())` + helpers.
 3. ~~**`multiple_permissive_policies` (29 cas)**~~ ✅ corrigé (même migration) — une policy par (table, rôle, action), `service_role_full` recréées `TO service_role`, durcissement des policies `users` (voir `docs/database-rls.md`).
 4. **20 FK sans index** (`action_tickets.created_by`, `courier_documents.organization_id`, …) : ajouter les index couvrants ; **20 index jamais utilisés** à supprimer (attention : le projet n'a pas encore de trafic réel, re-vérifier avant suppression).
-5. **Bump Vite** — 3 alertes Dependabot (au 2026-07-13) : `vite` high (bypass `server.fs.deny` via chemins alternatifs Windows) + `vite` medium (variante path traversal) + `launch-editor` medium (fuite hash NTLMv2 via UNC, Windows). N'affecte que le dev server (`bun run dev`), pas le build prod — mais le dev se fait sous Windows. Petit item : bump + `bun run test`/`build`. Alertes : <https://github.com/Notch-pm/clara-mailflow-hub/security/dependabot>.
+5. **Numérisation — reste à faire** (paliers 0–2 livrés le 2026-07-18, cf. `docs/features.md` §1) :
+   - **Dé-lotissement des PDF multi-courriers.** Un chargeur automatique produit un PDF de 60 pages là où Clara veut 30 courriers. Parade actuelle : configurer le copieur en « un fichier par document ». Conception retenue si besoin : découpe manuelle assistée **côté navigateur** (`pdf-lib` + `pdfjs-dist`, chargés en `await import()` sur `/import-en-masse`), produisant des `BulkFile` à `groupId` distincts — les étapes 3-4 du wizard restent inchangées. Détection de page blanche possible en *suggestion* (le recto-verso crée des faux séparateurs) ; **impossible côté Deno** (`unpdf` ne rend que du texte, et un scan n'a aucune couche texte).
+   - **Capture mobile.** Ne pas poser `capture="environment"` sur l'input `multiple` existant : cela force l'appareil photo et supprime le sélecteur de fichiers sur plusieurs navigateurs. Prévoir un second bouton dédié. Le vrai gain est la **recompression client** (canvas, 2000 px, JPEG q0.8 : 4-8 Mo → ~500 Ko), qui réduit upload, stockage **et coût OCR**.
+   - **Appliquer l'expéditeur suggéré.** Seul le titre est applicable en un clic (`ContentIntentsTab`) ; l'expéditeur et le service restent indicatifs, faute d'un rapprochement conçu avec le référentiel du Socle.
+6. **Bump Vite** — 3 alertes Dependabot (au 2026-07-13) : `vite` high (bypass `server.fs.deny` via chemins alternatifs Windows) + `vite` medium (variante path traversal) + `launch-editor` medium (fuite hash NTLMv2 via UNC, Windows). N'affecte que le dev server (`bun run dev`), pas le build prod — mais le dev se fait sous Windows. Petit item : bump + `bun run test`/`build`. Alertes : <https://github.com/Notch-pm/clara-mailflow-hub/security/dependabot>.
 
 ## P2 — Code mort (knip, faux positifs exclus)
 
 **Vrais orphelins à supprimer :**
 - `src/pages/CourriersEntrants.tsx` — **page sans route** (la BAL l'a remplacée) ; sa logique colonne/export est dupliquée ailleurs.
-- `src/pages/Index.tsx`, `src/App.css`, `src/components/courier/bulk/BulkStep3Analyze.tsx`.
+- `src/pages/Index.tsx`, `src/App.css`. (`BulkStep3Analyze.tsx` supprimé le 2026-07-18.)
 - `src/services/courierLinkService.ts`, `src/services/courierSequenceService.ts` (plus consommés).
 - `src/services/orgServiceService.ts` — legacy services gelé : ne garder que ce que `fetch-inbound-emails`/`portal-form` lisent côté SQL (rien côté client). Supprimer avec `listServiceSignatoryIds`/`setServiceSignatories` (signatoryService).
 - **16 dépendances npm inutilisées** (recharts, react-day-picker, vaul, input-otp, react-resizable-panels, @radix-ui/* des composants ui non utilisés…) — retirer avec les composants shadcn associés (calendar, chart, carousel, drawer…) si on assume de les réinstaller au besoin.
