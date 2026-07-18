@@ -18,13 +18,15 @@ export type ResponsiveTabItem = {
 type Props = {
   tabs: ResponsiveTabItem[];
   activeValue: string;
+  /** Requis pour les onglets repliés dans « Autres » : ils ne sont pas des TabsTrigger. */
+  onValueChange?: (value: string) => void;
   className?: string;
 };
 
 const triggerClass =
   "relative inline-flex items-center gap-2 whitespace-nowrap px-1 pt-2 pb-3 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:text-foreground data-[state=active]:text-primary after:absolute after:left-0 after:right-0 after:-bottom-px after:h-[2px] after:rounded-full after:bg-primary after:opacity-0 data-[state=active]:after:opacity-100";
 
-export function ResponsiveTabsList({ tabs, activeValue, className }: Props) {
+export function ResponsiveTabsList({ tabs, activeValue, onValueChange, className }: Props) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const measureRef = React.useRef<HTMLDivElement | null>(null);
   const [visibleCount, setVisibleCount] = React.useState(tabs.length);
@@ -133,14 +135,16 @@ export function ResponsiveTabsList({ tabs, activeValue, className }: Props) {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               {overflow.map((t) => (
-                <DropdownMenuItem key={t.value} asChild>
-                  <TabsPrimitive.Trigger
-                    value={t.value}
-                    className="w-full justify-start gap-2 cursor-pointer data-[state=active]:text-primary data-[state=active]:font-semibold"
-                  >
-                    {t.label}
-                    {t.badge}
-                  </TabsPrimitive.Trigger>
+                <DropdownMenuItem
+                  key={t.value}
+                  onSelect={() => onValueChange?.(t.value)}
+                  className={cn(
+                    "w-full justify-start gap-2 cursor-pointer",
+                    t.value === activeValue && "text-primary font-semibold",
+                  )}
+                >
+                  {t.label}
+                  {t.badge}
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>

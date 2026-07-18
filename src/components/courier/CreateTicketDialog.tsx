@@ -34,6 +34,7 @@ import {
   listProcedures,
   type ArpegeConfigField,
   type ArpegeFormComponent,
+  type Procedure,
 } from "@/services/procedureService";
 import {
   createTicket,
@@ -77,6 +78,7 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   courierId: string;
   organizationId: string;
+  initialTitle?: string;
   initialDescription?: string;
   initialProcedureId?: string;
   initialArpegeValues?: Record<string, string>;
@@ -97,6 +99,17 @@ const FIELD_CODES_DISPLAYED = [
 ];
 
 const DEMANDEUR_FULL_WIDTH = new Set(["PRENOMS", "EMAIL"]);
+
+// Origine affichée dans le sélecteur de démarches UNIQUEMENT : le Socle est
+// présenté sous son nom produit « Iris » ; une démarche partenaire garde le nom
+// du partenaire (les références Arpège survivent à l'adoption par le Socle).
+function procedureOriginLabel(p: Procedure): string | null {
+  if ((p.external_reference_id && p.arpege_config_fields) || p.external_source === "arpege") {
+    return "Arpège";
+  }
+  if (p.external_source === "socle") return "Iris";
+  return null;
+}
 
 // ── Section header ──────────────────────────────────────────────────────────
 
@@ -441,6 +454,7 @@ export default function CreateTicketDialog({
   onOpenChange,
   courierId,
   organizationId,
+  initialTitle = "",
   initialDescription = "",
   initialProcedureId,
   initialArpegeValues,
@@ -450,6 +464,7 @@ export default function CreateTicketDialog({
   const qc = useQueryClient();
   const isEdit = !!ticket;
   const [procedureId, setProcedureId] = useState<string>("");
+  const [title, setTitle] = useState<string>(initialTitle);
   const [description, setDescription] = useState<string>(initialDescription);
   const [assigneeId, setAssigneeId] = useState<string | null>(null);
   const [procedurePopoverOpen, setProcedurePopoverOpen] = useState(false);
@@ -464,11 +479,13 @@ export default function CreateTicketDialog({
   useEffect(() => {
     if (open) {
       if (isEdit && ticket) {
+        setTitle(ticket.title ?? "");
         setDescription(ticket.description ?? "");
-        setProcedureId(ticket.procedure_id);
+        setProcedureId(ticket.procedure_id ?? "");
         setAssigneeId(ticket.assignee_id ?? null);
         setArpegeValues({});
       } else {
+        setTitle(initialTitle);
         setDescription(initialDescription);
         setProcedureId(initialProcedureId ?? "");
         setAssigneeId(null);
@@ -480,7 +497,7 @@ export default function CreateTicketDialog({
       setSocleRequesterValues({});
       setSocleFormValues({});
     }
-  }, [open, initialDescription, initialProcedureId, initialArpegeValues, isEdit, ticket]);
+  }, [open, initialTitle, initialDescription, initialProcedureId, initialArpegeValues, isEdit, ticket]);
 
   const { data: procedures, isLoading: loadingProcedures } = useQuery({
     queryKey: ["procedures-displayed", organizationId],
@@ -637,6 +654,19 @@ export default function CreateTicketDialog({
   const fullName = (m: { first_name: string | null; last_name: string | null; email: string }) =>
     [m.first_name, m.last_name].filter(Boolean).join(" ") || m.email;
 
+  // Sélection (ou désélection avec "") d'une démarche : purge des formulaires
+  // spécifiques et ré-application du préremplissage.
+  const selectProcedure = (id: string) => {
+    setProcedureId(id);
+    setArpegeValues({});
+    setBusinessValues({});
+    setPiecesJointes({});
+    setSocleAudience(null);
+    setSocleRequesterValues({});
+    setSocleFormValues({});
+    prefillAppliedRef.current = null;
+  };
+
   const handleArpegeChange = (code: string, value: string) =>
     setArpegeValues((prev) => ({ ...prev, [code]: value }));
 
@@ -680,11 +710,17 @@ export default function CreateTicketDialog({
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (isEdit && ticket) {
-        await updateTicket(ticket.id, { description, assigneeId, procedureId });
+        await updateTicket(ticket.id, {
+          title,
+          description,
+          assigneeId,
+          procedureId: procedureId || null,
+        });
         await logEvent(organizationId, courierId, "ticket_updated", {
           ticket_id: ticket.id,
-          procedure_id: procedureId,
+          procedure_id: procedureId || null,
           assignee_id: assigneeId,
+          title: title.trim() || null,
         });
         return ticket;
       }
@@ -721,15 +757,17 @@ export default function CreateTicketDialog({
       const created = await createTicket({
         organizationId,
         courierId,
-        procedureId,
+        procedureId: procedureId || null,
+        title,
         description,
         assigneeId,
         socleData,
       });
       await logEvent(organizationId, courierId, "ticket_created", {
         ticket_id: created.id,
-        procedure_id: procedureId,
+        procedure_id: procedureId || null,
         assignee_id: assigneeId,
+        title: title.trim() || null,
         description: description?.slice(0, 200) || null,
       });
       return created;
@@ -743,10 +781,13 @@ export default function CreateTicketDialog({
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // Sans démarche : titre + affectation exigés. Avec démarche : titre facultatif
+  // (le nom de la démarche fait office d'intitulé). Flux Arpège inchangé.
   const canSubmit =
-    !!procedureId &&
     !saveMutation.isPending &&
-    (!isArpege || (arpegeObligatoryMet && bizObligatoryMet)) &&
+    (isArpege
+      ? arpegeObligatoryMet && bizObligatoryMet
+      : !!assigneeId && (!!procedureId || title.trim().length > 0)) &&
     socleObligatoryMet;
 
   const hasBothForms = isArpege && arpegeFields.length > 0 && formComponents.length > 0;
@@ -772,62 +813,66 @@ export default function CreateTicketDialog({
 
         <div className="flex-1 overflow-y-auto min-h-0 pr-1 space-y-5 py-1">
 
-          {/* Démarche */}
+          {/* Démarche (facultative) */}
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Démarche</Label>
-            <Popover open={procedurePopoverOpen} onOpenChange={setProcedurePopoverOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  role="combobox"
-                  aria-expanded={procedurePopoverOpen}
-                  className="w-full justify-between h-9"
-                  disabled={loadingProcedures || isEdit}
-                >
-                  <span className="truncate">
-                    {selectedProcedure
-                      ? selectedProcedure.name
-                      : loadingProcedures ? "Chargement…" : "Sélectionnez une démarche"}
-                  </span>
-                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+            <Label className="text-xs text-muted-foreground">Démarche (facultative)</Label>
+            <div className="flex items-center gap-1.5">
+              <Popover open={procedurePopoverOpen} onOpenChange={setProcedurePopoverOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={procedurePopoverOpen}
+                    className="flex-1 justify-between h-9 min-w-0"
+                    disabled={loadingProcedures || isEdit}
+                  >
+                    <span className="truncate">
+                      {selectedProcedure
+                        ? selectedProcedure.name
+                        : loadingProcedures ? "Chargement…" : (
+                          <span className="text-muted-foreground">Aucune démarche</span>
+                        )}
+                    </span>
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                  <Command>
+                    <CommandInput placeholder="Rechercher une démarche…" />
+                    <CommandList>
+                      <CommandEmpty>Aucune démarche trouvée</CommandEmpty>
+                      <CommandGroup>
+                        {displayedProcedures.map((p) => (
+                          <CommandItem
+                            key={p.id}
+                            value={p.name}
+                            className="group"
+                            onSelect={() => {
+                              selectProcedure(p.id);
+                              setProcedurePopoverOpen(false);
+                            }}
+                          >
+                            <Check className={cn("mr-2 h-4 w-4", procedureId === p.id ? "opacity-100" : "opacity-0")} />
+                            {p.name}
+                            {procedureOriginLabel(p) && (
+                              <span className="ml-auto text-[10px] text-muted-foreground group-data-[selected=true]:text-accent-foreground">
+                                {procedureOriginLabel(p)}
+                              </span>
+                            )}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+              {selectedProcedure && !isEdit && (
+                <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0"
+                  onClick={() => selectProcedure("")} title="Retirer la démarche">
+                  <X className="h-4 w-4" />
                 </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                <Command>
-                  <CommandInput placeholder="Rechercher une démarche…" />
-                  <CommandList>
-                    <CommandEmpty>Aucune démarche trouvée</CommandEmpty>
-                    <CommandGroup>
-                      {displayedProcedures.map((p) => (
-                        <CommandItem
-                          key={p.id}
-                          value={p.name}
-                          onSelect={() => {
-                            setProcedureId(p.id);
-                            setArpegeValues({});
-                            setBusinessValues({});
-                            setPiecesJointes({});
-                            setSocleAudience(null);
-                            setSocleRequesterValues({});
-                            setSocleFormValues({});
-                            prefillAppliedRef.current = null; // ré-applique le prefill pour la démarche choisie
-                            setProcedurePopoverOpen(false);
-                          }}
-                        >
-                          <Check className={cn("mr-2 h-4 w-4", procedureId === p.id ? "opacity-100" : "opacity-0")} />
-                          {p.name}
-                          {p.external_source === "socle" ? (
-                            <span className="ml-auto text-[10px] text-muted-foreground">Socle</span>
-                          ) : p.external_source === "arpege" ? (
-                            <span className="ml-auto text-[10px] text-muted-foreground">Arpège</span>
-                          ) : null}
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
+              )}
+            </div>
           </div>
 
           {/* Arpège forms — side by side when both present */}
@@ -925,7 +970,23 @@ export default function CreateTicketDialog({
           {!isArpege && (
             <div className="space-y-4">
               <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Affecté à</Label>
+                <Label htmlFor="ticket-title" className="text-xs text-muted-foreground">
+                  Titre de l'action
+                  {!procedureId && <span className="text-destructive ml-0.5">*</span>}
+                </Label>
+                <Input
+                  id="ticket-title"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder={selectedProcedure?.name ?? "Intitulé de l'action…"}
+                  className="h-9 text-sm"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">
+                  Affecté à<span className="text-destructive ml-0.5">*</span>
+                </Label>
                 <div className="flex items-center gap-1.5">
                   <Popover open={assigneePopoverOpen} onOpenChange={setAssigneePopoverOpen}>
                     <PopoverTrigger asChild>
@@ -949,7 +1010,7 @@ export default function CreateTicketDialog({
                               <span className="truncate">{fullName(selectedAssignee)}</span>
                             </>
                           ) : loadingMembers ? "Chargement…" : (
-                            <span className="text-muted-foreground">Non affecté</span>
+                            <span className="text-muted-foreground">Sélectionner un agent…</span>
                           )}
                         </span>
                         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />

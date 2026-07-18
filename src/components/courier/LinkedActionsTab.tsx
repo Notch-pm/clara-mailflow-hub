@@ -165,19 +165,21 @@ export default function LinkedActionsTab({ courierId, organizationId, readOnly =
                   <div className="flex items-start gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <Badge
-                          variant="secondary"
-                          style={
-                            t.procedure?.color
-                              ? {
-                                  backgroundColor: `${t.procedure.color}20`,
-                                  color: t.procedure.color,
-                                }
-                              : undefined
-                          }
-                        >
-                          {t.procedure?.name ?? "Démarche"}
-                        </Badge>
+                        {t.procedure && (
+                          <Badge
+                            variant="secondary"
+                            style={
+                              t.procedure.color
+                                ? {
+                                    backgroundColor: `${t.procedure.color}20`,
+                                    color: t.procedure.color,
+                                  }
+                                : undefined
+                            }
+                          >
+                            {t.procedure.name}
+                          </Badge>
+                        )}
                         {t.assignee ? (
                           <span
                             className="flex items-center gap-1.5 text-[11px] text-muted-foreground"
@@ -201,6 +203,9 @@ export default function LinkedActionsTab({ courierId, organizationId, readOnly =
                           Créé le {formatDate(t.created_at)}
                         </span>
                       </div>
+                      {t.title && (
+                        <p className="text-sm font-medium break-words">{t.title}</p>
+                      )}
                       {t.arpege_demande_ref && (
                         <p className="text-[11px] text-muted-foreground flex items-center gap-1.5 mt-0.5 flex-wrap">
                           <ExternalLink className="h-3 w-3 shrink-0" />
@@ -266,6 +271,7 @@ export default function LinkedActionsTab({ courierId, organizationId, readOnly =
         onOpenChange={setDialogOpen}
         courierId={courierId}
         organizationId={organizationId}
+        initialTitle={suggestedAction?.label}
         initialProcedureId={suggestedAction?.procedure_id ?? undefined}
         initialArpegeValues={suggestedAction?.prefill}
         initialSoclePrefill={suggestedAction?.socle_prefill ?? undefined}

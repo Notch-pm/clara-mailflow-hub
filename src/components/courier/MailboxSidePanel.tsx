@@ -67,6 +67,7 @@ import DocumentManager from "./DocumentManager";
 import DocumentViewer from "./DocumentViewer";
 import InlineEditField from "./InlineEditField";
 import ContactPicker, { contactDisplay } from "./ContactPicker";
+import { QuartierBadge } from "@/components/contacts/QuartierBadge";
 import CourierNotes from "./CourierNotes";
 import FloatingNotesPanel from "./FloatingNotesPanel";
 import { listNotes, type CourierNote } from "@/services/courierNoteService";
@@ -80,6 +81,7 @@ import SimilarCouriersAlert from "./SimilarCouriersAlert";
 import CloseLinkedCouriersDialog from "./CloseLinkedCouriersDialog";
 import { listRepliesForCourier } from "@/services/courierReplyService";
 import { listRelationsForCourier } from "@/services/courierRelationService";
+import { listTicketsForCourier } from "@/services/actionTicketService";
 import type { CourierChannel, CourierParticipant, WorkflowTransition, WorkflowState, WorkflowCategory } from "@/types/courier";
 
 /** Champs d'un participant modifiables depuis la colonne latérale. */
@@ -149,15 +151,11 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
     enabled: !!courier?.id,
   });
 
+  // Même clé ET même queryFn que LinkedActionsTab : deux queryFn différentes sur
+  // une clé partagée s'écrasent mutuellement dans le cache (badge vs. liste).
   const { data: ticketsList = [] } = useQuery({
     queryKey: ["action-tickets", courier?.id],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("action_tickets")
-        .select("id")
-        .eq("courier_id", courier!.id);
-      return data ?? [];
-    },
+    queryFn: () => listTicketsForCourier(courier!.id),
     enabled: !!courier?.id,
   });
 
@@ -456,7 +454,10 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
           title: `Transféré : ${subject}`,
           resource_id: courier.id,
         }));
-        await (supabase.from("notifications" as never) as any).insert(notifs);
+        const { error: notifError } = await supabase.from("notifications").insert(notifs);
+        // Non-bloquant (le transfert lui-même a réussi) mais plus silencieux :
+        // c'est ce silence qui a masqué l'absence de policy INSERT.
+        if (notifError) console.error("Notifications de transfert non créées :", notifError);
       }
 
       return { name: targetOrg.name, initialStateId: initial?.id ?? null, loseAccess };
@@ -1013,12 +1014,15 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                           triggerClassName="h-8 px-2 [&>span]:font-semibold"
                         />
                       </div>
+                      {/* Pas de onOpenChange(false) sur ce lien : sur /courrier/:id la
+                          fermeture déclenche un navigate(-1) qui, résolu via popstate,
+                          annulerait la navigation vers la fiche. Le changement de route
+                          démonte le panneau de toute façon. */}
                       {sender?.socle_contact_id && (
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Link
                               to={`/contacts/${sender.socle_contact_id}`}
-                              onClick={() => onOpenChange(false)}
                               className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-primary hover:bg-muted transition-colors"
                               aria-label="Voir la fiche contact et ses courriers"
                             >
@@ -1034,6 +1038,13 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                         {line.text}
                       </div>
                     ))}
+                    {/* Quartier de l'expéditeur : utile pour router le courrier
+                        vers le bon secteur sans ouvrir la fiche. */}
+                    {senderContact?.quartier && (
+                      <div className="pt-0.5">
+                        <QuartierBadge quartier={senderContact.quartier} />
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1250,7 +1261,11 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
           >
           {withTabs && (
             <div className={cn("shrink-0", fullScreen ? "mx-4 mt-1 mb-1" : "mx-6 mt-[4px] mb-[4px]")}>
-              <ResponsiveTabsList activeValue={activeTab} tabs={tabItems} />
+              <ResponsiveTabsList
+                activeValue={activeTab}
+                onValueChange={setActiveTab}
+                tabs={tabItems}
+              />
             </div>
           )}
           <TabsContent
