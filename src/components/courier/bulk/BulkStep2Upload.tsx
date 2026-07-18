@@ -20,14 +20,16 @@ interface Props {
   maxFileSize: number;
 }
 
+// Pas de TIFF : l'OCR (analyze-courier) le route vers Mistral, qui ne le gère
+// pas — le fichier passait l'upload puis échouait sans message. Les copieurs
+// doivent être configurés en PDF.
 const ACCEPTED_TYPES = [
   "application/pdf",
   "image/jpeg",
   "image/png",
-  "image/tiff",
 ];
 
-const ACCEPTED_EXTS = [".pdf", ".jpg", ".jpeg", ".png", ".tiff", ".tif"];
+const ACCEPTED_EXTS = [".pdf", ".jpg", ".jpeg", ".png"];
 
 function formatBytes(b: number): string {
   if (b < 1024) return `${b} o`;
@@ -57,7 +59,7 @@ export default function BulkStep2Upload({ files, onChange, onPreview, maxFileSiz
         const rejected = !isTypeOk || !isSizeOk;
         let rejectReason: string | undefined;
         if (!isSizeOk) rejectReason = `Taille maximale dépassée (${formatBytes(maxFileSize)})`;
-        else if (!isTypeOk) rejectReason = "Format non supporté (PDF, JPG, PNG, TIFF uniquement)";
+        else if (!isTypeOk) rejectReason = "Format non supporté (PDF, JPG, PNG uniquement)";
         return {
           id: crypto.randomUUID(),
           file: f,
@@ -106,13 +108,13 @@ export default function BulkStep2Upload({ files, onChange, onPreview, maxFileSiz
           Parcourir les fichiers
         </Button>
         <p className="text-xs text-muted-foreground mt-2">
-          PDF, JPG, PNG, TIFF — Max {formatBytes(maxFileSize)} par fichier
+          PDF, JPG, PNG — Max {formatBytes(maxFileSize)} par fichier
         </p>
         <input
           ref={inputRef}
           type="file"
           multiple
-          accept=".pdf,.jpg,.jpeg,.png,.tiff,.tif"
+          accept=".pdf,.jpg,.jpeg,.png"
           className="hidden"
           onChange={(e) => {
             if (e.target.files?.length) processFiles(Array.from(e.target.files));

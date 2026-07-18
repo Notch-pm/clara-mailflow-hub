@@ -13,6 +13,7 @@ import { assignableOrgs, listOrgsWithConfig } from "@/services/socleOrgConfigSer
 import { listTags } from "@/services/courierTagService";
 import { storage } from "@/services/storageService";
 import { extractCourierInfo } from "@/services/courierAnalysisService";
+import { enqueueCourierAnalyses } from "@/services/courierAnalysisJobService";
 import BulkStep1Channel from "@/components/courier/bulk/BulkStep1Channel";
 import BulkStep2Upload from "@/components/courier/bulk/BulkStep2Upload";
 import BulkStep3Assign from "@/components/courier/bulk/BulkStep3Assign";
@@ -246,6 +247,9 @@ export default function BulkImport() {
     setConfirming(true);
 
     let count = 0;
+    // Courriers ayant au moins une pièce jointe réellement uploadée : eux seuls
+    // ont de quoi être océrisés.
+    const analysableCourierIds: string[] = [];
     const { data: { user } } = await supabase.auth.getUser();
 
     for (const draft of drafts) {
@@ -306,16 +310,19 @@ export default function BulkImport() {
           });
         }
 
+        let uploaded = 0;
         for (const fileId of draft.fileIds) {
           const bf = files.find((f) => f.id === fileId);
           if (!bf) continue;
           try {
             await storage.upload(organizationId, courier.id, bf.file, "attachment");
+            uploaded++;
           } catch (err) {
             const msg = err instanceof Error ? err.message : "Erreur upload";
             toast.error(`${bf.file.name} : ${msg}`);
           }
         }
+        if (uploaded > 0) analysableCourierIds.push(courier.id);
 
         count++;
       } catch (err) {
@@ -327,6 +334,12 @@ export default function BulkImport() {
     setCreatedCount(count);
     setConfirming(false);
     goToStep(5);
+
+    // OCR + analyse délégués à la file serveur : l'utilisateur n'attend pas et
+    // quitter la page n'interrompt rien. Sans cela, les courriers importés en
+    // masse n'avaient ni extraits ni analyse, contrairement à ceux créés via
+    // NewCourierDialog.
+    void enqueueCourierAnalyses(analysableCourierIds);
 
     queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
     queryClient.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
