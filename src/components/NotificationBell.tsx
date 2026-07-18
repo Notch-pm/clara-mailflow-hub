@@ -20,12 +20,17 @@ export function NotificationBell() {
     document.title = unreadCount > 0 ? `(${unreadCount}) ${base}` : base;
   }, [unreadCount]);
 
-  function handleNotificationClick(id: string, resourceId: string | null) {
+  function handleNotificationClick(id: string, resourceId: string | null, type: string) {
     markRead(id);
     setPopoverOpen(false);
-    if (resourceId) {
-      navigate(`/boite-aux-lettres?open=${resourceId}`);
+    if (!resourceId) return;
+    if (type === "action_assigned" || type === "action_unassigned") {
+      // Même permalien que le mail : la page détail lit ?tab au montage, alors
+      // que /boite-aux-lettres?open= purge les paramètres d'URL à l'ouverture.
+      navigate(`/courrier/${resourceId}?tab=actions`);
+      return;
     }
+    navigate(`/boite-aux-lettres?open=${resourceId}`);
   }
 
   return (
@@ -88,7 +93,7 @@ export function NotificationBell() {
                 >
                   <button
                     type="button"
-                    onClick={() => handleNotificationClick(notif.id, notif.resource_id)}
+                    onClick={() => handleNotificationClick(notif.id, notif.resource_id, notif.type)}
                     className="flex-1 text-left px-4 py-3 pr-10"
                   >
                     <div className="flex items-start gap-2.5">
@@ -105,6 +110,16 @@ export function NotificationBell() {
                               transféré
                             </span>
                           )}
+                          {notif.type === "action_assigned" && (
+                            <span className="inline-flex items-center rounded px-1 py-0 text-[10px] font-medium bg-primary/15 text-primary border border-primary/30">
+                              action
+                            </span>
+                          )}
+                          {notif.type === "action_unassigned" && (
+                            <span className="inline-flex items-center rounded px-1 py-0 text-[10px] font-medium bg-muted text-muted-foreground border border-border">
+                              retirée
+                            </span>
+                          )}
                         </div>
                         <p className={cn(
                           "text-sm line-clamp-2 break-words",
@@ -112,6 +127,10 @@ export function NotificationBell() {
                         )}>
                           {notif.type === "courier_transferred"
                             ? ((notif.title ?? "").replace(/^Transféré : /, "") || "Courrier transféré")
+                            : notif.type === "action_assigned"
+                            ? ((notif.title ?? "").replace(/^Action affectée : /, "") || "Action affectée")
+                            : notif.type === "action_unassigned"
+                            ? ((notif.title ?? "").replace(/^Affectation retirée : /, "") || "Affectation retirée")
                             : (notif.title ?? "Nouveau courrier")}
                         </p>
                         <p className="text-xs text-muted-foreground mt-0.5">
