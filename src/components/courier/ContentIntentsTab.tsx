@@ -186,6 +186,23 @@ export default function ContentIntentsTab({ courierId, organizationId, readOnly 
   const canApplySubject =
     !!suggestedSubject && suggestedSubject !== (courierData?.subject ?? "").trim();
 
+  /**
+   * L'expéditeur suggéré est stocké en champs séparés (`first_name`,
+   * `last_name`, `email`, `phone`) depuis que les identités sont déléguées au
+   * Socle. Ce composant lisait encore un `.name` qui n'existe plus : le bloc
+   * « Expéditeur détecté » ne s'affichait donc plus du tout, sans erreur.
+   *
+   * Repli sur l'email, comme le fait `search_couriers` pour `sender_name` :
+   * une analyse qui n'a extrait qu'une adresse reste une information utile.
+   */
+  const suggestedSenderName =
+    [analysis?.suggested_sender?.first_name, analysis?.suggested_sender?.last_name]
+      .filter(Boolean)
+      .join(" ")
+      .trim() ||
+    analysis?.suggested_sender?.email ||
+    null;
+
   const applySubjectMutation = useMutation({
     mutationFn: async () => {
       if (!suggestedSubject) return;
@@ -381,7 +398,7 @@ export default function ContentIntentsTab({ courierId, organizationId, readOnly 
           </Card>
         ) : (
           <div className="space-y-3">
-            {(canApplySubject || analysis.suggested_sender?.name || analysis.suggested_service_name) && (
+            {(canApplySubject || suggestedSenderName || analysis.suggested_service_name) && (
               <Card className="p-3">
                 <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
                   Champs suggérés
@@ -412,10 +429,10 @@ export default function ContentIntentsTab({ courierId, organizationId, readOnly 
                   {/* Expéditeur et service restent indicatifs : les rattacher
                       suppose un rapprochement avec le référentiel du Socle, qui
                       se fait au passage en instruction. */}
-                  {analysis.suggested_sender?.name && (
+                  {suggestedSenderName && (
                     <div>
                       <p className="text-xs text-muted-foreground">Expéditeur détecté</p>
-                      <p className="text-sm">{analysis.suggested_sender.name}</p>
+                      <p className="text-sm">{suggestedSenderName}</p>
                     </div>
                   )}
                   {analysis.suggested_service_name && (
