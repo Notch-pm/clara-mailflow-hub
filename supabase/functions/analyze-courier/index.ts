@@ -33,7 +33,7 @@ import {
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-org-id",
+    "authorization, x-client-info, apikey, content-type, x-org-id, x-cron-secret",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 
@@ -72,6 +72,22 @@ async function verifyAuth(req: Request) {
   const { data, error } = await anonClient.auth.getUser(token);
   if (error || !data.user) throw new Error("Unauthorized");
   return data.user;
+}
+
+/** Secret cron partagé, lu depuis le Vault Postgres (même source que
+ *  fetch-inbound-emails). Autorise les appels SYSTÈME, sans utilisateur. */
+async function getCronSecret(admin: ReturnType<typeof getAdminClient>): Promise<string> {
+  try {
+    const { data, error } = await admin.rpc("get_cron_secret");
+    if (error) {
+      console.error("get_cron_secret RPC error:", error.message);
+      return "";
+    }
+    return (data as string) ?? "";
+  } catch (e) {
+    console.error("get_cron_secret exception:", e);
+    return "";
+  }
 }
 
 async function verifyOrgMembership(
@@ -175,7 +191,8 @@ async function ocrDocument(
   orgId: string,
   documentId: string,
   mistralKey: string,
-  userId: string,
+  /** NULL pour un appel système (worker de file d'attente). */
+  userId: string | null,
 ) {
   // Fetch document
   const { data: doc, error: docErr } = await admin
@@ -372,7 +389,8 @@ async function analyzeCourier(
   orgId: string,
   courierId: string,
   mistralKey: string,
-  userId: string,
+  /** NULL pour un appel système (worker de file d'attente). */
+  userId: string | null,
 ) {
   // Get courier subject + extracts
   const { data: courier } = await admin
@@ -777,7 +795,6 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const user = await verifyAuth(req);
     const admin = getAdminClient();
     const orgId = req.headers.get("x-org-id");
     if (!orgId) return jsonResponse({ error: "Missing x-org-id header" }, 400);
@@ -785,7 +802,22 @@ Deno.serve(async (req) => {
     const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidRe.test(orgId)) return jsonResponse({ error: "Invalid x-org-id" }, 400);
 
-    await verifyOrgMembership(admin, user.id, orgId);
+    // Deux appelants possibles :
+    //  - un utilisateur (JWT + appartenance à l'organisation vérifiée) ;
+    //  - le worker de file d'attente (x-cron-secret), qui n'a pas d'utilisateur.
+    // Sans cette seconde branche, aucun ingesteur serveur ne peut océriser :
+    // c'est ce qui empêchait la boîte de numérisation de fonctionner seule.
+    // userId reste NULL côté quota — ai_usage_events.created_by est nullable.
+    const cronSecret = req.headers.get("x-cron-secret");
+    let userId: string | null = null;
+    if (cronSecret) {
+      const expected = await getCronSecret(admin);
+      if (!expected || cronSecret !== expected) throw new Error("Unauthorized");
+    } else {
+      const user = await verifyAuth(req);
+      await verifyOrgMembership(admin, user.id, orgId);
+      userId = user.id;
+    }
 
     const mistralKey = Deno.env.get("MISTRAL_API_KEY");
     if (!mistralKey) return jsonResponse({ error: "MISTRAL_API_KEY non configurée" }, 500);
@@ -816,7 +848,7 @@ Deno.serve(async (req) => {
           continue;
         }
         try {
-          await ocrDocument(admin, orgId, d.id, mistralKey, user.id);
+          await ocrDocument(admin, orgId, d.id, mistralKey, userId);
           results.push({ document_id: d.id, ok: true });
         } catch (e) {
           if (e instanceof AiQuotaExceededError) quotaExceeded = true;
@@ -831,7 +863,7 @@ Deno.serve(async (req) => {
     if (req.method === "POST" && action === "analyze") {
       const { courier_id } = await req.json();
       if (!courier_id) return jsonResponse({ error: "Missing courier_id" }, 400);
-      const row = await analyzeCourier(admin, orgId, courier_id, mistralKey, user.id);
+      const row = await analyzeCourier(admin, orgId, courier_id, mistralKey, userId);
       return jsonResponse(row);
     }
 

@@ -35,8 +35,23 @@ async function getCronSecret(admin: ReturnType<typeof createClient>): Promise<st
 }
 
 const MAX_EMAILS_PER_RUN = 10;
-const MAX_EMAIL_BYTES = 2 * 1024 * 1024;       // 2 MB — emails plus lourds sont ignorés
-const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;  // 5 MB
+
+// 15 Mo. Auparavant 2 Mo, et l'email dépassant la limite était SAUTÉ sans laisser
+// de trace en base : un courrier numérisé (toujours au-delà de 2 Mo) disparaissait
+// silencieusement. On les importe désormais, en les marquant « volumineux ».
+const MAX_EMAIL_BYTES = 15 * 1024 * 1024;
+const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
+
+// Seuil d'affichage du drapeau « courrier volumineux » dans la boîte aux lettres.
+// C'est l'ancienne limite : au-delà, le courrier mérite un coup d'œil (scan lourd,
+// pièce jointe inhabituelle) même s'il est désormais importé normalement.
+const LARGE_EMAIL_BYTES = 2 * 1024 * 1024;
+
+// Garde-fou mémoire : la limite par email ne suffit plus, car 10 × 15 Mo
+// dépasseraient le quota de l'edge function. On borne le CUMUL traité par
+// exécution ; le reste sera repris au passage suivant du cron (la déduplication
+// par Message-ID rend l'opération sûre).
+const MAX_RUN_BYTES = 45 * 1024 * 1024;
 
 interface ImapSettings {
   id: string;
@@ -49,6 +64,11 @@ interface ImapSettings {
   folder: string;
   auto_fetch: boolean;
   last_fetch_at?: string | null;
+  /** Boîte alimentée par un copieur — voir migration 20260719100000. */
+  is_scan_inbox?: boolean | null;
+  scan_allowed_senders?: string[] | null;
+  max_email_bytes?: number | null;
+  socle_organization_id?: string | null;
 }
 
 // ===================== Mini client IMAP =====================
@@ -314,15 +334,25 @@ async function processOrganization(
     const allUids = await client.search(`SINCE ${sinceStr}`);
     // On limite à MAX_EMAILS_PER_RUN en prenant les plus récents (UIDs les plus grands)
     const uids = allUids.slice(-MAX_EMAILS_PER_RUN);
+    let runBytes = 0;
     for (const uid of uids) {
       try {
         // 1) Récupère taille + Message-ID en un seul aller-retour IMAP
         const { size, messageId: earlyMessageId } = await client.fetchSizeAndMessageId(uid);
 
-        // 2) Email trop lourd : on le saute entièrement pour rester sous le quota mémoire
-        if (size > MAX_EMAIL_BYTES) {
+        // 2) Email hors gabarit : seul cas encore ignoré (15 Mo, surchargeable
+        //    par boîte pour un copieur réglé en haute résolution).
+        const maxEmailBytes = s.max_email_bytes ?? MAX_EMAIL_BYTES;
+        if (size > maxEmailBytes) {
           console.error(`Email uid=${uid} ignoré (trop volumineux : ${size} bytes)`);
           continue;
+        }
+
+        // 2 bis) Budget mémoire de l'exécution épuisé : on s'arrête proprement,
+        // le cron reprendra où il en est.
+        if (runBytes + size > MAX_RUN_BYTES) {
+          console.log(`Budget mémoire atteint (${runBytes} bytes) — reprise au prochain passage`);
+          break;
         }
 
         // 3) Si déjà importé, on saute
@@ -338,6 +368,7 @@ async function processOrganization(
 
         const raw = await client.fetchMessage(uid);
         if (!raw) continue;
+        runBytes += size;
         const rawStr = new TextDecoder("latin1").decode(raw);
         const parsed = await simpleParser(rawStr);
         const messageId = parsed.messageId || earlyMessageId || `imap-${s.organization_id}-${uid}`;
@@ -352,33 +383,73 @@ async function processOrganization(
           continue;
         }
 
-        const subject = parsed.subject?.slice(0, 500) || "(sans objet)";
         const receivedAt = (parsed.date || new Date()).toISOString();
         const fromAddr = (parsed.from as any)?.value?.[0];
         const senderName = fromAddr?.name || null;
         const senderEmail = fromAddr?.address || null;
+
+        const isScan = s.is_scan_inbox === true;
+
+        // Une boîte de numérisation n'attend QUE son copieur. Sans ce filtre,
+        // quiconque connaît l'adresse crée des courriers dans le tenant.
+        if (isScan && s.scan_allowed_senders?.length) {
+          const allowed = s.scan_allowed_senders.map((a) => a.trim().toLowerCase()).filter(Boolean);
+          const from = senderEmail?.toLowerCase() ?? "";
+          if (!allowed.includes(from)) {
+            console.error(`Scan uid=${uid} rejeté : expéditeur non autorisé (${from || "inconnu"})`);
+            continue;
+          }
+        }
+
+        // Le sujet produit par un copieur est du bruit (« Scan from RICOH
+        // MP C3004 ») : il ferait un mauvais titre de courrier et polluerait la
+        // recherche plein texte. Le vrai titre viendra de l'analyse IA
+        // (courier_analyses.suggested_subject).
+        const subject = isScan
+          ? "Courrier numérisé — à qualifier"
+          : (parsed.subject?.slice(0, 500) || "(sans objet)");
+
+        // Construit une seule fois : tout update ultérieur repart de cet objet,
+        // sinon on perd des clés (cf. ignored_attachments plus bas).
+        const courierMetadata: Record<string, unknown> = {
+          email_message_id: messageId,
+          email_from: senderEmail,
+          email_to: s.username,
+          // Idem : le corps d'un mail de copieur est un pavé technique, qu'on
+          // n'indexe pas dans fts_body.
+          body_text: isScan ? null : (parsed.text || null),
+          body_html: isScan ? null : (parsed.html || null),
+          source: isScan ? "scan" : "imap",
+          imap_settings_id: s.id,
+          email_size_bytes: size,
+          // Remonté jusqu'à la liste (search_couriers) pour signaler à l'agent
+          // un courrier lourd — typiquement un scan — avant qu'il ne l'ouvre.
+          is_large_email: size > LARGE_EMAIL_BYTES,
+          ...(isScan
+            ? {
+                // L'adresse du copieur : traçabilité du périphérique, sans
+                // jamais la confondre avec l'expéditeur du courrier.
+                scan_device_email: senderEmail,
+                needs_qualification: true,
+              }
+            : {}),
+        };
 
         const { data: courier, error: courierErr } = await admin
           .from("couriers")
           .insert({
             organization_id: s.organization_id,
             direction: "inbound",
-            channel: "email",
+            // Un courrier numérisé est un courrier PAPIER : l'email n'est que
+            // son moyen de transport depuis le copieur.
+            channel: isScan ? "paper" : "email",
             subject,
             received_at: receivedAt,
             assigned_service: autoService?.name ?? null,
             // Organisation (miroir Socle) propriétaire de la boîte → tracée sur le courrier
             socle_organization_id: s.socle_organization_id ?? null,
             workflow_state_id: autoService?.workflowStateId ?? initialStateId,
-            metadata: {
-              email_message_id: messageId,
-              email_from: senderEmail,
-              email_to: s.username,
-              body_text: parsed.text || null,
-              body_html: parsed.html || null,
-              source: "imap",
-              imap_settings_id: s.id,
-            },
+            metadata: courierMetadata,
           })
           .select("id")
           .single();
@@ -398,7 +469,11 @@ async function processOrganization(
         const { firstName: senderFirstName, lastName: senderLastName } = splitName(senderName);
 
         const participants: any[] = [];
-        if (senderEmail) {
+        // Sur une boîte de numérisation, le From: est le COPIEUR. L'enregistrer
+        // en expéditeur donnerait à chaque courrier scanné le même expéditeur
+        // fictif, et fausserait le rapprochement avec les contacts du Socle.
+        // Le véritable expéditeur sera proposé par l'analyse IA.
+        if (senderEmail && !isScan) {
           // Données brutes du From: — le rapprochement avec un contact Socle se
           // fait au passage en instruction (côté frontend), jamais ici.
           participants.push({
@@ -423,6 +498,7 @@ async function processOrganization(
         }
 
         const ignoredAttachments: { name: string; size: number }[] = [];
+        let storedDocuments = 0;
         if (parsed.attachments?.length) {
           for (const att of parsed.attachments) {
             try {
@@ -451,6 +527,7 @@ async function processOrganization(
                 file_size: (att.size as number) ?? null,
                 storage_key: storageKey,
               });
+              storedDocuments++;
             } catch (e) {
               console.error("Erreur traitement pièce jointe", e);
             }
@@ -459,24 +536,33 @@ async function processOrganization(
 
         if (ignoredAttachments.length > 0) {
           await admin.from("couriers").update({
-            metadata: {
-              email_message_id: messageId,
-              email_from: senderEmail,
-              email_to: s.username,
-              body_text: parsed.text || null,
-              body_html: parsed.html || null,
-              source: "imap",
-              ignored_attachments: ignoredAttachments,
-            },
+            metadata: { ...courierMetadata, ignored_attachments: ignoredAttachments },
           }).eq("id", courier.id);
         }
 
         await admin.from("courier_events").insert({
           organization_id: s.organization_id,
           courier_id: courier.id,
-          event_type: "email_received",
+          // event_type est un varchar libre : aucun enum à migrer.
+          event_type: isScan ? "scan_received" : "email_received",
           payload: { from: senderEmail, subject, attachments: parsed.attachments?.length || 0 },
         });
+
+        // Enfile l'OCR + l'analyse. Indispensable pour la numérisation : personne
+        // n'est devant l'écran pour cliquer « Analyser », et sans extraits le
+        // courrier n'a ni titre exploitable ni expéditeur suggéré. Le traitement
+        // lui-même est fait par process-analysis-queue, hors de cette exécution.
+        if (storedDocuments > 0) {
+          const { error: jobErr } = await admin.from("courier_analysis_jobs").insert({
+            organization_id: s.organization_id,
+            courier_id: courier.id,
+            kind: "full",
+          });
+          // Un conflit signifie qu'un job existe déjà : ce n'est pas une erreur.
+          if (jobErr && !jobErr.message.includes("duplicate key")) {
+            console.error("Enfilement analyse", jobErr.message);
+          }
+        }
 
         // Volontairement, on ne marque pas l'email comme lu côté serveur IMAP :
         // ainsi le webmail / client mail conserve son propre statut. La

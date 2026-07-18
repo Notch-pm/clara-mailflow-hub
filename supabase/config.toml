@@ -3,6 +3,12 @@ project_id = "aullweizxcjbvtdspjli"
 [functions.fetch-inbound-emails]
 verify_jwt = false
 
+# Appelée uniquement par pg_cron, qui n'envoie pas d'en-tête Authorization :
+# avec verify_jwt, la plateforme rejetterait l'appel avant même d'exécuter le
+# code. L'authentification se fait par x-cron-secret dans la fonction.
+[functions.process-analysis-queue]
+verify_jwt = false
+
 [functions.auth-email-hook]
 verify_jwt = false
 

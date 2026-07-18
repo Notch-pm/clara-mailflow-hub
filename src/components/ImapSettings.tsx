@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -27,7 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Loader2, Inbox, RefreshCw, PlugZap, Plus, Pencil, Trash2, Building2 } from "lucide-react";
+import { Loader2, Inbox, RefreshCw, PlugZap, Plus, Pencil, Trash2, Building2, Scan } from "lucide-react";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import { listSocleOrganizationTree } from "@/services/socleSyncService";
@@ -45,6 +46,10 @@ interface ImapForm {
   folder: string;
   auto_fetch: boolean;
   socle_organization_id: string | null;
+  /** Boîte alimentée par un copieur : ingestion en mode numérisation. */
+  is_scan_inbox: boolean;
+  /** Adresses autorisées à déposer. Saisi en texte, séparé par virgules ou retours. */
+  scan_allowed_senders: string[] | null;
 }
 
 const defaultForm: ImapForm = {
@@ -57,7 +62,20 @@ const defaultForm: ImapForm = {
   folder: "INBOX",
   auto_fetch: false,
   socle_organization_id: null,
+  is_scan_inbox: false,
+  scan_allowed_senders: null,
 };
+
+/** « a@x.fr, b@y.fr » ou une adresse par ligne → tableau normalisé. */
+function parseAllowedSenders(raw: string): string[] | null {
+  const list = raw
+    .split(/[\s,;]+/)
+    .map((a) => a.trim().toLowerCase())
+    .filter(Boolean);
+  // NULL et non [] : un tableau vide signifierait « aucun expéditeur autorisé »,
+  // ce qui bloquerait toute la boîte.
+  return list.length ? list : null;
+}
 
 interface ImapSettingsRow extends ImapForm {
   id: string;
@@ -137,6 +155,8 @@ export default function ImapSettings({ orgId }: { orgId: string }) {
       folder: row.folder || "INBOX",
       auto_fetch: row.auto_fetch ?? false,
       socle_organization_id: row.socle_organization_id ?? null,
+      is_scan_inbox: row.is_scan_inbox ?? false,
+      scan_allowed_senders: row.scan_allowed_senders ?? null,
     });
     setDialogOpen(true);
   }
@@ -273,6 +293,12 @@ export default function ImapSettings({ orgId }: { orgId: string }) {
                         )}
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
+                        {row.is_scan_inbox && (
+                          <Badge variant="outline" className="text-xs gap-1">
+                            <Scan className="h-3 w-3" />
+                            Numérisation
+                          </Badge>
+                        )}
                         <Badge variant={row.auto_fetch ? "default" : "secondary"} className="text-xs">
                           {row.auto_fetch ? "Auto" : "Manuel"}
                         </Badge>
@@ -483,6 +509,49 @@ export default function ImapSettings({ orgId }: { orgId: string }) {
                 checked={form.auto_fetch}
                 onCheckedChange={(val) => setForm({ ...form, auto_fetch: val })}
               />
+            </div>
+
+            <div className="rounded-lg border p-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label className="text-sm font-medium">Boîte de numérisation</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Alimentée par un copieur : les documents deviennent des courriers papier,
+                    océrisés et pré-qualifiés automatiquement
+                  </p>
+                </div>
+                <Switch
+                  checked={form.is_scan_inbox}
+                  onCheckedChange={(val) => setForm({ ...form, is_scan_inbox: val })}
+                />
+              </div>
+
+              {form.is_scan_inbox && (
+                <>
+                  <div className="space-y-1.5">
+                    <Label className="text-sm">Expéditeurs autorisés</Label>
+                    <Textarea
+                      rows={2}
+                      placeholder="copieur-accueil@ville.fr, copieur-etage2@ville.fr"
+                      defaultValue={form.scan_allowed_senders?.join(", ") ?? ""}
+                      onBlur={(e) =>
+                        setForm({ ...form, scan_allowed_senders: parseAllowedSenders(e.target.value) })
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Adresses des copieurs, séparées par des virgules. Laisser vide accepte
+                      n'importe quel expéditeur : toute personne connaissant l'adresse de la
+                      boîte pourrait alors créer des courriers.
+                    </p>
+                  </div>
+
+                  <p className="text-xs text-muted-foreground border-t pt-2">
+                    <strong className="font-medium text-foreground">Réglages du copieur :</strong>{" "}
+                    format PDF (pas TIFF), 200 à 300 dpi, niveaux de gris, et si possible
+                    « un fichier par document » pour éviter d'avoir à découper les lots.
+                  </p>
+                </>
+              )}
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
