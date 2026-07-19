@@ -63,16 +63,16 @@ bunx supabase functions deploy <nom> --project-ref aullweizxcjbvtdspjli
 bun run build
 ```
 
-### Lot « numérisation » (2026-07-18)
+### Lot « numérisation » (2026-07-18) — appliqué le 2026-07-19
 
-| # | Action | Pourquoi cet ordre |
-|---|---|---|
-| 1 | `20260718150000_search_couriers_list_pages.sql` **(rejeu)** | La fonction est live mais **sans** `is_large_email` ; le frontend en dépend. `DROP … IF EXISTS` + `CREATE` : rejeu sûr. |
-| 2 | `20260719090000_courier_analysis_jobs.sql` | Table + RPC d'enfilement et de réservation |
-| 3 | `20260719100000_imap_scan_inbox.sql` | Colonnes `imap_settings` |
-| 4 | Déployer `analyze-courier`, `fetch-inbound-emails`, `process-analysis-queue` | Les fonctions lisent les objets créés en 1–3 |
-| 5 | `20260719091000_analysis_queue_cron.sql` | **Hors ordre alphabétique** : planifier avant l'étape 4 produirait un échec toutes les 2 min |
-| 6 | Publier le frontend | Lit `is_large_email` via le RPC |
+| # | Action | Pourquoi cet ordre | État |
+|---|---|---|---|
+| 1 | ~~`20260718150000_search_couriers_list_pages.sql` (rejeu)~~ | **Caduque — ne plus rejouer.** L'étape 1 du lot « tri » (sort_dir), appliquée le 18/07, a porté `search_couriers` à 17 paramètres avec `is_large_email`. Rejouer ce fichier ferait **régresser** la fonction (perte de `p_sort_dir` → toutes les listes en erreur). | Obsolète |
+| 2 | `20260719090000_courier_analysis_jobs.sql` | Table + RPC d'enfilement et de réservation | **Appliqué le 2026-07-19** via `apply_migration` (registre : horodatage propre, dérive habituelle) |
+| 3 | `20260719100000_imap_scan_inbox.sql` | Colonnes `imap_settings` | **Appliqué le 2026-07-19** (idem) |
+| 4 | Déployer `analyze-courier`, `fetch-inbound-emails`, `process-analysis-queue` | Les fonctions lisent les objets créés en 2–3 | **Fait le 2026-07-19** (v53 / v74 / v1, `verify_jwt=false` pris de `config.toml`) |
+| 5 | `20260719091000_analysis_queue_cron.sql` | **Hors ordre alphabétique** : planifier avant l'étape 4 produirait un échec toutes les 2 min | **Appliqué le 2026-07-19** ; cron `process-analysis-queue-every-2min` actif |
+| 6 | Publier le frontend | Lit `is_large_email` via le RPC | À faire (même publication que l'étape 2 du lot « tri ») |
 
 ### Lot « tri des listes »
 
