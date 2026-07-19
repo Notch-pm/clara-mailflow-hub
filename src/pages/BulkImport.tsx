@@ -19,33 +19,11 @@ import BulkStep2Upload from "@/components/courier/bulk/BulkStep2Upload";
 import BulkStep3Assign from "@/components/courier/bulk/BulkStep3Assign";
 import BulkStep4Verify from "@/components/courier/bulk/BulkStep4Verify";
 import BulkFilePreview from "@/components/courier/bulk/BulkFilePreview";
+import BulkPdfSplitDialog, { type PdfSplitResult } from "@/components/courier/bulk/BulkPdfSplitDialog";
+import { type BulkFile, type DraftCourier, nextGroupId } from "@/components/courier/bulk/types";
 
 type BulkStep = 1 | 2 | 3 | 4 | 5;
 type CourierChannel = "paper" | "email";
-
-interface BulkFile {
-  id: string;
-  file: File;
-  previewUrl: string;
-  groupId: number | null;
-  rejected: boolean;
-  rejectReason?: string;
-}
-
-interface DraftCourier {
-  id: string;
-  title: string;
-  senderName: string;
-  senderEmail: string;
-  recipientName: string;
-  serviceId: string;
-  serviceName: string;
-  tags: string[];
-  bodyText: string;
-  fileIds: string[];
-  confidence: number;
-  flags: Array<"missing-service" | "duplicate">;
-}
 
 const STEPS = [
   { n: 1, label: "Canal" },
@@ -122,6 +100,7 @@ export default function BulkImport() {
   const [drafts, setDrafts] = useState<DraftCourier[]>([]);
   const [analyzing, setAnalyzing] = useState(false);
   const [previewFileId, setPreviewFileId] = useState<string | null>(null);
+  const [splitFileId, setSplitFileId] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [createdCount, setCreatedCount] = useState(0);
 
@@ -155,6 +134,33 @@ export default function BulkImport() {
   function rejectFile(fileId: string) {
     setFiles((prev) => prev.map((f) => f.id === fileId ? { ...f, rejected: true } : f));
     setDrafts((prev) => prev.map((d) => ({ ...d, fileIds: d.fileIds.filter((id) => id !== fileId) })));
+  }
+
+  function handleSplitConfirm({ originalId, segments, rest }: PdfSplitResult) {
+    const original = files.find((f) => f.id === originalId);
+    if (!original) return;
+    let gid = nextGroupId(files);
+    const toBulk = (f: File, groupId: number | null): BulkFile => ({
+      id: crypto.randomUUID(),
+      file: f,
+      previewUrl: URL.createObjectURL(f),
+      groupId,
+      rejected: false,
+    });
+    // Le reste retourne dans « non associés » ; chaque segment devient un courrier.
+    const replacements = [
+      ...(rest ? [toBulk(rest, null)] : []),
+      ...segments.map((f) => toBulk(f, gid++)),
+    ];
+    const idx = files.findIndex((f) => f.id === originalId);
+    const next = [...files];
+    next.splice(idx, 1, ...replacements);
+    URL.revokeObjectURL(original.previewUrl);
+    setFiles(next);
+    setSplitFileId(null);
+    toast.success(
+      `« ${original.file.name} » séparé en ${segments.length} courrier${segments.length > 1 ? "s" : ""}${rest ? " + un reste" : ""}`,
+    );
   }
 
   function buildDraftsFromGroups(): DraftCourier[] {
@@ -401,6 +407,7 @@ export default function BulkImport() {
             files={files}
             onChange={setFiles}
             onPreview={setPreviewFileId}
+            onSplit={setSplitFileId}
           />
         )}
 
@@ -519,6 +526,13 @@ export default function BulkImport() {
         fileId={previewFileId}
         files={files}
         onClose={() => setPreviewFileId(null)}
+      />
+
+      <BulkPdfSplitDialog
+        file={files.find((f) => f.id === splitFileId) ?? null}
+        maxFileSize={maxFileSize}
+        onClose={() => setSplitFileId(null)}
+        onConfirm={handleSplitConfirm}
       />
     </div>
   );

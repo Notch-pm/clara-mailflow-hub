@@ -50,6 +50,15 @@
     --warning: 42 92% 44%;
     --warning-foreground: 0 0% 100%;
 
+    /* Teintes cycliques des groupes de pages (découpage PDF) */
+    --split-1: 217 80% 50%;
+    --split-2: 262 65% 55%;
+    --split-3: 20 85% 48%;
+    --split-4: 330 65% 48%;
+    --split-5: 185 60% 38%;
+    --split-6: 45 90% 40%;
+    --split-foreground: 0 0% 100%;
+
     --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.06);
     --shadow-md: 0 2px 8px -1px rgb(0 0 0 / 0.08), 0 1px 3px -1px rgb(0 0 0 / 0.06);
     --shadow-lg: 0 6px 20px -4px rgb(0 0 0 / 0.1), 0 2px 6px -2px rgb(0 0 0 / 0.06);
@@ -88,6 +97,13 @@
     --success-foreground: 0 0% 100%;
     --warning: 42 92% 44%;
     --warning-foreground: 0 0% 100%;
+    --split-1: 217 80% 58%;
+    --split-2: 262 65% 63%;
+    --split-3: 20 85% 56%;
+    --split-4: 330 65% 56%;
+    --split-5: 185 60% 46%;
+    --split-6: 45 90% 48%;
+    --split-foreground: 0 0% 100%;
   }
 }
 

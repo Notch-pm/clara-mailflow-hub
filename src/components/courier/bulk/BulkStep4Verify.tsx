@@ -35,29 +35,7 @@ import { readableTextColor } from "@/lib/tag-color";
 import { Check, FileText, MoveRight, Plus, Trash2, X } from "lucide-react";
 import type { SocleOrgWithConfig as OrgService } from "@/services/socleOrgConfigService";
 import type { CourierTag } from "@/services/courierTagService";
-
-interface BulkFile {
-  id: string;
-  file: File;
-  previewUrl: string;
-  groupId: number | null;
-  rejected: boolean;
-}
-
-interface DraftCourier {
-  id: string;
-  title: string;
-  senderName: string;
-  senderEmail: string;
-  recipientName: string;
-  serviceId: string;
-  serviceName: string;
-  tags: string[];
-  bodyText: string;
-  fileIds: string[];
-  confidence: number;
-  flags: Array<"missing-service" | "duplicate">;
-}
+import type { BulkFile, DraftCourier } from "./types";
 
 interface Props {
   drafts: DraftCourier[];

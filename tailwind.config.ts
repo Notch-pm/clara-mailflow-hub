@@ -58,6 +58,15 @@ export default {
           DEFAULT: "hsl(var(--warning))",
           foreground: "hsl(var(--warning-foreground))",
         },
+        split: {
+          1: "hsl(var(--split-1))",
+          2: "hsl(var(--split-2))",
+          3: "hsl(var(--split-3))",
+          4: "hsl(var(--split-4))",
+          5: "hsl(var(--split-5))",
+          6: "hsl(var(--split-6))",
+          foreground: "hsl(var(--split-foreground))",
+        },
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
           foreground: "hsl(var(--sidebar-foreground))",

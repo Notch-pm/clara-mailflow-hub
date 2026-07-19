@@ -10,14 +10,7 @@ import {
   RotateCw,
   X,
 } from "lucide-react";
-
-interface BulkFile {
-  id: string;
-  file: File;
-  previewUrl: string;
-  groupId: number | null;
-  rejected: boolean;
-}
+import type { BulkFile } from "./types";
 
 interface Props {
   fileId: string | null;

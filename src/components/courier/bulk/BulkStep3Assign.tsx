@@ -2,21 +2,14 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { Check, Eye, FileText, FolderPlus, GripVertical, Trash2, X } from "lucide-react";
-
-interface BulkFile {
-  id: string;
-  file: File;
-  previewUrl: string;
-  groupId: number | null;
-  rejected: boolean;
-  rejectReason?: string;
-}
+import { Check, Eye, FileText, FolderPlus, GripVertical, Scissors, Trash2, X } from "lucide-react";
+import { type BulkFile, getGroupIds, nextGroupId } from "./types";
 
 interface Props {
   files: BulkFile[];
   onChange: (files: BulkFile[]) => void;
   onPreview: (fileId: string) => void;
+  onSplit: (fileId: string) => void;
 }
 
 function fileTypeBadge(file: File): string {
@@ -25,17 +18,6 @@ function fileTypeBadge(file: File): string {
   if (file.type === "image/png") return "PNG";
   if (file.type === "image/tiff") return "TIFF";
   return file.name.split(".").pop()?.toUpperCase() ?? "?";
-}
-
-function getGroupIds(files: BulkFile[]): number[] {
-  const ids = new Set<number>();
-  files.forEach((f) => { if (f.groupId !== null && !f.rejected) ids.add(f.groupId); });
-  return Array.from(ids).sort((a, b) => a - b);
-}
-
-function nextGroupId(files: BulkFile[]): number {
-  const ids = getGroupIds(files);
-  return ids.length === 0 ? 1 : Math.max(...ids) + 1;
 }
 
 function FileThumbnail({ bf, size = "sm" }: { bf: BulkFile; size?: "sm" | "md" }) {
@@ -51,7 +33,7 @@ function FileThumbnail({ bf, size = "sm" }: { bf: BulkFile; size?: "sm" | "md" }
   );
 }
 
-export default function BulkStep3Assign({ files, onChange, onPreview }: Props) {
+export default function BulkStep3Assign({ files, onChange, onPreview, onSplit }: Props) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [dragFileId, setDragFileId] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<number | "unassigned" | null>(null);
@@ -187,14 +169,26 @@ export default function BulkStep3Assign({ files, onChange, onPreview }: Props) {
                       <Check className="h-2.5 w-2.5 text-primary-foreground" />
                     </div>
                   )}
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); onPreview(bf.id); }}
-                    className="absolute top-1 right-1 z-10 w-5 h-5 rounded-full bg-background/80 backdrop-blur flex items-center justify-center shadow-sm hover:bg-background transition-colors"
-                    title="Aperçu"
-                  >
-                    <Eye className="h-3 w-3 text-muted-foreground" />
-                  </button>
+                  <div className="absolute top-1 right-1 z-10 flex flex-col gap-1">
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); onPreview(bf.id); }}
+                      className="w-5 h-5 rounded-full bg-background/80 backdrop-blur flex items-center justify-center shadow-sm hover:bg-background transition-colors"
+                      title="Aperçu"
+                    >
+                      <Eye className="h-3 w-3 text-muted-foreground" />
+                    </button>
+                    {bf.file.type === "application/pdf" && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onSplit(bf.id); }}
+                        className="w-5 h-5 rounded-full bg-background/80 backdrop-blur flex items-center justify-center shadow-sm hover:bg-background transition-colors"
+                        title="Séparer en plusieurs courriers"
+                      >
+                        <Scissors className="h-3 w-3 text-muted-foreground" />
+                      </button>
+                    )}
+                  </div>
                   <FileThumbnail bf={bf} size="md" />
                   <div className="mt-1 px-0.5">
                     <Badge variant="secondary" className="text-[9px] px-1 py-0 h-3.5 mb-0.5">

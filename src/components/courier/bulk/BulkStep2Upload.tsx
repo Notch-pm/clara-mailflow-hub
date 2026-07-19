@@ -3,15 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Eye, FileText, Upload, X } from "lucide-react";
-
-interface BulkFile {
-  id: string;
-  file: File;
-  previewUrl: string;
-  groupId: number | null;
-  rejected: boolean;
-  rejectReason?: string;
-}
+import type { BulkFile } from "./types";
 
 interface Props {
   files: BulkFile[];
