@@ -1,5 +1,7 @@
 # Fonctionnalités
 
+> Dernière vérification : 2026-07-21 pour les sections routes, référentiels et services/Socle.
+
 ## 1. Saisie & réception des courriers
 
 ### Saisie manuelle
@@ -7,7 +9,7 @@
 - Création via `courierService.createCourier` → numérotation automatique (`courier_sequences` annuel par direction).
 
 ### Réception automatique IMAP
-- Edge function `fetch-inbound-emails` : poll des boîtes IMAP configurées par org (et optionnellement par service via `org_services`).
+- Edge function `fetch-inbound-emails` : poll des boîtes IMAP configurées par tenant ou par organisation Socle (`imap_settings.socle_organization_id`). Le fallback vers les anciens services est legacy et ne doit pas servir de base à de nouveaux développements.
 - Crée un `courier` `direction=inbound`, importe les pièces jointes dans le bucket `clara-documents`, crée les participants.
 - Déclenchée manuellement (bouton) ou par planification (à câbler côté cron si besoin).
 - Config UI : `src/components/ImapSettings.tsx`.
@@ -92,8 +94,10 @@ Les angles morts de l'ancienne détection côté client (doublon au **téléphon
 ### Modèles (`ModeleSettings.tsx`)
 - Templates Handlebars stockés dans `templates`. Variables disponibles : `{{usager.nom}}`, `{{courier.sujet}}`, etc. Éditeur Tiptap.
 
-### Services internes (`ServicesSettings.tsx`)
-- Table `org_services`. Permet l'assignation `couriers.assigned_service` et la config IMAP par service.
+### Organisations Socle et anciens services
+- La hiérarchie d'assignation active est celle des **organisations Socle**, exposée dans `SocleOrganizationTree` et configurée depuis les sections « Organisations » de `SettingsPage` / `OrgSettings`.
+- Les courriers portent `couriers.socle_organization_id` pour la logique métier ; `couriers.assigned_service` reste une dénormalisation d'affichage.
+- Les tables legacy `services`, `service_members` et `service_signatories` sont gelées : elles ne doivent plus recevoir de nouveau flux d'écriture, hors fallback documenté dans `docs/data-model.md`.
 
 ## 6. Démarches & sync Arpège
 

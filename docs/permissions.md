@@ -1,5 +1,7 @@
 # Matrice des droits d'accès
 
+> Dernière vérification : 2026-07-21, alignée sur `src/App.tsx`, `SettingsPage` et `OrgSettings`.
+
 ## Niveaux de droits
 
 | Niveau | Source | Portée |
@@ -76,15 +78,14 @@ Accessibles depuis `/parametres` :
 |---|---|
 | **Configuration générale** | Nom, logo, durée de conservation des courriers |
 | **Utilisateurs** (`UsersPage`) | Inviter, désactiver, changer rôle, marquer signataire |
-| **Services** (`ServicesSettings`) | Créer/éditer services internes + IMAP par service |
+| **Organisations** (`SocleOrganizationTree`) | Configurer hiérarchie Socle, membres, signataires, workflows et boîtes IMAP par organisation |
 | **Classification / Workflows** | Workflows, états, transitions, catégories, tags |
 | **Modèles de réponse** | CRUD modèles |
 | **Signataires** | CRUD signataires + upload image signature |
 | **Démarches** (`ProceduresSettings`) | CRUD + synchronisation Arpège |
-| **SMTP / IMAP organisation** | Configuration email |
+| **SMTP / IMAP organisation** | Configuration email globale ou par organisation Socle |
 | **Intégrations** (`OrgIntegrations`) | Arpège (URL, client_id, secret) |
 | **Formulaires portail** | Création / diffusion de formulaires publics |
-| **Liens utiles** | Configuration de la sidebar liens externes |
 
 **Actions exclusives admin** :
 - Signature électronique (si l'utilisateur est marqué `is_signataire`).
@@ -109,6 +110,6 @@ Accessibles depuis `/parametres` :
 
 - [ ] Définir le niveau requis (anonyme / membre / admin / superadmin).
 - [ ] Placer la route sous le bon wrapper dans `src/App.tsx` (`PublicRoute`, `ProtectedRoutes`, `SuperAdminRoute`).
-- [ ] Si action admin : vérifier `membership.role === 'admin'` côté UI **et** via RLS / edge function côté serveur.
+- [ ] Si action admin : vérifier `membership.role === 'admin' || membership.role === 'administrateur'` côté UI **et** via RLS / edge function côté serveur.
 - [ ] Si nouvelle table : RLS activée, policies scoppées par `organization_id`, grants explicites.
 - [ ] Documenter la route dans `docs/routes.md` et mettre à jour ce fichier.
