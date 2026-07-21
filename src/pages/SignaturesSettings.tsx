@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Upload, Trash2, Pencil, Loader2, ImageIcon, User, UserPlus } from "lucide-react";
+import { Building2, Upload, Trash2, Pencil, Loader2, ImageIcon, User, UserPlus } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,9 +35,17 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "sonner";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { getOrgMembers } from "@/services/userService";
+import { listSocleOrganizationTree } from "@/services/socleSyncService";
+import { buildSocleOrgTree, flattenSocleOrgTree } from "@/lib/socleOrgTree";
+import {
+  listSignatoryOrgAssociations,
+  setSignatoryOrganizations,
+} from "@/services/socleOrgConfigService";
 import {
   listSignatories,
   createExternalSignatory,
@@ -73,6 +81,69 @@ const editSchema = z.object({
   last_name: z.string().min(1).max(100),
   title: z.string().max(150).optional().or(z.literal("")),
 });
+
+/** Référence stable pour « aucune organisation » : évite de resynchroniser le popover à chaque rendu. */
+const NO_ORGS: string[] = [];
+
+function OrgMultiSelect({
+  assignedIds,
+  options,
+  pending,
+  onChange,
+}: {
+  assignedIds: string[];
+  options: { id: string; name: string; depth: number }[];
+  pending: boolean;
+  onChange: (next: string[]) => void;
+}) {
+  // Cases cochées immédiatement, resynchronisées quand le serveur répond.
+  const [selected, setSelected] = useState(assignedIds);
+  useEffect(() => setSelected(assignedIds), [assignedIds]);
+
+  const toggle = (orgId: string, checked: boolean) => {
+    const next = checked ? [...selected, orgId] : selected.filter((id) => id !== orgId);
+    setSelected(next);
+    onChange(next);
+  };
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 shrink-0"
+          title="Modifier les organisations associées"
+          aria-label="Modifier les organisations associées"
+        >
+          <Building2 className="h-3.5 w-3.5" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-72 p-2">
+        {options.length === 0 ? (
+          <p className="text-xs text-muted-foreground p-1">Aucune organisation disponible.</p>
+        ) : (
+          <div className="max-h-60 overflow-y-auto space-y-1">
+            {options.map((o) => (
+              <label
+                key={o.id}
+                className="flex items-center gap-2 text-sm p-1 rounded hover:bg-muted cursor-pointer"
+                style={{ marginLeft: (o.depth - 1) * 12 }}
+              >
+                <Checkbox
+                  checked={selected.includes(o.id)}
+                  disabled={pending}
+                  onCheckedChange={(val) => toggle(o.id, val === true)}
+                />
+                {o.name}
+              </label>
+            ))}
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 function SignaturePreview({ storageKey }: { storageKey: string }) {
   const [url, setUrl] = useState<string | null>(null);
@@ -115,6 +186,27 @@ export default function SignaturesSettings() {
   const { data: signatories, isLoading } = useQuery({
     queryKey: ["signatories", organizationId],
     queryFn: () => (organizationId ? listSignatories(organizationId) : []),
+    enabled: !!organizationId,
+  });
+
+  // Organisations miroir Socle : colonne affichée seulement si le miroir est peuplé.
+  const { data: socleOrgs = [] } = useQuery({
+    queryKey: ["socle-organizations", organizationId],
+    queryFn: () => listSocleOrganizationTree(organizationId!),
+    enabled: !!organizationId,
+  });
+  const orgOptions = useMemo(
+    () =>
+      flattenSocleOrgTree(buildSocleOrgTree(socleOrgs)).filter(
+        (o) => o.status !== "obsolete" && o.obsoleted_at === null,
+      ),
+    [socleOrgs],
+  );
+  const orgNameById = useMemo(() => new Map(socleOrgs.map((o) => [o.id, o.name])), [socleOrgs]);
+
+  const { data: orgAssociations } = useQuery({
+    queryKey: ["signatory-org-associations", organizationId],
+    queryFn: () => listSignatoryOrgAssociations(organizationId!),
     enabled: !!organizationId,
   });
 
@@ -244,6 +336,36 @@ export default function SignaturesSettings() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const orgsMutation = useMutation({
+    mutationFn: async ({ row, socleOrgIds }: { row: Row; socleOrgIds: string[] }) => {
+      if (!organizationId) throw new Error("Organisation non sélectionnée");
+      let signatoryId = row.signatory?.id;
+      if (!signatoryId) {
+        // Utilisateur signataire sans fiche signatory : créée à la volée, comme pour l'upload.
+        if (row.kind !== "user" || !row.member) throw new Error("Signataire introuvable");
+        const created = await getOrCreateSignatoryForUser(organizationId, {
+          id: row.member.id,
+          first_name: row.member.first_name,
+          last_name: row.member.last_name,
+          signataire_title: row.member.signataire_title,
+        });
+        signatoryId = created.id;
+      }
+      await setSignatoryOrganizations(organizationId, signatoryId, socleOrgIds);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["signatory-org-associations"] });
+      queryClient.invalidateQueries({ queryKey: ["signatories"] });
+      // Cache de la modale de config des organisations (vue miroir de la même association).
+      queryClient.invalidateQueries({ queryKey: ["socle-org-signatories"] });
+    },
+    onError: (e: Error) => {
+      toast.error(e.message);
+      // Resynchronise les cases cochées avec l'état réellement en base.
+      queryClient.invalidateQueries({ queryKey: ["signatory-org-associations"] });
+    },
+  });
+
   function handleFile(row: Row, e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -315,12 +437,17 @@ export default function SignaturesSettings() {
                 <TableHead>Nom</TableHead>
                 <TableHead>Titre</TableHead>
                 <TableHead>Type</TableHead>
+                {orgOptions.length > 0 && <TableHead>Organisations</TableHead>}
                 <TableHead>Signature manuscrite</TableHead>
                 <TableHead className="w-[120px]">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((row) => (
+              {rows.map((row) => {
+                const assignedOrgIds = row.signatory
+                  ? (orgAssociations?.get(row.signatory.id) ?? NO_ORGS)
+                  : NO_ORGS;
+                return (
                 <TableRow key={row.key}>
                   <TableCell className="font-medium">
                     {[row.first_name, row.last_name].filter(Boolean).join(" ") || "—"}
@@ -335,6 +462,33 @@ export default function SignaturesSettings() {
                       <Badge variant="outline">Externe</Badge>
                     )}
                   </TableCell>
+                  {orgOptions.length > 0 && (
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        <div className="flex flex-wrap gap-1 max-w-56">
+                          {assignedOrgIds.length === 0 ? (
+                            <span className="text-sm text-muted-foreground">—</span>
+                          ) : (
+                            assignedOrgIds
+                              .map((id) => ({ id, name: orgNameById.get(id) }))
+                              .filter((o): o is { id: string; name: string } => !!o.name)
+                              .sort((a, b) => a.name.localeCompare(b.name))
+                              .map((o) => (
+                                <Badge key={o.id} variant="outline" className="text-xs font-normal">
+                                  {o.name}
+                                </Badge>
+                              ))
+                          )}
+                        </div>
+                        <OrgMultiSelect
+                          assignedIds={assignedOrgIds}
+                          options={orgOptions}
+                          pending={orgsMutation.isPending}
+                          onChange={(next) => orgsMutation.mutate({ row, socleOrgIds: next })}
+                        />
+                      </div>
+                    </TableCell>
+                  )}
                   <TableCell>
                     {row.signature_storage_key ? (
                       <SignaturePreview storageKey={row.signature_storage_key} />
@@ -423,7 +577,8 @@ export default function SignaturesSettings() {
                     </div>
                   </TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
             </TableBody>
           </Table>
         </Card>

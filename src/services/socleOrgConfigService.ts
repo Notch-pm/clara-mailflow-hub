@@ -175,6 +175,61 @@ export async function setOrgSignatories(
   }
 }
 
+/** Vue inverse : organisations associées, par signataire, pour tout le tenant. */
+export async function listSignatoryOrgAssociations(
+  organizationId: string,
+): Promise<Map<string, string[]>> {
+  const { data, error } = await supabase
+    .from("socle_organization_signatories")
+    .select("signatory_id, socle_organization_id")
+    .eq("organization_id", organizationId);
+  if (error) throw error;
+  const map = new Map<string, string[]>();
+  for (const r of (data ?? []) as { signatory_id: string; socle_organization_id: string }[]) {
+    const list = map.get(r.signatory_id) ?? [];
+    list.push(r.socle_organization_id);
+    map.set(r.signatory_id, list);
+  }
+  return map;
+}
+
+/** Miroir de setOrgSignatories côté signataire : remplace ses organisations. */
+export async function setSignatoryOrganizations(
+  organizationId: string,
+  signatoryId: string,
+  socleOrgIds: string[],
+): Promise<void> {
+  const { data, error } = await supabase
+    .from("socle_organization_signatories")
+    .select("socle_organization_id")
+    .eq("signatory_id", signatoryId);
+  if (error) throw error;
+  const existingIds = ((data ?? []) as { socle_organization_id: string }[]).map(
+    (r) => r.socle_organization_id,
+  );
+  const toAdd = socleOrgIds.filter((id) => !existingIds.includes(id));
+  const toRemove = existingIds.filter((id) => !socleOrgIds.includes(id));
+
+  if (toAdd.length > 0) {
+    const { error: insErr } = await supabase.from("socle_organization_signatories").insert(
+      toAdd.map((oid) => ({
+        organization_id: organizationId,
+        socle_organization_id: oid,
+        signatory_id: signatoryId,
+      })),
+    );
+    if (insErr) throw insErr;
+  }
+  if (toRemove.length > 0) {
+    const { error: delErr } = await supabase
+      .from("socle_organization_signatories")
+      .delete()
+      .eq("signatory_id", signatoryId)
+      .in("socle_organization_id", toRemove);
+    if (delErr) throw delErr;
+  }
+}
+
 /**
  * Assigne une organisation gestionnaire à un courrier : double écriture
  * (assigned_service = nom de l'org pour stats/recherche/filtres + socle_organization_id),
