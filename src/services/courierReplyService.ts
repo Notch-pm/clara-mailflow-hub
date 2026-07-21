@@ -309,31 +309,45 @@ export async function resetSendMarker(
  * marker, we strip from the last preceding <hr> through the end of the doc.
  */
 export function stripSignatureBlock(html: string): string {
-  // Legacy wrapper
-  let out = html.replace(
-    /<div[^>]*data-signature-block="true"[\s\S]*?<\/div>/gi,
-    "",
-  );
-  // Current marker: find <img ... alt="signature-clara" ...>
-  const imgIdx = out.search(/<img[^>]*alt=["']signature-clara["'][^>]*>/i);
-  if (imgIdx !== -1) {
-    // Find the last <hr ...> before the marker; strip from there to end.
-    const before = out.slice(0, imgIdx);
-    const hrMatches = [...before.matchAll(/<hr\b[^>]*\/?>/gi)];
-    if (hrMatches.length > 0) {
-      const lastHr = hrMatches[hrMatches.length - 1];
-      let cutAt = lastHr.index!;
-      // Strip the blank paragraph immediately before <hr> if present
-      const beforeHr = out.slice(0, cutAt).trimEnd();
-      if (beforeHr.match(/<p[^>]*>&nbsp;<\/p>$/i)) {
-        cutAt = beforeHr.length - beforeHr.match(/<p[^>]*>&nbsp;<\/p>$/i)![0].length;
-      }
-      out = out.slice(0, cutAt);
-    } else {
-      // No hr found — fall back to stripping from the paragraph wrapping the img
-      const pStart = out.lastIndexOf("<p", imgIdx);
-      out = pStart !== -1 ? out.slice(0, pStart) : out.slice(0, imgIdx);
-    }
+  return splitSignatureBlock(html).content;
+}
+
+/**
+ * Splits an HTML body into its content and its signature block.
+ * `content` is the body without the signature (identical to what
+ * {@link stripSignatureBlock} returns); `signature` is the signer block
+ * (name, title, signature image) with the decorative leading blank line and
+ * <hr> separator removed, so it can be placed independently in a template via
+ * the `{{signature}}` variable. When no signature is present, `signature` is "".
+ */
+export function splitSignatureBlock(html: string): { content: string; signature: string } {
+  // Legacy wrapper: <div data-signature-block="true">…</div>
+  const legacy = html.match(/<div[^>]*data-signature-block="true"[\s\S]*?<\/div>/i);
+  if (legacy) {
+    return { content: html.replace(legacy[0], "").trimEnd(), signature: legacy[0] };
   }
-  return out.trimEnd();
+
+  // Current marker: <img ... alt="signature-clara" ...>
+  const imgIdx = html.search(/<img[^>]*alt=["']signature-clara["'][^>]*>/i);
+  if (imgIdx === -1) return { content: html.trimEnd(), signature: "" };
+
+  const before = html.slice(0, imgIdx);
+  const hrMatches = [...before.matchAll(/<hr\b[^>]*\/?>/gi)];
+  if (hrMatches.length > 0) {
+    // Content stops at the <hr> (and its preceding blank paragraph);
+    // the signature is everything after the <hr>.
+    const lastHr = hrMatches[hrMatches.length - 1];
+    const hrStart = lastHr.index!;
+    const hrEnd = hrStart + lastHr[0].length;
+    let contentEnd = hrStart;
+    const beforeHr = html.slice(0, hrStart).trimEnd();
+    const blank = beforeHr.match(/<p[^>]*>&nbsp;<\/p>$/i);
+    if (blank) contentEnd = beforeHr.length - blank[0].length;
+    return { content: html.slice(0, contentEnd).trimEnd(), signature: html.slice(hrEnd).trim() };
+  }
+
+  // No <hr> — fall back to the paragraph wrapping the image.
+  const pStart = html.lastIndexOf("<p", imgIdx);
+  const cut = pStart !== -1 ? pStart : imgIdx;
+  return { content: html.slice(0, cut).trimEnd(), signature: html.slice(cut).trim() };
 }

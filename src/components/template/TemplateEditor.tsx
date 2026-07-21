@@ -14,6 +14,11 @@ const MERGE_TAGS = {
   date: { name: "Date du courrier", value: "{{date}}", sample: "3 mai 2026" },
   objet: { name: "Objet", value: "{{objet}}", sample: "Re: Votre demande" },
   contenu: { name: "Contenu du courrier", value: "{{contenu}}", sample: "<p>Corps du message...</p>" },
+  signature: {
+    name: "Signature (nom, titre, image)",
+    value: "{{signature}}",
+    sample: "<p><strong>Jean Dupont</strong></p><p><em>Maire</em></p><p>[signature]</p>",
+  },
   expediteur: { name: "Expéditeur", value: "{{expediteur}}", sample: "Jean Dupont" },
   organisation: { name: "Organisation (nom)", value: "{{organisation}}", sample: "Mairie de Paris" },
   organisation_complete: {
@@ -65,7 +70,7 @@ export default function TemplateEditor({ initialDesign, onSave, onClose, isSavin
       <div className="flex items-center justify-between px-4 py-2 border-b bg-background shrink-0" style={{ height: TOOLBAR_HEIGHT }}>
         <div className="text-sm font-medium">
           Éditeur de modèle — utilisez le menu « Variables » de l'éditeur pour insérer :
-          date, objet, contenu, expéditeur, organisation (nom / avec adresse), service (nom / avec adresse).
+          date, objet, contenu, signature, expéditeur, organisation (nom / avec adresse), service (nom / avec adresse).
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={onClose} disabled={isSaving}>

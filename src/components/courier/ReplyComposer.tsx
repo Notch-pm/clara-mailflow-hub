@@ -46,6 +46,7 @@ import {
   signReply,
   unsignReply,
   stripSignatureBlock,
+  splitSignatureBlock,
   type ReplyRecord,
 } from "@/services/courierReplyService";
 import { getSignatureUrl } from "@/services/signatoryService";
@@ -356,7 +357,7 @@ export default function ReplyComposer({
       `<p>&nbsp;</p>`, `<hr>`,
       `<p><strong>${escapeHtml(fullName)}</strong></p>`,
       titleP,
-      `<p><img src="${dataUrl}" alt="signature-clara" style="height:80px;object-fit:contain;" /></p>`,
+      `<p><img src="${dataUrl}" alt="signature-clara" style="max-width:200px;max-height:80px;" /></p>`,
     ].join("");
     return `${stripSignatureBlock(body)}${signatureBlock}`;
   }
@@ -712,7 +713,11 @@ export default function ReplyComposer({
       setIsPrintingWithTemplate(true);
       try {
         const { html } = await getOrgHtmlTemplate(organizationId);
-        printReply({ ...printArgs, templateHtml: html });
+        // Le modèle place la signature via {{signature}} : on la sort du contenu
+        // pour qu'elle n'apparaisse pas deux fois (et pas du tout si le modèle
+        // n'utilise pas la variable).
+        const { content, signature } = splitSignatureBlock(body);
+        printReply({ ...printArgs, bodyHtml: content, signatureHtml: signature, templateHtml: html });
       } catch (err: any) {
         toast.error(err.message);
       } finally {

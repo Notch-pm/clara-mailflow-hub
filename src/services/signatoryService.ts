@@ -87,9 +87,18 @@ export async function getOrCreateSignatoryForUser(
   return data as Signatory;
 }
 
-const MAX_SIGNATURE_WIDTH = 350;
+// Cadre standard d'une signature : l'image est redimensionnée pour tenir dans
+// cette boîte, ratio préservé, afin que les signatures aient une taille homogène
+// dans les courriels et fichiers générés.
+const MAX_SIGNATURE_WIDTH = 400;
+const MAX_SIGNATURE_HEIGHT = 200;
 
 async function resizeSignatureFile(file: File): Promise<{ blob: Blob; ext: string; contentType: string }> {
+  const passthrough = () => ({
+    blob: file,
+    ext: file.name.split(".").pop()?.toLowerCase() || "png",
+    contentType: file.type || "image/png",
+  });
   try {
     const dataUrl: string = await new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -103,12 +112,12 @@ async function resizeSignatureFile(file: File): Promise<{ blob: Blob; ext: strin
       i.onerror = () => reject(new Error("image load failed"));
       i.src = dataUrl;
     });
-    if (img.width <= MAX_SIGNATURE_WIDTH) {
-      return { blob: file, ext: file.name.split(".").pop()?.toLowerCase() || "png", contentType: file.type || "image/png" };
-    }
-    const ratio = MAX_SIGNATURE_WIDTH / img.width;
-    const w = MAX_SIGNATURE_WIDTH;
-    const h = Math.round(img.height * ratio);
+    // On tient dans la boîte 400×200 sans jamais agrandir (un agrandissement
+    // flouterait une image trop petite). Le ratio le plus contraignant gagne.
+    const scale = Math.min(MAX_SIGNATURE_WIDTH / img.width, MAX_SIGNATURE_HEIGHT / img.height, 1);
+    if (scale >= 1) return passthrough();
+    const w = Math.max(1, Math.round(img.width * scale));
+    const h = Math.max(1, Math.round(img.height * scale));
     const canvas = document.createElement("canvas");
     canvas.width = w;
     canvas.height = h;
@@ -121,7 +130,7 @@ async function resizeSignatureFile(file: File): Promise<{ blob: Blob; ext: strin
     );
     return { blob, ext: "png", contentType: "image/png" };
   } catch {
-    return { blob: file, ext: file.name.split(".").pop()?.toLowerCase() || "png", contentType: file.type || "image/png" };
+    return passthrough();
   }
 }
 

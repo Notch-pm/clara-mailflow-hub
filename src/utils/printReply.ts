@@ -10,6 +10,8 @@ export interface PrintReplyOptions {
   serviceName?: string | null;
   serviceCompleteHtml?: string | null;
   templateHtml?: string | null;
+  /** Bloc signature (nom, titre, image) rendu via la variable {{signature}} du modèle. */
+  signatureHtml?: string | null;
 }
 
 export interface ContactInfo {
@@ -45,7 +47,7 @@ const LETTER_BODY_CSS = `
     .letter-body h3 { font-size: 13pt; font-weight: bold; margin: 0.8em 0 0.4em; }
     .letter-body ul, .letter-body ol { padding-left: 1.5em; margin: 0.5em 0; }
     .letter-body hr { border: none; border-top: 1px solid #ccc; margin: 1em 0; }
-    .letter-body img[alt="signature-clara"] { display: block; height: 70px; width: auto; object-fit: contain; margin-top: 0.5em; }
+    .letter-body img[alt="signature-clara"] { display: block; max-width: 52mm; max-height: 20mm; margin-top: 0.5em; }
     .letter-body img:not([alt="signature-clara"]) { max-width: 100%; height: auto; page-break-inside: avoid; }
     h2, h3 { page-break-after: avoid; }
     img { page-break-inside: avoid; }`;
@@ -114,6 +116,7 @@ export function printReply(options: PrintReplyOptions): void {
       date: dateStr,
       objet: options.subject ?? "",
       contenu: new Handlebars.SafeString(options.bodyHtml),
+      signature: new Handlebars.SafeString(options.signatureHtml ?? ""),
       expediteur: options.senderName ?? "",
       organisation: options.organizationName ?? "",
       organisation_complete: new Handlebars.SafeString(options.organizationCompleteHtml ?? ""),
