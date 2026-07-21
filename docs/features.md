@@ -97,7 +97,7 @@ Les angles morts de l'ancienne détection côté client (doublon au **téléphon
 
 ## 6. Démarches & sync Arpège
 
-- Table `procedures` (multi-tenant, RLS x-org-id, écriture admin).
+- Table `procedures` (multi-tenant, RLS via `is_member_of` / `is_admin_of`, écriture admin).
 - Champs : `name`, `description`, `icon`, `color`, `external_reference_id`, `external_source` (`arpege`), `is_displayed`, `display_order`.
 - Index unique partiel `(organization_id, external_source, external_reference_id)` pour upsert.
 - UI CRUD : `ProceduresSettings.tsx`. Badge "Arpège" sur démarches importées.

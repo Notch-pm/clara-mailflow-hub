@@ -24,8 +24,8 @@ Multi-tenant strict : toute donnée est scopée par `organization_id`. Repo (pri
 
 ## Règles d'or (à ne jamais violer)
 
-1. **Multi-tenant** : toute requête DB filtre par `organization_id`. RLS appliquée via header `x-org-id` (voir `docs/data-model.md`).
-2. **Rôles** : `is_superadmin` sur `public.users`, rôles d'org dans `memberships` (`admin`/`member`). Ne **jamais** stocker un rôle ailleurs. Pas d'escalade côté client.
+1. **Multi-tenant** : toute requête DB filtre par `organization_id`. La RLS repose sur les helpers `is_member_of` / `is_admin_of` / `is_superadmin` ; le header `x-org-id` ne sert qu’à contextualiser certaines edge functions (voir `docs/data-model.md`).
+2. **Rôles** : `is_superadmin` sur `public.users`, rôles d'org dans `organization_users` (`admin`/`administrateur`/`member`). Ne **jamais** stocker un rôle ailleurs. Pas d'escalade côté client.
 3. **Services côté client** : un fichier par domaine dans `src/services/`, retourne du typé `Database["public"]...`. Pas de logique métier dans les composants.
 4. **Design system** : tokens sémantiques HSL dans `src/index.css` + `tailwind.config.ts`. Pas de couleurs hardcodées dans les composants. Palette Notch (vert `#0acf83`, jaune `#ffcd57`), police Nunito Sans.
 5. **Edge functions** : `supabase/functions/<name>/index.ts`, Deno, CORS, auth check explicite (JWT user OU service role OU `x-cron-secret`).
@@ -76,6 +76,6 @@ bun run lint           # eslint
 ## Ce qu'il ne faut PAS faire
 
 - Ajouter du backend Node/Python dans le repo (uniquement edge functions Deno).
-- Stocker un rôle dans `users` ou `profiles` (toujours `memberships` ou table dédiée).
+- Stocker un rôle d’organisation dans `users` ou `profiles` (toujours `organization_users` ; seul `users.is_superadmin` est global).
 - Faire confiance au client pour vérifier `is_superadmin` côté edge function — toujours re-vérifier serveur.
 - Ouvrir tous les fichiers `docs/` "au cas où" : sélectionnez selon la tâche pour économiser les tokens.
