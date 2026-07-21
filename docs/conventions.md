@@ -63,5 +63,5 @@ const { data, error } = await supabase
 
 - Ne jamais exposer `SUPABASE_SERVICE_ROLE_KEY` côté client.
 - Ne jamais checker `is_superadmin` uniquement côté client → toujours doublé d'un check serveur (RLS + edge function).
-- Les rôles d'org vivent dans `memberships` (jamais dans `users`).
+- Les rôles d'org vivent dans `organization_users` (jamais dans `users`, sauf `users.is_superadmin` pour le rôle global).
 - Voir `docs/security.md` pour le modèle complet.

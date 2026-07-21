@@ -7,13 +7,13 @@
 - **Multi-tenant** : isolation forte par `organization_id`. Une fuite cross-org est une régression critique.
 - **Rôles** :
   - `users.is_superadmin` (booléen, global) — accès `/superadmin/*`, bypass des filtres org via helpers `SECURITY DEFINER`.
-  - `memberships.role` : `admin` | `member` au sein d'une org. `admin` peut gérer users, intégrations, workflows, modèles.
+  - `organization_users.role` : `admin` | `administrateur` | `member` au sein d'une org. `admin`/`administrateur` peut gérer users, intégrations, workflows, modèles.
 
 ## RLS
 
-Toutes les tables métier ont RLS activée (cf `docs/data-model.md`). Policies par commande, rôle `authenticated`. Le header `x-org-id` est injecté côté client par le fetch custom — il identifie l'org **active** de la session, mais la sécurité finale repose sur les policies + les helpers `SECURITY DEFINER` (`is_member_of`, `is_admin_of`).
+Toutes les tables métier ont RLS activée (cf `docs/data-model.md`). Policies par commande, rôle `authenticated`. Le header `x-org-id` est injecté côté client par le fetch custom pour identifier l'org **active** auprès des edge functions qui en ont besoin, mais les policies RLS ne s'appuient pas sur ce header : la sécurité finale repose sur les helpers `SECURITY DEFINER` (`is_member_of`, `is_admin_of`).
 
-⚠️ Le header `x-org-id` seul ne suffit pas : un user malveillant peut le forger. Les policies vérifient **toujours** via `is_member_of(...)` que `auth.uid()` appartient bien à l'org demandée.
+⚠️ Le header `x-org-id` seul ne suffit jamais : un user malveillant peut le forger. Toute edge function qui le lit doit revérifier côté serveur que `auth.uid()` appartient bien à l'org demandée, et les policies doivent continuer à passer par `is_member_of(...)` / `is_admin_of(...)`.
 
 ## Garde-fous DB
 
@@ -66,5 +66,5 @@ Pour servir un document privé : passer par l'edge function `storage-documents` 
 - [ ] Tous les `.from(...)` côté client filtrent par `organization_id`.
 - [ ] Toute nouvelle edge function vérifie l'auth ET l'org cible.
 - [ ] Aucun secret en dur ni dans les logs.
-- [ ] Pas de rôle stocké hors de `memberships` / `users.is_superadmin`.
+- [ ] Pas de rôle stocké hors de `organization_users` / `users.is_superadmin`.
 - [ ] Si nouveau bucket : RLS scoped par org (sauf justification documentée).
