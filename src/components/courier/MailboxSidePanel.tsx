@@ -1011,7 +1011,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                           onChange={linkSenderContact}
                           disabled={readOnly}
                           fallbackLabel={sender?.name ?? undefined}
-                          triggerClassName="h-8 px-2 [&>span]:font-semibold"
+                          triggerClassName="h-8 px-2 border-0 bg-transparent shadow-none hover:bg-muted hover:shadow-none [&>span]:font-semibold"
                         />
                       </div>
                       {/* Pas de onOpenChange(false) sur ce lien : sur /courrier/:id la

@@ -27,6 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Loader2, Inbox, RefreshCw, PlugZap, Plus, Pencil, Trash2, Building2, Scan } from "lucide-react";
 import { format } from "date-fns";
@@ -387,182 +388,191 @@ export default function ImapSettings({ orgId }: { orgId: string }) {
       </Card>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editingRow ? "Modifier la configuration IMAP" : "Nouvelle configuration IMAP"}
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="imap-label">Libellé</Label>
-              <Input
-                id="imap-label"
-                placeholder="Ex : Courriers entrants"
-                value={form.label}
-                onChange={(e) => setForm({ ...form, label: e.target.value })}
-              />
-            </div>
+          <Tabs defaultValue="general">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="general">Général</TabsTrigger>
+              <TabsTrigger value="connection">Connexion</TabsTrigger>
+            </TabsList>
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <TabsContent value="general" className="mt-4 space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="imap-host">Hôte IMAP</Label>
+                <Label htmlFor="imap-label">Libellé</Label>
                 <Input
-                  id="imap-host"
-                  placeholder="imap.gmail.com"
-                  value={form.host}
-                  onChange={(e) => setForm({ ...form, host: e.target.value })}
+                  id="imap-label"
+                  placeholder="Ex : Courriers entrants"
+                  value={form.label}
+                  onChange={(e) => setForm({ ...form, label: e.target.value })}
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="imap-port">Port</Label>
-                <Input
-                  id="imap-port"
-                  type="number"
-                  placeholder="993"
-                  value={form.port}
-                  onChange={(e) => setForm({ ...form, port: parseInt(e.target.value) || 993 })}
-                />
-              </div>
-            </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="imap-username">Identifiant (adresse e-mail)</Label>
-                <Input
-                  id="imap-username"
-                  placeholder="courrier@monorga.fr"
-                  value={form.username}
-                  onChange={(e) => setForm({ ...form, username: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="imap-password">Mot de passe (ou mot de passe d'application)</Label>
-                <Input
-                  id="imap-password"
-                  type="password"
-                  placeholder="••••••••"
-                  value={form.password}
-                  onChange={(e) => setForm({ ...form, password: e.target.value })}
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="imap-folder">Dossier surveillé</Label>
-                <Input
-                  id="imap-folder"
-                  placeholder="INBOX"
-                  value={form.folder}
-                  onChange={(e) => setForm({ ...form, folder: e.target.value })}
-                />
-              </div>
-              <div className="flex items-center justify-between rounded-lg border p-3">
-                <div>
-                  <Label className="text-sm font-medium">TLS / SSL</Label>
-                  <p className="text-xs text-muted-foreground">Connexion sécurisée (recommandé)</p>
-                </div>
-                <Switch
-                  checked={form.use_tls}
-                  onCheckedChange={(val) => setForm({ ...form, use_tls: val })}
-                />
-              </div>
-            </div>
-
-            {orgOptions.length > 0 && (
-              <div className="space-y-2">
-                <Label>Organisation</Label>
-                <Select
-                  value={form.socle_organization_id ?? NO_ORG_VALUE}
-                  onValueChange={(val) =>
-                    setForm({ ...form, socle_organization_id: val === NO_ORG_VALUE ? null : val })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="— Aucune —" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NO_ORG_VALUE}>— Aucune —</SelectItem>
-                    {orgOptions.map((o) => (
-                      <SelectItem key={o.id} value={o.id}>
-                        {"  ".repeat(o.depth - 1)}
-                        {o.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  Les courriers reçus sur cette boîte seront rattachés à cette organisation.
-                </p>
-              </div>
-            )}
-
-            <div className="flex items-center justify-between rounded-lg border p-3">
-              <div>
-                <Label className="text-sm font-medium">Récupération automatique</Label>
-                <p className="text-xs text-muted-foreground">
-                  Vérifie la boîte toutes les 5 minutes et crée un courrier par email reçu
-                </p>
-              </div>
-              <Switch
-                checked={form.auto_fetch}
-                onCheckedChange={(val) => setForm({ ...form, auto_fetch: val })}
-              />
-            </div>
-
-            <div className="rounded-lg border p-3 space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label className="text-sm font-medium">Boîte de numérisation</Label>
+              {orgOptions.length > 0 && (
+                <div className="space-y-2">
+                  <Label>Organisation</Label>
+                  <Select
+                    value={form.socle_organization_id ?? NO_ORG_VALUE}
+                    onValueChange={(val) =>
+                      setForm({ ...form, socle_organization_id: val === NO_ORG_VALUE ? null : val })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="— Aucune —" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_ORG_VALUE}>— Aucune —</SelectItem>
+                      {orgOptions.map((o) => (
+                        <SelectItem key={o.id} value={o.id}>
+                          {"\u00A0\u00A0".repeat(o.depth - 1)}
+                          {o.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <p className="text-xs text-muted-foreground">
-                    Alimentée par un copieur : les documents deviennent des courriers papier,
-                    océrisés et pré-qualifiés automatiquement
+                    Les courriers reçus sur cette boîte seront rattachés à cette organisation.
                   </p>
                 </div>
-                <Switch
-                  checked={form.is_scan_inbox}
-                  onCheckedChange={(val) => setForm({ ...form, is_scan_inbox: val })}
-                />
-              </div>
+              )}
 
-              {form.is_scan_inbox && (
-                <>
-                  <div className="space-y-1.5">
-                    <Label className="text-sm">Expéditeurs autorisés</Label>
-                    <Textarea
-                      rows={2}
-                      placeholder="copieur-accueil@ville.fr, copieur-etage2@ville.fr"
-                      defaultValue={form.scan_allowed_senders?.join(", ") ?? ""}
-                      onBlur={(e) =>
-                        setForm({ ...form, scan_allowed_senders: parseAllowedSenders(e.target.value) })
-                      }
-                    />
+              <div className="rounded-lg border p-3 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label className="text-sm font-medium">Boîte de numérisation</Label>
                     <p className="text-xs text-muted-foreground">
-                      Adresses des copieurs, séparées par des virgules. Laisser vide accepte
-                      n'importe quel expéditeur : toute personne connaissant l'adresse de la
-                      boîte pourrait alors créer des courriers.
+                      Alimentée par un copieur : les documents deviennent des courriers papier,
+                      océrisés et pré-qualifiés automatiquement
                     </p>
                   </div>
+                  <Switch
+                    checked={form.is_scan_inbox}
+                    onCheckedChange={(val) => setForm({ ...form, is_scan_inbox: val })}
+                  />
+                </div>
 
-                  <p className="text-xs text-muted-foreground border-t pt-2">
-                    <strong className="font-medium text-foreground">Réglages du copieur :</strong>{" "}
-                    format PDF (pas TIFF), 200 à 300 dpi, niveaux de gris, et si possible
-                    « un fichier par document » pour éviter d'avoir à découper les lots.
+                {form.is_scan_inbox && (
+                  <>
+                    <div className="space-y-1.5">
+                      <Label className="text-sm">Expéditeurs autorisés</Label>
+                      <Textarea
+                        rows={2}
+                        placeholder="copieur-accueil@ville.fr, copieur-etage2@ville.fr"
+                        defaultValue={form.scan_allowed_senders?.join(", ") ?? ""}
+                        onBlur={(e) =>
+                          setForm({ ...form, scan_allowed_senders: parseAllowedSenders(e.target.value) })
+                        }
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Adresses des copieurs, séparées par des virgules. Laisser vide accepte
+                        n'importe quel expéditeur : toute personne connaissant l'adresse de la
+                        boîte pourrait alors créer des courriers.
+                      </p>
+                    </div>
+
+                    <p className="text-xs text-muted-foreground border-t pt-2">
+                      <strong className="font-medium text-foreground">Réglages du copieur :</strong>{" "}
+                      format PDF (pas TIFF), 200 à 300 dpi, niveaux de gris, et si possible
+                      « un fichier par document » pour éviter d'avoir à découper les lots.
+                    </p>
+                  </>
+                )}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="connection" className="mt-4 space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="imap-host">Hôte IMAP</Label>
+                  <Input
+                    id="imap-host"
+                    placeholder="imap.gmail.com"
+                    value={form.host}
+                    onChange={(e) => setForm({ ...form, host: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="imap-port">Port</Label>
+                  <Input
+                    id="imap-port"
+                    type="number"
+                    placeholder="993"
+                    value={form.port}
+                    onChange={(e) => setForm({ ...form, port: parseInt(e.target.value) || 993 })}
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="imap-username">Identifiant (adresse e-mail)</Label>
+                  <Input
+                    id="imap-username"
+                    placeholder="courrier@monorga.fr"
+                    value={form.username}
+                    onChange={(e) => setForm({ ...form, username: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="imap-password">Mot de passe (ou mot de passe d'application)</Label>
+                  <Input
+                    id="imap-password"
+                    type="password"
+                    placeholder="••••••••"
+                    value={form.password}
+                    onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="imap-folder">Dossier surveillé</Label>
+                  <Input
+                    id="imap-folder"
+                    placeholder="INBOX"
+                    value={form.folder}
+                    onChange={(e) => setForm({ ...form, folder: e.target.value })}
+                  />
+                </div>
+                <div className="flex items-center justify-between rounded-lg border p-3">
+                  <div>
+                    <Label className="text-sm font-medium">TLS / SSL</Label>
+                    <p className="text-xs text-muted-foreground">Connexion sécurisée (recommandé)</p>
+                  </div>
+                  <Switch
+                    checked={form.use_tls}
+                    onCheckedChange={(val) => setForm({ ...form, use_tls: val })}
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <div>
+                  <Label className="text-sm font-medium">Récupération automatique</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Vérifie la boîte toutes les 5 minutes et crée un courrier par email reçu
                   </p>
-                </>
-              )}
-            </div>
+                </div>
+                <Switch
+                  checked={form.auto_fetch}
+                  onCheckedChange={(val) => setForm({ ...form, auto_fetch: val })}
+                />
+              </div>
+            </TabsContent>
+          </Tabs>
 
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={() => setDialogOpen(false)}>
-                Annuler
-              </Button>
-              <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
-                {saveMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-                Enregistrer
-              </Button>
-            </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+              Annuler
+            </Button>
+            <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+              {saveMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+              Enregistrer
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
