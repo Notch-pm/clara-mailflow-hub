@@ -1,6 +1,6 @@
 # Fonctionnalités
 
-> Dernière vérification : 2026-07-21 pour les sections routes, référentiels et services/Socle.
+> Dernière vérification : 2026-07-21 pour les sections routes, référentiels, services/Socle et frontière actions Clara/partenaires.
 
 ## 1. Saisie & réception des courriers
 
@@ -59,14 +59,22 @@ Les suggestions (`suggested_subject`, `suggested_sender`, `suggested_service_nam
 - Chaque `workflow_state` a une `category` : `draft`, `in_progress`, `processed`, `archived` — détermine l'onglet d'affichage (`CourriersEnInstruction`, `CourriersTraites`, `CourriersArchives`).
 - Transitions définies par `workflow_transitions`. La validité des transitions est vérifiée côté client (et idéalement par trigger DB pour les cas critiques).
 
-## 4. Réponses (couriers sortants)
+## 4. Actions issues d'un courrier
+
+Clara ne remplace pas les applications métier qui exécutent les demandes d'action. Elle sert de point de suivi côté courrier :
+
+- actions internes minimales : demander à un collègue de faire quelque chose, notifier, suivre un état simple ;
+- actions externes : créer ou référencer une demande dans Iris ou une application partenaire (Arpège aujourd'hui, autres connecteurs possibles), puis conserver le lien et l'état de résolution utiles à la réponse ;
+- l'analyse IA peut recommander des actions, mais l'agent reste responsable de la décision et du circuit retenu.
+
+## 5. Réponses (couriers sortants)
 
 - Modèle : un courrier `direction=outbound` avec `parent_courier_id` pointant l'inbound.
 - Service : `src/services/courierReplyService.ts` — création, édition, signature, transitions, envoi.
 - **Signature** : sélection d'un `signatory` → l'image de signature est intégrée dans le HTML avec un marker `<img alt="signature-clara">`. `stripSignatureBlock()` permet de retirer le bloc avant ré-édition.
 - **Envoi SMTP** : edge function `send-courier-reply` envoie via la config SMTP de l'org. Marque `metadata.sent_email_at`. Déclenchée par une transition vers un état de catégorie `processed`.
 
-## 5. Référentiels
+## 6. Référentiels
 
 ### Contacts (`Contacts.tsx`, route `/contacts`)
 - **Référentiel servi par le Socle** (source de vérité — plus aucun stockage local d'identité). Liste/recherche (nom, email exact), fiche, création/édition, archivage/restauration via l'edge function `socle-contacts` (proxy de `contacts-api`), service client unique `socleContactService.ts`.
@@ -99,7 +107,7 @@ Les angles morts de l'ancienne détection côté client (doublon au **téléphon
 - Les courriers portent `couriers.socle_organization_id` pour la logique métier ; `couriers.assigned_service` reste une dénormalisation d'affichage.
 - Les tables legacy `services`, `service_members` et `service_signatories` sont gelées : elles ne doivent plus recevoir de nouveau flux d'écriture, hors fallback documenté dans `docs/data-model.md`.
 
-## 6. Démarches & sync Arpège
+## 7. Démarches & sync Arpège
 
 - Table `procedures` (multi-tenant, RLS via `is_member_of` / `is_admin_of`, écriture admin).
 - Champs : `name`, `description`, `icon`, `color`, `external_reference_id`, `external_source` (`arpege`), `is_displayed`, `display_order`.
@@ -110,17 +118,17 @@ Les angles morts de l'ancienne détection côté client (doublon au **téléphon
 - Setup : `SELECT vault.create_secret('<valeur>', 'cron_secret');` avec la même valeur que la variable d'env `CRON_SECRET`.
 - Edge functions liées : `sync-arpege-appointments`, `test-arpege-connection`.
 
-## 7. Notifications
+## 8. Notifications
 
 - Table `notifications` + cloche `NotificationBell.tsx` + hook `useNotifications`.
 - Types : nouveau courrier reçu, réponse envoyée, ticket créé, etc.
 
-## 8. Tags & recherche
+## 9. Tags & recherche
 
 - Tags libres par org (`tags` + `courier_tags`). Couleurs gérées via `src/lib/tag-color.ts`.
 - Recherche côté pages courriers : ILIKE sur `subject` (cf `courierService.getCouriers`). Pour fulltext avancé, ajouter une colonne `tsvector` + index GIN (non fait à ce jour).
 
-## 9. Super-admin
+## 10. Super-admin
 
 - Layout dédié `/superadmin/*` (`SuperAdminLayout`, `SuperAdminSidebar`).
 - Gestion des organisations, création initiale, vue cross-org.

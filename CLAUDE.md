@@ -4,11 +4,11 @@
 
 ## Pitch produit
 
-**Clara** est une solution SaaS de **gestion électronique de courrier (GEC)** pour collectivités et organisations administratives. Elle permet de :
+**Clara** est une solution SaaS de **gestion électronique de courrier (GEC)** pour collectivités publiques françaises. Elle permet de :
 
-- **Recevoir** des courriers (saisie manuelle + lecture automatique de boîtes mails IMAP, configurées par service).
+- **Recevoir** des courriers (papier, emails, formulaires et autres sollicitations ressaisies par les agents) via saisie manuelle, import en masse, IMAP ou boîte de numérisation.
 - **Analyser** chaque courrier (OCR des pièces jointes + LLM via Lovable AI Gateway) : résumé, intentions, sentiment, actions suggérées.
-- **Traiter** via workflows configurables (états + transitions), tags, assignation à une **organisation** (hiérarchie synchronisée depuis le Socle — les organisations remplacent les anciens « services »), tickets d'action.
+- **Traiter** via workflows configurables (états + transitions), tags, assignation à une **organisation** (hiérarchie synchronisée depuis le Socle — les organisations remplacent les anciens « services »), actions internes minimales et liens vers demandes partenaires (Iris, Arpège…).
 - **Répondre** : brouillon généré par IA, signature électronique (image), envoi via SMTP de l'organisation.
 - **Tracer** : historique d'événements, notes, liens entre courriers, références séquentielles annuelles.
 - **Référentiels** : contacts/usagers (servis par l’API du **Socle** — aucune identité stockée dans Clara, seulement des références `socle_contact_id`), signataires, modèles, démarches (sync nocturne depuis le Socle — plus de paramétrage des démarches dans Clara).
@@ -55,6 +55,7 @@ docs/             # Documentation détaillée pour Claude Code (ce répertoire)
 
 | Fichier | Quand l'ouvrir |
 |---|---|
+| `docs/product-user-flows.md` | Vision métier, acteurs, parcours critiques et frontière Clara/Iris/partenaires. |
 | `docs/data-model.md` | Schéma DB, RLS multi-tenant, conventions tables/colonnes. |
 | `docs/features.md` | Détail des grandes fonctionnalités (courriers, workflows, IA, réponses, Arpège). |
 | `docs/edge-functions.md` | Liste des edge functions, leur rôle, leurs secrets. |

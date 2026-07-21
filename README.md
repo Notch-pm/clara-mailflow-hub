@@ -1,12 +1,12 @@
 # Clara Mailflow Hub
 
-Clara est une solution SaaS de **gestion électronique de courrier (GEC)** pour collectivités et organisations administratives. L'application centralise la réception, l'analyse, l'instruction, la réponse et la traçabilité des courriers dans un contexte **multi-tenant strict**.
+Clara est une solution SaaS de **gestion électronique de courrier (GEC)** pour collectivités publiques françaises. L'application centralise la réception, l'analyse, l'instruction, la réponse et la traçabilité des courriers — papier, emails, formulaires et autres sollicitations reprises par les agents — dans un contexte **multi-tenant strict**.
 
 ## Fonctionnalités principales
 
 - **Réception des courriers** : saisie manuelle, import en masse, lecture automatique de boîtes IMAP et boîte dédiée à la numérisation.
 - **Analyse assistée par IA** : OCR des pièces jointes, résumé, intentions, sentiment et actions suggérées via edge functions Supabase.
-- **Instruction métier** : workflows configurables, affectation à une organisation Socle, tags, tickets d'action, notes et historique d'événements.
+- **Instruction métier** : workflows configurables, affectation à une organisation Socle, tags, actions internes minimales, liens vers demandes partenaires, notes et historique d'événements.
 - **Réponse** : brouillons assistés par IA, modèles, signature électronique et envoi SMTP.
 - **Référentiels** : contacts/usagers, organisations, démarches et catégories synchronisés ou servis par le Socle.
 - **Administration** : gestion multi-tenant, utilisateurs, rôles, paramètres d'organisation et intégrations.
@@ -79,6 +79,7 @@ scripts/                   # Scripts d'audit, seed et outillage
 | Document | Contenu |
 |---|---|
 | [`CLAUDE.md`](CLAUDE.md) | Guide court d'onboarding pour les agents et contributeurs techniques. |
+| [`docs/product-user-flows.md`](docs/product-user-flows.md) | Vision produit, acteurs métier et parcours utilisateur critiques. |
 | [`docs/conventions.md`](docs/conventions.md) | Conventions de code, React, Supabase, design system et sécurité. |
 | [`docs/data-model.md`](docs/data-model.md) | Modèle de données, tables, storage et conventions de migration. |
 | [`docs/database-rls.md`](docs/database-rls.md) | Policies RLS, helpers de sécurité et inventaire associé. |
