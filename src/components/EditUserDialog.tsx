@@ -3,13 +3,14 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Camera, Loader2, Trash2 } from "lucide-react";
+import { Camera, Loader2, Trash2, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
 import { updateOrgMember } from "@/services/userService";
 import { uploadUserAvatar, removeUserAvatar } from "@/services/avatarService";
@@ -56,6 +57,12 @@ export function EditUserDialog({ member, organizationId, onClose }: Props) {
   });
 
   const isSignataire = form.watch("is_signataire");
+  const watchedRole = form.watch("role");
+  // Le rôle et l'attribut signataire sont indépendants : un consultant en
+  // lecture seule peut rester signataire (ex. élu), mais ne pourra jamais
+  // signer lui-même une réponse tant qu'il ne peut pas y écrire. Avertissement
+  // non bloquant : l'enregistrement reste possible.
+  const showConsultantSignataireWarning = watchedRole === "consultant" && isSignataire;
 
   const updateMutation = useMutation({
     mutationFn: async (values: z.infer<typeof editSchema>) => {
@@ -203,6 +210,15 @@ export function EditUserDialog({ member, organizationId, onClose }: Props) {
                     </FormControl>
                   </FormItem>
                 )} />
+                {showConsultantSignataireWarning && (
+                  <Alert className="border-warning/50 bg-warning/5">
+                    <AlertTriangle className="h-4 w-4 text-warning" />
+                    <AlertDescription>
+                      En lecture seule, un consultant ne pourra pas signer de réponse tant que
+                      son rôle ne change pas.
+                    </AlertDescription>
+                  </Alert>
+                )}
                 {isSignataire && (
                   <FormField control={form.control} name="signataire_title" render={({ field }) => (
                     <FormItem>

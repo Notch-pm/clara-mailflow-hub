@@ -18,6 +18,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Search, Sparkles, Plus, Trash2, ArrowRightLeft, Upload, Weight } from "lucide-react";
 import { useOrganization } from "@/contexts/OrganizationContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { canEditCouriers } from "@/lib/permissions";
 import { supabase } from "@/integrations/supabase/client";
 import { deleteCourier } from "@/services/courierService";
 import type {
@@ -53,6 +55,8 @@ export function recordLogin() {
 
 export default function BoiteAuxLettres() {
   const { organizationId } = useOrganization();
+  const { profile, membership } = useAuth();
+  const canEdit = canEditCouriers(profile, membership);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [courierToDelete, setCourierToDelete] = useState<CourierListRow | null>(null);
@@ -306,7 +310,7 @@ export default function BoiteAuxLettres() {
             className="pl-9"
           />
         </div>
-        {organizationId && (
+        {organizationId && canEdit && (
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={() => navigate("/import-en-masse")}>
               <Upload className="h-4 w-4 mr-1" />

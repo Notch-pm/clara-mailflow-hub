@@ -1,6 +1,11 @@
 # Matrice des droits d'accès
 
-> Dernière vérification : 2026-07-21, alignée sur `src/App.tsx`, `SettingsPage` et `OrgSettings`.
+> Dernière vérification : 2026-07-22.
+>
+> **État au 2026-07-22.** La lecture seule du `consultant` est **appliquée côté serveur**
+> (RLS `is_editor_of` en base + garde `assertEditor` dans les edge functions) **et côté UI**.
+> Reste **hors périmètre** (voir « État d'application ») : le filtre intra-tenant par
+> organisation Socle demeure **UI-only** — un membre peut lire tout le tenant via appel direct.
 
 ## Niveaux de droits
 
@@ -9,11 +14,37 @@
 | **Anonyme** | Pas de session | Pages publiques uniquement |
 | **Superadmin** | `users.is_superadmin = true` | Global, toutes organisations |
 | **Administrateur d'organisation** | `organization_users.role = 'administrateur'` | Une organisation, accès complet + paramètres |
-| **Élu / Superviseur** | `role = 'elu' \| 'superviseur'` | Une organisation, accès complet **hors** paramètres |
-| **Gestionnaire** | `role = 'gestionnaire'` | Une organisation, sans paramètres ni statistiques |
-| **Consultant** | `role = 'consultant'` | Une organisation, accès standard hors paramètres |
+| **Gestionnaire / Élu / Superviseur** | `role IN ('gestionnaire','elu','superviseur')` | Une organisation : traitement des courriers, **hors** paramètres. Droits identiques entre eux pour l'instant (différenciation élu/superviseur à venir). |
+| **Consultant** | `role = 'consultant'` | Une organisation : **consultation seule** — aucune écriture sur les courriers. |
 
 > Un superadmin est redirigé d'office vers `/superadmin` et n'utilise pas les écrans utilisateur standards.
+
+### Droits par rôle d'organisation (cible)
+
+| Action | administrateur | gestionnaire | elu | superviseur | consultant |
+|---|:---:|:---:|:---:|:---:|:---:|
+| Voir les courriers (scopés à ses organisations Socle + non-assignés) | ✅ ¹ | ✅ | ✅ | ✅ | ✅ |
+| Créer / modifier / traiter un courrier (workflow, tags, notes, participants, liens, tickets) | ✅ | ✅ | ✅ | ✅ | ❌ |
+| Rédiger / envoyer une réponse | ✅ | ✅ | ✅ | ✅ | ❌ |
+| Accéder aux Statistiques | ✅ | ❌ ² | ✅ | ✅ | ✅ |
+| Paramètres / configuration / gestion des utilisateurs | ✅ | ❌ | ❌ | ❌ | ❌ |
+
+1. L'administrateur voit **tout le tenant** (pas de restriction par organisation Socle).
+2. Le gestionnaire est **volontairement** exclu des statistiques (`canAccessStats`, `src/lib/permissions.ts`) — décision produit assumée au 2026-07-22 (comportement conservé tel quel).
+
+➕ **Attribut transverse — Signataire** (`is_signataire`) : **indépendant du rôle**. Seul un utilisateur marqué signataire peut **signer** une réponse ; l'attribut se cumule avec n'importe quel rôle et n'est pas un profil à part entière.
+
+### État d'application
+
+**Consultant en lecture seule — APPLIQUÉ (2026-07-22).** Trois niveaux d'autorisation intra-tenant coexistent désormais :
+
+- `is_member_of` (tout membre actif) → **lecture** (SELECT) des données opérationnelles ;
+- `is_editor_of` (membre actif dont le rôle ≠ `consultant`, superadmin inclus) → **écriture** (INSERT/UPDATE/DELETE) sur `couriers`, `courier_events`, `courier_notes`, `courier_participants`, `courier_links`, `courier_relations`, `action_tickets`, `courier_documents`, `courier_analyses`, `courier_document_extracts`, `courier_sequences`, `notifications`, `roles`, + le bucket Storage `clara-documents` + le RPC `enqueue_courier_analysis` ;
+- `is_admin_of` (administrateur) → **configuration**.
+
+Défense en profondeur côté edge (fonctions en `service_role`, hors RLS) : garde `assertEditor` (`supabase/functions/_shared/authz.ts`) sur `send-courier-reply`, `create-arpege-demande`, `send-mention-notification`, `draft-reply`, `extract-courier-info`, `analyze-courier` (branche utilisateur uniquement — le worker cron reste sur `x-cron-secret`), `storage-documents` (upload/delete), `socle-contacts` (mutations). Migration : `supabase/migrations/20260722194100_consultant_read_only_is_editor_of.sql`.
+
+**Hors périmètre (inchangé) — filtre intra-tenant par organisation Socle** : toujours appliqué **UI-only** (`useUserServiceFilter`) ; la RLS SELECT reste `is_member_of` (visibilité à l'échelle du tenant). Un membre — consultant compris — peut donc *lire* tout le tenant via appel direct. Risque pré-existant, à traiter dans un ticket dédié.
 
 ---
 
@@ -59,7 +90,7 @@
 | `/mon-profil` | Profil personnel | Avatar, signature, mot de passe |
 | `/parametres` | Hub paramètres | Sous-pages selon rôle |
 
-**Actions courrier** (tous membres) :
+**Actions courrier** (rôles avec droit d'écriture : administrateur, gestionnaire, élu, superviseur — **pas** le consultant, cf. matrice « Droits par rôle ») :
 - Créer un courrier, lancer l'OCR + analyse IA.
 - Ajouter notes, mentionner un utilisateur (`@`).
 - Lier des courriers entre eux, fermer en cascade.

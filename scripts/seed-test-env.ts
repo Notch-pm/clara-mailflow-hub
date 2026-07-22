@@ -279,20 +279,27 @@ async function main() {
   console.log("— Création des utilisateurs de test…");
   const adminAlpha = await createUser("admin.alpha", "Admin", "Alpha");
   const membreAlpha = await createUser("membre.alpha", "Membre", "Alpha");
+  const consultantAlpha = await createUser("consultant.alpha", "Consultant", "Alpha");
   const adminBeta = await createUser("admin.beta", "Admin", "Beta");
   const membreBeta = await createUser("membre.beta", "Membre", "Beta");
 
   const memberships = [
     { organization_id: alpha.orgId, user_id: adminAlpha.id, role: "administrateur", is_active: true },
     { organization_id: alpha.orgId, user_id: membreAlpha.id, role: "member", is_active: true },
+    // Consultant ACTIF d'Alpha : lit tout (is_member_of) mais n'écrit rien (is_editor_of).
+    { organization_id: alpha.orgId, user_id: consultantAlpha.id, role: "consultant", is_active: true },
     { organization_id: beta.orgId, user_id: adminBeta.id, role: "administrateur", is_active: true },
     { organization_id: beta.orgId, user_id: membreBeta.id, role: "member", is_active: true },
   ];
   for (const m of memberships) await insertOne("organization_users", m);
 
-  // membre.alpha appartient à la sous-org « Cabinet Alpha » (filtrage des courriers)
+  // membre.alpha + consultant.alpha appartiennent à la sous-org « Cabinet Alpha »
+  // (filtrage des courriers par organisation Socle)
   await insertOne("socle_organization_members", {
     organization_id: alpha.orgId, socle_organization_id: alpha.subSocleOrgId, user_id: membreAlpha.id,
+  });
+  await insertOne("socle_organization_members", {
+    organization_id: alpha.orgId, socle_organization_id: alpha.subSocleOrgId, user_id: consultantAlpha.id,
   });
 
   const fixtures = {
@@ -302,6 +309,7 @@ async function main() {
     users: {
       adminAlpha: adminAlpha.email,
       membreAlpha: membreAlpha.email,
+      consultantAlpha: consultantAlpha.email,
       adminBeta: adminBeta.email,
       membreBeta: membreBeta.email,
     },

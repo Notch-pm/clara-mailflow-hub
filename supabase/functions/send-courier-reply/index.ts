@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import nodemailer from "npm:nodemailer@6";
+import { assertEditor } from "../_shared/authz.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -73,6 +74,14 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "Accès refusé" }), {
         status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // Le consultant est en lecture seule : jamais d'envoi d'email en son nom.
+    if (!(await assertEditor(supabase, userData.user.id, organization_id))) {
+      return new Response(
+        JSON.stringify({ error: "Accès refusé : rôle consultant en lecture seule" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
     // Load reply courier

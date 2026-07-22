@@ -69,9 +69,11 @@ type ContactLink =
 interface ParticipantManagerProps {
   courierId: string;
   organizationId: string;
+  /** When true, disables add/edit/delete of participants (view-only). */
+  readOnly?: boolean;
 }
 
-export default function ParticipantManager({ courierId, organizationId }: ParticipantManagerProps) {
+export default function ParticipantManager({ courierId, organizationId, readOnly = false }: ParticipantManagerProps) {
   const queryClient = useQueryClient();
   const queryKey = ["courier-participants", courierId];
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -258,9 +260,11 @@ export default function ParticipantManager({ courierId, organizationId }: Partic
         <p className="text-sm text-muted-foreground">
           {participants.length} participant{participants.length !== 1 ? "s" : ""}
         </p>
-        <Button size="sm" className="gap-1.5" onClick={openCreate}>
-          <UserPlus className="h-4 w-4" /> Ajouter
-        </Button>
+        {!readOnly && (
+          <Button size="sm" className="gap-1.5" onClick={openCreate}>
+            <UserPlus className="h-4 w-4" /> Ajouter
+          </Button>
+        )}
       </div>
 
       {isLoading ? (
@@ -268,9 +272,11 @@ export default function ParticipantManager({ courierId, organizationId }: Partic
       ) : !participants.length ? (
         <div className="text-center py-8">
           <p className="text-sm text-muted-foreground mb-3">Aucun participant.</p>
-          <Button variant="outline" size="sm" className="gap-1.5" onClick={openCreate}>
-            <Plus className="h-4 w-4" /> Ajouter le premier participant
-          </Button>
+          {!readOnly && (
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={openCreate}>
+              <Plus className="h-4 w-4" /> Ajouter le premier participant
+            </Button>
+          )}
         </div>
       ) : (
         <Table>
@@ -328,36 +334,38 @@ export default function ParticipantManager({ courierId, organizationId }: Partic
                   )}
                 </TableCell>
                 <TableCell>
-                  <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(p)}>
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive">
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Supprimer ce participant ?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            {p.last_name ?? p.name ?? "Ce participant"} sera retiré du courrier. La fiche
-                            du référentiel de contacts, elle, n'est pas supprimée.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Annuler</AlertDialogCancel>
-                          <AlertDialogAction
-                            onClick={() => deleteMutation.mutate(p.id)}
-                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                          >
-                            Supprimer
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </div>
+                  {!readOnly && (
+                    <div className="flex items-center gap-1">
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(p)}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Supprimer ce participant ?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              {p.last_name ?? p.name ?? "Ce participant"} sera retiré du courrier. La fiche
+                              du référentiel de contacts, elle, n'est pas supprimée.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Annuler</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => deleteMutation.mutate(p.id)}
+                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            >
+                              Supprimer
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  )}
                 </TableCell>
               </TableRow>
             ))}

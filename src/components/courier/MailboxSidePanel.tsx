@@ -63,6 +63,8 @@ import {
 import { formatContactAddressInline } from "@/lib/prefill-mapping";
 import { cn } from "@/lib/utils";
 import { readableTextColor } from "@/lib/tag-color";
+import { useAuth } from "@/contexts/AuthContext";
+import { canEditCouriers } from "@/lib/permissions";
 import DocumentManager from "./DocumentManager";
 import DocumentViewer from "./DocumentViewer";
 import InlineEditField from "./InlineEditField";
@@ -126,6 +128,10 @@ interface Props {
 export default function MailboxSidePanel({ courier, open, onOpenChange, organizationId, withTabs = false, readOnly = false, onDelete, fullScreen = false, disableFullScreen = false }: Props) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { profile, membership } = useAuth();
+  // Point de vérité unique : un consultant (lecteur seul) ne peut jamais
+  // écrire, quelle que soit la valeur de la prop `readOnly` passée par l'appelant.
+  const effectiveReadOnly = readOnly || !canEditCouriers(profile, membership);
   const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
   const [servicePopoverOpen, setServicePopoverOpen] = useState(false);
   const [replyState, setReplyState] = useState<{ name: string; category: string | null } | null>(null);
@@ -747,7 +753,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   maxLength={255}
                   displayClassName="max-w-full text-lg font-semibold leading-snug"
                   editClassName="text-lg md:text-lg font-semibold leading-snug"
-                  readOnly={readOnly}
+                  readOnly={effectiveReadOnly}
                   multiline
                   onSave={(v) => persistCourierUpdate({ subject: v.trim() || null }, "Titre modifié")}
                 />
@@ -769,7 +775,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
               )}
             </div>
             <div className="flex items-center gap-2 justify-end shrink-0">
-              {!readOnly && transitions && transitions.length > 0 && (
+              {!effectiveReadOnly && transitions && transitions.length > 0 && (
                 <>
                   {(() => {
                     const nextT = transitions.find((t) => (t as any).kind === "next");
@@ -872,7 +878,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   <X className="h-4 w-4" />
                 </Button>
               )}
-              {!readOnly && onDelete && (
+              {!effectiveReadOnly && onDelete && (
                 <Button
                   size="icon"
                   variant="ghost"
@@ -903,7 +909,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   label="Date d'envoi"
                   type="date"
                   value={courier.sent_at ? courier.sent_at.slice(0, 10) : ""}
-                  readOnly={readOnly}
+                  readOnly={effectiveReadOnly}
                   onSave={(v) =>
                     persistCourierUpdate(
                       { sent_at: v ? new Date(v).toISOString() : null },
@@ -923,7 +929,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   label="Date de réception"
                   type="date"
                   value={courier.received_at ? courier.received_at.slice(0, 10) : ""}
-                  readOnly={readOnly}
+                  readOnly={effectiveReadOnly}
                   onSave={(v) =>
                     persistCourierUpdate(
                       { received_at: v ? new Date(v).toISOString() : null },
@@ -942,7 +948,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
               {!isOutbound && (
                 <div className="flex items-center justify-between gap-2 py-0.5">
                   <span className="text-muted-foreground text-sm shrink-0">Canal</span>
-                  {readOnly ? (
+                  {effectiveReadOnly ? (
                     <span className="text-sm font-medium px-2">{channelLabels[courier.channel]}</span>
                   ) : (
                     <Select
@@ -1009,7 +1015,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                           organizationId={organizationId}
                           value={senderContact ?? null}
                           onChange={linkSenderContact}
-                          disabled={readOnly}
+                          disabled={effectiveReadOnly}
                           fallbackLabel={sender?.name ?? undefined}
                           triggerClassName="h-8 px-2 border-0 bg-transparent shadow-none hover:bg-muted hover:shadow-none [&>span]:font-semibold"
                         />
@@ -1062,7 +1068,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                     value={recipient?.name ?? ""}
                     placeholder="Nom du destinataire"
                     maxLength={150}
-                    readOnly={readOnly}
+                    readOnly={effectiveReadOnly}
                     onSave={(v) => upsertParticipant("recipient", { name: v.trim() || null })}
                     displayClassName="font-semibold"
                   />
@@ -1091,12 +1097,12 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                         className={cn(
                           "gap-1 pl-2 pr-1 border-transparent text-xs",
                           orphan && "opacity-60 italic",
-                          readOnly && "pr-2",
+                          effectiveReadOnly && "pr-2",
                         )}
                         style={tag?.color ? { backgroundColor: tag.color, color: fg } : undefined}
                       >
                         {tagName}
-                        {!readOnly && (
+                        {!effectiveReadOnly && (
                           <button
                             type="button"
                             onClick={(e) => {
@@ -1114,7 +1120,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                       </Badge>
                     );
                   })}
-                  {!readOnly && (
+                  {!effectiveReadOnly && (
                     <Popover open={tagPopoverOpen} onOpenChange={setTagPopoverOpen}>
                       <PopoverTrigger asChild>
                         <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" aria-label="Gérer les tags">
@@ -1161,7 +1167,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
               <div className="space-y-1">
                 <span className="text-muted-foreground text-sm">Organisation gestionnaire</span>
                 <div className="min-w-0">
-                  {readOnly ? (
+                  {effectiveReadOnly ? (
                     <span className="text-sm font-medium truncate px-2 block">
                       {courier.assigned_service ?? (
                         <span className="text-muted-foreground italic font-normal">—</span>
@@ -1281,7 +1287,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 <SimilarCouriersAlert
                   courierId={courier.id}
                   organizationId={organizationId}
-                  disabled={readOnly}
+                  disabled={effectiveReadOnly}
                 />
               )}
               <div className="space-y-2">
@@ -1308,7 +1314,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   organizationId={organizationId}
                   selectedDocId={selectedDocId}
                   onSelectDoc={setSelectedDocId}
-                  readOnly={readOnly}
+                  readOnly={effectiveReadOnly}
                   ignoredAttachments={(courier.metadata?.ignored_attachments as { name: string; size: number }[] | undefined) ?? []}
                 />
               </div>
@@ -1319,7 +1325,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   <CourierNotes
                     courierId={courier.id}
                     organizationId={organizationId}
-                    readOnly={readOnly || isFinalState}
+                    readOnly={effectiveReadOnly || isFinalState}
                   />
                 </>
               )}
@@ -1381,7 +1387,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   <ContentIntentsTab
                     courierId={courier.id}
                     organizationId={organizationId}
-                    readOnly={readOnly || isFinalState}
+                    readOnly={effectiveReadOnly || isFinalState}
                     isInitialState={isInitialState}
                   />
                 </TabsContent>
@@ -1394,7 +1400,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   <LinkedActionsTab
                     courierId={courier.id}
                     organizationId={organizationId}
-                    readOnly={readOnly || isFinalState}
+                    readOnly={effectiveReadOnly || isFinalState}
                   />
                 </TabsContent>
               )}
@@ -1410,7 +1416,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                     assignedService={localAssignedService}
                     socleOrganizationId={localSocleOrgId}
                     sender={sender ?? null}
-                    readOnly={readOnly}
+                    readOnly={effectiveReadOnly}
                     onStateChange={setReplyState}
                     initialReplyId={initialReplyIdParam}
                     initialOpenEditor={initialEditParam}
@@ -1424,6 +1430,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 <ParticipantManager
                   courierId={courier.id}
                   organizationId={organizationId}
+                  readOnly={effectiveReadOnly}
                 />
               </TabsContent>
               {!isOutbound && (
@@ -1434,7 +1441,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   <CourierLinksTab
                     courierId={courier.id}
                     organizationId={organizationId}
-                    readOnly={readOnly}
+                    readOnly={effectiveReadOnly}
                   />
                 </TabsContent>
               )}
@@ -1456,7 +1463,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
               courierId={courier.id}
               organizationId={organizationId}
               notes={notesList}
-              readOnly={readOnly || isFinalState}
+              readOnly={effectiveReadOnly || isFinalState}
             />
           )}
         </Tabs>
