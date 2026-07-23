@@ -18,12 +18,13 @@
 ### Numérisation (copieur réseau)
 - **Pas d'accès matériel depuis le navigateur** : ni WebUSB, ni eSCL (pas de CORS côté scanner), et un agent local sur `localhost` se heurte au verrouillage réseau de Chrome (Local Network Access) et à l'interdiction de Safari. Le pont retenu est donc le **dépôt automatique**.
 - Le copieur est configuré en « scan vers email » sur une boîte dédiée, marquée **boîte de numérisation** (`imap_settings.is_scan_inbox`). Fonctionne avec tout scanner déjà installé, sans logiciel sur les postes ni licence.
-- Ingestion en mode scan : canal `paper`, pas de participant `sender` (l'adresse du copieur va dans `metadata.scan_device_email`), sujet neutre remplacé ensuite par `suggested_subject`, allowlist `scan_allowed_senders` — **sans elle, quiconque connaît l'adresse crée des courriers**.
+- Ingestion en mode scan : canal `paper`, pas de participant `sender` (l'adresse du copieur va dans `metadata.scan_device_email`), sujet neutre remplacé ensuite par `suggested_subject`, allowlist `scan_allowed_senders` **fail-closed** : `NULL` ou vide → la boîte n'accepte **rien** (elle n'attend que ses copieurs). Logique testable : `fetch-inbound-emails/logic.ts` (`isInboundSenderAccepted`).
 - L'OCR et l'analyse sont enfilés automatiquement (voir §2), puis l'agent qualifie le courrier depuis la Boîte aux lettres.
-- Réglages copieur recommandés : PDF (pas TIFF, non géré par l'OCR), 200–300 dpi, niveaux de gris, « un fichier par document » pour éviter d'avoir à découper les lots.
+- Réglages copieur recommandés : PDF (pas TIFF, non géré par l'OCR), 200–300 dpi, niveaux de gris, « un fichier par document » pour limiter la découpe des lots — qui reste possible manuellement à l'import (voir Import en masse).
 
 ### Import en masse
 - Page `BulkImport.tsx` (`/import-en-masse`), wizard 5 étapes : canal → documents → association → vérification → confirmation. Regroupement de fichiers par `groupId` (un courrier = N fichiers). Formats : PDF, JPG, PNG.
+- **Dé-lotissement d'un PDF multi-pages** (lot scanné) : `BulkPdfSplitDialog` découpe à l'écran un PDF en plusieurs courriers — vignettes rendues via `pdfjs`, sélection de pages (clic / shift-clic) puis « Grouper en courrier », le reste des pages restant non associé. Génération client-side (`src/lib/pdf/split.ts`, `pdf-lib`). Découpe **manuelle** ; l'auto-suggestion des points de coupe reste un « à terme » (cf. `docs/technical-debt.md` P1.5).
 
 ## 2. Analyse IA d'un courrier
 
