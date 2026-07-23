@@ -127,6 +127,8 @@ Accessibles depuis `/parametres` :
 ## Garde-fous techniques
 
 - **RLS Postgres** sur toutes les tables métier : un membre ne voit que son `organization_id` via le helper `is_member_of`.
+- **Garde de signature serveur** (trigger `couriers_enforce_signature`, `20260723163536`) : poser ou retirer les marqueurs de signature d'une réponse (`metadata.signed_at/signed_by/signed_state_id`) exige que l'acteur soit **lié comme signataire de l'organisation gestionnaire** (`signatories.user_id` × `socle_organization_signatories`) — même par appel API direct. La sélection du signataire et l'édition du brouillon restent libres pour tout éditeur ; `is_signataire` demeure l'attribut de configuration en amont.
+- **Garde de transitions serveur** (trigger `couriers_enforce_transition`, `20260723101849`) : un changement d'état de workflow doit être topologiquement légal (transition configurée, reset à l'initial, clôture) — cf. `docs/garde-transitions-workflow.md`.
 - **Trigger `prevent_superadmin_escalation`** : un utilisateur ne peut pas se promouvoir superadmin.
 - **Policy `users_update_own`** : `WITH CHECK (id = auth.uid() AND is_superadmin = false)`.
 - **Edge functions** : vérification JWT + `is_admin_of(org_id)` pour les actions admin (invite, sync Arpège, reset password).
