@@ -327,6 +327,7 @@ async function main() {
   const adminAlpha = await createUser("admin.alpha", "Admin", "Alpha");
   const membreAlpha = await createUser("membre.alpha", "Membre", "Alpha");
   const consultantAlpha = await createUser("consultant.alpha", "Consultant", "Alpha");
+  const signataireAlpha = await createUser("signataire.alpha", "Signataire", "Alpha");
   const adminBeta = await createUser("admin.beta", "Admin", "Beta");
   // Superadmin global (aucun membership d'org — is_member_of/is_admin_of l'incluent)
   const superadminTest = await createUser("superadmin.test", "Super", "Admin", true);
@@ -337,10 +338,27 @@ async function main() {
     { organization_id: alpha.orgId, user_id: membreAlpha.id, role: "member", is_active: true },
     // Consultant ACTIF d'Alpha : lit tout (is_member_of) mais n'écrit rien (is_editor_of).
     { organization_id: alpha.orgId, user_id: consultantAlpha.id, role: "consultant", is_active: true },
+    // Éditeur marqué signataire (garde de signature) — lié plus bas à la racine Socle.
+    { organization_id: alpha.orgId, user_id: signataireAlpha.id, role: "gestionnaire", is_active: true, is_signataire: true },
     { organization_id: beta.orgId, user_id: adminBeta.id, role: "administrateur", is_active: true },
     { organization_id: beta.orgId, user_id: membreBeta.id, role: "member", is_active: true },
   ];
   for (const m of memberships) await insertOne("organization_users", m);
+
+  // Signataire PERSONNE (signatories.user_id) lié à la racine Socle d'Alpha :
+  // signataire.alpha peut signer les réponses de la racine — pas celles du Cabinet.
+  const signataireRow = await insertOne<{ id: string }>("signatories", {
+    organization_id: alpha.orgId,
+    user_id: signataireAlpha.id,
+    first_name: "Signataire",
+    last_name: "Alpha",
+    title: "DGS de test",
+  });
+  await insertOne("socle_organization_signatories", {
+    organization_id: alpha.orgId,
+    socle_organization_id: alpha.rootSocleOrgId,
+    signatory_id: signataireRow.id,
+  });
 
   // membre.alpha + consultant.alpha appartiennent à la sous-org « Cabinet Alpha »
   // (filtrage des courriers par organisation Socle)
@@ -359,6 +377,7 @@ async function main() {
       adminAlpha: adminAlpha.email,
       membreAlpha: membreAlpha.email,
       consultantAlpha: consultantAlpha.email,
+      signataireAlpha: signataireAlpha.email,
       superadminTest: superadminTest.email,
       adminBeta: adminBeta.email,
       membreBeta: membreBeta.email,
