@@ -45,7 +45,7 @@
 **Vrais orphelins à supprimer :**
 - `src/pages/CourriersEntrants.tsx` — **page sans route** (la BAL l'a remplacée) ; sa logique colonne/export est dupliquée ailleurs.
 - `src/pages/Index.tsx`, `src/App.css`. (`BulkStep3Analyze.tsx` supprimé le 2026-07-18.)
-- `src/services/courierLinkService.ts`, `src/services/courierSequenceService.ts` (plus consommés).
+- `src/services/courierLinkService.ts`, `src/services/courierSequenceService.ts` (plus consommés). ⚠️ **Le chrono est une fonctionnalité fantôme** (constat 2026-07-23) : 0 chrono sur 5068 courriers en prod, `courier_sequences` vide, aucune fonction/trigger DB ne génère de référence — le client ne fait qu'afficher `couriers.chrono` (toujours « — »). Le pitch (CLAUDE.md « références séquentielles annuelles ») promet une capacité qui n'existe pas. **Décision produit requise** : implémenter la génération (RPC transactionnelle sur `courier_sequences` + test de concurrence — le P0 #8 du plan QA n'est testable qu'après), ou retirer colonne + affichages + promesse du pitch.
 - `src/services/orgServiceService.ts` — legacy services gelé : ne garder que ce que `fetch-inbound-emails`/`portal-form` lisent côté SQL (rien côté client). Supprimer avec `listServiceSignatoryIds`/`setServiceSignatories` (signatoryService).
 - **16 dépendances npm inutilisées** (recharts, react-day-picker, vaul, input-otp, react-resizable-panels, @radix-ui/* des composants ui non utilisés…) — retirer avec les composants shadcn associés (calendar, chart, carousel, drawer…) si on assume de les réinstaller au besoin.
 - ~68 exports morts (voir `bun run audit`) — nettoyage mécanique.
