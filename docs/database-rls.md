@@ -69,7 +69,7 @@ Pour les tables en écriture admin seulement, `auth_insert/update/delete` utilis
 | `workflows` | `is_member_of` | `is_admin_of` |
 | `workflow_states` | `is_member_of` | `is_admin_of` |
 | `workflow_transitions` | `is_member_of` | `is_admin_of` |
-| `organization_integrations` | `is_admin_of` (ALL) | `is_admin_of` |
+| `organization_integrations` | `is_superadmin` (ALL — secrets partenaires, cf. `20260723155950`) | `is_superadmin` ; statut non sensible via RPC `partner_integration_status` (`is_member_of`) |
 | `smtp_settings` | `is_admin_of` (ALL) | `is_admin_of` |
 
 ### Tables spéciales
@@ -173,7 +173,6 @@ Résout les 32 lints `auth_rls_initplan` et les 29 `multiple_permissive_policies
 | `fn_create_courier_notifications()` | trigger | Crée une notification `new_courier` pour tous les membres actifs de l'org à chaque INSERT de courrier inbound |
 | `action_tickets_prevent_courier_change()` | trigger | Empêche la modification du `courier_id` d'un ticket |
 | `get_cron_secret()` | SECURITY DEFINER | Lit `cron_secret` depuis `vault.decrypted_secrets` |
-| `trigger_arpege_sync()` | SECURITY DEFINER | HTTP POST vers `sync-arpege-services` via `pg_net`, authentifié par `x-cron-secret` |
 | `trigger_fetch_inbound_emails()` | SECURITY DEFINER | HTTP POST vers `fetch-inbound-emails` via `pg_net`, authentifié par `x-cron-secret` |
 | `search_couriers(...)` | STABLE | Recherche full-text multi-champs avec filtres (direction, état, service, date, tags) |
 | `stats_inbound_by_month(...)` | STABLE | Courriers entrants agrégés par mois |

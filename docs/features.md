@@ -108,16 +108,12 @@ Les angles morts de l'ancienne détection côté client (doublon au **téléphon
 - Les courriers portent `couriers.socle_organization_id` pour la logique métier ; `couriers.assigned_service` reste une dénormalisation d'affichage.
 - Les tables legacy `services`, `service_members` et `service_signatories` sont gelées : elles ne doivent plus recevoir de nouveau flux d'écriture, hors fallback documenté dans `docs/data-model.md`.
 
-## 7. Démarches & sync Arpège
+## 7. Démarches & intégration partenaire (Arpège)
 
-- Table `procedures` (multi-tenant, RLS via `is_member_of` / `is_admin_of`, écriture admin).
-- Champs : `name`, `description`, `icon`, `color`, `external_reference_id`, `external_source` (`arpege`), `is_displayed`, `display_order`.
-- Index unique partiel `(organization_id, external_source, external_reference_id)` pour upsert.
-- UI CRUD : `ProceduresSettings.tsx`. Badge "Arpège" sur démarches importées.
-- **Sync** : edge function `sync-arpege-services` (upsert depuis l'API Arpège). Auth : JWT service role, ou admin user, ou header `x-cron-secret`.
-- **Cron nocturne** : pg_cron `sync-arpege-procedures-nightly` à `0 2 * * *` UTC. Fonction SQL `trigger_arpege_sync()` lit `cron_secret` depuis `vault.decrypted_secrets` et POST l'edge function.
-- Setup : `SELECT vault.create_secret('<valeur>', 'cron_secret');` avec la même valeur que la variable d'env `CRON_SECRET`.
-- Edge functions liées : `sync-arpege-appointments`, `test-arpege-connection`.
+- Table `procedures` (multi-tenant, RLS via `is_member_of` / `is_admin_of`). **Source de vérité : le Socle** (sync nocturne `sync-socle-referentiel`, cf. §Socle) — Clara ne crée/modifie plus les démarches, hors toggle de visibilité `is_displayed`.
+- Résidu partenaire : `external_reference_id` + `external_source` (`arpege` legacy) + `arpege_config_fields` (jsonb) — nécessaires pour **poster une demande** chez Arpège. UI : `ProceduresSettings.tsx` (badge « Arpège » sur les démarches d'origine partenaire).
+- **Intégration partenaire** (spec + refonte en cours : `docs/partenaires-integration.md`) : config de connexion par tenant dans `organization_integrations` (superadmin), récupération manuelle des démarches via l'edge `sync-arpege-services` (bouton superadmin — le cron `sync-arpege-procedures-nightly` et sa fonction SQL `trigger_arpege_sync()` sont **décommissionnés**, migrations `20260711091000` + `20260723155049`), création de demandes via `create-arpege-demande` (tickets `action_tickets.arpege_demande_ref/status`), suivi de statut via `check-arpege-ticket-status` (badge dans `LinkedActionsTab`).
+- `sync-arpege-appointments` (RDV) : **supprimée** (morte — aucun appelant, aucune écriture).
 
 ## 8. Notifications
 

@@ -1,4 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  extractArray,
+  fetchWithHawk,
+  type FetchWithHawkOptions,
+  resolveArpegeUrl,
+  resolveHawkCredentials,
+} from "../_shared/arpege.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -6,77 +13,12 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-org-id, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// ── Hawk authentication ──
-
-function generateNonce(length = 6): string {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  const bytes = crypto.getRandomValues(new Uint8Array(length));
-  return Array.from(bytes, (b) => chars[b % chars.length]).join("");
-}
-
-async function hmacSha256(key: string, message: string): Promise<string> {
-  const enc = new TextEncoder();
-  const cryptoKey = await crypto.subtle.importKey(
-    "raw", enc.encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
-  );
-  const sig = await crypto.subtle.sign("HMAC", cryptoKey, enc.encode(message));
-  return btoa(String.fromCharCode(...new Uint8Array(sig)));
-}
-
-async function sha256(data: string): Promise<string> {
-  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(data));
-  return btoa(String.fromCharCode(...new Uint8Array(hash)));
-}
-
-async function buildHawkHeader(
-  url: string, method: string, id: string, key: string,
-): Promise<string> {
-  const ts = Math.floor(Date.now() / 1000).toString();
-  const nonce = generateNonce();
-  const u = new URL(url);
-  const resource = u.pathname + u.search;
-  const port = u.port || (u.protocol === "https:" ? "443" : "80");
-  const hash = await sha256(`hawk.1.payload\n\n\n`);
-  const normalized = `hawk.1.header\n${ts}\n${nonce}\n${method.toUpperCase()}\n${resource}\n${u.hostname}\n${port}\n${hash}\n\n`;
-  const mac = await hmacSha256(key, normalized);
-  return `Hawk id="${id}", ts="${ts}", nonce="${nonce}", hash="${hash}", mac="${mac}"`;
-}
-
-function resolveArpegeUrl(apiBaseUrl: string): string {
-  let base = apiBaseUrl.replace(/\/+$/, "");
-  if (!base.startsWith("http")) {
-    base = `https://www.espace-citoyens.net${base.startsWith("/") ? "" : "/"}${base}`;
-  }
-  return base;
-}
-
-async function fetchWithHawk(url: string, hawkId: string, hawkKey: string): Promise<any | null> {
-  const authHeader = await buildHawkHeader(url, "GET", hawkId, hawkKey);
-  const response = await fetch(url, {
-    headers: { Authorization: authHeader, Accept: "application/json" },
-  });
-  if (!response.ok) {
-    console.warn(`HTTP ${response.status} for ${url}`);
-    return null;
-  }
-  const data = await response.json();
-  if (data?.IsSuccess === false) {
-    console.warn(`API error: ${data.CodErreur} - ${data.LibErreur}`);
-    return null;
-  }
-  return data;
-}
-
-function extractArray(data: any): any[] {
-  if (Array.isArray(data)) return data;
-  if (Array.isArray(data?.Data?.Results)) return data.Data.Results;
-  if (Array.isArray(data?.Data?.results)) return data.Data.results;
-  if (Array.isArray(data?.Data)) return data.Data;
-  for (const key of Object.keys(data || {})) {
-    if (Array.isArray(data[key]) && data[key].length > 0) return data[key];
-  }
-  return [];
-}
+// Reproduit le logging historique de ce fichier (perdu par la mutualisation
+// avec la version silencieuse de fetchWithHawk utilisée par create-arpege-demande).
+const hawkLogging: FetchWithHawkOptions = {
+  onHttpError: (status, url) => console.warn(`HTTP ${status} for ${url}`),
+  onApiError: (data) => console.warn(`API error: ${data.CodErreur} - ${data.LibErreur}`),
+};
 
 // ── Auth helper ──
 
@@ -223,15 +165,14 @@ async function runSync(supabaseAdmin: any, integrations: any[]) {
       if (!integration.api_base_url) continue;
 
       const apiBase = resolveArpegeUrl(integration.api_base_url);
-      const hawkId = integration.client_id || integration.access_token || "";
-      const hawkKey = integration.client_secret || integration.access_token || "";
+      const { hawkId, hawkKey } = resolveHawkCredentials(integration);
       if (!hawkId || !hawkKey) continue;
 
       // Récupérer les schémas de formulaire depuis les demandes existantes (une par type)
       const formSchemaByType = new Map<string, any[]>();
       const formData = await fetchWithHawk(
         `${apiBase}/v2/Demandes?scope=data_formulaire,data_administratives&TypeDemarches=DEMANDE&pageSize=200`,
-        hawkId, hawkKey,
+        hawkId, hawkKey, hawkLogging,
       );
       if (formData) {
         for (const item of extractArray(formData)) {
@@ -246,12 +187,14 @@ async function runSync(supabaseAdmin: any, integrations: any[]) {
 
       // Try /v2/TypesDemandes
       let typesDemandes: any[] = [];
-      const tdData = await fetchWithHawk(`${apiBase}/v2/TypesDemandes`, hawkId, hawkKey);
+      const tdData = await fetchWithHawk(`${apiBase}/v2/TypesDemandes`, hawkId, hawkKey, hawkLogging);
       if (tdData) typesDemandes = extractArray(tdData);
 
       // Fallback: extract from /v2/Demandes
       if (typesDemandes.length === 0) {
-        const demandesData = await fetchWithHawk(`${apiBase}/v2/Demandes?pageSize=200`, hawkId, hawkKey);
+        const demandesData = await fetchWithHawk(
+          `${apiBase}/v2/Demandes?pageSize=200`, hawkId, hawkKey, hawkLogging,
+        );
         if (demandesData) {
           const demandes = extractArray(demandesData);
           const typesMap = new Map<string, any>();

@@ -1,52 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { buildHawkHeader, resolveArpegeUrl, resolveHawkCredentials } from "../_shared/arpege.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-org-id, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
-
-// ── Hawk auth (same as create-arpege-demande) ───────────────────────────────
-
-function generateNonce(length = 6): string {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  const bytes = crypto.getRandomValues(new Uint8Array(length));
-  return Array.from(bytes, (b) => chars[b % chars.length]).join("");
-}
-
-async function hmacSha256(key: string, message: string): Promise<string> {
-  const enc = new TextEncoder();
-  const cryptoKey = await crypto.subtle.importKey(
-    "raw", enc.encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"],
-  );
-  const sig = await crypto.subtle.sign("HMAC", cryptoKey, enc.encode(message));
-  return btoa(String.fromCharCode(...new Uint8Array(sig)));
-}
-
-async function sha256(data: string): Promise<string> {
-  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(data));
-  return btoa(String.fromCharCode(...new Uint8Array(hash)));
-}
-
-async function buildHawkHeader(url: string, id: string, key: string): Promise<string> {
-  const ts = Math.floor(Date.now() / 1000).toString();
-  const nonce = generateNonce();
-  const u = new URL(url);
-  const resource = u.pathname + u.search;
-  const port = u.port || (u.protocol === "https:" ? "443" : "80");
-  const hash = await sha256("hawk.1.payload\n\n\n");
-  const normalized = `hawk.1.header\n${ts}\n${nonce}\nGET\n${resource}\n${u.hostname}\n${port}\n${hash}\n\n`;
-  const mac = await hmacSha256(key, normalized);
-  return `Hawk id="${id}", ts="${ts}", nonce="${nonce}", hash="${hash}", mac="${mac}"`;
-}
-
-function resolveArpegeUrl(apiBaseUrl: string): string {
-  let base = apiBaseUrl.replace(/\/+$/, "");
-  if (!base.startsWith("http")) {
-    base = `https://www.espace-citoyens.net${base.startsWith("/") ? "" : "/"}${base}`;
-  }
-  return base;
-}
 
 /** Extract the most useful status string from an Arpège demande response item. */
 function extractStatus(item: any): string | null {
@@ -150,8 +109,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const hawkId = integration.client_id || integration.access_token || "";
-    const hawkKey = integration.client_secret || integration.access_token || "";
+    const { hawkId, hawkKey } = resolveHawkCredentials(integration);
     const apiBase = resolveArpegeUrl(integration.api_base_url);
 
     const statuses: Record<string, string> = {};
@@ -161,7 +119,7 @@ Deno.serve(async (req) => {
       const ref = ticket.arpege_demande_ref as string;
       try {
         const url = `${apiBase}/v2/Demandes?scope=data_administratives&Ticket=${encodeURIComponent(ref)}`;
-        const authH = await buildHawkHeader(url, hawkId, hawkKey);
+        const authH = await buildHawkHeader(url, "GET", hawkId, hawkKey);
         const resp = await fetch(url, {
           headers: { Authorization: authH, Accept: "application/json" },
         });

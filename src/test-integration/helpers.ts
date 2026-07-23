@@ -13,6 +13,7 @@ export interface Fixtures {
     adminAlpha: string;
     membreAlpha: string;
     consultantAlpha: string;
+    superadminTest: string;
     adminBeta: string;
     membreBeta: string;
   };

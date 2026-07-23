@@ -111,7 +111,12 @@ async function cleanup() {
 
 interface SeededUser { id: string; email: string }
 
-async function createUser(local: string, firstName: string, lastName: string): Promise<SeededUser> {
+async function createUser(
+  local: string,
+  firstName: string,
+  lastName: string,
+  isSuperadmin = false,
+): Promise<SeededUser> {
   const email = `${local}@${TEST_EMAIL_DOMAIN}`;
   const { data, error } = await admin.auth.admin.createUser({
     email,
@@ -120,13 +125,15 @@ async function createUser(local: string, firstName: string, lastName: string): P
     user_metadata: { first_name: firstName, last_name: lastName },
   });
   if (error || !data.user) fail(`createUser ${email}`, error?.message);
+  // NB : le trigger users_prevent_superadmin_escalation ne vise que l'UPDATE —
+  // l'INSERT service_role d'un superadmin de test est permis.
   await insertOne("users", {
     id: data.user.id,
     email,
     first_name: firstName,
     last_name: lastName,
     is_active: true,
-    is_superadmin: false,
+    is_superadmin: isSuperadmin,
   });
   return { id: data.user.id, email };
 }
@@ -321,6 +328,8 @@ async function main() {
   const membreAlpha = await createUser("membre.alpha", "Membre", "Alpha");
   const consultantAlpha = await createUser("consultant.alpha", "Consultant", "Alpha");
   const adminBeta = await createUser("admin.beta", "Admin", "Beta");
+  // Superadmin global (aucun membership d'org — is_member_of/is_admin_of l'incluent)
+  const superadminTest = await createUser("superadmin.test", "Super", "Admin", true);
   const membreBeta = await createUser("membre.beta", "Membre", "Beta");
 
   const memberships = [
@@ -350,6 +359,7 @@ async function main() {
       adminAlpha: adminAlpha.email,
       membreAlpha: membreAlpha.email,
       consultantAlpha: consultantAlpha.email,
+      superadminTest: superadminTest.email,
       adminBeta: adminBeta.email,
       membreBeta: membreBeta.email,
     },
