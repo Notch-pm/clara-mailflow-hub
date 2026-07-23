@@ -1,6 +1,6 @@
 # Spec — Intégration Partenaires (Arpège pilote)
 
-> **Statut : spécifié le 2026-07-23 ; lots L0–L2 en cours d'implémentation, L3–L7 à venir.**
+> **Statut : spécifié le 2026-07-23 ; lots L0–L2 livrés (PR #13, migrations + edge en prod) ; L3–L7 à venir.**
 > Cadré via `/spec` (analyse métier + architecture) sur inventaire complet code + base live.
 > Décisions PO actées le 2026-07-23 (Laurent) : granularité **par organisation Socle**,
 > le **suivi des demandes existantes continue pendant la suspension**, implémentation L0→L2 d'abord.
