@@ -143,6 +143,11 @@ interface TenantFixture {
   signatoryId: string;
   couriers: { assigned: string; root: string; unassigned: string };
   tagId: string;
+  // Fixtures du garde de transitions
+  midNoTransitionStateId: string;
+  workflowBId: string;
+  statesB: { initial: string; mid: string; final: string };
+  socleOrgBId: string;
 }
 
 async function seedTenant(letter: "Alpha" | "Beta"): Promise<TenantFixture> {
@@ -217,6 +222,37 @@ async function seedTenant(letter: "Alpha" | "Beta"): Promise<TenantFixture> {
   const { data: rootRow } = await admin.from("socle_organizations").select("socle_id").eq("id", rootSocle.id).single();
   await admin.from("socle_organizations").update({ socle_parent_id: (rootRow as { socle_id: string }).socle_id }).eq("id", subSocle.id);
 
+  // ─── Fixtures du garde de transitions ───────────────────────────────────────
+  // Un état intermédiaire du workflow principal SANS transition entrante (AC-S3 :
+  // un saut initial → cet état doit être refusé).
+  const stMidNoTransition = await insertOne<{ id: string }>("workflow_states", {
+    organization_id: org.id, workflow_id: wf.id,
+    name: `${TEST_PREFIX} Intermédiaire sans transition ${letter}`, category: "processing",
+  });
+  // Un SECOND workflow (WF_B) doté de sa propre organisation Socle (AC-S4 : une
+  // réassignation vers cette org avec un état intermédiaire de WF_B doit être refusée).
+  const wfB = await insertOne<{ id: string }>("workflows", {
+    organization_id: org.id, name: `WF ${TEST_PREFIX} B ${letter}`, type: "inbound",
+  });
+  const sbInitial = await insertOne<{ id: string }>("workflow_states", {
+    organization_id: org.id, workflow_id: wfB.id, name: "Reçu B", category: "pending", is_initial: true,
+  });
+  const sbMid = await insertOne<{ id: string }>("workflow_states", {
+    organization_id: org.id, workflow_id: wfB.id, name: "En cours B", category: "processing",
+  });
+  const sbFinal = await insertOne<{ id: string }>("workflow_states", {
+    organization_id: org.id, workflow_id: wfB.id, name: "Traité B", category: "processed", is_final: true,
+  });
+  await insertOne("workflow_transitions", {
+    organization_id: org.id, workflow_id: wfB.id, name: "Instruire B", kind: "next",
+    from_state_id: sbInitial.id, to_state_id: sbMid.id,
+  });
+  const socleOrgB = await insertOne<{ id: string }>("socle_organizations", {
+    organization_id: org.id, socle_id: crypto.randomUUID(),
+    name: `${TEST_PREFIX} Org B ${letter}`, status: "active",
+    workflow_id: wfB.id, reply_workflow_id: replyWf.id,
+  });
+
   // Signataire
   const signatory = await insertOne<{ id: string }>("signatories", {
     organization_id: org.id, first_name: "Signe", last_name: `${letter} Test`, title: "Maire de test",
@@ -262,6 +298,10 @@ async function seedTenant(letter: "Alpha" | "Beta"): Promise<TenantFixture> {
     signatoryId: signatory.id,
     couriers: { assigned: courierAssigned.id, root: courierRoot.id, unassigned: courierUnassigned.id },
     tagId: tag.id,
+    midNoTransitionStateId: stMidNoTransition.id,
+    workflowBId: wfB.id,
+    statesB: { initial: sbInitial.id, mid: sbMid.id, final: sbFinal.id },
+    socleOrgBId: socleOrgB.id,
   };
 }
 
