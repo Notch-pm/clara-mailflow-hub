@@ -29,6 +29,7 @@ import {
   type ProcedureCatalogEntry,
   type SanitizedPrefill,
 } from "./logic.ts";
+import { assertEditor } from "../_shared/authz.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -808,6 +809,9 @@ Deno.serve(async (req) => {
     // Sans cette seconde branche, aucun ingesteur serveur ne peut océriser :
     // c'est ce qui empêchait la boîte de numérisation de fonctionner seule.
     // userId reste NULL côté quota — ai_usage_events.created_by est nullable.
+    // Le contrôle consultant ne s'applique QU'à la branche utilisateur : le
+    // worker cron (process-analysis-queue) tourne en service système, sans
+    // notion de rôle, et doit rester intact.
     const cronSecret = req.headers.get("x-cron-secret");
     let userId: string | null = null;
     if (cronSecret) {
@@ -816,6 +820,10 @@ Deno.serve(async (req) => {
     } else {
       const user = await verifyAuth(req);
       await verifyOrgMembership(admin, user.id, orgId);
+      // Le consultant est en lecture seule : pas d'OCR ni d'analyse IA lancés par lui.
+      if (!(await assertEditor(admin, user.id, orgId))) {
+        throw new Error("Forbidden: Accès refusé : rôle consultant en lecture seule");
+      }
       userId = user.id;
     }
 

@@ -3,9 +3,11 @@ import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Check, Loader2, Sparkles } from "lucide-react";
+import { Check, Loader2, Sparkles, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { useOrganization } from "@/contexts/OrganizationContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { canEditCouriers } from "@/lib/permissions";
 import { supabase } from "@/integrations/supabase/client";
 import { createCourier } from "@/services/courierService";
 import { addParticipant } from "@/services/courierParticipantService";
@@ -90,6 +92,8 @@ function StepStrip({
 
 export default function BulkImport() {
   const { organizationId } = useOrganization();
+  const { profile, membership } = useAuth();
+  const canEdit = canEditCouriers(profile, membership);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -357,6 +361,29 @@ export default function BulkImport() {
 
   const hasMissingService = drafts.some((d) => d.flags.includes("missing-service"));
   const canConfirm = drafts.length > 0 && !hasMissingService && !confirming;
+
+  // Un consultant (lecteur seul) ne peut pas créer de courrier : la page ne
+  // sert à rien pour lui, on l'informe plutôt que de le laisser dérouler un
+  // assistant dont la confirmation finale échouerait côté serveur (RLS).
+  if (!canEdit) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 gap-4 text-center">
+        <div className="w-14 h-14 rounded-full bg-muted flex items-center justify-center">
+          <Lock className="h-7 w-7 text-muted-foreground" />
+        </div>
+        <div className="space-y-1">
+          <p className="text-lg font-semibold">Accès en lecture seule</p>
+          <p className="text-sm text-muted-foreground max-w-sm">
+            Votre rôle de consultant ne permet pas de créer de courriers. Contactez un
+            administrateur si vous avez besoin d'importer des courriers en masse.
+          </p>
+        </div>
+        <Button variant="outline" onClick={() => navigate("/boite-aux-lettres")}>
+          Retour à la boîte aux lettres
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 pb-32">

@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
+import { assertEditor } from "../_shared/authz.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -118,6 +119,11 @@ Deno.serve(async (req) => {
 
     // ── UPLOAD ────────────────────────────────────────────────────────
     if (req.method === "POST" && action === "upload") {
+      // Le consultant est en lecture seule : pas d'upload de document.
+      if (!(await assertEditor(admin, user.id, orgId))) {
+        return jsonResponse({ error: "Accès refusé : rôle consultant en lecture seule" }, 403);
+      }
+
       const formData = await req.formData();
       const file = formData.get("file") as File | null;
       const courierId = formData.get("courier_id") as string | null;
@@ -192,6 +198,11 @@ Deno.serve(async (req) => {
 
     // ── DELETE (file + DB row) ────────────────────────────────────────
     if (req.method === "DELETE" && action === "delete") {
+      // Le consultant est en lecture seule : pas de suppression de document.
+      if (!(await assertEditor(admin, user.id, orgId))) {
+        return jsonResponse({ error: "Accès refusé : rôle consultant en lecture seule" }, 403);
+      }
+
       const body = await req.json();
       const documentId = body.document_id as string;
       if (!documentId) return jsonResponse({ error: "Missing document_id" }, 400);

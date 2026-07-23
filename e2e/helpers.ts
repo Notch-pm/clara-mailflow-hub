@@ -10,7 +10,13 @@ import { join } from "node:path";
 export interface E2eFixtures {
   supabaseUrl: string;
   password: string;
-  users: { adminAlpha: string; membreAlpha: string; adminBeta: string; membreBeta: string };
+  users: {
+    adminAlpha: string;
+    membreAlpha: string;
+    consultantAlpha: string;
+    adminBeta: string;
+    membreBeta: string;
+  };
   alpha: TenantFixture;
   beta: TenantFixture;
 }

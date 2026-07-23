@@ -9,6 +9,7 @@ import {
   cleanSenderFields,
 } from "../_shared/courierFieldSuggestions.ts";
 import { contactsApiKeyForOrg, fetchContactsApi } from "../_shared/socleContactsClient.ts";
+import { assertEditor } from "../_shared/authz.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -207,6 +208,11 @@ Deno.serve(async (req) => {
     if (!orgId) return jsonResponse({ error: "Missing x-org-id header" }, 400);
 
     await verifyOrgMembership(admin, user.id, orgId);
+
+    // Le consultant est en lecture seule : pas d'extraction IA de courrier.
+    if (!(await assertEditor(admin, user.id, orgId))) {
+      throw new Error("Forbidden: Accès refusé : rôle consultant en lecture seule");
+    }
 
     const mistralKey = Deno.env.get("MISTRAL_API_KEY");
     if (!mistralKey) return jsonResponse({ error: "MISTRAL_API_KEY non configurée" }, 500);

@@ -29,6 +29,15 @@ import {
   SocleContactsApiError,
   SocleContactsAuthError,
 } from "../_shared/socleContactsClient.ts";
+import { assertEditor } from "../_shared/authz.ts";
+
+/**
+ * Actions de mutation de contact (création/modification/archivage) : seules
+ * celles-ci sont bloquées pour un consultant. `match` est un POST mais reste
+ * une lecture seule (rapprochement d'identités, aucune fiche créée/modifiée) ;
+ * `list`, `get`, `roles` sont également des lectures. Cf. `buildSocleRequest`.
+ */
+const CONTACT_MUTATION_ACTIONS = new Set(["create", "update", "archive", "restore"]);
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -115,6 +124,21 @@ Deno.serve(async (req) => {
     const admin = getAdminClient();
     if (!(await isMemberOrSuperadmin(admin, user.id, organization_id))) {
       return errorResponse("forbidden", "Vous n'êtes pas membre de cette organisation.", 403);
+    }
+
+    // Le consultant est en lecture seule : la recherche/consultation reste
+    // ouverte (list/get/match/roles), seules les mutations de contact sont
+    // bloquées.
+    if (
+      typeof action === "string" &&
+      CONTACT_MUTATION_ACTIONS.has(action) &&
+      !(await assertEditor(admin, user.id, organization_id))
+    ) {
+      return errorResponse(
+        "forbidden",
+        "Accès refusé : rôle consultant en lecture seule.",
+        403,
+      );
     }
 
     const { data: org } = await admin

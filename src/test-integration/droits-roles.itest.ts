@@ -9,11 +9,13 @@ import { clientAs, loadFixtures, type Fixtures } from "./helpers";
 let fx: Fixtures;
 let membreAlpha: SupabaseClient;
 let adminAlpha: SupabaseClient;
+let consultantAlpha: SupabaseClient;
 
 beforeAll(async () => {
   fx = loadFixtures();
   membreAlpha = await clientAs(fx.users.membreAlpha, fx.password);
   adminAlpha = await clientAs(fx.users.adminAlpha, fx.password);
+  consultantAlpha = await clientAs(fx.users.consultantAlpha, fx.password);
 });
 
 describe("Membre : écritures d'administration refusées", () => {
@@ -120,5 +122,127 @@ describe("Garde-fous d'escalade", () => {
       .eq("organization_id", fx.alpha.orgId)
       .select();
     expect(data ?? []).toEqual([]);
+  });
+});
+
+// ═══ Consultant : LECTURE SEULE. Lit tout son périmètre (is_member_of) mais
+// n'écrit RIEN sur les tables opérationnelles (is_editor_of). Threat model :
+// écriture hors UI (appel Supabase direct) refusée côté serveur.
+describe("Consultant : lecture seule (is_editor_of)", () => {
+  // AC-S2 — lecture autorisée (parité avec un éditeur)
+  it("peut LIRE les courriers de son périmètre", async () => {
+    const { data, error } = await consultantAlpha
+      .from("couriers")
+      .select("id")
+      .eq("organization_id", fx.alpha.orgId);
+    expect(error).toBeNull();
+    expect((data ?? []).length).toBeGreaterThan(0);
+  });
+
+  // AC-S1 — écritures opérationnelles refusées
+  it("insert courier refusé", async () => {
+    const { error } = await consultantAlpha.from("couriers").insert({
+      organization_id: fx.alpha.orgId,
+      direction: "inbound",
+      channel: "paper",
+      subject: "[TEST] courrier pirate consultant",
+      received_at: new Date().toISOString(),
+    });
+    expect(error).not.toBeNull();
+  });
+
+  it("update courier refusé (0 ligne)", async () => {
+    const { data } = await consultantAlpha
+      .from("couriers")
+      .update({ subject: "[TEST] hijack consultant" })
+      .eq("id", fx.alpha.couriers.assigned)
+      .select();
+    expect(data ?? []).toEqual([]);
+  });
+
+  it("delete courier refusé (0 ligne)", async () => {
+    const { data } = await consultantAlpha
+      .from("couriers")
+      .delete()
+      .eq("id", fx.alpha.couriers.assigned)
+      .select();
+    expect(data ?? []).toEqual([]);
+  });
+
+  it("insert note interne refusé (CL-2 : la note est de la collaboration)", async () => {
+    const { error } = await consultantAlpha.from("courier_notes").insert({
+      organization_id: fx.alpha.orgId,
+      courier_id: fx.alpha.couriers.assigned,
+      content: "[TEST] note pirate consultant",
+    });
+    expect(error).not.toBeNull();
+  });
+
+  it("insert ticket d'action refusé", async () => {
+    const { error } = await consultantAlpha.from("action_tickets").insert({
+      organization_id: fx.alpha.orgId,
+      courier_id: fx.alpha.couriers.assigned,
+    });
+    expect(error).not.toBeNull();
+  });
+
+  it("insert lien de courrier refusé", async () => {
+    const { error } = await consultantAlpha.from("courier_links").insert({
+      organization_id: fx.alpha.orgId,
+      courier_id: fx.alpha.couriers.assigned,
+      external_type: "iris",
+      external_id: "[TEST]-PIRATE-1",
+    });
+    expect(error).not.toBeNull();
+  });
+
+  it("relance d'analyse IA (RPC enqueue_courier_analysis) refusée", async () => {
+    const { error } = await consultantAlpha.rpc("enqueue_courier_analysis", {
+      p_courier_id: fx.alpha.couriers.assigned,
+      p_kind: "full",
+    });
+    expect(error).not.toBeNull(); // RAISE EXCEPTION 'Forbidden'
+  });
+
+  // AC-S7 — pas d'auto-escalade vers un rôle éditeur
+  it("ne peut pas s'auto-promouvoir gestionnaire (éditeur)", async () => {
+    const uid = (await consultantAlpha.auth.getUser()).data.user!.id;
+    const { data } = await consultantAlpha
+      .from("organization_users")
+      .update({ role: "gestionnaire" })
+      .eq("user_id", uid)
+      .eq("organization_id", fx.alpha.orgId)
+      .select();
+    expect(data ?? []).toEqual([]);
+  });
+
+  // AC-S8 — isolation multi-tenant conservée
+  it("ne lit AUCUN courrier du tenant Beta", async () => {
+    const { data } = await consultantAlpha
+      .from("couriers")
+      .select("id")
+      .eq("organization_id", fx.beta.orgId);
+    expect(data ?? []).toEqual([]);
+  });
+});
+
+// ═══ Non-régression is_editor_of : un membre NON-consultant garde l'écriture.
+describe("Éditeur (rôle ≠ consultant) : écriture opérationnelle conservée", () => {
+  it("membreAlpha peut créer puis supprimer une note", async () => {
+    const { data, error } = await membreAlpha
+      .from("courier_notes")
+      .insert({
+        organization_id: fx.alpha.orgId,
+        courier_id: fx.alpha.couriers.assigned,
+        content: "[TEST] note membre éditeur",
+      })
+      .select("id")
+      .single();
+    expect(error).toBeNull();
+    expect(data?.id).toBeTruthy();
+    if (data?.id) {
+      const { error: delErr } = await membreAlpha.from("courier_notes").delete().eq("id", data.id);
+      expect(delErr).toBeNull();
+    }
   });
 });

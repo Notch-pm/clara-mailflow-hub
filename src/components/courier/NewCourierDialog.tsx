@@ -35,6 +35,8 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { readableTextColor } from "@/lib/tag-color";
+import { useAuth } from "@/contexts/AuthContext";
+import { canEditCouriers } from "@/lib/permissions";
 import { supabase } from "@/integrations/supabase/client";
 import { createCourier } from "@/services/courierService";
 import { addParticipant } from "@/services/courierParticipantService";
@@ -80,6 +82,10 @@ function formatBytes(b: number): string {
 
 export default function NewCourierDialog({ open, onOpenChange, organizationId, onCreated }: Props) {
   const qc = useQueryClient();
+  const { profile, membership } = useAuth();
+  // Un consultant (lecteur seul) ne peut pas créer de courrier, même si ce
+  // dialog était ouvert par un autre chemin que le bouton (défense en profondeur).
+  const canEdit = canEditCouriers(profile, membership);
 
   const [step, setStep] = useState<"import" | "review">("import");
   const [importMode, setImportMode] = useState<"files" | "paste">("files");
@@ -430,7 +436,7 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open && canEdit} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Nouveau courrier</DialogTitle>

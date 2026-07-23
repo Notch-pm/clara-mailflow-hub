@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { withAiUsageGuard, AiQuotaExceededError, estimateTextTokens } from "../_shared/aiUsage.ts";
+import { assertEditor } from "../_shared/authz.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -74,6 +75,11 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (memErr || !membership) {
       return jsonResponse({ error: "Accès refusé" }, 403);
+    }
+
+    // Le consultant est en lecture seule : pas de rédaction IA de réponse.
+    if (!(await assertEditor(admin, user.id, orgId))) {
+      return jsonResponse({ error: "Accès refusé : rôle consultant en lecture seule" }, 403);
     }
 
     const mistralKey = Deno.env.get("MISTRAL_API_KEY");

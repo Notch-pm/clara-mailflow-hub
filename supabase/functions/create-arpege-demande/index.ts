@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { assertEditor } from "../_shared/authz.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -128,6 +129,14 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "Accès refusé" }), {
         status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // Le consultant est en lecture seule : pas de création de demande Arpège.
+    if (!(await assertEditor(supabaseAdmin, user.id, organization_id))) {
+      return new Response(
+        JSON.stringify({ error: "Accès refusé : rôle consultant en lecture seule" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
     // Récupérer la procédure et sa config Arpège
