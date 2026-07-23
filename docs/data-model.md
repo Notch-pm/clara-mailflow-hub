@@ -389,7 +389,7 @@ Plusieurs par org si `organizations.multiple_imap = true`. Réception automatiqu
 | `socle_organization_id` | uuid FK → socle_organizations | org propriétaire de la boîte — reportée sur les courriers entrants |
 | `last_fetch_at` / `last_error` | timestamptz/text | |
 | `is_scan_inbox` | boolean, défaut `false` | **Boîte de numérisation** : boîte alimentée par un copieur réseau, pas par des correspondants. Bascule l'ingestion en mode scan (voir ci-dessous). |
-| `scan_allowed_senders` | text[] | Adresses des copieurs autorisés à déposer. `NULL` = aucune restriction — **à éviter** : quiconque connaît l'adresse pourrait créer des courriers dans le tenant. |
+| `scan_allowed_senders` | text[] | Adresses des copieurs autorisés à déposer. **Fail-closed** : `NULL` **ou** `[]` (vide) → la boîte de scan n'accepte **rien** (une boîte de numérisation n'attend que ses copieurs ; sans expéditeur configuré, aucun courrier n'est créé). Logique testable : `fetch-inbound-emails/logic.ts` (`isInboundSenderAccepted`). |
 | `max_email_bytes` | integer | Plafond par email pour cette boîte. `NULL` = plafond global de l'edge function (15 Mo). |
 
 **Mode boîte de numérisation** (`is_scan_inbox = true`), appliqué par `fetch-inbound-emails` :
