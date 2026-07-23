@@ -68,7 +68,7 @@ Défense en profondeur côté edge (fonctions en `service_role`, hors RLS) : gar
 | `/superadmin/organisations` | Liste des organisations | Créer / désactiver une org |
 | `/superadmin/organisations/:orgId` | Paramètres d'une organisation | Édition complète d'une org tierce |
 
-**Actions exclusives** : créer une organisation, basculer `is_superadmin`, voir les données cross-org, configurer les intégrations globales.
+**Actions exclusives** : créer une organisation, basculer `is_superadmin`, voir les données cross-org, **configurer les intégrations partenaires** (`OrgIntegrations` — connexion Arpège, suspension : monté uniquement sur `/superadmin/organisations/:orgId` ; écritures et lecture de `organization_integrations` verrouillées `is_superadmin` côté RLS, cf. `docs/partenaires-integration.md`).
 
 ---
 
@@ -115,7 +115,6 @@ Accessibles depuis `/parametres` :
 | **Signataires** | CRUD signataires + upload image signature |
 | **Démarches** (`ProceduresSettings`) | CRUD + synchronisation Arpège |
 | **SMTP / IMAP organisation** | Configuration email globale ou par organisation Socle |
-| **Intégrations** (`OrgIntegrations`) | Arpège (URL, client_id, secret) |
 | **Formulaires portail** | Création / diffusion de formulaires publics |
 
 **Actions exclusives admin** :
