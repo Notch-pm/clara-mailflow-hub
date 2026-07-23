@@ -31,6 +31,11 @@ export interface TenantFixture {
   signatoryId: string;
   couriers: { assigned: string; root: string; unassigned: string };
   tagId: string;
+  // Fixtures du garde de transitions
+  midNoTransitionStateId: string;
+  workflowBId: string;
+  statesB: { initial: string; mid: string; final: string };
+  socleOrgBId: string;
 }
 
 function readDotEnv(name: string): string | undefined {
@@ -44,6 +49,8 @@ export const SUPABASE_URL =
   process.env.SUPABASE_URL ?? readDotEnv("VITE_SUPABASE_URL") ?? "";
 export const ANON_KEY =
   process.env.SUPABASE_ANON_KEY ?? readDotEnv("VITE_SUPABASE_PUBLISHABLE_KEY") ?? "";
+/** Clé service_role (jamais dans .env — fournie inline pour le seed / la CI). */
+export const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
 export function loadFixtures(): Fixtures {
   const p = join(process.cwd(), "src", "test-integration", "fixtures.json");
@@ -66,4 +73,15 @@ export async function clientAs(email: string, password: string): Promise<Supabas
   const { error } = await client.auth.signInWithPassword({ email, password });
   if (error) throw new Error(`Connexion ${email} impossible: ${error.message}`);
   return client;
+}
+
+/**
+ * Client service_role (bypasse la RLS ET le garde de transitions via le claim
+ * JWT `role=service_role`). `null` si la clé n'est pas dans l'environnement.
+ */
+export function serviceRoleClient(): SupabaseClient | null {
+  if (!SERVICE_ROLE_KEY) return null;
+  return createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
 }
