@@ -8,6 +8,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2.45.0";
 import { simpleParser } from "npm:mailparser@3.7.1";
+import { isInboundSenderAccepted } from "./logic.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -390,15 +391,14 @@ async function processOrganization(
 
         const isScan = s.is_scan_inbox === true;
 
-        // Une boîte de numérisation n'attend QUE son copieur. Sans ce filtre,
-        // quiconque connaît l'adresse crée des courriers dans le tenant.
-        if (isScan && s.scan_allowed_senders?.length) {
-          const allowed = s.scan_allowed_senders.map((a) => a.trim().toLowerCase()).filter(Boolean);
-          const from = senderEmail?.toLowerCase() ?? "";
-          if (!allowed.includes(from)) {
-            console.error(`Scan uid=${uid} rejeté : expéditeur non autorisé (${from || "inconnu"})`);
-            continue;
-          }
+        // Une boîte de numérisation n'attend QUE ses copieurs (FAIL-CLOSED) : une
+        // allowlist nulle OU vide ne laisse RIEN entrer. Sans ce filtre, quiconque
+        // connaît l'adresse crée des courriers dans le tenant. (cf. logic.ts)
+        if (!isInboundSenderAccepted(isScan, s.scan_allowed_senders, senderEmail)) {
+          console.error(
+            `Scan uid=${uid} rejeté : expéditeur non autorisé (${senderEmail?.toLowerCase() || "inconnu"})`,
+          );
+          continue;
         }
 
         // Le sujet produit par un copieur est du bruit (« Scan from RICOH
