@@ -95,6 +95,22 @@ export function useDomiciliaryFileMode(orgId: string | null | undefined): boolea
   return useSyncExternalStore(subscribe, () => isDomiciliaryFileEnabled(orgId));
 }
 
+// ── Grands anniversaires ────────────────────────────────────────────────────
+
+export const MILESTONE_AGES = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100] as const;
+
+/** Âge rond (10, 20, … 100 ans) atteint dans l'année civile, sinon null. */
+export function milestoneAgeThisYear(
+  dateStr: string | null | undefined,
+  year: number = new Date().getFullYear(),
+): number | null {
+  if (!dateStr) return null;
+  const born = Number.parseInt(dateStr.slice(0, 4), 10);
+  if (!Number.isFinite(born)) return null;
+  const age = year - born;
+  return (MILESTONE_AGES as readonly number[]).includes(age) ? age : null;
+}
+
 // ── Fiche domiciliaire d'un contact : saisie (localStorage) ou mock ─────────
 
 export function getDomiciliaryRecord(source: DomiciliarySource): DomiciliaryRecord {
@@ -195,7 +211,15 @@ export function mockDomiciliaryRecord(source: DomiciliarySource): DomiciliaryRec
   const family = pickWeighted(rand);
 
   // Dates d'union cohérentes avec la naissance (et le Pacs n'existe que depuis 1999).
-  const unionDate = randomDate(rand, birthYear + 22, Math.min(birthYear + 45, 2024));
+  // Un mariage sur deux tombe sur un anniversaire rond dans l'année, pour que le
+  // filtre « grands anniversaires de mariage » ait des résultats à montrer.
+  let unionDate = randomDate(rand, birthYear + 22, Math.min(birthYear + 45, 2024));
+  const nowYear = new Date().getFullYear();
+  const milestoneChoices = [10, 20, 30, 40, 50].filter((a) => nowYear - a >= birthYear + 20);
+  if (milestoneChoices.length > 0 && rand() < 0.5) {
+    const age = milestoneChoices[Math.floor(rand() * milestoneChoices.length)];
+    unionDate = iso(nowYear - age, 1 + Math.floor(rand() * 12), 1 + Math.floor(rand() * 28));
+  }
   const pacsDate = unionDate >= "2000-01-01" ? unionDate : randomDate(rand, 2000, 2024);
 
   const arrivalMin = Math.max(birthYear + 18, 1995);

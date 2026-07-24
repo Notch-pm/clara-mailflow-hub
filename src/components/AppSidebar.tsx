@@ -7,7 +7,9 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useAuth } from "@/contexts/AuthContext";
+import { useOrganization } from "@/contexts/OrganizationContext";
 import { canAccessStats } from "@/lib/permissions";
+import { useDomiciliaryFileMode } from "@/lib/demo-domiciliary";
 
 interface NavItem {
   title: string;
@@ -53,9 +55,13 @@ function SidebarItem({ item }: { item: NavItem }) {
 
 export function AppSidebar() {
   const { profile, membership } = useAuth();
-  const navItems = baseNavItems.filter((it) =>
-    it.url === "/statistiques" ? canAccessStats(profile, membership) : true,
-  );
+  const { organizationId } = useOrganization();
+  const domiciliaryEnabled = useDomiciliaryFileMode(organizationId);
+  const navItems = baseNavItems
+    .filter((it) => (it.url === "/statistiques" ? canAccessStats(profile, membership) : true))
+    .map((it) =>
+      it.url === "/contacts" && domiciliaryEnabled ? { ...it, title: "Fichier domiciliaire" } : it,
+    );
   return (
     <TooltipProvider delayDuration={150}>
       <nav aria-label="Navigation principale" className="hidden md:flex flex-col items-center w-[52px] shrink-0 py-3 bg-primary h-full relative">

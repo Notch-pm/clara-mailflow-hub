@@ -60,7 +60,12 @@ import {
 } from "@/services/socleContactService";
 import { listContactCouriers, type ContactCourier } from "@/services/courierParticipantService";
 import ContactPicker from "@/components/courier/ContactPicker";
-import { useDomiciliaryFileMode } from "@/lib/demo-domiciliary";
+import {
+  getDomiciliaryRecord,
+  MILESTONE_AGES,
+  milestoneAgeThisYear,
+  useDomiciliaryFileMode,
+} from "@/lib/demo-domiciliary";
 
 /**
  * Annuaire des contacts — données servies par le référentiel Socle (source de
@@ -744,7 +749,8 @@ function ContactDetail({ contactId }: { contactId: string }) {
     return (
       <div className="space-y-4">
         <Button variant="ghost" onClick={() => navigate("/contacts")}>
-          <ArrowLeft className="h-4 w-4 mr-2" /> Retour aux contacts
+          <ArrowLeft className="h-4 w-4 mr-2" />{" "}
+          {domiciliaryEnabled ? "Retour au fichier domiciliaire" : "Retour aux contacts"}
         </Button>
         <Card>
           <CardContent className="py-10 text-center space-y-2">
@@ -765,7 +771,8 @@ function ContactDetail({ contactId }: { contactId: string }) {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <Button variant="ghost" onClick={() => navigate("/contacts")}>
-          <ArrowLeft className="h-4 w-4 mr-2" /> Retour aux contacts
+          <ArrowLeft className="h-4 w-4 mr-2" />{" "}
+          {domiciliaryEnabled ? "Retour au fichier domiciliaire" : "Retour aux contacts"}
         </Button>
         {contact && (
           <div className="flex items-center gap-2">
@@ -960,6 +967,10 @@ function ContactsList() {
   const debouncedSearch = useDebouncedValue(search, 300);
   const [typeFilter, setTypeFilter] = useState<SocleContactType | "all">("all");
   const [statusFilter, setStatusFilter] = useState<"active" | "archived" | "all">("active");
+  const domiciliaryEnabled = useDomiciliaryFileMode(organizationId);
+  const [quartierFilter, setQuartierFilter] = useState("all");
+  const [birthdayFilter, setBirthdayFilter] = useState("all");
+  const [weddingFilter, setWeddingFilter] = useState("all");
   const [page, setPage] = useState(0);
   const [createOpen, setCreateOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -973,21 +984,62 @@ function ContactsList() {
     [debouncedSearch, typeFilter, statusFilter],
   );
 
+  // Filtres domiciliaires (quartier, grands anniversaires) : critères absents
+  // de l'API du référentiel, donc appliqués côté client sur l'ensemble des
+  // fiches (fetch complet, pagination désactivée le temps du filtre).
+  const domiciliaryFiltering =
+    domiciliaryEnabled &&
+    (quartierFilter !== "all" || birthdayFilter !== "all" || weddingFilter !== "all");
+
   // On demande PAGE_SIZE + 1 pour savoir s'il existe une page suivante, sans
   // afficher la ligne excédentaire. Comparer `length === PAGE_SIZE` laissait
   // « Suivant » actif quand la dernière page était exactement pleine, menant à
   // une page vide. L'API du Socle ne renvoie pas de total, d'où cette astuce.
   const contactsQuery = useQuery({
-    queryKey: ["socle-contacts", organizationId, filters, page],
+    queryKey: ["socle-contacts", organizationId, filters, domiciliaryFiltering ? "all" : page],
     queryFn: () =>
-      listContacts(organizationId!, { ...filters, limit: PAGE_SIZE + 1, offset: page * PAGE_SIZE }),
+      domiciliaryFiltering
+        ? fetchAllContactsForExport(organizationId!, filters)
+        : listContacts(organizationId!, { ...filters, limit: PAGE_SIZE + 1, offset: page * PAGE_SIZE }),
     enabled: !!organizationId,
     staleTime: 30_000,
   });
 
-  const fetched = contactsQuery.data ?? [];
-  const hasNextPage = fetched.length > PAGE_SIZE;
-  const contacts = hasNextPage ? fetched.slice(0, PAGE_SIZE) : fetched;
+  const fetched = useMemo(() => contactsQuery.data ?? [], [contactsQuery.data]);
+
+  const demoFiltered = useMemo(() => {
+    if (!domiciliaryFiltering) return fetched;
+    return fetched.filter((c) => {
+      if (quartierFilter !== "all" && c.quartier?.id !== quartierFilter) return false;
+      if (birthdayFilter === "all" && weddingFilter === "all") return true;
+      if (c.contact_type !== "personne") return false;
+      // Même source que la fiche : date réelle du référentiel si saisie, sinon mock.
+      const record = getDomiciliaryRecord(c);
+      if (birthdayFilter !== "all") {
+        const age = milestoneAgeThisYear(record.birth_date);
+        if (birthdayFilter === "any" ? age === null : age !== Number(birthdayFilter)) return false;
+      }
+      if (weddingFilter !== "all") {
+        const age = milestoneAgeThisYear(record.marriage_date);
+        if (weddingFilter === "any" ? age === null : age !== Number(weddingFilter)) return false;
+      }
+      return true;
+    });
+  }, [fetched, domiciliaryFiltering, quartierFilter, birthdayFilter, weddingFilter]);
+
+  const quartierOptions = useMemo(() => {
+    const byId = new Map<string, string>();
+    for (const c of fetched) if (c.quartier) byId.set(c.quartier.id, c.quartier.name);
+    return [...byId.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [fetched]);
+
+  const hasNextPage = !domiciliaryFiltering && fetched.length > PAGE_SIZE;
+  const contacts = domiciliaryFiltering
+    ? demoFiltered
+    : hasNextPage
+      ? fetched.slice(0, PAGE_SIZE)
+      : fetched;
+  const columnCount = 5 + (domiciliaryEnabled ? 2 : 0) + (statusFilter !== "active" ? 1 : 0);
 
   async function handleExportCsv() {
     if (!organizationId) return;
@@ -1020,10 +1072,13 @@ function ContactsList() {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div>
-          <h1 className="text-2xl font-semibold">Contacts</h1>
+          <h1 className="text-2xl font-semibold">
+            {domiciliaryEnabled ? "Fichier domiciliaire" : "Contacts"}
+          </h1>
           <p className="text-sm text-muted-foreground">
-            Référentiel de contacts partagé avec les autres
-            applications de la collectivité.
+            {domiciliaryEnabled
+              ? "Fichier domiciliaire des usagers, adossé au référentiel partagé de la collectivité."
+              : "Référentiel de contacts partagé avec les autres applications de la collectivité."}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -1064,6 +1119,39 @@ function ContactsList() {
             <SelectItem value="all">Tous</SelectItem>
           </SelectContent>
         </Select>
+        {domiciliaryEnabled && (
+          <>
+            <Select value={quartierFilter} onValueChange={(v) => { setQuartierFilter(v); setPage(0); }}>
+              <SelectTrigger className="w-[190px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tous les quartiers</SelectItem>
+                {quartierOptions.map(([id, name]) => (
+                  <SelectItem key={id} value={id}>{name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={birthdayFilter} onValueChange={(v) => { setBirthdayFilter(v); setPage(0); }}>
+              <SelectTrigger className="w-[240px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Anniversaires : tous</SelectItem>
+                <SelectItem value="any">Grand anniversaire dans l'année</SelectItem>
+                {MILESTONE_AGES.map((age) => (
+                  <SelectItem key={age} value={String(age)}>{age} ans dans l'année</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={weddingFilter} onValueChange={(v) => { setWeddingFilter(v); setPage(0); }}>
+              <SelectTrigger className="w-[250px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Mariages : tous</SelectItem>
+                <SelectItem value="any">Grand anniversaire de mariage</SelectItem>
+                {MILESTONE_AGES.map((age) => (
+                  <SelectItem key={age} value={String(age)}>{age} ans de mariage</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </>
+        )}
       </div>
 
       <Card>
@@ -1081,20 +1169,22 @@ function ContactsList() {
                   <TableHead>Email</TableHead>
                   <TableHead>Téléphone</TableHead>
                   <TableHead>Ville</TableHead>
+                  {domiciliaryEnabled && <TableHead>Naissance</TableHead>}
+                  {domiciliaryEnabled && <TableHead>Quartier</TableHead>}
                   {statusFilter !== "active" && <TableHead>Statut</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {contactsQuery.isLoading && (
                   <TableRow>
-                    <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
+                    <TableCell colSpan={columnCount} className="py-10 text-center text-muted-foreground">
                       Chargement…
                     </TableCell>
                   </TableRow>
                 )}
                 {!contactsQuery.isLoading && contacts.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
+                    <TableCell colSpan={columnCount} className="py-10 text-center text-muted-foreground">
                       Aucun contact.
                     </TableCell>
                   </TableRow>
@@ -1119,6 +1209,16 @@ function ContactsList() {
                       <TableCell>{c.email ?? "—"}</TableCell>
                       <TableCell>{contactPhone(c)}</TableCell>
                       <TableCell>{c.city ?? "—"}</TableCell>
+                      {domiciliaryEnabled && (
+                        <TableCell>
+                          {c.contact_type === "personne"
+                            ? formatDate(getDomiciliaryRecord(c).birth_date)
+                            : "—"}
+                        </TableCell>
+                      )}
+                      {domiciliaryEnabled && (
+                        <TableCell><QuartierBadge quartier={c.quartier} /></TableCell>
+                      )}
                       {statusFilter !== "active" && (
                         <TableCell>
                           {c.status === "archived"
@@ -1135,15 +1235,21 @@ function ContactsList() {
         </CardContent>
       </Card>
 
-      <div className="flex items-center justify-end gap-2">
-        <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
-          <ChevronLeft className="h-4 w-4 mr-1" /> Précédent
-        </Button>
-        <span className="text-sm text-muted-foreground">Page {page + 1}</span>
-        <Button variant="outline" size="sm" disabled={!hasNextPage} onClick={() => setPage((p) => p + 1)}>
-          Suivant <ChevronRight className="h-4 w-4 ml-1" />
-        </Button>
-      </div>
+      {domiciliaryFiltering ? (
+        <p className="text-sm text-muted-foreground text-right">
+          {contacts.length} fiche(s) correspondante(s)
+        </p>
+      ) : (
+        <div className="flex items-center justify-end gap-2">
+          <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
+            <ChevronLeft className="h-4 w-4 mr-1" /> Précédent
+          </Button>
+          <span className="text-sm text-muted-foreground">Page {page + 1}</span>
+          <Button variant="outline" size="sm" disabled={!hasNextPage} onClick={() => setPage((p) => p + 1)}>
+            Suivant <ChevronRight className="h-4 w-4 ml-1" />
+          </Button>
+        </div>
+      )}
 
       <ContactFormDialog
         organizationId={organizationId!}
