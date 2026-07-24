@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import DuplicateContactsAlert from "@/components/contacts/DuplicateContactsAlert";
+import DomiciliaryFileCard from "@/components/contacts/DomiciliaryFileCard";
 import { QuartierBadge } from "@/components/contacts/QuartierBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,6 +60,7 @@ import {
 } from "@/services/socleContactService";
 import { listContactCouriers, type ContactCourier } from "@/services/courierParticipantService";
 import ContactPicker from "@/components/courier/ContactPicker";
+import { useDomiciliaryFileMode } from "@/lib/demo-domiciliary";
 
 /**
  * Annuaire des contacts — données servies par le référentiel Socle (source de
@@ -711,6 +713,7 @@ function ContactDetail({ contactId }: { contactId: string }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [editOpen, setEditOpen] = useState(false);
+  const domiciliaryEnabled = useDomiciliaryFileMode(organizationId);
 
   const contactQuery = useQuery({
     queryKey: ["socle-contact", organizationId, contactId],
@@ -873,6 +876,10 @@ function ContactDetail({ contactId }: { contactId: string }) {
               )}
             </CardContent>
           </Card>
+
+          {domiciliaryEnabled && contact.contact_type === "personne" && (
+            <DomiciliaryFileCard key={contact.id} contact={contact} />
+          )}
 
           <ContactRelationsCard
             organizationId={organizationId!}

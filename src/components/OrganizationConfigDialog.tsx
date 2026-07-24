@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/select";
 import { Loader2, Building2, Home, Mail, Phone } from "lucide-react";
 import { toast } from "sonner";
+import { setDomiciliaryFileEnabled, useDomiciliaryFileMode } from "@/lib/demo-domiciliary";
 
 const NONE = "__none__";
 
@@ -42,6 +43,8 @@ const NONE = "__none__";
 // seule). Le nœud RACINE porte en plus les paramètres globaux du tenant
 // (différenciation IMAP, conservation/purge) — stockés
 // sur `organizations`, seule l'UI a déménagé depuis l'ex-« Configuration générale ».
+// Le mode fichier domiciliaire est une démo 100 % front (localStorage, aucune
+// écriture en base) — voir `lib/demo-domiciliary`.
 
 interface Props {
   open: boolean;
@@ -376,6 +379,7 @@ export default function OrganizationConfigDialog({ open, onOpenChange, org, orgI
 function RootOrgSettings({ orgId }: { orgId: string }) {
   const queryClient = useQueryClient();
   const [courierRetention, setCourierRetention] = useState("");
+  const domiciliaryEnabled = useDomiciliaryFileMode(orgId);
 
   const { data: org } = useQuery({
     queryKey: ["org-general", orgId],
@@ -456,6 +460,26 @@ function RootOrgSettings({ orgId }: { orgId: string }) {
           checked={org?.multiple_imap ?? false}
           disabled={toggleMutation.isPending}
           onCheckedChange={(val) => toggleMutation.mutate(val)}
+        />
+      </div>
+
+      <div className="flex items-center justify-between rounded-lg border p-3 gap-3">
+        <div className="flex items-start gap-2">
+          <Home className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+          <div>
+            <Label className="text-sm font-medium">Mode fichier domiciliaire</Label>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Informations supplémentaires sur les contacts (nom usuel, dates de naissance/décès,
+              situation familiale, dates d'arrivée/départ, nationalité, adresse détaillée, second téléphone).
+            </p>
+          </div>
+        </div>
+        <Switch
+          checked={domiciliaryEnabled}
+          onCheckedChange={(val) => {
+            setDomiciliaryFileEnabled(orgId, val);
+            toast.success("Configuration enregistrée");
+          }}
         />
       </div>
 
