@@ -313,7 +313,7 @@ Miroir de la **hiérarchie d'organisations** du Socle (sous-arbre du `socle_org_
 | `reply_workflow_id` | uuid FK → workflows | **config Clara** : workflow des réponses |
 | `synced_at` / `obsoleted_at` | timestamptz | |
 
-La boîte IMAP d'une org est rattachée via `imap_settings.socle_organization_id`. Arbre + panneau de config : `src/components/SocleOrganizationTree.tsx` + `OrganizationConfigDialog.tsx` (sections « Organisations » de SettingsPage et OrgSettings) ; le nœud **racine** porte l'UI des paramètres globaux du tenant (fichier domiciliaire, « Différencier les adresses mail de réception par organisation » = `organizations.multiple_imap`, rétention/purge — stockage inchangé sur `organizations`). Service client : `src/services/socleOrgConfigService.ts`.
+La boîte IMAP d'une org est rattachée via `imap_settings.socle_organization_id`. Arbre + panneau de config : `src/components/SocleOrganizationTree.tsx` + `OrganizationConfigDialog.tsx` (sections « Organisations » de SettingsPage et OrgSettings) ; le nœud **racine** porte l'UI des paramètres globaux du tenant (« Différencier les adresses mail de réception par organisation » = `organizations.multiple_imap`, rétention/purge — stockage inchangé sur `organizations`). Service client : `src/services/socleOrgConfigService.ts`.
 
 #### `socle_organization_members` / `socle_organization_signatories`
 Membres et signataires d'une organisation (remplacent `service_members`/`service_signatories`). `UNIQUE (socle_organization_id, user_id|signatory_id)`, RLS select `is_member_of` / écriture `is_admin_of`. Les membres pilotent le filtrage des courriers (`useUserServiceFilter` — liste d'**UUIDs** d'orgs) ; les signataires alimentent le composer de réponse.

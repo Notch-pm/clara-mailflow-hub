@@ -40,7 +40,7 @@ const NONE = "__none__";
 // Configuration Clara d'une (sous-)organisation Socle : workflows, boîte IMAP,
 // membres, signataires. Le libellé et les coordonnées viennent du Socle (lecture
 // seule). Le nœud RACINE porte en plus les paramètres globaux du tenant
-// (fichier domiciliaire, différenciation IMAP, conservation/purge) — stockés
+// (différenciation IMAP, conservation/purge) — stockés
 // sur `organizations`, seule l'UI a déménagé depuis l'ex-« Configuration générale ».
 
 interface Props {
