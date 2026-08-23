@@ -16,7 +16,8 @@
 
 ## P1 — Sécurité / correctness
 
-1. **Mots de passe IMAP/SMTP en clair en DB** (`imap_settings.password`, `smtp_settings`) — chiffrer (Vault par ligne ou pgsodium) + adapter `fetch-inbound-emails`, `send-courier-reply`, `send-test-email`. Gros item, à planifier seul.
+1. **Mots de passe IMAP/SMTP en clair en DB** (`imap_settings.password`, `smtp_settings.password`) — chiffrer (Vault par ligne ou pgsodium) + adapter les consommateurs : `fetch-inbound-emails` (IMAP) et les **six** fonctions d'envoi (`auth-email-hook`, `invite-user`, `send-courier-reply`, `send-password-reset`, `send-assignment-notification`, `send-mention-notification`), qui lisent toutes `smtp_settings` en `select("*")`. Gros item, à planifier seul, **SMTP et IMAP ensemble** (décision PO du 2026-08-23 : ne pas mêler ce chantier à la bascule de la source).
+   *Déjà atténué côté SMTP le 2026-08-23* : la table n'est plus exposée au client (aucun `GRANT` pour `anon`/`authenticated`), le mot de passe vient du Socle et n'est écrit que par une RPC de service. À noter pour le jour J : Iris a déjà fait ce chantier (`password_secret_id` + Vault, `C:\Users\jacqu\Notch\iris`) — la migration `20260823150000_smtp_depuis_socle.sql` y sert de modèle.
 2. ~~**RLS `auth_rls_initplan` (32 policies)**~~ ✅ corrigé (`20260712090000_rls_consolidation_advisors`) — wrap `(select auth.uid())` + helpers.
 3. ~~**`multiple_permissive_policies` (29 cas)**~~ ✅ corrigé (même migration) — une policy par (table, rôle, action), `service_role_full` recréées `TO service_role`, durcissement des policies `users` (voir `docs/database-rls.md`).
 4. **20 FK sans index** (`action_tickets.created_by`, `courier_documents.organization_id`, …) : ajouter les index couvrants ; **20 index jamais utilisés** à supprimer (attention : le projet n'a pas encore de trafic réel, re-vérifier avant suppression).

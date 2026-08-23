@@ -9,7 +9,7 @@
 - **Recevoir** des courriers (papier, emails, formulaires et autres sollicitations ressaisies par les agents) via saisie manuelle, import en masse, IMAP ou boîte de numérisation.
 - **Analyser** chaque courrier (OCR des pièces jointes + LLM via Lovable AI Gateway) : résumé, intentions, sentiment, actions suggérées.
 - **Traiter** via workflows configurables (états + transitions), tags, assignation à une **organisation** (hiérarchie synchronisée depuis le Socle — les organisations remplacent les anciens « services »), actions internes minimales et liens vers demandes partenaires (Iris, Arpège…).
-- **Répondre** : brouillon généré par IA, signature électronique (image), envoi via SMTP de l'organisation.
+- **Répondre** : brouillon généré par IA, signature électronique (image), envoi via le serveur d’envoi (SMTP) de l’organisation — **défini dans le Socle**, dont Clara ne tient qu’un miroir rafraîchi par la sync (plus aucune saisie SMTP dans Clara).
 - **Tracer** : historique d'événements, notes, liens entre courriers, références séquentielles annuelles.
 - **Référentiels** : contacts/usagers (servis par l’API du **Socle** — aucune identité stockée dans Clara, seulement des références `socle_contact_id`), signataires, modèles, démarches (sync nocturne depuis le Socle — plus de paramétrage des démarches dans Clara).
 

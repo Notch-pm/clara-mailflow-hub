@@ -174,6 +174,9 @@ Deno.serve(async (req) => {
       .eq("organization_id", ticket.organization_id)
       .single();
 
+    // Pas de miroir du serveur d'envoi (il vient du référentiel) ou pas
+    // d'adresse : la notification in-app a déjà été posée, on n'échoue pas pour
+    // autant — seul le mail est sauté.
     if (!smtp?.host || !assignee?.email) {
       return json({ success: true, notified: true, mailed: false, reason: "no_smtp_or_email" });
     }

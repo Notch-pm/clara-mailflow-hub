@@ -254,9 +254,14 @@ Deno.serve(async (req) => {
       .eq("organization_id", orgId)
       .single();
 
+    // Miroir du référentiel (organisation principale) : plus de saisie dans
+    // Clara, et aucun relais de repli — sans miroir, aucun mail d'auth ne part.
     if (smtpError || !smtp) {
       console.error(`No SMTP settings for org ${orgId}`);
-      return new Response(JSON.stringify({ error: "Configuration SMTP introuvable" }), {
+      return new Response(JSON.stringify({
+        error:
+          "Aucun serveur d'envoi pour cette organisation : définissez-le dans le référentiel (organisation principale), puis lancez une synchronisation.",
+      }), {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

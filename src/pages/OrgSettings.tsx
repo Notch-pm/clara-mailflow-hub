@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, Users as UsersIcon, Mail, Plug, Tags, ClipboardList, GitBranch, Sparkles, Building2, LucideIcon } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import UsersPage from "./UsersPage";
-import SmtpSettings from "@/components/SmtpSettings";
 import ImapSettings from "@/components/ImapSettings";
 import OrgIntegrations from "@/components/OrgIntegrations";
 import ClassificationSettings from "./ClassificationSettings";
@@ -17,12 +16,15 @@ import SocleIntegrationSettings from "@/components/SocleIntegrationSettings";
 import SocleOrganizationTree from "@/components/SocleOrganizationTree";
 import AiUsageSettings from "@/components/AiUsageSettings";
 
-type Section = "menu" | "utilisateurs" | "smtp" | "integrations" | "classification" | "demarches" | "organisations" | "ia";
+type Section = "menu" | "utilisateurs" | "emails" | "integrations" | "classification" | "demarches" | "organisations" | "ia";
 
 const settingSections: { key: Section; title: string; description: string; icon: LucideIcon }[] = [
   { key: "organisations", title: "Organisations", description: "Hiérarchie des organisations du référentiel : workflows, boîtes IMAP, membres et signataires par organisation", icon: Building2 },
   { key: "utilisateurs", title: "Utilisateurs", description: "Gestion des utilisateurs et rôles", icon: UsersIcon },
-  { key: "smtp", title: "Emails (SMTP / IMAP)", description: "Envoi de notifications et réception automatique des courriers", icon: Mail },
+  // Le serveur d'envoi (SMTP) ne se saisit plus ici : il vient du référentiel
+  // (organisation racine) et arrive par la synchronisation. Ne reste que la
+  // réception.
+  { key: "emails", title: "Emails (réception IMAP)", description: "Boîtes de réception automatique des courriers", icon: Mail },
   { key: "integrations", title: "Intégrations", description: "Connexions aux partenaires externes (Arpège…)", icon: Plug },
   { key: "demarches", title: "Démarches", description: "Démarches synchronisées depuis le référentiel central", icon: ClipboardList },
   { key: "classification", title: "Classification", description: "Tags de classement des courriers", icon: Tags },
@@ -33,7 +35,7 @@ const workflowsSection = { title: "Workflows", description: "Workflows de traite
 
 const sectionLabels: Record<string, string> = {
   utilisateurs: "Utilisateurs et rôles",
-  smtp: "Emails — SMTP (envoi) & IMAP (réception)",
+  emails: "Emails — IMAP (réception)",
   integrations: "Intégrations externes",
   demarches: "Démarches administratives",
   organisations: "Organisations (référentiel)",
@@ -80,12 +82,7 @@ export default function OrgSettings() {
           </div>
         </div>
         {activeSection === "utilisateurs" && <UsersPage organizationId={orgId!} />}
-        {activeSection === "smtp" && (
-          <div className="space-y-6">
-            <SmtpSettings orgId={orgId!} />
-            <ImapSettings orgId={orgId!} />
-          </div>
-        )}
+        {activeSection === "emails" && <ImapSettings orgId={orgId!} />}
         {activeSection === "integrations" && <OrgIntegrations orgId={orgId!} />}
         {activeSection === "classification" && (
           <ClassificationSettings organizationId={orgId!} isAdminOverride />

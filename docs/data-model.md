@@ -376,6 +376,35 @@ tables `usagers` et `quartiers` (et leurs RPC, enums, colonnes `organizations.do
 #### `smtp_settings`
 Un enregistrement par org (`organization_id UNIQUE`). Envoi de notifications et réponses.
 
+**MIROIR du Socle depuis le 2026-08-23 — aucune saisie dans Clara.** Le relais d'une
+collectivité est défini une seule fois pour toute la gamme, dans le Socle, sur
+l'**organisation racine** (`GET /v1/organizations/{id}/smtp`, scope API `smtp`, contrat
+public-api 1.1.0). `sync-socle-referentiel` le recopie à chaque passage.
+
+| Colonne | Notes |
+|---|---|
+| `host` / `port` / `username` / `password` | Reçus du Socle. Mot de passe **en clair** (dette P1, cf. `docs/technical-debt.md`) — il ne doit apparaître dans aucun journal. Chaîne vide = relais sans authentification. |
+| `from_email` / `from_name` / `use_tls` | `from_email` normalisée en minuscules ; `use_tls` absent ⇒ `true` (jamais de repli silencieux en clair). |
+| `socle_org_id` | Racine Socle d'où vient la configuration. `NULL` = ligne héritée de l'ancienne saisie manuelle, jamais synchronisée. |
+| `socle_updated_at` | Date de dernière modification côté Socle (diagnostic). |
+| `synced_at` | Date de la synchronisation qui a écrit la ligne. `NULL` = jamais synchronisée. |
+
+- **Écriture** : deux RPC `SECURITY DEFINER` réservées à `service_role`
+  (`EXECUTE` révoqué de `public, anon, authenticated`) —
+  `sync_smtp_settings_from_socle(...)` (upsert) et `clear_smtp_settings_from_socle(org)`
+  (retrait). Aucun `GRANT` de table pour `anon`/`authenticated` : la table est invisible
+  côté client, seule la policy `service_role_full_smtp` subsiste.
+- **Miroir strict** : ce que le Socle déclare fait foi, **y compris l'absence**. Mot de passe
+  retiré côté Socle ⇒ retiré ici ; `configured: false` ou relais inexploitable (hôte vide,
+  adresse d'expédition non conforme) ⇒ **ligne effacée**. Un miroir qui survit à sa source ment.
+- **Racines seulement** : la route Socle répond `404` pour une sous-organisation. Un tenant
+  Clara mappé sur une sous-organisation (« Marie d'Arles ») **hérite du relais de sa racine**,
+  comme il hérite déjà de son référentiel de contacts.
+- **Pas de repli** : Clara n'a aucun relais de secours (aucun secret `SMTP_*`). Un tenant sans
+  relais déclaré dans le Socle **n'expédie rien** — les fonctions d'envoi répondent « Aucun
+  serveur d'envoi pour cette organisation : définissez-le dans le référentiel (organisation
+  principale), puis lancez une synchronisation. »
+
 #### `imap_settings`
 Plusieurs par org si `organizations.multiple_imap = true`. Réception automatique.
 

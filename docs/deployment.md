@@ -46,9 +46,28 @@ Une edge function appelée par pg_cron ne reçoit **aucun en-tête `Authorizatio
 verify_jwt = false
 ```
 
+**Le piège se referme au premier déploiement par la CLI.** Constaté le 2026-08-23 :
+`sync-socle-referentiel` tournait depuis des mois sans entrée dans `config.toml` — elle
+avait été déployée à la main avec `--no-verify-jwt`, réglage porté par la fonction
+déployée et invisible dans le dépôt. Le premier `bunx supabase functions deploy` sans le
+drapeau a réappliqué le défaut (`verify_jwt = true`) et l'appel du cron est reparti en
+`401 UNAUTHORIZED_NO_AUTH_HEADER` — sans que rien n'échoue au déploiement. L'entrée est
+désormais dans `config.toml`. **Vérifier après chaque déploiement d'une fonction cron** :
+
+```sql
+SELECT status_code, left(content, 120)
+FROM net._http_response ORDER BY id DESC LIMIT 3;
+```
+
 À l'inverse, une fonction appelée par une autre edge function avec `Authorization: Bearer <service_role>` peut garder `verify_jwt` : la clé service_role est un JWT valide.
 
 ## Ordre de déploiement
+
+> **Le frontend n'est publié nulle part.** Clara n'est pas en production : il n'y a que le
+> dépôt git et l'exécution locale (`bun run dev` / `bun run build`). Les lignes « Publier le
+> frontend » des lots ci-dessous sont donc sans objet — mais l'ORDRE reste vrai le jour où une
+> publication existera, et il vaut toujours pour ce qui est réellement déployé : le projet
+> Supabase `aullweizxcjbvtdspjli` (migrations + edge functions), qui est bien commun et vivant.
 
 L'ordre général est **SQL → edge functions → frontend**, avec deux nuances :
 
@@ -61,6 +80,25 @@ L'ordre général est **SQL → edge functions → frontend**, avec deux nuances
 bunx supabase functions deploy <nom> --project-ref aullweizxcjbvtdspjli
 # 6 : frontend
 bun run build
+```
+
+### Lot « serveur d'envoi depuis le Socle » (2026-08-23) — appliqué le 2026-08-23
+
+| # | Action | Pourquoi cet ordre | État |
+|---|---|---|---|
+| 1 | Scope `smtp` sur la clé Socle de Clara (projet `qhrokbkyxgcvkbpmbmna`) | Sans lui, la route répond `403` et la sync ne produit que des avertissements | **Fait** — `update api_keys set scopes = scopes \|\| array['smtp'] where name = 'Clara — clé plateforme (read+contacts)'` (la clé porte maintenant `read, contacts, smtp` ; son **nom** n'a pas été changé) |
+| 2 | `20260823170000_smtp_depuis_socle.sql` | Retire les droits clients, ajoute provenance/fraîcheur, pose les deux RPC de service | **Appliqué** via `apply_migration` (registre : horodatage propre, dérive habituelle) |
+| 3 | Déployer `sync-socle-referentiel` | Lit les RPC créées en 2 | **Fait** — ⚠️ a nécessité l'ajout de `[functions.sync-socle-referentiel] verify_jwt = false` dans `config.toml` (cf. piège ci-dessus) |
+| 4 | Synchronisation réelle | Remplace la ligne saisie à la main par celle du référentiel | **Fait** — ACCM et Marie d'Arles synchronisés, aucun avertissement |
+| 5 | Supprimer la fonction déployée `send-test-email` | Après l'envoi réel de test, pas avant | **Fait** (`bunx supabase functions delete send-test-email`) |
+| 6 | ~~Publier le frontend~~ | Sans objet : le frontend n'est publié nulle part (cf. note ci-dessus). L'écran « Emails (SMTP) » disparaît dès le prochain `bun run dev` / `bun run build`. | Sans objet |
+
+Vérification : la ligne ne doit plus être d'origine manuelle.
+
+```sql
+SELECT o.name, s.socle_org_id, s.socle_updated_at, s.synced_at
+FROM smtp_settings s JOIN organizations o ON o.id = s.organization_id;
+-- socle_org_id / synced_at NULL = ligne jamais synchronisée (saisie manuelle héritée)
 ```
 
 ### Lot « numérisation » (2026-07-18) — appliqué le 2026-07-19

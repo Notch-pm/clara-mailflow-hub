@@ -114,7 +114,7 @@ Accessibles depuis `/parametres` :
 | **Modèles de réponse** | CRUD modèles |
 | **Signataires** | CRUD signataires + upload image signature |
 | **Démarches** (`ProceduresSettings`) | CRUD + synchronisation Arpège |
-| **SMTP / IMAP organisation** | Configuration email globale ou par organisation Socle |
+| **Emails (IMAP)** | Boîtes de réception, globales ou par organisation Socle. Le **serveur d'envoi (SMTP) n'est plus paramétrable dans Clara** : il vient du référentiel et arrive par la synchronisation (miroir en lecture service uniquement) |
 | **Formulaires portail** | Création / diffusion de formulaires publics |
 
 **Actions exclusives admin** :

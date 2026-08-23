@@ -263,7 +263,11 @@ Deno.serve(async (req) => {
 
         if (smtpError || !smtp) {
           console.error(`No SMTP settings for org ${organization_id}`);
-          throw new Error("Configuration SMTP introuvable pour cette organisation");
+          // Miroir du référentiel (cf. sync-socle-referentiel) : Clara ne le
+          // saisit plus et n'a aucun relais de repli.
+          throw new Error(
+            "Aucun serveur d'envoi pour cette organisation : définissez-le dans le référentiel (organisation principale), puis lancez une synchronisation.",
+          );
         }
 
         const siteName = orgBranding.name;

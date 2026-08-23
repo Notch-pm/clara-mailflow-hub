@@ -12,5 +12,14 @@ verify_jwt = false
 [functions.auth-email-hook]
 verify_jwt = false
 
+# Appelée par pg_cron via trigger_socle_sync() (03:00), qui n'envoie aucun
+# en-tête Authorization. L'entrée manquait : la fonction n'avait survécu que
+# parce qu'elle était déployée à la main avec --no-verify-jwt, et le premier
+# déploiement par la CLI la remettait en 401 (constaté le 2026-08-23).
+# L'authentification réelle se fait dans la fonction (x-cron-secret, service
+# role, ou JWT superadmin/admin).
+[functions.sync-socle-referentiel]
+verify_jwt = false
+
 [functions.portal-form]
 verify_jwt = false

@@ -58,7 +58,7 @@ Pour servir un document privé : passer par l'edge function `storage-documents` 
 ## Rotation des secrets
 
 - **`cron_secret`** (Vault) : tourné le 2026-07-11 (l'ancienne valeur figurait en clair dans la migration `20260417133227` — ne JAMAIS mettre une valeur de secret dans une migration). Procédure : `SELECT vault.update_secret((SELECT id FROM vault.secrets WHERE name='cron_secret'), '<nouvelle valeur>');` puis vérifier ancien → 401 / nouveau → 200 sur une edge function cron.
-- **Mots de passe IMAP/SMTP en clair en DB** : dette P1 connue (chantier chiffrement, cf. `docs/technical-debt.md`).
+- **Mots de passe IMAP/SMTP en clair en DB** : dette P1 connue (chantier chiffrement, cf. `docs/technical-debt.md`). Atténuation posée le 2026-08-23 pour le SMTP : `smtp_settings` n'est plus exposée au client (aucun `GRANT` pour `anon`/`authenticated`, plus de policy `authenticated`), le mot de passe vient du Socle et ne traverse plus que `sync-socle-referentiel` → RPC de service. Il ne doit apparaître dans aucun journal, compteur ou message d'erreur. `imap_settings`, elle, reste lisible par les admins d'org.
 
 ## Checklist avant de merger une feature
 

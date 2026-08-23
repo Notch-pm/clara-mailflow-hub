@@ -3,6 +3,12 @@
 // et démarches activées par organisation sont miroirés dans Clara (upsert idempotent
 // par socle_id, soft-delete des éléments disparus). Voir logic.ts pour la logique pure.
 //
+// Il l'est aussi du SERVEUR D'ENVOI (SMTP) depuis le 2026-08-23 : le relais est
+// défini une fois dans le Socle sur l'organisation racine, Clara n'en tient
+// qu'un miroir (`smtp_settings`, écrit par les RPC de service
+// sync_smtp_settings_from_socle / clear_smtp_settings_from_socle). Voir smtp.ts
+// pour la logique pure.
+//
 // Auth (3 voies, comme sync-arpege-services) :
 //   - x-cron-secret (pg_cron via trigger_socle_sync) → privilégié
 //   - Bearer SERVICE_ROLE_KEY → privilégié
@@ -36,6 +42,13 @@ import {
   type SocleOrgApi,
   type SocleProcedure,
 } from "./logic.ts";
+import {
+  smtpMirrorArgs,
+  smtpRootUnknownWarning,
+  smtpWarning,
+  type SmtpTenantRef,
+  type SocleSmtpDto,
+} from "./smtp.ts";
 
 type AdminClient = ReturnType<typeof createClient>;
 
@@ -131,6 +144,47 @@ async function fetchSocle(path: string): Promise<unknown> {
       lastError instanceof Error ? lastError.message : lastError
     }`,
   );
+}
+
+/**
+ * Serveur d'envoi d'une organisation racine. À la différence des autres
+ * lectures, un statut d'erreur n'est PAS une exception : une clé sans le scope
+ * `smtp` (403) ou un Socle antérieur à cette route (404) doivent laisser la
+ * synchronisation du référentiel réussir, avec un avertissement. Seul le 401
+ * (clé morte) reste fatal, comme partout ailleurs.
+ *
+ * Pas de retry : l'échec n'écrit rien, laisse le miroir en l'état et se voit
+ * dans les avertissements du journal de synchronisation.
+ */
+async function fetchSocleSmtp(
+  socleOrgId: string,
+): Promise<{ status: number; dto: SocleSmtpDto | null }> {
+  const apiKey = Deno.env.get("SOCLE_API_KEY")?.trim();
+  if (!apiKey) throw new Error("Secret SOCLE_API_KEY manquant — configurez-le dans les secrets de la fonction");
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SOCLE_TIMEOUT_MS);
+  try {
+    const response = await fetch(
+      `${socleBaseUrl()}/v1/organizations/${encodeURIComponent(socleOrgId)}/smtp`,
+      {
+        headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
+        signal: controller.signal,
+      },
+    );
+    if (response.status === 401) {
+      await response.body?.cancel();
+      throw new SocleAuthError(
+        "Clé API Socle invalide ou révoquée (401) — synchronisation interrompue",
+      );
+    }
+    if (!response.ok) {
+      await response.body?.cancel();
+      return { status: response.status, dto: null };
+    }
+    return { status: 200, dto: (await response.json()) as SocleSmtpDto };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // ── Auth (calqué sur sync-arpege-services) ──
@@ -288,6 +342,10 @@ interface OrgSyncResult {
     categories: EntityCounters;
     document_types: EntityCounters;
     procedures: EntityCounters;
+    /** Miroirs du serveur d'envoi écrits (0 ou 1 : un relais par tenant). */
+    smtp_synchronises: number;
+    /** Miroirs effacés faute de relais déclaré côté Socle (0 ou 1). */
+    smtp_retires: number;
   };
   warnings?: string[];
   error?: string;
@@ -322,7 +380,15 @@ async function runSync(supabaseAdmin: AdminClient, orgs: ClaraOrg[], dryRun: boo
       if (runId) {
         await supabaseAdmin
           .from("socle_sync_runs")
-          .update({ finished_at: new Date().toISOString(), status: "success", counters })
+          .update({
+            finished_at: new Date().toISOString(),
+            status: "success",
+            // Les avertissements voyagent AVEC les compteurs : un miroir laissé
+            // en l'état (scope manquant, organisation hors périmètre) doit se
+            // lire dans le journal, pas seulement dans la réponse HTTP d'un
+            // déclenchement manuel.
+            counters: warnings.length > 0 ? { ...counters, warnings } : counters,
+          })
           .eq("id", runId);
       }
       const p = counters.procedures;
@@ -398,6 +464,18 @@ async function syncOrg(
   // plateforme (multi-racines), le catalogue des autres principales ne doit
   // pas fuiter dans ce tenant.
   const rootId = rootOrgId(allOrganizations, org.socle_org_id);
+
+  // 1bis) Serveur d'envoi : le Socle en est propriétaire, Clara n'en tient
+  // qu'un miroir. La route n'existe que sur une RACINE — un tenant mappé sur
+  // une sous-organisation (« Marie d'Arles ») hérite donc du relais de sa
+  // racine, comme il hérite déjà de son référentiel de contacts.
+  //
+  // Un échec ici ne fait échouer ni les autres tenants, ni la synchronisation
+  // du référentiel : le miroir reste en l'état et un avertissement dit quoi
+  // faire. Placé avant les démarches pour qu'un incident de catalogue ne prive
+  // pas le tenant de son relais.
+  const smtp = await syncSmtp(supabaseAdmin, org, rootId, dryRun);
+
   const categoriesCounters = await syncMirror(
     supabaseAdmin,
     "socle_categories",
@@ -471,9 +549,89 @@ async function syncOrg(
       categories: categoriesCounters,
       document_types: documentTypesCounters,
       procedures: countersFromProcedurePlan(plan),
+      smtp_synchronises: smtp.synchronises,
+      smtp_retires: smtp.retires,
     },
-    warnings: plan.warnings,
+    warnings: [...smtp.warnings, ...plan.warnings],
   };
+}
+
+// ── Serveur d'envoi (miroir du Socle) ──
+
+/**
+ * Recopie dans `smtp_settings` le relais déclaré par le Socle pour la racine du
+ * tenant, ou EFFACE le miroir si le Socle n'en déclare plus d'exploitable.
+ *
+ * Miroir strict : ce que le Socle déclare fait foi, y compris l'absence — un
+ * miroir qui survit à sa source ment. Clara n'ayant aucun relais de repli,
+ * effacer signifie « ce tenant n'expédie plus » : c'est le comportement voulu,
+ * une configuration périmée ferait échouer les envois sans le dire.
+ *
+ * Le mot de passe ne fait que passer d'ici vers la RPC de service : il n'est
+ * jamais journalisé, ni compté, ni repris dans un message d'erreur.
+ */
+async function syncSmtp(
+  supabaseAdmin: AdminClient,
+  org: ClaraOrg,
+  rootId: string | null,
+  dryRun: boolean,
+): Promise<{ synchronises: number; retires: number; warnings: string[] }> {
+  const warnings: string[] = [];
+  if (!rootId) {
+    warnings.push(smtpRootUnknownWarning(org.name, org.socle_org_id));
+    return { synchronises: 0, retires: 0, warnings };
+  }
+
+  const tenant: SmtpTenantRef = {
+    organizationId: org.id,
+    organizationName: org.name,
+    rootSocleOrgId: rootId,
+  };
+
+  try {
+    const { status, dto } = await fetchSocleSmtp(rootId);
+    if (status !== 200) {
+      warnings.push(smtpWarning(tenant, status));
+      return { synchronises: 0, retires: 0, warnings };
+    }
+
+    const args = smtpMirrorArgs(tenant, dto);
+
+    if (args) {
+      if (!dryRun) {
+        const { error } = await supabaseAdmin.rpc("sync_smtp_settings_from_socle", args);
+        if (error) throw new Error(error.message);
+      }
+      console.log(
+        `[sync-socle] org ${org.name}: serveur d'envoi synchronisé depuis la racine Socle${dryRun ? " (dry-run)" : ""}`,
+      );
+      return { synchronises: 1, retires: 0, warnings };
+    }
+
+    // Aucun relais exploitable côté Socle : le miroir s'efface.
+    if (dryRun) {
+      const { count } = await supabaseAdmin
+        .from("smtp_settings")
+        .select("id", { count: "exact", head: true })
+        .eq("organization_id", org.id);
+      return { synchronises: 0, retires: count ?? 0, warnings };
+    }
+    const { data: retire, error } = await supabaseAdmin
+      .rpc("clear_smtp_settings_from_socle", { p_org_id: org.id });
+    if (error) throw new Error(error.message);
+    if (retire === true) {
+      console.log(`[sync-socle] org ${org.name}: serveur d'envoi retiré (le Socle n'en déclare plus)`);
+      return { synchronises: 0, retires: 1, warnings };
+    }
+    return { synchronises: 0, retires: 0, warnings };
+  } catch (e) {
+    // Clé morte : la synchronisation entière s'arrête, comme partout ailleurs.
+    if (e instanceof SocleAuthError) throw e;
+    const message = e instanceof Error ? e.message : String(e);
+    console.error(`[sync-socle] org ${org.name}: serveur d'envoi: ${message}`);
+    warnings.push(`serveur d'envoi (${org.name}) : ${message} — miroir inchangé.`);
+    return { synchronises: 0, retires: 0, warnings };
+  }
 }
 
 // ── Miroir des organisations (hiérarchie) ──

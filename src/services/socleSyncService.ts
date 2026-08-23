@@ -37,6 +37,16 @@ export interface SocleSyncCounters {
   categories: SocleEntityCounters;
   document_types: SocleEntityCounters;
   procedures: SocleEntityCounters;
+  /** Serveur d'envoi recopié depuis le référentiel (0 ou 1 : un relais par tenant). */
+  smtp_synchronises?: number;
+  /** Serveur d'envoi effacé, le référentiel n'en déclarant plus (0 ou 1). */
+  smtp_retires?: number;
+  /**
+   * Ce qui n'a pas pu être fait sans faire échouer la synchronisation
+   * (ex. relais illisible : clé sans le scope requis, organisation hors
+   * périmètre). Absent quand tout s'est bien passé.
+   */
+  warnings?: string[];
 }
 
 /** Ligne du miroir socle_organizations (hiérarchie importée du Socle). */
