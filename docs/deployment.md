@@ -82,6 +82,25 @@ bunx supabase functions deploy <nom> --project-ref aullweizxcjbvtdspjli
 bun run build
 ```
 
+### Lot « connecteur Iris » (2026-08-23) — appliqué le 2026-08-23
+
+| # | Action | Pourquoi cet ordre | État |
+|---|---|---|---|
+| 1 | Enregistrer Clara comme source côté Iris (`integration_sources` + `integration_credentials`) | Sans source ni clé, tout appel répond 401 | **Fait** — source `clara` du tenant ACCM, clé `irs_76EIrWD5` (scopes `requests:write` + `requests:read`), **expire le 2027-08-23** |
+| 2 | `20260823190000_connecteur_iris.sql` | Colonnes de connexion (`api_key`, `socle_root_org_id`, `last_sync_at`) et de suivi (`action_tickets.iris_*`) | **Appliqué** via `apply_migration` |
+| 3 | Poser la connexion du tenant dans `organization_integrations` | La clé brute ne doit transiter ni par un journal ni par un dépôt | **Fait** (écriture directe, valeur jamais affichée) |
+| 4 | Déployer `push-iris-request` et `sync-iris-requests` | Lisent les colonnes créées en 2 | **Fait** — `sync-iris-requests` a `verify_jwt = false` dans `config.toml` (cron) ; `push-iris-request` garde la vérification (appelée par le navigateur) |
+| 5 | `20260823200000_iris_sync_cron.sql` | **Hors ordre alphabétique** : planifier avant l'étape 4 produirait un échec toutes les nuits | **Appliqué** ; cron `iris-sync-nightly` actif à 03:30 |
+| 6 | ~~Publier le frontend~~ | Sans objet (cf. note en tête) | Sans objet |
+
+Vérification : une demande déposée porte sa référence et son statut.
+
+```sql
+SELECT iris_reference, iris_status, iris_version, iris_synced_at, iris_last_error
+FROM action_tickets WHERE iris_request_id IS NOT NULL;
+SELECT jobname, schedule, active FROM cron.job WHERE jobname = 'iris-sync-nightly';
+```
+
 ### Lot « serveur d'envoi depuis le Socle » (2026-08-23) — appliqué le 2026-08-23
 
 | # | Action | Pourquoi cet ordre | État |

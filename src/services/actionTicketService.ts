@@ -75,6 +75,14 @@ export interface ActionTicket {
   arpege_demande_ref: string | null;
   arpege_demande_status: string | null;
   socle_data: unknown;
+  /** Suivi de la demande déposée dans Iris — écrit par le serveur uniquement. */
+  iris_request_id: string | null;
+  iris_reference: string | null;
+  /** Liste fermée servie par Iris ; libellés d'affichage dans `src/lib/iris.ts`. */
+  iris_status: string | null;
+  iris_url: string | null;
+  /** Dernier échec de dépôt, en français. Non nul = demande à renvoyer. */
+  iris_last_error: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;

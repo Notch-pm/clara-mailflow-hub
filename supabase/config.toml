@@ -21,5 +21,11 @@ verify_jwt = false
 [functions.sync-socle-referentiel]
 verify_jwt = false
 
+# Réconciliation nocturne des demandes Iris, appelée par pg_cron (aucun en-tête
+# Authorization). `push-iris-request`, lui, garde la vérification : il est
+# appelé par le navigateur avec le JWT de l'agent.
+[functions.sync-iris-requests]
+verify_jwt = false
+
 [functions.portal-form]
 verify_jwt = false

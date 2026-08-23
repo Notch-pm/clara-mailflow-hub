@@ -429,14 +429,19 @@ Plusieurs par org si `organizations.multiple_imap = true`. Réception automatiqu
 ### Intégrations & notifications
 
 #### `organization_integrations`
-Connexions OAuth/API tierces (Arpège…).
+Connexions API par tenant : partenaires tiers (Arpège…) **et Iris** (autre produit de la
+gamme). Une ligne par `(organization_id, provider)`. **Superadmin + service_role uniquement** :
+la table porte des secrets, l'UI ne les re-sert jamais au navigateur.
 
-| Colonne | Type |
-|---|---|
-| `provider` | text |
-| `client_id` / `client_secret` / `access_token` | text |
-| `api_base_url` / `api_url_ticketingapp` | text |
-| `is_active` | boolean |
+| Colonne | Type | Notes |
+|---|---|---|
+| `provider` | text | `'arpege'`, `'iris'` |
+| `client_id` / `client_secret` / `access_token` | text | identifiants Hawk (Arpège) |
+| `api_base_url` / `api_url_ticketingapp` | text | |
+| `api_key` | text | **Iris** : la clé d'intégration `irs_…`. Secret serveur, expiration obligatoire côté Iris |
+| `socle_root_org_id` | uuid | **Iris** : organisation RACINE visée. Vérifiée par Iris contre le périmètre de la clé (403 en cas d'écart) — ne se déduit **pas** de `organizations.socle_org_id`, un tenant pouvant être mappé sur une sous-organisation |
+| `last_sync_at` | timestamptz | curseur de réconciliation : `updated_at` (horloge du **partenaire**) de la dernière demande relue |
+| `is_active` | boolean | suspension : coupe le **nouveau trafic**, jamais le suivi des demandes déjà déposées |
 
 #### `action_tickets`
 Tâches dérivées d'un courrier, liées ou non à une procédure (action libre).
@@ -448,7 +453,20 @@ Tâches dérivées d'un courrier, liées ou non à une procédure (action libre)
 | `title` | text | titre de l'action — exigé côté formulaire quand `procedure_id` est null |
 | `assignee_id` | uuid FK → users | nullable en DB (tickets Arpège) ; exigé côté formulaire pour les tickets Clara |
 | `status` | text | `'open'` par défaut |
+| `socle_data` | jsonb | démarche du référentiel : demandeur déclaré + réponses au formulaire + pièces sélectionnées (`src/lib/socle-form.ts`) |
 | `arpege_demande_ref` / `arpege_demande_status` | text | |
+
+**Suivi de la demande déposée dans Iris** (écrit par le serveur uniquement — cf.
+`docs/iris-integration.md`) :
+
+| Colonne | Type | Notes |
+|---|---|---|
+| `iris_idempotency_key` | uuid, `not null default gen_random_uuid()` | tirée à la création du ticket, **rejouée telle quelle** à chaque tentative : c'est ce qui rend un renvoi inoffensif |
+| `iris_request_id` / `iris_reference` / `iris_url` | uuid / text / text | identité de la demande côté Iris. `iris_request_id` NULL = jamais déposée |
+| `iris_status` | text | liste **fermée** (`a_traiter`, `en_instruction`, `en_attente`, `annulee`, `resolue_positive`, `resolue_negative`, `archivee`). Libellés d'affichage : `src/lib/iris.ts` |
+| `iris_version` | integer | version monotone servie par Iris — garde d'application des mises à jour |
+| `iris_synced_at` / `iris_last_attempt_at` | timestamptz | |
+| `iris_last_error` | text | message en français du dernier échec de dépôt ; non nul ⇒ l'onglet Actions liées propose « Renvoyer ». NULL après un dépôt réussi |
 
 #### `notifications`
 Notifications in-app. RLS scoped `user_id = auth.uid()`.

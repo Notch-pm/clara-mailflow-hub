@@ -1,5 +1,10 @@
 # Spec — Intégration Partenaires (Arpège pilote)
 
+> **Iris n'est pas un partenaire tiers** : c'est un autre produit de la gamme, propriétaire
+> exclusif des demandes d'usagers. Son connecteur (2026-08-23) réutilise néanmoins ce modèle —
+> `organization_integrations` par tenant, verrou superadmin, sémantique de suspension du §5 —
+> et est documenté à part : `docs/iris-integration.md`.
+
 > **Statut : spécifié le 2026-07-23 ; lots L0–L2 livrés (PR #13, migrations + edge en prod) ; L3–L7 à venir.**
 > Cadré via `/spec` (analyse métier + architecture) sur inventaire complet code + base live.
 > Décisions PO actées le 2026-07-23 (Laurent) : granularité **par organisation Socle**,

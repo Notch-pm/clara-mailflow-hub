@@ -68,6 +68,22 @@ Clara ne remplace pas les applications métier qui exécutent les demandes d'act
 - actions externes : créer ou référencer une demande dans Iris ou une application partenaire (Arpège aujourd'hui, autres connecteurs possibles), puis conserver le lien et l'état de résolution utiles à la réponse ;
 - l'analyse IA peut recommander des actions, mais l'agent reste responsable de la décision et du circuit retenu.
 
+### Dépôt dans Iris (depuis le 2026-08-23)
+
+**Iris est propriétaire exclusif des demandes d'usagers de la gamme.** Une action fondée sur une
+**démarche du référentiel** y est déposée à sa création (`push-iris-request`), puis instruite
+là-bas ; Clara en suit l'état (référence, statut, permalien) sans le piloter. Une **demande
+libre** — action sans démarche — reste dans Clara : `socle_procedure_id` est obligatoire côté
+Iris, la frontière tombe du contrat.
+
+Le ticket est créé **d'abord** (son id est l'`external_id` d'Iris) : un dépôt en échec ne perd
+rien, il se rejoue depuis l'onglet « Actions liées » avec la même clé d'idempotence. Un tenant
+sans interface Iris ne voit rien — il ne dépose simplement pas ses demandes là-bas. Statuts
+relus chaque nuit par `sync-iris-requests` (03:30), avec garde de version monotone.
+
+Détail complet — contrat, raccordement des champs, périmètre, exploitation :
+`docs/iris-integration.md`.
+
 ## 5. Réponses (couriers sortants)
 
 - Modèle : un courrier `direction=outbound` avec `parent_courier_id` pointant l'inbound.

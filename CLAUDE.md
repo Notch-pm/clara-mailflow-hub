@@ -8,7 +8,7 @@
 
 - **Recevoir** des courriers (papier, emails, formulaires et autres sollicitations ressaisies par les agents) via saisie manuelle, import en masse, IMAP ou boîte de numérisation.
 - **Analyser** chaque courrier (OCR des pièces jointes + LLM via Lovable AI Gateway) : résumé, intentions, sentiment, actions suggérées.
-- **Traiter** via workflows configurables (états + transitions), tags, assignation à une **organisation** (hiérarchie synchronisée depuis le Socle — les organisations remplacent les anciens « services »), actions internes minimales et liens vers demandes partenaires (Iris, Arpège…).
+- **Traiter** via workflows configurables (états + transitions), tags, assignation à une **organisation** (hiérarchie synchronisée depuis le Socle — les organisations remplacent les anciens « services »), actions internes minimales. Une action fondée sur une **démarche du référentiel** est déposée dans **Iris**, propriétaire exclusif des demandes d’usagers — les « demandes libres » restent dans Clara ; les démarches partenaires (Arpège) gardent leur connecteur.
 - **Répondre** : brouillon généré par IA, signature électronique (image), envoi via le serveur d’envoi (SMTP) de l’organisation — **défini dans le Socle**, dont Clara ne tient qu’un miroir rafraîchi par la sync (plus aucune saisie SMTP dans Clara).
 - **Tracer** : historique d'événements, notes, liens entre courriers, références séquentielles annuelles.
 - **Référentiels** : contacts/usagers (servis par l’API du **Socle** — aucune identité stockée dans Clara, seulement des références `socle_contact_id`), signataires, modèles, démarches (sync nocturne depuis le Socle — plus de paramétrage des démarches dans Clara).
@@ -59,6 +59,7 @@ docs/             # Documentation détaillée pour Claude Code (ce répertoire)
 | `docs/data-model.md` | Schéma DB, RLS multi-tenant, conventions tables/colonnes. |
 | `docs/features.md` | Détail des grandes fonctionnalités (courriers, workflows, IA, réponses, Arpège). |
 | `docs/edge-functions.md` | Liste des edge functions, leur rôle, leurs secrets. |
+| `docs/iris-integration.md` | Connecteur Iris : dépôt des demandes fondées sur une démarche, suivi de leur état. |
 | `docs/routes.md` | Map URL → page → rôle requis. |
 | `docs/conventions.md` | Style de code, design system, patterns récurrents. |
 | `docs/security.md` | Modèle de sécurité, RLS, secrets, ce qui est public intentionnellement. |
