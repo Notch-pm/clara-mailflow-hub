@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { GitBranch, Plus, Trash2 } from "lucide-react";
+import { GitBranch, Pencil, Plus, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -46,6 +46,8 @@ export default function Workflows() {
   const [newName, setNewName] = useState("");
   const [newType, setNewType] = useState<WorkflowType | "">("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [renameId, setRenameId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
 
   const { data: workflows, isLoading } = useQuery({
     queryKey: ["workflows", organizationId],
@@ -86,6 +88,20 @@ export default function Workflows() {
       toast({ title: "Workflow supprimé" });
     },
     onError: (err: any) => toast({ title: "Erreur", description: err.message, variant: "destructive" }),
+  });
+
+  const renameMutation = useMutation({
+    mutationFn: async ({ id, name }: { id: string; name: string }) => {
+      const { error } = await updateWorkflow(id, { name });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["workflows"] });
+      setRenameId(null);
+      setRenameValue("");
+      toast({ title: "Workflow renommé" });
+    },
+    onError: (err: Error) => toast({ title: "Erreur", description: err.message, variant: "destructive" }),
   });
 
   const updateTypeMutation = useMutation({
@@ -166,6 +182,19 @@ export default function Workflows() {
                       variant="ghost"
                       size="icon"
                       className="h-7 w-7"
+                      aria-label="Renommer le workflow"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setRenameId(wf.id);
+                        setRenameValue(wf.name);
+                      }}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
                       aria-label="Supprimer le workflow"
                       onClick={(e) => {
                         e.stopPropagation();
@@ -220,6 +249,38 @@ export default function Workflows() {
               disabled={!newName.trim() || !newType || createMutation.isPending}
             >
               Créer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rename dialog */}
+      <Dialog open={!!renameId} onOpenChange={(open) => { if (!open) setRenameId(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Renommer le workflow</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="wf-rename">Nom</Label>
+            <Input
+              id="wf-rename"
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && renameId && renameValue.trim() && !renameMutation.isPending) {
+                  e.preventDefault();
+                  renameMutation.mutate({ id: renameId, name: renameValue.trim() });
+                }
+              }}
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              onClick={() => renameId && renameMutation.mutate({ id: renameId, name: renameValue.trim() })}
+              disabled={!renameValue.trim() || renameMutation.isPending}
+            >
+              Renommer
             </Button>
           </DialogFooter>
         </DialogContent>
