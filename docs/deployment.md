@@ -175,9 +175,25 @@ sur chaque appel — traduit en « erreur interne » pour l'agent, sans indice s
 6. Mettre à jour les secrets Supabase :
    - **ajouter** `SOCLE_API_KEY` s'il n'a pas déjà le scope `ai` (c'est la même clé plateforme que
      pour les contacts — il suffit de lui ajouter le scope côté Socle) ;
+   - ⚠️ **vérifier que `SOCLE_API_URL` existe** — et ne pas se fier au fait que la synchro du
+     référentiel marche. Constaté le 2026-08-29 : le secret n'avait **jamais** été posé, et
+     personne ne s'en apercevait parce que `sync-socle-referentiel` a un repli codé en dur
+     (`socleBaseUrl()`, ligne 76). `socleAi.ts` n'en a pas : `deriveAiApiBaseUrl` rend la chaîne
+     vide plutôt qu'une URL fantaisiste, et `callSocleAi` refuse alors **avant le `fetch`** par un
+     `503 not_configured` — « L'assistant IA n'est pas configuré sur cette instance ». Le symptôme
+     trompe : le message accuse la configuration du guichet, la clé est hors de cause, et les logs
+     du Socle sont **vides** puisque aucun appel n'est parti. Valeur attendue, celle du repli :
+     `https://…supabase.co/functions/v1/public-api` (le dernier segment est réécrit en `ai-api`).
+     `SOCLE_AI_API_URL` reste facultatif : il ne sert qu'à pointer un autre Socle.
    - **retirer** `MISTRAL_API_KEY`, `MISTRAL_EXTRACTION_AGENT_ID`, `MISTRAL_REDACTION_AGENT_ID` :
      plus aucun code ne les lit, et les laisser entretiendrait l'idée qu'un appel direct reste
      possible. C'est le premier gain de la bascule — la clé du fournisseur n'est plus distribuée.
+     ⚠️ **Mais reporter d'abord les deux identifiants d'agent côté Socle**, en secrets
+     `MISTRAL_AGENT_EXTRACTION_COURRIER` et `MISTRAL_AGENT_REDACTION_REPONSE` (alias
+     `extraction-courrier` et `redaction-reponse`, cf. `Socle/docs/operations.md`). Sans eux,
+     `agentIdForAlias` rend `null`, le guichet retombe sur le modèle par défaut, et l'extraction
+     structurée se dégrade **silencieusement** : aucune erreur, aucun journal, juste des champs
+     moins bons. Les supprimer de Clara avant de les avoir reportés, c'est les perdre.
 7. **La migration `20260829140000_retrait_plafond_ia.sql` EN DERNIER**, une fois les fonctions
    déployées et un appel vérifié de bout en bout. Avant, elle supprimerait les RPC dont l'ancien
    code encore en ligne dépend.
