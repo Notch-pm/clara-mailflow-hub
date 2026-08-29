@@ -12,6 +12,8 @@ import {
   type ActionTicketWithProcedure,
 } from "@/services/actionTicketService";
 import { logEvent } from "@/services/courierEventService";
+import { pushIrisRequest } from "@/services/irisRequestService";
+import { irisStatusLabel, irisStatusVariant } from "@/lib/iris";
 import { supabase } from "@/integrations/supabase/client";
 import CreateTicketDialog from "./CreateTicketDialog";
 import SuggestedActionsCard from "./SuggestedActionsCard";
@@ -56,6 +58,68 @@ function ArpegeStatusBadge({ status }: { status: string | null }) {
   );
 }
 
+/**
+ * Suivi de la demande côté Iris — lecture seule : une fois déposée, la demande
+ * est instruite là-bas, Clara n'en montre que l'état. Le renvoi ne se propose
+ * que sur un dépôt jamais abouti.
+ */
+function IrisRequestLine({
+  ticket,
+  onRetry,
+  retrying,
+  readOnly,
+}: {
+  ticket: ActionTicketWithProcedure;
+  onRetry: (ticketId: string) => void;
+  retrying: boolean;
+  readOnly: boolean;
+}) {
+  if (ticket.iris_request_id) {
+    const label = irisStatusLabel(ticket.iris_status);
+    return (
+      <p className="text-[11px] text-muted-foreground flex items-center gap-1.5 mt-0.5 flex-wrap">
+        <ExternalLink className="h-3 w-3 shrink-0" />
+        {ticket.iris_url ? (
+          <a
+            href={ticket.iris_url}
+            target="_blank"
+            rel="noreferrer"
+            className="font-mono underline underline-offset-2 hover:text-foreground"
+          >
+            {ticket.iris_reference ?? "Demande Iris"}
+          </a>
+        ) : (
+          <span className="font-mono">{ticket.iris_reference ?? "Demande Iris"}</span>
+        )}
+        {label && (
+          <Badge variant={irisStatusVariant(ticket.iris_status)} className="text-[10px] px-1.5 py-0">
+            {label}
+          </Badge>
+        )}
+      </p>
+    );
+  }
+
+  if (!ticket.iris_last_error) return null;
+
+  return (
+    <p className="text-[11px] text-destructive flex items-center gap-1.5 mt-0.5 flex-wrap">
+      <span>Non transmise à Iris : {ticket.iris_last_error}</span>
+      {!readOnly && (
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-6 px-2 text-[11px]"
+          disabled={retrying}
+          onClick={() => onRetry(ticket.id)}
+        >
+          {retrying ? "Envoi…" : "Renvoyer"}
+        </Button>
+      )}
+    </p>
+  );
+}
+
 function assigneeName(t: ActionTicketWithProcedure) {
   if (!t.assignee) return null;
   return (
@@ -94,6 +158,23 @@ export default function LinkedActionsTab({ courierId, organizationId, readOnly =
       .finally(() => setRefreshingStatus(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tickets !== undefined]);
+
+  // Renvoi d'une demande restée en rade (Iris indisponible, démarche à
+  // corriger…). Sûr par construction : la clé d'idempotence du ticket est
+  // rejouée, un contenu identique renvoie la demande existante.
+  const retryIrisMutation = useMutation({
+    mutationFn: (ticketId: string) => pushIrisRequest(ticketId),
+    onSuccess: (result) => {
+      toast.success(
+        result.reference ? `Demande ${result.reference} déposée dans Iris` : "Demande déposée dans Iris",
+      );
+      qc.invalidateQueries({ queryKey: ["action-tickets", courierId] });
+    },
+    onError: (e: Error) => {
+      toast.error(e.message);
+      qc.invalidateQueries({ queryKey: ["action-tickets", courierId] });
+    },
+  });
 
   const deleteMutation = useMutation({
     mutationFn: async (ticketId: string) => {
@@ -216,6 +297,12 @@ export default function LinkedActionsTab({ courierId, organizationId, readOnly =
                           )}
                         </p>
                       )}
+                      <IrisRequestLine
+                        ticket={t}
+                        onRetry={(id) => retryIrisMutation.mutate(id)}
+                        retrying={retryIrisMutation.isPending && retryIrisMutation.variables === t.id}
+                        readOnly={readOnly}
+                      />
                       {t.description ? (
                         <p className="text-sm whitespace-pre-wrap break-words mt-1">
                           {t.description}

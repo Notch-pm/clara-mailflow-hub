@@ -190,7 +190,7 @@ File d'attente de l'analyse (OCR + LLM), consommée par l'edge function `process
 
 Deux garde-fous à ne pas retirer :
 - **Index UNIQUE partiel** sur `courier_id WHERE status IN ('pending','running')` : réimporter ou recliquer « Analyser » n'empile pas d'OCR concurrents sur les mêmes documents (double facturation IA et écritures concurrentes sur `courier_document_extracts`).
-- **Quota IA épuisé** → job reporté au mois suivant **sans consommer de tentative**. Sans ce rollback, trois passages de cron condamneraient un courrier parfaitement analysable le mois suivant.
+- **Crédit IA épuisé** → job reporté **à la date de renouvellement rendue par le Socle** (jamais recalculée localement), sans consommer de tentative. Sans ce rollback, trois passages de cron condamneraient un courrier parfaitement analysable le mois suivant. ⚠️ Depuis la centralisation IA du 2026-08-29, le guichet renvoie **deux refus distincts en 429** : le plafond (rien à tenter avant le renouvellement) et la **cadence** (`ai_rate_limited` — le crédit est intact, replanification à 5 min, tentative également rendue). Les confondre endormirait un mois durant un courrier simplement arrivé dans une rafale.
 
 RLS : lecture seule pour les membres du tenant. Aucune écriture cliente — l'enfilement passe par le RPC `enqueue_courier_analysis` (SECURITY DEFINER, re-vérifie l'appartenance), la consommation par `claim_analysis_jobs` / `requeue_stale_analysis_jobs`, réservés au `service_role`.
 
@@ -376,6 +376,35 @@ tables `usagers` et `quartiers` (et leurs RPC, enums, colonnes `organizations.do
 #### `smtp_settings`
 Un enregistrement par org (`organization_id UNIQUE`). Envoi de notifications et réponses.
 
+**MIROIR du Socle depuis le 2026-08-23 — aucune saisie dans Clara.** Le relais d'une
+collectivité est défini une seule fois pour toute la gamme, dans le Socle, sur
+l'**organisation racine** (`GET /v1/organizations/{id}/smtp`, scope API `smtp`, contrat
+public-api 1.1.0). `sync-socle-referentiel` le recopie à chaque passage.
+
+| Colonne | Notes |
+|---|---|
+| `host` / `port` / `username` / `password` | Reçus du Socle. Mot de passe **en clair** (dette P1, cf. `docs/technical-debt.md`) — il ne doit apparaître dans aucun journal. Chaîne vide = relais sans authentification. |
+| `from_email` / `from_name` / `use_tls` | `from_email` normalisée en minuscules ; `use_tls` absent ⇒ `true` (jamais de repli silencieux en clair). |
+| `socle_org_id` | Racine Socle d'où vient la configuration. `NULL` = ligne héritée de l'ancienne saisie manuelle, jamais synchronisée. |
+| `socle_updated_at` | Date de dernière modification côté Socle (diagnostic). |
+| `synced_at` | Date de la synchronisation qui a écrit la ligne. `NULL` = jamais synchronisée. |
+
+- **Écriture** : deux RPC `SECURITY DEFINER` réservées à `service_role`
+  (`EXECUTE` révoqué de `public, anon, authenticated`) —
+  `sync_smtp_settings_from_socle(...)` (upsert) et `clear_smtp_settings_from_socle(org)`
+  (retrait). Aucun `GRANT` de table pour `anon`/`authenticated` : la table est invisible
+  côté client, seule la policy `service_role_full_smtp` subsiste.
+- **Miroir strict** : ce que le Socle déclare fait foi, **y compris l'absence**. Mot de passe
+  retiré côté Socle ⇒ retiré ici ; `configured: false` ou relais inexploitable (hôte vide,
+  adresse d'expédition non conforme) ⇒ **ligne effacée**. Un miroir qui survit à sa source ment.
+- **Racines seulement** : la route Socle répond `404` pour une sous-organisation. Un tenant
+  Clara mappé sur une sous-organisation (« Marie d'Arles ») **hérite du relais de sa racine**,
+  comme il hérite déjà de son référentiel de contacts.
+- **Pas de repli** : Clara n'a aucun relais de secours (aucun secret `SMTP_*`). Un tenant sans
+  relais déclaré dans le Socle **n'expédie rien** — les fonctions d'envoi répondent « Aucun
+  serveur d'envoi pour cette organisation : définissez-le dans le référentiel (organisation
+  principale), puis lancez une synchronisation. »
+
 #### `imap_settings`
 Plusieurs par org si `organizations.multiple_imap = true`. Réception automatique.
 
@@ -400,14 +429,19 @@ Plusieurs par org si `organizations.multiple_imap = true`. Réception automatiqu
 ### Intégrations & notifications
 
 #### `organization_integrations`
-Connexions OAuth/API tierces (Arpège…).
+Connexions API par tenant : partenaires tiers (Arpège…) **et Iris** (autre produit de la
+gamme). Une ligne par `(organization_id, provider)`. **Superadmin + service_role uniquement** :
+la table porte des secrets, l'UI ne les re-sert jamais au navigateur.
 
-| Colonne | Type |
-|---|---|
-| `provider` | text |
-| `client_id` / `client_secret` / `access_token` | text |
-| `api_base_url` / `api_url_ticketingapp` | text |
-| `is_active` | boolean |
+| Colonne | Type | Notes |
+|---|---|---|
+| `provider` | text | `'arpege'`, `'iris'` |
+| `client_id` / `client_secret` / `access_token` | text | identifiants Hawk (Arpège) |
+| `api_base_url` / `api_url_ticketingapp` | text | |
+| `api_key` | text | **Iris** : la clé d'intégration `irs_…`. Secret serveur, expiration obligatoire côté Iris |
+| `socle_root_org_id` | uuid | **Iris** : organisation RACINE visée. Vérifiée par Iris contre le périmètre de la clé (403 en cas d'écart) — ne se déduit **pas** de `organizations.socle_org_id`, un tenant pouvant être mappé sur une sous-organisation |
+| `last_sync_at` | timestamptz | curseur de réconciliation : `updated_at` (horloge du **partenaire**) de la dernière demande relue |
+| `is_active` | boolean | suspension : coupe le **nouveau trafic**, jamais le suivi des demandes déjà déposées |
 
 #### `action_tickets`
 Tâches dérivées d'un courrier, liées ou non à une procédure (action libre).
@@ -419,7 +453,20 @@ Tâches dérivées d'un courrier, liées ou non à une procédure (action libre)
 | `title` | text | titre de l'action — exigé côté formulaire quand `procedure_id` est null |
 | `assignee_id` | uuid FK → users | nullable en DB (tickets Arpège) ; exigé côté formulaire pour les tickets Clara |
 | `status` | text | `'open'` par défaut |
+| `socle_data` | jsonb | démarche du référentiel : demandeur déclaré + réponses au formulaire + pièces sélectionnées (`src/lib/socle-form.ts`) |
 | `arpege_demande_ref` / `arpege_demande_status` | text | |
+
+**Suivi de la demande déposée dans Iris** (écrit par le serveur uniquement — cf.
+`docs/iris-integration.md`) :
+
+| Colonne | Type | Notes |
+|---|---|---|
+| `iris_idempotency_key` | uuid, `not null default gen_random_uuid()` | tirée à la création du ticket, **rejouée telle quelle** à chaque tentative : c'est ce qui rend un renvoi inoffensif |
+| `iris_request_id` / `iris_reference` / `iris_url` | uuid / text / text | identité de la demande côté Iris. `iris_request_id` NULL = jamais déposée |
+| `iris_status` | text | liste **fermée** (`a_traiter`, `en_instruction`, `en_attente`, `annulee`, `resolue_positive`, `resolue_negative`, `archivee`). Libellés d'affichage : `src/lib/iris.ts` |
+| `iris_version` | integer | version monotone servie par Iris — garde d'application des mises à jour |
+| `iris_synced_at` / `iris_last_attempt_at` | timestamptz | |
+| `iris_last_error` | text | message en français du dernier échec de dépôt ; non nul ⇒ l'onglet Actions liées propose « Renvoyer ». NULL après un dépôt réussi |
 
 #### `notifications`
 Notifications in-app. RLS scoped `user_id = auth.uid()`.

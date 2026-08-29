@@ -29,7 +29,10 @@ interface OrgRow {
   socle_org_id: string | null;
 }
 
-const syncCounterLabels: { key: keyof SocleSyncCounters; label: string }[] = [
+/** Compteurs par entité miroir (les autres champs sont des nombres ou des avertissements). */
+type SocleEntityKey = "organizations" | "categories" | "document_types" | "procedures";
+
+const syncCounterLabels: { key: SocleEntityKey; label: string }[] = [
   { key: "organizations", label: "Organisations" },
   { key: "categories", label: "Catégories" },
   { key: "document_types", label: "Types de documents" },
@@ -44,7 +47,12 @@ function syncSummary(result: SocleSyncResult): string {
     const c = counters[key];
     return `${label} : ${c.created + c.updated + c.adopted + c.obsoleted}`;
   });
-  return `Éléments modifiés — ${parts.join(", ")}.`;
+  // Le serveur d'envoi vient du référentiel : dire ce qu'il en est évite de
+  // chercher pourquoi les mails partent (ou ne partent plus).
+  if (counters.smtp_synchronises) parts.push("Serveur d'envoi : à jour");
+  else if (counters.smtp_retires) parts.push("Serveur d'envoi : retiré (aucun dans le référentiel)");
+  const resume = `Éléments modifiés — ${parts.join(", ")}.`;
+  return counters.warnings?.length ? `${resume} ⚠️ ${counters.warnings.join(" ")}` : resume;
 }
 
 // Miroirs Socle rafraîchis après une synchronisation manuelle.

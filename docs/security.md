@@ -41,7 +41,14 @@ Pour servir un document privé : passer par l'edge function `storage-documents` 
 ## Secrets (à configurer côté Supabase / Lovable Cloud)
 
 - `SUPABASE_SERVICE_ROLE_KEY` — interne, jamais côté client.
-- `LOVABLE_API_KEY` — Lovable AI Gateway (analyse + draft).
+- `SOCLE_API_KEY` — **clé plateforme unique Socle↔Clara**, scopes `read` + `contacts` + `smtp` +
+  **`ai`**, avec une *application imputable* (`clara`) côté Socle. ⚠️ **Aucune clé de fournisseur
+  LLM n'existe plus côté Clara** depuis le 2026-08-29 (`MISTRAL_API_KEY` et
+  `MISTRAL_*_AGENT_ID` retirés des secrets) : le Socle détient la clé, et une application
+  compromise ne la compromet plus. C'est le premier gain de la centralisation, avant même le
+  budget unique.
+- `SOCLE_API_URL` — base des edge functions du Socle ; l'URL du guichet IA en est dérivée
+  (`public-api` → `ai-api`). `SOCLE_AI_API_URL` la surcharge si besoin.
 - `RESEND_API_KEY` — emails transactionnels (invite, reset).
 - `CRON_SECRET` — header `x-cron-secret` pour pg_cron → edge functions. Doit aussi être inséré dans `vault.decrypted_secrets` (key = `cron_secret`).
 - `ARPEGE_*` — credentials API Arpège (URL, client_id, secret).
@@ -58,7 +65,7 @@ Pour servir un document privé : passer par l'edge function `storage-documents` 
 ## Rotation des secrets
 
 - **`cron_secret`** (Vault) : tourné le 2026-07-11 (l'ancienne valeur figurait en clair dans la migration `20260417133227` — ne JAMAIS mettre une valeur de secret dans une migration). Procédure : `SELECT vault.update_secret((SELECT id FROM vault.secrets WHERE name='cron_secret'), '<nouvelle valeur>');` puis vérifier ancien → 401 / nouveau → 200 sur une edge function cron.
-- **Mots de passe IMAP/SMTP en clair en DB** : dette P1 connue (chantier chiffrement, cf. `docs/technical-debt.md`).
+- **Mots de passe IMAP/SMTP en clair en DB** : dette P1 connue (chantier chiffrement, cf. `docs/technical-debt.md`). Atténuation posée le 2026-08-23 pour le SMTP : `smtp_settings` n'est plus exposée au client (aucun `GRANT` pour `anon`/`authenticated`, plus de policy `authenticated`), le mot de passe vient du Socle et ne traverse plus que `sync-socle-referentiel` → RPC de service. Il ne doit apparaître dans aucun journal, compteur ou message d'erreur. `imap_settings`, elle, reste lisible par les admins d'org.
 
 ## Checklist avant de merger une feature
 

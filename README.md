@@ -15,7 +15,8 @@ Clara est une solution SaaS de **gestion électronique de courrier (GEC)** pour 
 
 - **Frontend** : React 18, Vite 5, TypeScript, React Router, TanStack Query, Tailwind CSS et shadcn/ui.
 - **Backend** : Supabase — Postgres, RLS, Auth, Storage, Edge Functions Deno et pg_cron.
-- **IA** : Lovable AI Gateway et Mistral selon les fonctions.
+- **IA** : **guichet du Socle** (`ai-api`) — complétions et OCR. Clara ne détient aucune clé de
+  fournisseur ; le crédit est celui de la collectivité, commun à toute la gamme.
 - **Tests** : Vitest, tests d'intégration Vitest et Playwright pour l'E2E.
 
 ## Prérequis

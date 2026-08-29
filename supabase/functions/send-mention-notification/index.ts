@@ -149,8 +149,12 @@ Deno.serve(async (req) => {
       .eq("organization_id", courier.organization_id)
       .single();
 
+    // Miroir du référentiel (organisation principale), aucun relais de repli.
     if (!smtp?.host) {
-      return new Response(JSON.stringify({ error: "Configuration SMTP introuvable" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return new Response(JSON.stringify({
+        error:
+          "Aucun serveur d'envoi pour cette organisation : définissez-le dans le référentiel (organisation principale), puis lancez une synchronisation.",
+      }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const origin = Deno.env.get("APP_ORIGIN") || req.headers.get("origin") || supabaseUrl.replace(".supabase.co", ".lovableproject.com");

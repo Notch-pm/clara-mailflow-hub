@@ -148,7 +148,7 @@ export default function SettingsPage() {
         )}
         {activeSection === "portail" && <PortalFormsSettings />}
         {activeSection === "ia" && organizationId && (
-          <AiUsageSettings organizationId={organizationId} editable={false} />
+          <AiUsageSettings organizationId={organizationId} />
         )}
       </div>
     );

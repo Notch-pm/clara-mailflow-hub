@@ -42,6 +42,7 @@ import {
   updateTicket,
   type ActionTicketWithProcedure,
 } from "@/services/actionTicketService";
+import { pushIrisRequest } from "@/services/irisRequestService";
 import { logEvent } from "@/services/courierEventService";
 import { getDocuments } from "@/services/courierDocumentService";
 import { getOrgMembers } from "@/services/userService";
@@ -707,7 +708,10 @@ export default function CreateTicketDialog({
         requesterRequiredMet(socleConfig, currentAudience, socleRequesterValues))) &&
       (!hasSocleFormFields || formRequiredMet(socleSchema, socleFormValues, piecesJointes)));
 
-  const saveMutation = useMutation({
+  // Le dépôt dans Iris se raconte dans le toast de fin : une action peut être
+  // créée ici et refusée là-bas (démarche obsolète, demandeur absent…) sans que
+  // rien ne soit perdu — l'onglet Actions liées propose alors le renvoi.
+  const saveMutation = useMutation<{ irisReference?: string | null; irisError?: string | null }>({
     mutationFn: async () => {
       if (isEdit && ticket) {
         await updateTicket(ticket.id, {
@@ -722,7 +726,7 @@ export default function CreateTicketDialog({
           assignee_id: assigneeId,
           title: title.trim() || null,
         });
-        return ticket;
+        return {};
       }
 
       if (isArpege) {
@@ -740,7 +744,7 @@ export default function CreateTicketDialog({
           procedure_id: procedureId,
           arpege_ref: created.arpege_demande_ref,
         });
-        return created;
+        return {};
       }
 
       const socleData = showSocleForm
@@ -770,10 +774,31 @@ export default function CreateTicketDialog({
         title: title.trim() || null,
         description: description?.slice(0, 200) || null,
       });
-      return created;
+
+      // Démarche du référentiel ⇒ la demande appartient à Iris. Le ticket est
+      // créé d'abord : son id EST l'external_id côté Iris, il ne peut pas être
+      // connu avant. Un échec de dépôt ne détruit donc rien et se rejoue à
+      // l'identique (clé d'idempotence portée par le ticket).
+      if (isSocle) {
+        try {
+          const pushed = await pushIrisRequest(created.id);
+          // Organisation qui ne dépose pas dans Iris : rien à annoncer.
+          if (pushed.skipped) return {};
+          return { irisReference: pushed.reference };
+        } catch (e) {
+          return { irisError: e instanceof Error ? e.message : String(e) };
+        }
+      }
+      return {};
     },
-    onSuccess: () => {
-      toast.success(isEdit ? "Ticket modifié" : "Ticket créé");
+    onSuccess: (result) => {
+      if (result.irisError) {
+        toast.warning(`Action créée, non transmise à Iris : ${result.irisError}`);
+      } else if (result.irisReference) {
+        toast.success(`Action créée — demande ${result.irisReference} déposée dans Iris`);
+      } else {
+        toast.success(isEdit ? "Ticket modifié" : "Ticket créé");
+      }
       qc.invalidateQueries({ queryKey: ["action-tickets", courierId] });
       qc.invalidateQueries({ queryKey: ["courier-events", courierId] });
       onOpenChange(false);

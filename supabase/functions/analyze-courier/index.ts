@@ -2,12 +2,22 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import JSZip from "https://esm.sh/jszip@3.10.1";
 import { extractText, getDocumentProxy } from "https://esm.sh/unpdf@0.12.1";
 import {
-  withAiUsageGuard,
+  AGENT_EXTRACTION,
   AiQuotaExceededError,
-  estimateOcrTokens,
-  estimateTextTokens,
-  estimateTokensFromText,
-} from "../_shared/aiUsage.ts";
+  FEATURE_ANALYSIS,
+  FEATURE_PREFILL,
+  fitMessage,
+  isAiConfigured,
+  MAX_OCR_PAGES,
+  MAX_OUTPUT_TOKENS,
+  parseJsonAnswer,
+  SocleAiError,
+  socleCompletion,
+  socleOcr,
+  socleOrgIdFor,
+  type SocleAiContext,
+} from "../_shared/socleAi.ts";
+import { jsonSchemaInstruction, objectSchema } from "../_shared/jsonSchemaPrompt.ts";
 import {
   SUGGESTED_FIELDS_PROPERTIES,
   SUGGESTED_FIELDS_KEYS,
@@ -39,15 +49,14 @@ const corsHeaders = {
 };
 
 const BUCKET = "clara-documents";
-const MISTRAL_OCR_URL = "https://api.mistral.ai/v1/ocr";
-const MISTRAL_CHAT_URL = "https://api.mistral.ai/v1/chat/completions";
-const MISTRAL_AGENT_URL = "https://api.mistral.ai/v1/agents/completions";
-const OCR_MODEL = "mistral-ocr-latest";
-const CHAT_MODEL = "mistral-large-latest";
-// Agent Mistral d'extraction structurée — surchargable sans redéploiement via
-// le secret MISTRAL_EXTRACTION_AGENT_ID (repli : agent historique).
-const ANALYSIS_AGENT_ID = Deno.env.get("MISTRAL_EXTRACTION_AGENT_ID") ??
-  "ag_019d9b92d28872079534f45f246671ed";
+/**
+ * Modèle inscrit dans `courier_document_extracts.model` quand le texte vient
+ * du guichet. Ce n'est plus le nom d'un modèle de fournisseur : Clara ne le
+ * connaît plus, et le Socle peut en changer sans qu'elle bouge.
+ */
+const OCR_MODEL = "socle-ocr";
+/** Durée de vie du lien remis au guichet : le temps de l'appel, pas plus. */
+const SIGNED_URL_TTL_SECONDS = 600;
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -186,14 +195,21 @@ async function extractPdfNative(blob: Blob): Promise<{ text: string; pageCount: 
   };
 }
 
-/** Run OCR via Mistral on a single document, store extract, return text. */
+/**
+ * Le texte d'un document, stocké dans `courier_document_extracts`.
+ *
+ * ⚠️ L'ORDRE DES BRANCHES EST UNE DÉCISION DE COÛT, pas de commodité. Texte
+ * brut, DOCX, ODT, RTF et PDF avec couche texte s'extraient ICI, sans IA et
+ * sans toucher au crédit de la collectivité. Le guichet n'est appelé que pour
+ * ce qui l'exige : PDF scanné et image. Chaque appel évité est du crédit qui
+ * reste disponible pour l'analyse elle-même.
+ */
 async function ocrDocument(
   admin: ReturnType<typeof getAdminClient>,
   orgId: string,
   documentId: string,
-  mistralKey: string,
-  /** NULL pour un appel système (worker de file d'attente). */
-  userId: string | null,
+  /** Imputation de la dépense. `actorId` NULL pour un appel système (cron). */
+  ctx: SocleAiContext,
 ) {
   // Fetch document
   const { data: doc, error: docErr } = await admin
@@ -264,104 +280,47 @@ async function ocrDocument(
     }
 
     if (nativeFailed) {
-      // Fallback: Mistral OCR via signed URL
+      // PDF scanné : rien à extraire nativement, le guichet est le seul recours.
+      //
+      // ⚠️ LE LIEN SIGNÉ EST UN DROIT D'ACCÈS AU DOCUMENT. Il est émis juste
+      // avant l'appel et vit le temps de l'appel. Le Socle ne télécharge pas
+      // le document : il transmet le lien au fournisseur, qui va le chercher
+      // lui-même — l'octet ne traverse donc jamais le Socle.
       const { data: signed, error: signErr } = await admin.storage
         .from(BUCKET)
-        .createSignedUrl(doc.storage_key, 600);
+        .createSignedUrl(doc.storage_key, SIGNED_URL_TTL_SECONDS);
       if (signErr || !signed) throw new Error(`Signed URL error: ${signErr?.message}`);
 
-      const ocrOutcome = await withAiUsageGuard({
-        admin,
-        organizationId: orgId,
-        provider: "mistral",
-        resourceType: "ocr",
-        estimatedTokens: estimateOcrTokens(pageCount ?? 1),
-        userId,
-        run: async () => {
-          const ocrResp = await fetch(MISTRAL_OCR_URL, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${mistralKey}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              model: OCR_MODEL,
-              document: { type: "document_url", document_url: signed.signedUrl },
-              include_image_base64: false,
-            }),
-          });
-          if (!ocrResp.ok) {
-            const t = await ocrResp.text();
-            console.error("Mistral OCR error", ocrResp.status, t);
-            throw new Error(`Mistral OCR ${ocrResp.status}: ${t.slice(0, 200)}`);
-          }
-          const ocrData = await ocrResp.json();
-          const pages = Array.isArray(ocrData.pages) ? ocrData.pages : [];
-          const text = pages
-            .map((p: { markdown?: string; text?: string }) => p.markdown ?? p.text ?? "")
-            .join("\n\n---\n\n")
-            .trim();
-          const actualTokens = ocrData?.usage?.total_tokens ?? estimateTokensFromText(text);
-          return { result: { text, pageCount: pages.length || null }, actualTokens };
-        },
+      const ocrOutcome = await socleOcr({
+        ctx: { ...ctx, reference: { kind: "courier", id: doc.courier_id } },
+        documentType: "document_url",
+        url: signed.signedUrl,
+        // Le nombre de pages compté nativement sert à RÉSERVER chez le Socle.
+        // Borné : au-delà, le guichet refuserait le document entier plutôt que
+        // d'en rendre une partie.
+        pageCountHint: Math.min(pageCount ?? 1, MAX_OCR_PAGES),
       });
       extractedText = ocrOutcome.text;
       pageCount = ocrOutcome.pageCount ?? pageCount;
       model = OCR_MODEL;
     }
   } else {
-    // Default: images and unknown formats → Mistral OCR via signed URL
+    // Images et formats inconnus : aucune extraction native possible, le
+    // guichet est le seul recours. Même règle que la branche PDF — le lien
+    // signé est émis juste avant l'appel, et le Socle ne le télécharge pas.
     const { data: signed, error: signErr } = await admin.storage
       .from(BUCKET)
-      .createSignedUrl(doc.storage_key, 600);
+      .createSignedUrl(doc.storage_key, SIGNED_URL_TTL_SECONDS);
     if (signErr || !signed) throw new Error(`Signed URL error: ${signErr?.message}`);
 
-    const ocrBody = isImage
-      ? {
-          model: OCR_MODEL,
-          document: { type: "image_url", image_url: signed.signedUrl },
-          include_image_base64: false,
-        }
-      : {
-          model: OCR_MODEL,
-          document: { type: "document_url", document_url: signed.signedUrl },
-          include_image_base64: false,
-        };
-
-    const ocrOutcome = await withAiUsageGuard({
-      admin,
-      organizationId: orgId,
-      provider: "mistral",
-      resourceType: "ocr",
-      estimatedTokens: estimateOcrTokens(1),
-      userId,
-      run: async () => {
-        const ocrResp = await fetch(MISTRAL_OCR_URL, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${mistralKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(ocrBody),
-        });
-
-        if (!ocrResp.ok) {
-          const t = await ocrResp.text();
-          console.error("Mistral OCR error", ocrResp.status, t);
-          throw new Error(`Mistral OCR ${ocrResp.status}: ${t.slice(0, 200)}`);
-        }
-        const ocrData = await ocrResp.json();
-        const pages = Array.isArray(ocrData.pages) ? ocrData.pages : [];
-        const text = pages
-          .map((p: { markdown?: string; text?: string }) => p.markdown ?? p.text ?? "")
-          .join("\n\n---\n\n")
-          .trim();
-        const actualTokens = ocrData?.usage?.total_tokens ?? estimateTokensFromText(text);
-        return { result: { text, pageCount: pages.length || null }, actualTokens };
-      },
+    const ocrOutcome = await socleOcr({
+      ctx: { ...ctx, reference: { kind: "courier", id: doc.courier_id } },
+      documentType: isImage ? "image_url" : "document_url",
+      url: signed.signedUrl,
     });
     extractedText = ocrOutcome.text;
     pageCount = ocrOutcome.pageCount;
+    model = OCR_MODEL;
   }
 
   // Upsert into extracts (unique on document_id)
@@ -389,9 +348,8 @@ async function analyzeCourier(
   admin: ReturnType<typeof getAdminClient>,
   orgId: string,
   courierId: string,
-  mistralKey: string,
-  /** NULL pour un appel système (worker de file d'attente). */
-  userId: string | null,
+  /** Imputation de la dépense. `actorId` NULL pour un appel système (cron). */
+  ctx: SocleAiContext,
 ) {
   // Get courier subject + extracts
   const { data: courier } = await admin
@@ -491,7 +449,7 @@ async function analyzeCourier(
 
   const procedureListForPrompt = buildProcedureCatalog(procedureList);
 
-  const systemPrompt = `Tu es un assistant expert en gestion de courrier administratif. Analyse le contenu fourni et restitue UNIQUEMENT via l'outil "report_analysis" :
+  const systemPrompt = `Tu es un assistant expert en gestion de courrier administratif. Analyse le contenu fourni et restitue les éléments suivants :
 - summary: résumé concis (2-3 phrases) du contenu
 - intents: liste des tags qui qualifient ce courrier, choisis EXCLUSIVEMENT dans la liste des tags disponibles ci-dessous (copie exacte du nom, sensible à la casse). N'invente AUCUN tag. Si aucun tag ne s'applique, renvoie une liste vide.
 - sentiment: ton/état d'esprit du rédacteur, parmi: neutre, courtois, urgent, mécontent, agressif, satisfait, inquiet
@@ -525,56 +483,53 @@ ${serviceNames.length ? serviceNames.join(", ") : "(aucun)"}`;
     intentsSchema.items = { type: "string", enum: availableTagNames };
   }
 
-  const tools = [
+  // ⚠️ CE SCHÉMA VIVAIT DANS `tools`. Il n'a pas disparu avec la
+  // centralisation : il a changé de place. Le guichet du Socle refuse
+  // `tools`/`tool_choice` par principe et n'offre que « du JSON valide » —
+  // la conformité au schéma reste donc l'affaire de Clara, comme elle l'était
+  // déjà en pratique (un schéma d'outil n'a jamais empêché un modèle
+  // d'inventer un `procedure_id` bien formé mais inexistant). Les deux
+  // revalidations qui suivent — tags de l'organisation, démarches existantes —
+  // sont et restent la vraie défense.
+  const analysisSchema = objectSchema(
     {
-      type: "function",
-      function: {
-        name: "report_analysis",
-        description: "Retourne l'analyse structurée du courrier",
-        parameters: {
+      summary: { type: "string" },
+      intents: intentsSchema,
+      sentiment: {
+        type: "string",
+        enum: ["neutre", "courtois", "urgent", "mécontent", "agressif", "satisfait", "inquiet"],
+      },
+      ...SUGGESTED_FIELDS_PROPERTIES,
+      suggested_actions: {
+        type: "array",
+        items: {
           type: "object",
           properties: {
-            summary: { type: "string" },
-            intents: intentsSchema,
-            sentiment: {
-              type: "string",
-              enum: ["neutre", "courtois", "urgent", "mécontent", "agressif", "satisfait", "inquiet"],
-            },
-            ...SUGGESTED_FIELDS_PROPERTIES,
-            suggested_actions: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  label: { type: "string", description: "Action concrète à entreprendre" },
-                  procedure_id: { type: ["string", "null"], description: "ID exact de la procédure correspondante, ou null" },
-                  prefill: {
-                    type: "object",
-                    description: "Données extractibles du courrier pour pré-remplir le formulaire demandeur",
-                    properties: {
-                      CIVILITE: { type: "string", enum: ["M", "MME", "MLLE"] },
-                      NOM_USUEL: { type: "string" },
-                      NOM_NAISSANCE: { type: "string" },
-                      PRENOMS: { type: "string" },
-                      DATE_NAISSANCE: { type: "string", description: "Format YYYY-MM-DD" },
-                      EMAIL: { type: "string" },
-                      TEL_FIXE: { type: "string" },
-                      TEL_MOBILE: { type: "string" },
-                    },
-                    additionalProperties: false,
-                  },
-                },
-                required: ["label"],
-                additionalProperties: false,
+            label: { type: "string", description: "Action concrète à entreprendre" },
+            procedure_id: { type: ["string", "null"], description: "ID exact de la procédure correspondante, ou null" },
+            prefill: {
+              type: "object",
+              description: "Données extractibles du courrier pour pré-remplir le formulaire demandeur",
+              properties: {
+                CIVILITE: { type: "string", enum: ["M", "MME", "MLLE"] },
+                NOM_USUEL: { type: "string" },
+                NOM_NAISSANCE: { type: "string" },
+                PRENOMS: { type: "string" },
+                DATE_NAISSANCE: { type: "string", description: "Format YYYY-MM-DD" },
+                EMAIL: { type: "string" },
+                TEL_FIXE: { type: "string" },
+                TEL_MOBILE: { type: "string" },
               },
+              additionalProperties: false,
             },
           },
-          required: ["summary", "intents", "sentiment", "suggested_actions", ...SUGGESTED_FIELDS_KEYS],
+          required: ["label"],
           additionalProperties: false,
         },
       },
     },
-  ];
+    ["summary", "intents", "sentiment", "suggested_actions", ...SUGGESTED_FIELDS_KEYS],
+  );
 
   type ParsedAnalysis = {
     summary: string;
@@ -590,53 +545,22 @@ ${serviceNames.length ? serviceNames.join(", ") : "(aucun)"}`;
     sender_phone?: string;
   };
 
-  const { parsed, tokensUsed } = await withAiUsageGuard<{ parsed: ParsedAnalysis; tokensUsed: number | null }>({
-    admin,
-    organizationId: orgId,
-    provider: "mistral",
-    resourceType: "agent",
-    estimatedTokens: estimateTextTokens(systemPrompt.length + userPrompt.length, 800),
-    userId,
-    run: async () => {
-      const chatResp = await fetch(MISTRAL_AGENT_URL, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${mistralKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          agent_id: ANALYSIS_AGENT_ID,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt },
-          ],
-          tools,
-          tool_choice: { type: "function", function: { name: "report_analysis" } },
-        }),
-      });
+  const analysisAnswer = await socleCompletion({
+    system: `${systemPrompt}
 
-      if (!chatResp.ok) {
-        const t = await chatResp.text();
-        console.error("Mistral agent error", chatResp.status, t);
-        throw new Error(`Mistral agent ${chatResp.status}: ${t.slice(0, 200)}`);
-      }
-
-      const chatData = await chatResp.json();
-      const toolCall = chatData?.choices?.[0]?.message?.tool_calls?.[0];
-      if (!toolCall?.function?.arguments) {
-        throw new Error("Réponse Mistral inattendue (pas de tool_call)");
-      }
-      let parsedAnalysis: ParsedAnalysis;
-      try {
-        parsedAnalysis = JSON.parse(toolCall.function.arguments);
-      } catch {
-        throw new Error("JSON invalide depuis Mistral");
-      }
-
-      const actualTokens = chatData?.usage?.total_tokens ?? null;
-      return { result: { parsed: parsedAnalysis, tokensUsed: actualTokens }, actualTokens };
-    },
+${jsonSchemaInstruction(analysisSchema)}`,
+    messages: [{ role: "user", content: fitMessage(userPrompt) }],
+    agent: AGENT_EXTRACTION,
+    // ⚠️ LE PLAFOND DE SORTIE, ET NON UNE ESTIMATION SERRÉE. Règle maison pour
+    // tout appel `json: true` : une réponse JSON tronquée est une PERTE TOTALE
+    // (elle ne parse pas, tout l'appel est à rejouer), tandis qu'une
+    // réservation trop haute est rendue au règlement — le Socle solde sur la
+    // consommation réelle. Les deux risques ne sont pas du même ordre.
+    maxOutputTokens: MAX_OUTPUT_TOKENS,
+    json: true,
+    ctx: { ...ctx, feature: FEATURE_ANALYSIS, reference: { kind: "courier", id: courierId } },
   });
+  const parsed = parseJsonAnswer<ParsedAnalysis>(analysisAnswer);
 
   // Sécurité : filtrer les intents pour ne garder que ceux qui appartiennent
   // bien aux tags de l'organisation (mapping strict, insensible à la casse).
@@ -662,83 +586,49 @@ ${serviceNames.length ? serviceNames.join(", ") : "(aucun)"}`;
 
   // ── Appel(s) 2 (ciblés, non bloquants) : préremplissage des démarches Socle ──
   // Uniquement pour les démarches Socle natives recommandées ayant des champs
-  // de formulaire. Le schéma du tool est généré depuis leur form_schema (labels
-  // et options portés par le schéma, pas de rappel dans le prompt) ; au-delà
+  // de formulaire. Le schéma de sortie est généré depuis leur form_schema
+  // (labels et options portés par le schéma, pas de rappel dans le prompt) et
+  // joint au prompt système depuis la centralisation IA ; au-delà
   // d'un seuil de taille, la planification scinde en un appel par démarche, et
   // un appel groupé qui échoue est rejoué scindé. La sortie est revalidée avant
   // stockage. En cas d'échec final, l'analyse est stockée sans socle_prefill.
   let actionsToStore: Array<(typeof safeActions)[number] & { socle_prefill?: unknown }> = safeActions;
-  let prefillTokens = 0;
   const prefillCandidates = selectPrefillCandidates(safeActions, procedureList);
   const prefillQueue: PrefillCall[] = planPrefillCalls(prefillCandidates);
   if (prefillQueue.length > 1) {
     console.warn(`report_prefill: schéma trop large — scission en ${prefillQueue.length} appels`);
   }
 
-  const runPrefillCall = async (call: PrefillCall) => {
-    const prefillSystemPrompt = `Tu prépares le préremplissage de formulaires de démarches administratives à partir du contenu d'un courrier. Restitue UNIQUEMENT via l'outil "report_prefill", dont le schéma décrit chaque champ et ses options.
+  const runPrefillCall = async (call: PrefillCall): Promise<unknown> => {
+    const prefillSystemPrompt = `Tu prépares le préremplissage de formulaires de démarches administratives à partir du contenu d'un courrier.
 Pour chaque démarche :
 - audience : nature du demandeur (citoyen, entreprise ou association) si elle est claire d'après le courrier, sinon chaîne vide.
 - form : pour chaque champ, la valeur extraite du courrier. N'invente RIEN : chaîne vide (ou tableau vide) pour tout champ dont la valeur n'est pas clairement présente. Champs à options : le CODE exact, jamais le libellé. Dates au format YYYY-MM-DD.
 Appuie-toi sur les connaissances fournies pour interpréter les champs, et respecte les garde-fous.
 
-${call.tool.promptBlock}`;
+${call.tool.promptBlock}
+
+${jsonSchemaInstruction(call.tool.toolParameters as Record<string, unknown>)}`;
     const prefillUserPrompt = userPrompt.slice(0, call.contentMax);
 
-    return await withAiUsageGuard<{ parsed: unknown; tokensUsed: number | null }>({
-      admin,
-      organizationId: orgId,
-      provider: "mistral",
-      resourceType: "agent",
-      estimatedTokens: estimateTextTokens(prefillSystemPrompt.length + prefillUserPrompt.length, 400),
-      userId,
-      run: async () => {
-        const resp = await fetch(MISTRAL_AGENT_URL, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${mistralKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            agent_id: ANALYSIS_AGENT_ID,
-            messages: [
-              { role: "system", content: prefillSystemPrompt },
-              { role: "user", content: prefillUserPrompt },
-            ],
-            tools: [
-              {
-                type: "function",
-                function: {
-                  name: "report_prefill",
-                  description: "Retourne le préremplissage des formulaires de démarches",
-                  parameters: call.tool.toolParameters,
-                },
-              },
-            ],
-            tool_choice: { type: "function", function: { name: "report_prefill" } },
-          }),
-        });
-        if (!resp.ok) {
-          const t = await resp.text();
-          throw new Error(`Mistral prefill ${resp.status}: ${t.slice(0, 200)}`);
-        }
-        const data = await resp.json();
-        const toolCall = data?.choices?.[0]?.message?.tool_calls?.[0];
-        if (!toolCall?.function?.arguments) throw new Error("Réponse Mistral inattendue (pas de tool_call prefill)");
-        const args = JSON.parse(toolCall.function.arguments) as unknown;
-        const actual = data?.usage?.total_tokens ?? null;
-        return { result: { parsed: args, tokensUsed: actual }, actualTokens: actual };
-      },
+    const answer = await socleCompletion({
+      system: prefillSystemPrompt,
+      messages: [{ role: "user", content: fitMessage(prefillUserPrompt) }],
+      agent: AGENT_EXTRACTION,
+      // Le plafond, pour la même raison que l'analyse ci-dessus.
+      maxOutputTokens: MAX_OUTPUT_TOKENS,
+      json: true,
+      ctx: { ...ctx, feature: FEATURE_PREFILL, reference: { kind: "courier", id: courierId } },
     });
+    return parseJsonAnswer<unknown>(answer);
   };
 
   const sanitizedAll: Record<string, SanitizedPrefill> = {};
   while (prefillQueue.length > 0) {
     const call = prefillQueue.shift()!;
     try {
-      const { parsed: rawPrefill, tokensUsed: t2 } = await runPrefillCall(call);
+      const rawPrefill = await runPrefillCall(call);
       Object.assign(sanitizedAll, sanitizePrefillArguments(rawPrefill, call.procedures));
-      prefillTokens += t2 ?? 0;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (e instanceof AiQuotaExceededError) {
@@ -779,8 +669,15 @@ ${call.tool.promptBlock}`;
         suggested_service_name: safeSuggestedService,
         suggested_recipient_name: safeSuggestedRecipient,
         suggested_sender: safeSuggestedSender,
-        model: `agent:${ANALYSIS_AGENT_ID}`,
-        tokens_used: tokensUsed == null && prefillTokens === 0 ? null : (tokensUsed ?? 0) + prefillTokens,
+        // ⚠️ NI MODÈLE NI JETONS : Clara ne les connaît plus, et c'est
+        // voulu. Le modèle est choisi par le Socle derrière un alias, et le
+        // décompte vit dans son journal (`ai_usage_events`), avec la
+        // ventilation par application. Recopier ici un nombre approché
+        // créerait le second compteur que la centralisation a supprimé — et
+        // un chiffre faux est pire qu'un chiffre absent : on ne se méfie pas
+        // d'un tableau qui s'affiche.
+        model: "socle:ai-api",
+        tokens_used: null,
       },
       { onConflict: "courier_id" },
     )
@@ -827,11 +724,39 @@ Deno.serve(async (req) => {
       userId = user.id;
     }
 
-    const mistralKey = Deno.env.get("MISTRAL_API_KEY");
-    if (!mistralKey) return jsonResponse({ error: "MISTRAL_API_KEY non configurée" }, 500);
-
     const url = new URL(req.url);
     const action = url.searchParams.get("action");
+
+    // ⚠️ LE ROUTAGE D'ABORD, LE RACCORDEMENT ENSUITE, et l'ordre est une
+    // décision. Une action inconnue est inconnue, que l'instance soit
+    // raccordée au guichet IA ou non : la renvoyer en 503 ferait chercher une
+    // panne de configuration là où il n'y a qu'une faute de frappe. On ne
+    // vérifie donc le raccordement qu'une fois établi que l'appel va dépenser.
+    if (action !== "ocr-courier" && action !== "analyze") {
+      return jsonResponse({ error: "Unknown action" }, 400);
+    }
+
+    // ⚠️ Ce n'est PAS la clé d'un fournisseur — Clara n'en a plus. C'est le
+    // raccordement au guichet IA du Socle, qui détient la clé et le crédit.
+    if (!isAiConfigured()) {
+      return jsonResponse({ error: "L'assistant IA n'est pas configuré sur cette instance." }, 503);
+    }
+    const socleOrgId = await socleOrgIdFor(admin, orgId);
+    if (!socleOrgId) {
+      return jsonResponse(
+        { error: "Organisation non rattachée au Socle (socle_org_id manquant) — la consommation IA ne serait imputable à personne." },
+        503,
+      );
+    }
+    // `actorId` NULL sur la branche cron : le worker n'a pas d'utilisateur.
+    // Le garde-fou de cadence du Socle bascule alors sur le quota « par
+    // application » (plus large), ce qui est exactement ce qu'il faut pour un
+    // traitement de lot.
+    const aiContext: SocleAiContext = {
+      socleOrgId,
+      feature: FEATURE_ANALYSIS,
+      actorId: userId,
+    };
 
     if (req.method === "POST" && action === "ocr-courier") {
       const { courier_id } = await req.json();
@@ -856,7 +781,7 @@ Deno.serve(async (req) => {
           continue;
         }
         try {
-          await ocrDocument(admin, orgId, d.id, mistralKey, userId);
+          await ocrDocument(admin, orgId, d.id, aiContext);
           results.push({ document_id: d.id, ok: true });
         } catch (e) {
           if (e instanceof AiQuotaExceededError) quotaExceeded = true;
@@ -871,17 +796,29 @@ Deno.serve(async (req) => {
     if (req.method === "POST" && action === "analyze") {
       const { courier_id } = await req.json();
       if (!courier_id) return jsonResponse({ error: "Missing courier_id" }, 400);
-      const row = await analyzeCourier(admin, orgId, courier_id, mistralKey, userId);
+      const row = await analyzeCourier(admin, orgId, courier_id, aiContext);
       return jsonResponse(row);
     }
 
     return jsonResponse({ error: "Unknown action" }, 400);
   } catch (err) {
+    // Les refus du guichet arrivent déjà traduits, avec leur statut : plafond
+    // de la collectivité atteint (message du Socle mot pour mot, date de
+    // renouvellement comprise), cadence dépassée, fournisseur muet,
+    // configuration absente.
+    if (err instanceof SocleAiError) {
+      return jsonResponse({
+        error: err.message,
+        code: err.code,
+        // La date vient du Socle, jamais recalculée ici : l'appelant (écran ou
+        // worker de file) doit pouvoir la relayer sans risquer de la contredire.
+        renews_at: err instanceof AiQuotaExceededError ? err.renewsAt : null,
+      }, err.status);
+    }
     const message = err instanceof Error ? err.message : "Internal error";
     const status =
       message === "Unauthorized" ? 401
       : message.startsWith("Forbidden") ? 403
-      : err instanceof AiQuotaExceededError ? 429
       : 500;
     return jsonResponse({ error: message }, status);
   }

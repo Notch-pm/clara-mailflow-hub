@@ -31,11 +31,13 @@
 Pipeline en deux étapes, déclenché depuis `CourierDetail` ou `SuggestedActionsCard` :
 
 1. **OCR** — edge function `analyze-courier?action=ocr-courier` :
-   - Pour chaque `courier_document`, extrait le texte (PDF → texte, images → OCR via le modèle Gemini multimodal).
-   - Écrit dans `courier_document_extracts` (cache).
+   - Pour chaque `courier_document`, extrait le texte. **L'ordre des branches est une décision de coût** : texte brut, DOCX, ODT, RTF et PDF à couche texte sont extraits localement, sans IA et **sans toucher au crédit**. Seuls les PDF scannés et les images partent au guichet du Socle (`POST /v1/ocr`).
+   - Le document ne quitte pas Clara sous forme d'octets : le guichet reçoit une **URL signée courte** que le fournisseur va chercher lui-même.
+   - Écrit dans `courier_document_extracts` (cache) — `model = "socle:ai-api"`, Clara ne connaissant plus le modèle réel.
 2. **Analyse LLM** — edge function `analyze-courier?action=analyze` :
-   - Lit les extraits + corps du courrier, appelle Lovable AI Gateway.
+   - Lit les extraits + corps du courrier, appelle le **guichet du Socle** (`POST /v1/completions`, alias d'agent `extraction-courrier`).
    - Produit `summary`, `intents[]`, `sentiment`, `suggested_actions[]` → `courier_analyses`.
+   - ⚠️ **`tokens_used` est désormais NULL** : le décompte vit dans le journal du Socle, avec la ventilation par application. Y recopier un nombre approché rouvrirait un second compteur, et un chiffre faux est pire qu'un chiffre absent — on ne se méfie pas d'un tableau qui s'affiche.
 
 Service client : `src/services/courierAnalysisService.ts`.
 
@@ -44,7 +46,7 @@ Les chemins d'**ingestion** ne peuvent pas océriser en ligne : c'est long, coû
 
 - Producteurs : `fetch-inbound-emails` (insert direct, service role) et `BulkImport` (RPC `enqueue_courier_analysis` via `src/services/courierAnalysisJobService.ts`).
 - Un seul job vivant par courrier (index unique partiel) : recliquer ou réimporter n'empile pas d'OCR concurrents.
-- Quota IA épuisé → job reporté au mois suivant **sans consommer de tentative**. Autres erreurs → 3 tentatives espacées de 5 min.
+- Crédit IA épuisé → job reporté **à la date de renouvellement rendue par le Socle**, sans consommer de tentative. ⚠️ Depuis le 2026-08-29 le guichet renvoie **deux refus distincts en 429** : le plafond (rien à tenter avant le mois prochain) et la **cadence** (`ai_rate_limited` — le crédit est intact, replanification à 5 min). Les confondre endormirait un mois durant un courrier simplement arrivé dans une rafale. Autres erreurs → 3 tentatives espacées de 5 min.
 - Indispensable à la numérisation : personne n'est devant l'écran pour cliquer « Analyser ».
 
 Les suggestions (`suggested_subject`, `suggested_sender`, `suggested_service_name`) sont exposées sur un courrier existant dans l'onglet « Contenu » (`ContentIntentsTab`), le titre étant applicable en un clic — c'est ce qui permet de qualifier un courrier numérisé arrivé sans titre exploitable.
@@ -52,6 +54,24 @@ Les suggestions (`suggested_subject`, `suggested_sender`, `suggested_service_nam
 ### Rédaction de réponse IA
 - Edge function `draft-reply` : prend `courier_id`, `response_type`, instructions additionnelles → renvoie du HTML prêt à coller dans l'éditeur Tiptap.
 - UI : `ReplyComposer.tsx`.
+
+### Consommation IA — d'où vient le crédit
+Depuis le **2026-08-29**, Clara n'appelle plus de fournisseur LLM : elle compose ses prompts et les
+confie au **guichet IA du Socle** (`ai-api`), qui détient la clé, réserve, appelle et solde. Trois
+conséquences visibles :
+
+- **Le crédit est celui de la COLLECTIVITÉ**, commun à Clara, Iris et Ariane — plus un cadran par
+  produit. L'écran Paramètres › Consommation IA (`AiUsageSettings`) est en **lecture seule** et
+  affiche la ventilation par application, un total que Clara seule ne pouvait pas produire. Le
+  plafond se règle dans le Socle.
+- **Clara ne compte plus rien** : les tables `ai_usage_quotas` / `ai_usage_counters` /
+  `ai_usage_events` ont été supprimées (`20260829140000_retrait_plafond_ia.sql`). Les laisser aurait
+  laissé un second compteur affichant zéro pendant que la collectivité dépense son mois ailleurs.
+- **Le message de plafond atteint vient du Socle mot pour mot** (il nomme la date de
+  renouvellement) : le recomposer côté Clara ferait diverger deux calculs de période, et mentir la
+  date.
+
+Client unique : `supabase/functions/_shared/socleAi.ts`. Voir aussi `docs/edge-functions.md`.
 
 ## 3. Workflows
 
@@ -68,12 +88,29 @@ Clara ne remplace pas les applications métier qui exécutent les demandes d'act
 - actions externes : créer ou référencer une demande dans Iris ou une application partenaire (Arpège aujourd'hui, autres connecteurs possibles), puis conserver le lien et l'état de résolution utiles à la réponse ;
 - l'analyse IA peut recommander des actions, mais l'agent reste responsable de la décision et du circuit retenu.
 
+### Dépôt dans Iris (depuis le 2026-08-23)
+
+**Iris est propriétaire exclusif des demandes d'usagers de la gamme.** Une action fondée sur une
+**démarche du référentiel** y est déposée à sa création (`push-iris-request`), puis instruite
+là-bas ; Clara en suit l'état (référence, statut, permalien) sans le piloter. Une **demande
+libre** — action sans démarche — reste dans Clara : `socle_procedure_id` est obligatoire côté
+Iris, la frontière tombe du contrat.
+
+Le ticket est créé **d'abord** (son id est l'`external_id` d'Iris) : un dépôt en échec ne perd
+rien, il se rejoue depuis l'onglet « Actions liées » avec la même clé d'idempotence. Un tenant
+sans interface Iris ne voit rien — il ne dépose simplement pas ses demandes là-bas. Statuts
+relus chaque nuit par `sync-iris-requests` (03:30), avec garde de version monotone.
+
+Détail complet — contrat, raccordement des champs, périmètre, exploitation :
+`docs/iris-integration.md`.
+
 ## 5. Réponses (couriers sortants)
 
 - Modèle : un courrier `direction=outbound` avec `parent_courier_id` pointant l'inbound.
 - Service : `src/services/courierReplyService.ts` — création, édition, signature, transitions, envoi.
 - **Signature** : sélection d'un `signatory` → l'image de signature est intégrée dans le HTML avec un marker `<img alt="signature-clara">`. `stripSignatureBlock()` permet de retirer le bloc avant ré-édition.
-- **Envoi SMTP** : edge function `send-courier-reply` envoie via la config SMTP de l'org. Marque `metadata.sent_email_at`. Déclenchée par une transition vers un état de catégorie `processed`.
+- **Envoi SMTP** : edge function `send-courier-reply` envoie via le serveur d'envoi de l'org. Marque `metadata.sent_email_at`. Déclenchée par une transition vers un état de catégorie `processed`.
+- **D'où vient le relais** : du **Socle**, pas de Clara (depuis le 2026-08-23). Il se définit une fois pour toute la gamme sur l'organisation racine ; `sync-socle-referentiel` en recopie un miroir dans `smtp_settings`. Plus aucun écran de saisie ni test d'envoi dans Clara — le diagnostic se fait dans le référentiel. Conséquence : **un tenant sans relais déclaré n'expédie rien** (aucun relais de repli), et l'adresse d'expédition est celle du référentiel, pas celle qui avait pu être saisie à la main. Détail du miroir : `docs/data-model.md` § `smtp_settings`.
 
 ## 6. Référentiels
 

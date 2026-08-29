@@ -253,7 +253,7 @@ export default function ContentIntentsTab({ courierId, organizationId, readOnly 
           <div>
             <h3 className="text-sm font-semibold">Contenu des documents</h3>
             <p className="text-xs text-muted-foreground">
-              {extractCount}/{docCount} document(s) extrait(s) via OCR Mistral
+              {extractCount}/{docCount} document(s) extrait(s)
             </p>
           </div>
           {/* Avant la première analyse, le bouton unique "Analyser" de la section
@@ -315,7 +315,12 @@ export default function ContentIntentsTab({ courierId, organizationId, readOnly 
                           if (m === "native-rtf") return "RTF";
                           if (m === "native-pdf")
                             return extract.page_count ? `PDF · ${extract.page_count} p.` : "PDF";
-                          if (m.startsWith("mistral-ocr"))
+                          // `socle:ai-api` depuis la centralisation IA du 2026-08-29 ;
+                          // `mistral-ocr-*` sur les extraits antérieurs, qu'on
+                          // continue d'afficher — un badge « extrait » à la place
+                          // ferait croire à une extraction native sur des documents
+                          // qui ont bien coûté un OCR.
+                          if (m === "socle-ocr" || m.startsWith("mistral-ocr"))
                             return extract.page_count ? `OCR · ${extract.page_count} p.` : "OCR";
                           return extract.page_count ? `${extract.page_count} p.` : "extrait";
                         })()}

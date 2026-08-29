@@ -64,7 +64,7 @@ Toute nouvelle route doit être ajoutée ici dans la même PR que son ajout dans
 
 - **Organisations** — `SocleOrganizationTree` avec override superadmin.
 - **Utilisateurs** — `UsersPage` pour l'organisation ciblée.
-- **Emails (SMTP / IMAP)** — `SmtpSettings` + `ImapSettings`.
+- **Emails (réception IMAP)** — `ImapSettings`. Le **serveur d'envoi (SMTP) ne se saisit plus dans Clara** depuis le 2026-08-23 : il vient du référentiel (organisation racine) et arrive par la synchronisation ; l'écran de saisie et le bouton de test ont été supprimés.
 - **Intégrations** — `OrgIntegrations`.
 - **Démarches** — `SocleIntegrationSettings` + `ProceduresSettings`.
 - **Classification** — `ClassificationSettings`.

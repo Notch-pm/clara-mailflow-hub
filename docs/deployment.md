@@ -46,9 +46,28 @@ Une edge function appelée par pg_cron ne reçoit **aucun en-tête `Authorizatio
 verify_jwt = false
 ```
 
+**Le piège se referme au premier déploiement par la CLI.** Constaté le 2026-08-23 :
+`sync-socle-referentiel` tournait depuis des mois sans entrée dans `config.toml` — elle
+avait été déployée à la main avec `--no-verify-jwt`, réglage porté par la fonction
+déployée et invisible dans le dépôt. Le premier `bunx supabase functions deploy` sans le
+drapeau a réappliqué le défaut (`verify_jwt = true`) et l'appel du cron est reparti en
+`401 UNAUTHORIZED_NO_AUTH_HEADER` — sans que rien n'échoue au déploiement. L'entrée est
+désormais dans `config.toml`. **Vérifier après chaque déploiement d'une fonction cron** :
+
+```sql
+SELECT status_code, left(content, 120)
+FROM net._http_response ORDER BY id DESC LIMIT 3;
+```
+
 À l'inverse, une fonction appelée par une autre edge function avec `Authorization: Bearer <service_role>` peut garder `verify_jwt` : la clé service_role est un JWT valide.
 
 ## Ordre de déploiement
+
+> **Le frontend n'est publié nulle part.** Clara n'est pas en production : il n'y a que le
+> dépôt git et l'exécution locale (`bun run dev` / `bun run build`). Les lignes « Publier le
+> frontend » des lots ci-dessous sont donc sans objet — mais l'ORDRE reste vrai le jour où une
+> publication existera, et il vaut toujours pour ce qui est réellement déployé : le projet
+> Supabase `aullweizxcjbvtdspjli` (migrations + edge functions), qui est bien commun et vivant.
 
 L'ordre général est **SQL → edge functions → frontend**, avec deux nuances :
 
@@ -61,6 +80,44 @@ L'ordre général est **SQL → edge functions → frontend**, avec deux nuances
 bunx supabase functions deploy <nom> --project-ref aullweizxcjbvtdspjli
 # 6 : frontend
 bun run build
+```
+
+### Lot « connecteur Iris » (2026-08-23) — appliqué le 2026-08-23
+
+| # | Action | Pourquoi cet ordre | État |
+|---|---|---|---|
+| 1 | Enregistrer Clara comme source côté Iris (`integration_sources` + `integration_credentials`) | Sans source ni clé, tout appel répond 401 | **Fait** — source `clara` du tenant ACCM, clé `irs_76EIrWD5` (scopes `requests:write` + `requests:read`), **expire le 2027-08-23** |
+| 2 | `20260823190000_connecteur_iris.sql` | Colonnes de connexion (`api_key`, `socle_root_org_id`, `last_sync_at`) et de suivi (`action_tickets.iris_*`) | **Appliqué** via `apply_migration` |
+| 3 | Poser la connexion du tenant dans `organization_integrations` | La clé brute ne doit transiter ni par un journal ni par un dépôt | **Fait** (écriture directe, valeur jamais affichée) |
+| 4 | Déployer `push-iris-request` et `sync-iris-requests` | Lisent les colonnes créées en 2 | **Fait** — `sync-iris-requests` a `verify_jwt = false` dans `config.toml` (cron) ; `push-iris-request` garde la vérification (appelée par le navigateur) |
+| 5 | `20260823200000_iris_sync_cron.sql` | **Hors ordre alphabétique** : planifier avant l'étape 4 produirait un échec toutes les nuits | **Appliqué** ; cron `iris-sync-nightly` actif à 03:30 |
+| 6 | ~~Publier le frontend~~ | Sans objet (cf. note en tête) | Sans objet |
+
+Vérification : une demande déposée porte sa référence et son statut.
+
+```sql
+SELECT iris_reference, iris_status, iris_version, iris_synced_at, iris_last_error
+FROM action_tickets WHERE iris_request_id IS NOT NULL;
+SELECT jobname, schedule, active FROM cron.job WHERE jobname = 'iris-sync-nightly';
+```
+
+### Lot « serveur d'envoi depuis le Socle » (2026-08-23) — appliqué le 2026-08-23
+
+| # | Action | Pourquoi cet ordre | État |
+|---|---|---|---|
+| 1 | Scope `smtp` sur la clé Socle de Clara (projet `qhrokbkyxgcvkbpmbmna`) | Sans lui, la route répond `403` et la sync ne produit que des avertissements | **Fait** — `update api_keys set scopes = scopes \|\| array['smtp'] where name = 'Clara — clé plateforme (read+contacts)'` (la clé porte maintenant `read, contacts, smtp` ; son **nom** n'a pas été changé) |
+| 2 | `20260823170000_smtp_depuis_socle.sql` | Retire les droits clients, ajoute provenance/fraîcheur, pose les deux RPC de service | **Appliqué** via `apply_migration` (registre : horodatage propre, dérive habituelle) |
+| 3 | Déployer `sync-socle-referentiel` | Lit les RPC créées en 2 | **Fait** — ⚠️ a nécessité l'ajout de `[functions.sync-socle-referentiel] verify_jwt = false` dans `config.toml` (cf. piège ci-dessus) |
+| 4 | Synchronisation réelle | Remplace la ligne saisie à la main par celle du référentiel | **Fait** — ACCM et Marie d'Arles synchronisés, aucun avertissement |
+| 5 | Supprimer la fonction déployée `send-test-email` | Après l'envoi réel de test, pas avant | **Fait** (`bunx supabase functions delete send-test-email`) |
+| 6 | ~~Publier le frontend~~ | Sans objet : le frontend n'est publié nulle part (cf. note ci-dessus). L'écran « Emails (SMTP) » disparaît dès le prochain `bun run dev` / `bun run build`. | Sans objet |
+
+Vérification : la ligne ne doit plus être d'origine manuelle.
+
+```sql
+SELECT o.name, s.socle_org_id, s.socle_updated_at, s.synced_at
+FROM smtp_settings s JOIN organizations o ON o.id = s.organization_id;
+-- socle_org_id / synced_at NULL = ligne jamais synchronisée (saisie manuelle héritée)
 ```
 
 ### Lot « numérisation » (2026-07-18) — appliqué le 2026-07-19
@@ -91,6 +148,73 @@ WHERE n.nspname = 'public' AND p.proname = 'search_couriers';
 
 Une **seule** ligne doit sortir : deux signatures coexistantes rendraient la
 résolution PostgREST ambiguë (`PGRST203`).
+
+## Bascule vers le guichet IA du Socle (2026-08-29)
+
+⚠️ **CHANTIER À DEUX DÉPÔTS, ET L'ORDRE N'EST PAS NÉGOCIABLE.** Clara appelle deux routes du
+guichet qui n'existaient pas dans sa v1 : `POST /v1/ocr` et `response_format: "json"` sur
+`POST /v1/completions`. Déployer Clara avant le Socle laisserait l'analyse de courrier en `400`
+sur chaque appel — traduit en « erreur interne » pour l'agent, sans indice sur la cause.
+
+**Dans le Socle, d'abord :**
+
+1. Déployer `ai-api` (aucune migration : `ai_usage_events.resource_type` accepte `'ocr'` depuis
+   l'origine).
+2. Vérifier que le contrat est bien publié — `GET {SOCLE_URL}/functions/v1/ai-api/openapi.json`
+   doit lister `/v1/ocr`, et `CompletionRequest` porter `response_format`.
+3. Créer (ou compléter) la clé API de Clara : scope **`ai`** en plus de `read` + `contacts` +
+   `smtp`, et surtout une **application imputable** (`consumer = "clara"`). Sans elle, le guichet
+   refuse tout appel en `403` — une dépense non imputable n'a pas lieu.
+4. Poser le plafond mensuel de chaque collectivité côté Socle. **Aucun plafond = illimité** : le
+   déploiement progressif ne casse personne, mais personne n'est plafonné non plus.
+
+**Dans Clara, ensuite :**
+
+5. Déployer les edge functions : `analyze-courier`, `draft-reply`, `extract-courier-info`,
+   `process-analysis-queue`, et la nouvelle `socle-ai-usage`.
+6. Mettre à jour les secrets Supabase :
+   - **ajouter** `SOCLE_API_KEY` s'il n'a pas déjà le scope `ai` (c'est la même clé plateforme que
+     pour les contacts — il suffit de lui ajouter le scope côté Socle) ;
+   - **retirer** `MISTRAL_API_KEY`, `MISTRAL_EXTRACTION_AGENT_ID`, `MISTRAL_REDACTION_AGENT_ID` :
+     plus aucun code ne les lit, et les laisser entretiendrait l'idée qu'un appel direct reste
+     possible. C'est le premier gain de la bascule — la clé du fournisseur n'est plus distribuée.
+7. **La migration `20260829140000_retrait_plafond_ia.sql` EN DERNIER**, une fois les fonctions
+   déployées et un appel vérifié de bout en bout. Avant, elle supprimerait les RPC dont l'ancien
+   code encore en ligne dépend.
+
+   ⚠️ **Elle supprime le journal `ai_usage_events` sans sommation** — là où la migration jumelle
+   d'Iris refuse de s'exécuter sur une table non vide. Le garde-fou n'a pas été oublié : il a été
+   **levé sciemment** le 2026-08-29, les lignes présentes étant des **essais de recette** dont
+   aucune facturation ne dépend. Le script annonce en `NOTICE` le nombre d'événements et de jetons
+   détruits — c'est la seule trace qui subsistera, la sortie du déploiement mérite donc d'être
+   conservée.
+
+   ⚠️ **Cette décision ne vaut que pour cette base, à cette date.** Rejouer le script sur une base
+   restaurée ou dérivée où de la consommation réelle aurait été enregistrée détruirait des pièces
+   comptables. Dans ce cas seulement, exporter d'abord :
+
+   ```sql
+   COPY (SELECT * FROM public.ai_usage_events) TO STDOUT WITH CSV HEADER;
+   ```
+
+   Le journal du Socle ne reprend rien rétroactivement : il commence à la bascule, et c'est assumé.
+
+8. Régénérer `src/integrations/supabase/types.ts` : sans cela le typage annonce trois tables et
+   trois RPC qui n'existent plus.
+
+**Vérifications qui valent le détour :**
+
+```sql
+-- Le retrait est complet (aucune ligne attendue) :
+SELECT to_regclass('public.ai_usage_quotas'), to_regclass('public.ai_usage_counters'),
+       to_regclass('public.ai_usage_events');
+SELECT jobname FROM cron.job WHERE jobname LIKE '%ai%';
+```
+
+Puis, dans l'application : analyser un courrier **avec une pièce jointe scannée** (le seul chemin
+qui exerce `/v1/ocr`), et ouvrir Paramètres › Consommation IA — la ventilation par application
+doit montrer la ligne `clara`. Un `403` ici signifie une clé sans scope `ai` ou sans application
+imputable ; un `503`, un tenant sans `socle_org_id`.
 
 ## Vérification post-déploiement
 

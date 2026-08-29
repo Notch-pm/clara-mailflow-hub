@@ -16,7 +16,8 @@
 
 ## P1 — Sécurité / correctness
 
-1. **Mots de passe IMAP/SMTP en clair en DB** (`imap_settings.password`, `smtp_settings`) — chiffrer (Vault par ligne ou pgsodium) + adapter `fetch-inbound-emails`, `send-courier-reply`, `send-test-email`. Gros item, à planifier seul.
+1. **Mots de passe IMAP/SMTP en clair en DB** (`imap_settings.password`, `smtp_settings.password`) — chiffrer (Vault par ligne ou pgsodium) + adapter les consommateurs : `fetch-inbound-emails` (IMAP) et les **six** fonctions d'envoi (`auth-email-hook`, `invite-user`, `send-courier-reply`, `send-password-reset`, `send-assignment-notification`, `send-mention-notification`), qui lisent toutes `smtp_settings` en `select("*")`. Gros item, à planifier seul, **SMTP et IMAP ensemble** (décision PO du 2026-08-23 : ne pas mêler ce chantier à la bascule de la source).
+   *Déjà atténué côté SMTP le 2026-08-23* : la table n'est plus exposée au client (aucun `GRANT` pour `anon`/`authenticated`), le mot de passe vient du Socle et n'est écrit que par une RPC de service. À noter pour le jour J : Iris a déjà fait ce chantier (`password_secret_id` + Vault, `C:\Users\jacqu\Notch\iris`) — la migration `20260823150000_smtp_depuis_socle.sql` y sert de modèle.
 2. ~~**RLS `auth_rls_initplan` (32 policies)**~~ ✅ corrigé (`20260712090000_rls_consolidation_advisors`) — wrap `(select auth.uid())` + helpers.
 3. ~~**`multiple_permissive_policies` (29 cas)**~~ ✅ corrigé (même migration) — une policy par (table, rôle, action), `service_role_full` recréées `TO service_role`, durcissement des policies `users` (voir `docs/database-rls.md`).
 4. **20 FK sans index** (`action_tickets.created_by`, `courier_documents.organization_id`, …) : ajouter les index couvrants ; **20 index jamais utilisés** à supprimer (attention : le projet n'a pas encore de trafic réel, re-vérifier avant suppression).
@@ -39,6 +40,12 @@
    - ⏳ **L6 — Activation des démarches par organisation Socle** (le lot produit majeur). Table `socle_org_procedure_activations` (SELECT `is_member_of`, écritures `is_admin_of`), sémantique **opt-out** (absence de lignes = autorisé), toggle admin dans `ProceduresSettings`, filtre/grisage dans `CreateTicketDialog`, et **enforcement serveur** dans `create-arpege-demande` (refus si la démarche n'est pas activée pour la `socle_organization_id` du courrier). Ordre interne strict : table → repli → UI → enforcement.
    - ⏳ **L7 — Finitions UI suspension** via le RPC `partner_integration_status` : démarches partenaire grisées (interface suspendue ou démarche non activée pour l'org), badge « Interface suspendue » sur les demandes existantes.
    - ⏳ **L3 — Catalogue `integration_providers`** (différable : une constante code suffit tant qu'Arpège est le seul partenaire ; la table ne se justifie qu'à l'arrivée d'un 2ᵉ).
+
+10. **Connecteur Iris — manques connus** (livré le 2026-08-23, source de vérité : `docs/iris-integration.md`).
+    - **Pièces jointes non transmises** : le worker de copie d'Iris n'est pas actif et son contrat demande explicitement de ne pas en envoyer (elles resteraient en `copy_status: pending`). La sélection de l'agent est conservée dans `action_tickets.socle_data.pieces_jointes` ; le jour où le worker tourne, tout passe par l'endpoint dédié `POST /v1/requests/{id}/attachments` (références signées, jamais de contenu inline). **À re-vérifier dans le contrat avant d'implémenter.**
+    - **Pas d'écran de configuration** : la connexion Iris (URL, clé, racine Socle, suspension) se pose en SQL. `OrgIntegrations` ne gère que les champs Arpège ; y ajouter une carte Iris avec bouton de test est le prolongement naturel — sans jamais re-servir `api_key` au navigateur (même règle que `client_secret`).
+    - **Rotation de clé** : la clé en place **expire le 2027-08-23**. Aucun rappel automatique ; une clé expirée fait échouer les dépôts avec un message explicite (401 → « à renouveler par un administrateur Iris »), le suivi des demandes déjà déposées échoue de même.
+    - **Chemin non éprouvé** : l'écriture de la référence sur le ticket *après un dépôt réussi* n'a été vérifiée qu'au niveau du contrat et via la réconciliation (qui écrit les mêmes colonnes), faute de session sur un tenant configuré. Une action créée depuis le navigateur sur ACCM le lèverait.
 
 ## P2 — Code mort (knip, faux positifs exclus)
 

@@ -138,8 +138,13 @@ Deno.serve(async (req) => {
       .select("*")
       .eq("organization_id", organization_id)
       .single();
+    // Le relais vient du référentiel (organisation principale) : Clara n'en tient
+    // qu'un miroir et n'a aucun repli. Pas de miroir = pas d'envoi possible.
     if (smtpErr || !smtp) {
-      return new Response(JSON.stringify({ error: "Configuration SMTP introuvable" }), {
+      return new Response(JSON.stringify({
+        error:
+          "Aucun serveur d'envoi pour cette organisation : définissez-le dans le référentiel (organisation principale), puis lancez une synchronisation.",
+      }), {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
