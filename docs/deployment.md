@@ -237,10 +237,10 @@ imputable ; un `503`, un tenant sans `socle_org_id`.
 | # | Action | État |
 |---|---|---|
 | Socle 1–2 | `ai-api` déployé (`--no-verify-jwt`) | **Fait** — l'`openapi.json` en ligne liste `/v1/completions`, `/v1/ocr`, `/v1/usage`, et `CompletionRequest` porte `response_format`. La version qui tournait jusque-là ignorait les deux : Clara aurait pris un `400` sur chaque appel |
-| Socle 3 | Clé de Clara avec scope `ai` + `consumer` | **Fait** — clé « Clé ai utilisée par Clara » (`read, contacts, smtp, ai`, `consumer = clara`). ⚠️ Elle est **liée à ACCM**, pas plateforme : voir l'avertissement ci-dessous |
+| Socle 3 | Clé de Clara avec scope `ai` + `consumer` | **Fait** — clé « **Clara avec IA** » : **plateforme** (`organization_id` NULL), `read, contacts, smtp, ai`, `consumer = clara`. Elle porte désormais tout : guichet IA, référentiel, SMTP, contacts. Une première clé *liée à ACCM* avait été posée puis écartée — voir l'avertissement ci-dessous. Les deux clés remplacées (« Clé ai utilisée par Clara » et « Clara — clé plateforme (read+contacts) ») ont été révoquées le jour même |
 | Socle 4 | Plafond mensuel | **Fait** — ACCM, 2 000 000 jetons, actif. Les autres collectivités restent illimitées |
 | Clara 5 | `analyze-courier`, `draft-reply`, `extract-courier-info`, `process-analysis-queue`, `socle-ai-usage` déployées | **Fait** (v57 / v28 / v26 / v4 / v1). Le piège `config.toml` ne s'est pas refermé : `process-analysis-queue` est resté en `verify_jwt = false` et son passage suivant a répondu 200 |
-| Clara 6 | Secrets | **Fait** — `SOCLE_API_KEY` posé, `MISTRAL_API_KEY` retiré. La source déployée d'`analyze-courier` ne contient plus aucun appel à `api.mistral.ai` |
+| Clara 6 | Secrets | **Fait** — `SOCLE_API_KEY` posé, **`SOCLE_API_URL` créé** (il n'avait jamais existé : c'est la panne du jour, cf. l'étape 6 ci-dessus), les deux identifiants d'agent reportés côté Socle, puis `MISTRAL_API_KEY`, `MISTRAL_EXTRACTION_AGENT_ID` et `MISTRAL_REDACTION_AGENT_ID` retirés. Clara ne détient plus **aucun** secret `MISTRAL_*` — seulement `SOCLE_API_KEY`, `SOCLE_API_URL`, `SOCLE_CONTACTS_API_URL`. La source déployée d'`analyze-courier` ne contient plus aucun appel à `api.mistral.ai` |
 | Clara 7 | `20260829140000_retrait_plafond_ia.sql` | **Appliqué** via `apply_migration`. **Volume détruit : 83 événements, 142 936 jetons cumulés** (périodes 2026-06 à 2026-08), plus 1 plafond et 3 compteurs — essais de recette, décision confirmée le jour même. C'est la seule trace qui subsiste. Vérifié ensuite : les trois tables et les trois RPC ont disparu, le job `release-stale-ai-reservations-every-5min` est déprogrammé, les cinq autres crons sont intacts |
 | Clara 8 | `src/integrations/supabase/types.ts` régénéré | **Fait** — corrige au passage une dérive plus ancienne : le fichier ignorait onze RPC bien réelles (`claim_analysis_jobs`, `enqueue_courier_analysis`, `sync_smtp_settings_from_socle`, `trigger_iris_sync`…) et déclarait `trigger_arpege_sync`, supprimée en juillet |
 
@@ -250,11 +250,33 @@ et le serveur d'envoi de **tous** les tenants, et `socleContactsClient` en fait 
 contacts. Une clé liée à une organisation ne voit que le sous-arbre de celle-ci — `ai-api`
 ignore alors purement et simplement `X-Organization-Id`, et `syncOrganizations` journalise
 `socle_org_id … introuvable dans le périmètre de la clé` puis laisse le miroir en l'état,
-**sans échouer**. Avec la clé actuelle (liée à ACCM), la dépense IA de Marie d'Arles est
-débitée sur le crédit d'ACCM, et la synchro nocturne de 03:00 cesserait silencieusement pour
-Marie d'Arles, Test 2 et [TEST]. La clé **plateforme** (`organization_id` NULL) est ce qui
-évite les deux — c'est pourquoi l'étape 6 dit « c'est la même clé plateforme que pour les
-contacts ».
+**sans échouer**. Une clé liée à ACCM aurait donc fait débiter la dépense IA de Marie d'Arles
+sur le crédit d'ACCM, et arrêté silencieusement la synchro de 03:00 pour Marie d'Arles, Test 2
+et [TEST]. La clé **plateforme** (`organization_id` NULL) évite les deux — c'est pourquoi
+l'étape 6 dit « c'est la même clé plateforme que pour les contacts ». Le cas s'est présenté le
+2026-08-29 et a été corrigé avant tout appel : la clé liée n'a jamais servi (`last_used_at`
+resté nul), « Clara avec IA » l'a remplacée. **Retenir la règle : sur ce secret, une clé liée
+n'est jamais le bon choix, quelle que soit la politique de facturation voulue.**
+
+### Recette de bout en bout, 2026-08-29
+
+Vérifiée à la source, dans `ai_usage_events` du Socle — c'est ce jeu de lignes qui fait foi :
+
+| Heure UTC | `feature` | `resource_type` | Réel | Ce que ça prouve |
+|---|---|---|---|---|
+| 17:54 | `analyse-courrier` | `chat` | 2 984 | La chaîne passe par le guichet, mais les alias d'agent ne résolvent pas encore |
+| 17:54 | `analyse-courrier` | **`ocr`** | 404 | `/v1/ocr` exercé pour de vrai — la route qui manquait le matin même |
+| 18:14 · 18:17 | `analyse-courrier` | **`agent`** | 3 049 · 3 128 | Les secrets `MISTRAL_AGENT_*` posés côté Socle : les alias résolvent |
+| 18:14 · 18:17 | `preremplissage-demarche` | **`agent`** | 2 598 | Idem sur le second point d'appel |
+
+Toutes en `completed`, aucune `failed`. Le passage `chat` → `agent` est le signal à regarder :
+c'est `ai-api` qui dit avoir résolu l'alias. Un identifiant d'agent **erroné** sortirait en
+`failed` + 502 ; un identifiant **absent** ne dit rien et dégrade en silence — d'où l'intérêt de
+lire cette colonne après chaque changement de secret d'agent.
+
+Et le compteur unique, qui est la raison d'être de toute la bascule : **ACCM, 2026-08, 12 220
+jetons** au premier relevé — 6 368 d'Iris et 5 852 de Clara dans la **même** ligne, là où Clara
+comptait jusqu'alors dans sa propre base et restait invisible du Socle.
 
 ## Vérification post-déploiement
 
