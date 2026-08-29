@@ -216,6 +216,30 @@ qui exerce `/v1/ocr`), et ouvrir Paramètres › Consommation IA — la ventilat
 doit montrer la ligne `clara`. Un `403` ici signifie une clé sans scope `ai` ou sans application
 imputable ; un `503`, un tenant sans `socle_org_id`.
 
+### Ce qui a été appliqué le 2026-08-29
+
+| # | Action | État |
+|---|---|---|
+| Socle 1–2 | `ai-api` déployé (`--no-verify-jwt`) | **Fait** — l'`openapi.json` en ligne liste `/v1/completions`, `/v1/ocr`, `/v1/usage`, et `CompletionRequest` porte `response_format`. La version qui tournait jusque-là ignorait les deux : Clara aurait pris un `400` sur chaque appel |
+| Socle 3 | Clé de Clara avec scope `ai` + `consumer` | **Fait** — clé « Clé ai utilisée par Clara » (`read, contacts, smtp, ai`, `consumer = clara`). ⚠️ Elle est **liée à ACCM**, pas plateforme : voir l'avertissement ci-dessous |
+| Socle 4 | Plafond mensuel | **Fait** — ACCM, 2 000 000 jetons, actif. Les autres collectivités restent illimitées |
+| Clara 5 | `analyze-courier`, `draft-reply`, `extract-courier-info`, `process-analysis-queue`, `socle-ai-usage` déployées | **Fait** (v57 / v28 / v26 / v4 / v1). Le piège `config.toml` ne s'est pas refermé : `process-analysis-queue` est resté en `verify_jwt = false` et son passage suivant a répondu 200 |
+| Clara 6 | Secrets | **Fait** — `SOCLE_API_KEY` posé, `MISTRAL_API_KEY` retiré. La source déployée d'`analyze-courier` ne contient plus aucun appel à `api.mistral.ai` |
+| Clara 7 | `20260829140000_retrait_plafond_ia.sql` | **Appliqué** via `apply_migration`. **Volume détruit : 83 événements, 142 936 jetons cumulés** (périodes 2026-06 à 2026-08), plus 1 plafond et 3 compteurs — essais de recette, décision confirmée le jour même. C'est la seule trace qui subsiste. Vérifié ensuite : les trois tables et les trois RPC ont disparu, le job `release-stale-ai-reservations-every-5min` est déprogrammé, les cinq autres crons sont intacts |
+| Clara 8 | `src/integrations/supabase/types.ts` régénéré | **Fait** — corrige au passage une dérive plus ancienne : le fichier ignorait onze RPC bien réelles (`claim_analysis_jobs`, `enqueue_courier_analysis`, `sync_smtp_settings_from_socle`, `trigger_iris_sync`…) et déclarait `trigger_arpege_sync`, supprimée en juillet |
+
+⚠️ **`SOCLE_API_KEY` EST PARTAGÉ, ET UNE CLÉ LIÉE RÉTRÉCIT LE PÉRIMÈTRE DE TOUT LE MONDE.**
+Le secret ne sert pas qu'au guichet IA : `sync-socle-referentiel` s'en sert pour le référentiel
+et le serveur d'envoi de **tous** les tenants, et `socleContactsClient` en fait son repli
+contacts. Une clé liée à une organisation ne voit que le sous-arbre de celle-ci — `ai-api`
+ignore alors purement et simplement `X-Organization-Id`, et `syncOrganizations` journalise
+`socle_org_id … introuvable dans le périmètre de la clé` puis laisse le miroir en l'état,
+**sans échouer**. Avec la clé actuelle (liée à ACCM), la dépense IA de Marie d'Arles est
+débitée sur le crédit d'ACCM, et la synchro nocturne de 03:00 cesserait silencieusement pour
+Marie d'Arles, Test 2 et [TEST]. La clé **plateforme** (`organization_id` NULL) est ce qui
+évite les deux — c'est pourquoi l'étape 6 dit « c'est la même clé plateforme que pour les
+contacts ».
+
 ## Vérification post-déploiement
 
 ```sql
