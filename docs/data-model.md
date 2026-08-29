@@ -190,7 +190,7 @@ File d'attente de l'analyse (OCR + LLM), consommée par l'edge function `process
 
 Deux garde-fous à ne pas retirer :
 - **Index UNIQUE partiel** sur `courier_id WHERE status IN ('pending','running')` : réimporter ou recliquer « Analyser » n'empile pas d'OCR concurrents sur les mêmes documents (double facturation IA et écritures concurrentes sur `courier_document_extracts`).
-- **Quota IA épuisé** → job reporté au mois suivant **sans consommer de tentative**. Sans ce rollback, trois passages de cron condamneraient un courrier parfaitement analysable le mois suivant.
+- **Crédit IA épuisé** → job reporté **à la date de renouvellement rendue par le Socle** (jamais recalculée localement), sans consommer de tentative. Sans ce rollback, trois passages de cron condamneraient un courrier parfaitement analysable le mois suivant. ⚠️ Depuis la centralisation IA du 2026-08-29, le guichet renvoie **deux refus distincts en 429** : le plafond (rien à tenter avant le renouvellement) et la **cadence** (`ai_rate_limited` — le crédit est intact, replanification à 5 min, tentative également rendue). Les confondre endormirait un mois durant un courrier simplement arrivé dans une rafale.
 
 RLS : lecture seule pour les membres du tenant. Aucune écriture cliente — l'enfilement passe par le RPC `enqueue_courier_analysis` (SECURITY DEFINER, re-vérifie l'appartenance), la consommation par `claim_analysis_jobs` / `requeue_stale_analysis_jobs`, réservés au `service_role`.
 

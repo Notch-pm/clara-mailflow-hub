@@ -31,11 +31,13 @@
 Pipeline en deux étapes, déclenché depuis `CourierDetail` ou `SuggestedActionsCard` :
 
 1. **OCR** — edge function `analyze-courier?action=ocr-courier` :
-   - Pour chaque `courier_document`, extrait le texte (PDF → texte, images → OCR via le modèle Gemini multimodal).
-   - Écrit dans `courier_document_extracts` (cache).
+   - Pour chaque `courier_document`, extrait le texte. **L'ordre des branches est une décision de coût** : texte brut, DOCX, ODT, RTF et PDF à couche texte sont extraits localement, sans IA et **sans toucher au crédit**. Seuls les PDF scannés et les images partent au guichet du Socle (`POST /v1/ocr`).
+   - Le document ne quitte pas Clara sous forme d'octets : le guichet reçoit une **URL signée courte** que le fournisseur va chercher lui-même.
+   - Écrit dans `courier_document_extracts` (cache) — `model = "socle:ai-api"`, Clara ne connaissant plus le modèle réel.
 2. **Analyse LLM** — edge function `analyze-courier?action=analyze` :
-   - Lit les extraits + corps du courrier, appelle Lovable AI Gateway.
+   - Lit les extraits + corps du courrier, appelle le **guichet du Socle** (`POST /v1/completions`, alias d'agent `extraction-courrier`).
    - Produit `summary`, `intents[]`, `sentiment`, `suggested_actions[]` → `courier_analyses`.
+   - ⚠️ **`tokens_used` est désormais NULL** : le décompte vit dans le journal du Socle, avec la ventilation par application. Y recopier un nombre approché rouvrirait un second compteur, et un chiffre faux est pire qu'un chiffre absent — on ne se méfie pas d'un tableau qui s'affiche.
 
 Service client : `src/services/courierAnalysisService.ts`.
 
@@ -44,7 +46,7 @@ Les chemins d'**ingestion** ne peuvent pas océriser en ligne : c'est long, coû
 
 - Producteurs : `fetch-inbound-emails` (insert direct, service role) et `BulkImport` (RPC `enqueue_courier_analysis` via `src/services/courierAnalysisJobService.ts`).
 - Un seul job vivant par courrier (index unique partiel) : recliquer ou réimporter n'empile pas d'OCR concurrents.
-- Quota IA épuisé → job reporté au mois suivant **sans consommer de tentative**. Autres erreurs → 3 tentatives espacées de 5 min.
+- Crédit IA épuisé → job reporté **à la date de renouvellement rendue par le Socle**, sans consommer de tentative. ⚠️ Depuis le 2026-08-29 le guichet renvoie **deux refus distincts en 429** : le plafond (rien à tenter avant le mois prochain) et la **cadence** (`ai_rate_limited` — le crédit est intact, replanification à 5 min). Les confondre endormirait un mois durant un courrier simplement arrivé dans une rafale. Autres erreurs → 3 tentatives espacées de 5 min.
 - Indispensable à la numérisation : personne n'est devant l'écran pour cliquer « Analyser ».
 
 Les suggestions (`suggested_subject`, `suggested_sender`, `suggested_service_name`) sont exposées sur un courrier existant dans l'onglet « Contenu » (`ContentIntentsTab`), le titre étant applicable en un clic — c'est ce qui permet de qualifier un courrier numérisé arrivé sans titre exploitable.
@@ -52,6 +54,24 @@ Les suggestions (`suggested_subject`, `suggested_sender`, `suggested_service_nam
 ### Rédaction de réponse IA
 - Edge function `draft-reply` : prend `courier_id`, `response_type`, instructions additionnelles → renvoie du HTML prêt à coller dans l'éditeur Tiptap.
 - UI : `ReplyComposer.tsx`.
+
+### Consommation IA — d'où vient le crédit
+Depuis le **2026-08-29**, Clara n'appelle plus de fournisseur LLM : elle compose ses prompts et les
+confie au **guichet IA du Socle** (`ai-api`), qui détient la clé, réserve, appelle et solde. Trois
+conséquences visibles :
+
+- **Le crédit est celui de la COLLECTIVITÉ**, commun à Clara, Iris et Ariane — plus un cadran par
+  produit. L'écran Paramètres › Consommation IA (`AiUsageSettings`) est en **lecture seule** et
+  affiche la ventilation par application, un total que Clara seule ne pouvait pas produire. Le
+  plafond se règle dans le Socle.
+- **Clara ne compte plus rien** : les tables `ai_usage_quotas` / `ai_usage_counters` /
+  `ai_usage_events` ont été supprimées (`20260829140000_retrait_plafond_ia.sql`). Les laisser aurait
+  laissé un second compteur affichant zéro pendant que la collectivité dépense son mois ailleurs.
+- **Le message de plafond atteint vient du Socle mot pour mot** (il nomme la date de
+  renouvellement) : le recomposer côté Clara ferait diverger deux calculs de période, et mentir la
+  date.
+
+Client unique : `supabase/functions/_shared/socleAi.ts`. Voir aussi `docs/edge-functions.md`.
 
 ## 3. Workflows
 

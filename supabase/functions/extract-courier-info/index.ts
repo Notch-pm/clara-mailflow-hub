@@ -1,5 +1,19 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
-import { withAiUsageGuard, AiQuotaExceededError, estimateOcrTokens, estimateTextTokens, estimateTokensFromText } from "../_shared/aiUsage.ts";
+import {
+  AGENT_EXTRACTION,
+  AiQuotaExceededError,
+  FEATURE_EXTRACTION,
+  fitMessage,
+  isAiConfigured,
+  MAX_OUTPUT_TOKENS,
+  parseJsonAnswer,
+  SocleAiError,
+  socleCompletion,
+  socleOcr,
+  socleOrgIdFor,
+  type SocleAiContext,
+} from "../_shared/socleAi.ts";
+import { jsonSchemaInstruction, objectSchema } from "../_shared/jsonSchemaPrompt.ts";
 import {
   SUGGESTED_FIELDS_PROPERTIES,
   SUGGESTED_FIELDS_KEYS,
@@ -19,13 +33,8 @@ const corsHeaders = {
 };
 
 const BUCKET = "clara-documents";
-const MISTRAL_OCR_URL = "https://api.mistral.ai/v1/ocr";
-const MISTRAL_AGENT_URL = "https://api.mistral.ai/v1/agents/completions";
-const OCR_MODEL = "mistral-ocr-latest";
-// Agent Mistral d'extraction structurée — surchargable sans redéploiement via
-// le secret MISTRAL_EXTRACTION_AGENT_ID (repli : agent historique).
-const ANALYSIS_AGENT_ID = Deno.env.get("MISTRAL_EXTRACTION_AGENT_ID") ??
-  "ag_019d9b92d28872079534f45f246671ed";
+/** Durée de vie du lien remis au guichet : le temps de l'appel, pas plus. */
+const SIGNED_URL_TTL_SECONDS = 300;
 
 interface FileInput {
   name: string;
@@ -92,110 +101,62 @@ async function verifyOrgMembership(
   if (error || !data) throw new Error("Forbidden: user does not belong to this organization");
 }
 
+/**
+ * Le texte d'un fichier téléversé.
+ *
+ * ⚠️ LES IMAGES PASSENT DÉSORMAIS PAR LE STOCKAGE, comme les PDF, et ce n'est
+ * pas un détour gratuit. Clara envoyait auparavant l'image au fournisseur sous
+ * forme de `data:` URI — quelques mégaoctets encodés dans le corps de la
+ * requête. Le guichet du Socle n'accepte qu'une URL **https signée** : il ne
+ * télécharge pas le document, il transmet le lien au fournisseur, qui va le
+ * chercher. C'est ce qui fait que l'octet du document ne traverse jamais le
+ * Socle — une garantie qu'un `data:` URI détruirait. Les deux branches se
+ * rejoignent donc, et le fichier temporaire est supprimé dans tous les cas.
+ */
 async function ocrFile(
   admin: ReturnType<typeof getAdminClient>,
   orgId: string,
   file: FileInput,
-  mistralKey: string,
-  userId: string,
+  ctx: SocleAiContext,
 ): Promise<string> {
   const mime = file.mime_type.toLowerCase();
   const name = file.name.toLowerCase();
 
+  // Du texte est du texte : ni IA, ni crédit.
   if (mime.startsWith("text/")) {
     return atob(file.content_base64);
   }
 
-  if (mime.startsWith("image/")) {
-    const dataUri = `data:${file.mime_type};base64,${file.content_base64}`;
-    return await withAiUsageGuard({
-      admin,
-      organizationId: orgId,
-      provider: "mistral",
-      resourceType: "ocr",
-      estimatedTokens: estimateOcrTokens(1),
-      userId,
-      run: async () => {
-        const resp = await fetch(MISTRAL_OCR_URL, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${mistralKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: OCR_MODEL,
-            document: { type: "image_url", image_url: dataUri },
-            include_image_base64: false,
-          }),
-        });
-        if (!resp.ok) {
-          const t = await resp.text();
-          throw new Error(`OCR image failed (${resp.status}): ${t.slice(0, 200)}`);
-        }
-        const data = await resp.json();
-        const text = (data.pages ?? [])
-          .map((p: { markdown?: string; text?: string }) => p.markdown ?? p.text ?? "")
-          .join("\n\n");
-        const actualTokens = data?.usage?.total_tokens ?? estimateTokensFromText(text);
-        return { result: text, actualTokens };
-      },
+  const isImage = mime.startsWith("image/");
+  const isPdf = mime === "application/pdf" || name.endsWith(".pdf");
+  if (!isImage && !isPdf) return "";
+
+  const tempKey = `${orgId}/temp/${crypto.randomUUID()}-${file.name}`;
+  const bytes = Uint8Array.from(atob(file.content_base64), (c) => c.charCodeAt(0));
+
+  const { error: upErr } = await admin.storage.from(BUCKET).upload(tempKey, bytes, {
+    contentType: file.mime_type,
+    upsert: false,
+  });
+  if (upErr) throw new Error(`Temp upload failed: ${upErr.message}`);
+
+  try {
+    const { data: signed, error: signErr } = await admin.storage
+      .from(BUCKET)
+      .createSignedUrl(tempKey, SIGNED_URL_TTL_SECONDS);
+    if (signErr || !signed) throw new Error(`Signed URL error: ${signErr?.message}`);
+
+    const { text } = await socleOcr({
+      ctx,
+      documentType: isImage ? "image_url" : "document_url",
+      url: signed.signedUrl,
     });
+    return text;
+  } finally {
+    // Le lien signé meurt avec le fichier : la fenêtre d'accès se referme même
+    // si l'appel a échoué.
+    await admin.storage.from(BUCKET).remove([tempKey]);
   }
-
-  if (mime === "application/pdf" || name.endsWith(".pdf")) {
-    const tempKey = `${orgId}/temp/${crypto.randomUUID()}-${file.name}`;
-    const bytes = Uint8Array.from(atob(file.content_base64), (c) => c.charCodeAt(0));
-
-    const { error: upErr } = await admin.storage.from(BUCKET).upload(tempKey, bytes, {
-      contentType: file.mime_type,
-      upsert: false,
-    });
-    if (upErr) throw new Error(`Temp upload failed: ${upErr.message}`);
-
-    try {
-      const { data: signed, error: signErr } = await admin.storage
-        .from(BUCKET)
-        .createSignedUrl(tempKey, 300);
-      if (signErr || !signed) throw new Error(`Signed URL error: ${signErr?.message}`);
-
-      return await withAiUsageGuard({
-        admin,
-        organizationId: orgId,
-        provider: "mistral",
-        resourceType: "ocr",
-        estimatedTokens: estimateOcrTokens(1),
-        userId,
-        run: async () => {
-          const resp = await fetch(MISTRAL_OCR_URL, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${mistralKey}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              model: OCR_MODEL,
-              document: { type: "document_url", document_url: signed.signedUrl },
-              include_image_base64: false,
-            }),
-          });
-          if (!resp.ok) {
-            const t = await resp.text();
-            throw new Error(`OCR PDF failed (${resp.status}): ${t.slice(0, 200)}`);
-          }
-          const data = await resp.json();
-          const text = (data.pages ?? [])
-            .map((p: { markdown?: string; text?: string }) => p.markdown ?? p.text ?? "")
-            .join("\n\n");
-          const actualTokens = data?.usage?.total_tokens ?? estimateTokensFromText(text);
-          return { result: text, actualTokens };
-        },
-      });
-    } finally {
-      await admin.storage.from(BUCKET).remove([tempKey]);
-    }
-  }
-
-  return "";
 }
 
 Deno.serve(async (req) => {
@@ -214,20 +175,40 @@ Deno.serve(async (req) => {
       throw new Error("Forbidden: Accès refusé : rôle consultant en lecture seule");
     }
 
-    const mistralKey = Deno.env.get("MISTRAL_API_KEY");
-    if (!mistralKey) return jsonResponse({ error: "MISTRAL_API_KEY non configurée" }, 500);
-
     const { files, pasted_text } = (await req.json()) as { files?: FileInput[]; pasted_text?: string };
     if (!files?.length && !pasted_text?.trim()) {
       return jsonResponse({ error: "No content provided" }, 400);
     }
+
+    // ⚠️ APRÈS LA VALIDATION DU CORPS, et l'ordre est une décision : une requête
+    // malformée est malformée, que l'instance soit raccordée au guichet IA ou
+    // non. La renvoyer en 503 ferait chercher une panne de configuration là où
+    // il n'y a qu'un appel mal formé.
+    //
+    // Ce n'est PAS la clé d'un fournisseur — Clara n'en a plus. C'est le
+    // raccordement au guichet IA du Socle, qui détient la clé et le crédit.
+    if (!isAiConfigured()) {
+      return jsonResponse({ error: "L'assistant IA n'est pas configuré sur cette instance." }, 503);
+    }
+    const socleOrgId = await socleOrgIdFor(admin, orgId);
+    if (!socleOrgId) {
+      return jsonResponse(
+        { error: "Organisation non rattachée au Socle (socle_org_id manquant) — la consommation IA ne serait imputable à personne." },
+        503,
+      );
+    }
+    const aiContext: SocleAiContext = {
+      socleOrgId,
+      feature: FEATURE_EXTRACTION,
+      actorId: user.id,
+    };
 
     // OCR each file (up to first 5 to cap cost)
     const texts: string[] = [];
     let quotaExceeded = false;
     for (const file of (files ?? []).slice(0, 5)) {
       try {
-        const text = await ocrFile(admin, orgId, file, mistralKey, user.id);
+        const text = await ocrFile(admin, orgId, file, aiContext);
         if (text.trim()) texts.push(text.trim());
       } catch (e) {
         if (e instanceof AiQuotaExceededError) {
@@ -282,8 +263,22 @@ Deno.serve(async (req) => {
       ? tagNames.map((n) => `- ${n}`).join("\n")
       : "(aucun tag défini — laisse suggested_tag_names vide)";
 
+    // Le schéma de sortie — celui-là même qui vivait dans `tools` avant la
+    // centralisation. Il n'a pas disparu, il a changé de place : le guichet du
+    // Socle refuse `tools`/`tool_choice`, et n'offre que la contrainte « du
+    // JSON valide ». La conformité au schéma reste donc de la responsabilité
+    // de Clara — c'est ce que fait la revalidation, quelques lignes plus bas.
+    const tagsSchema: Record<string, unknown> = tagNames.length > 0
+      ? { type: "array", items: { type: "string", enum: tagNames } }
+      : { type: "array", items: { type: "string" } };
+
+    const responseSchema = objectSchema(
+      { ...SUGGESTED_FIELDS_PROPERTIES, suggested_tag_names: tagsSchema },
+      [...SUGGESTED_FIELDS_KEYS, "suggested_tag_names"],
+    );
+
     const systemPrompt = `Tu es un assistant expert en gestion de courrier administratif français.
-Analyse le texte extrait d'un courrier et utilise l'outil "extract_info" pour retourner les informations structurées.
+Analyse le texte extrait d'un courrier et restitue les informations structurées.
 Règles :
 - Ne retourne QUE ce qui est clairement identifiable dans le texte. Ne devine rien.
 ${SUGGESTED_FIELDS_PROMPT_RULES}
@@ -292,76 +287,26 @@ ${SUGGESTED_FIELDS_PROMPT_RULES}
 Services disponibles : ${serviceNames.length ? serviceNames.join(", ") : "(aucun)"}
 
 Tags disponibles pour suggested_tag_names :
-${tagListForPrompt}`;
+${tagListForPrompt}
+
+${jsonSchemaInstruction(responseSchema)}`;
 
     const userPrompt = `Texte extrait du courrier :
 ${combinedText}`;
 
-    // Tag schema: same approach as analyze-courier — enum only if tags exist
-    const intentsSchema: Record<string, unknown> = { type: "array", items: { type: "string" } };
-    if (tagNames.length > 0) {
-      intentsSchema.items = { type: "string", enum: tagNames };
-    }
-
-    const tools = [
-      {
-        type: "function",
-        function: {
-          name: "extract_info",
-          description: "Extrait les informations structurées du courrier",
-          parameters: {
-            type: "object",
-            properties: {
-              ...SUGGESTED_FIELDS_PROPERTIES,
-              suggested_tag_names: intentsSchema,
-            },
-            required: [...SUGGESTED_FIELDS_KEYS, "suggested_tag_names"],
-            additionalProperties: false,
-          },
-        },
-      },
-    ];
-
-    // Use same Mistral agent as analyze-courier for consistent results
-    const extracted: ExtractedInfo = await withAiUsageGuard({
-      admin,
-      organizationId: orgId,
-      provider: "mistral",
-      resourceType: "agent",
-      estimatedTokens: estimateTextTokens(systemPrompt.length + userPrompt.length, 800),
-      userId: user.id,
-      run: async () => {
-        const agentResp = await fetch(MISTRAL_AGENT_URL, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${mistralKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            agent_id: ANALYSIS_AGENT_ID,
-            messages: [
-              { role: "system", content: systemPrompt },
-              { role: "user", content: userPrompt },
-            ],
-            tools,
-            tool_choice: { type: "function", function: { name: "extract_info" } },
-          }),
-        });
-
-        if (!agentResp.ok) {
-          const t = await agentResp.text();
-          throw new Error(`Mistral agent ${agentResp.status}: ${t.slice(0, 200)}`);
-        }
-
-        const agentData = await agentResp.json();
-        const toolCall = agentData?.choices?.[0]?.message?.tool_calls?.[0];
-        if (!toolCall?.function?.arguments) throw new Error("Réponse Mistral inattendue");
-
-        const result: ExtractedInfo = JSON.parse(toolCall.function.arguments);
-        const actualTokens = agentData?.usage?.total_tokens ?? null;
-        return { result, actualTokens };
-      },
+    const answer = await socleCompletion({
+      system: systemPrompt,
+      messages: [{ role: "user", content: fitMessage(userPrompt) }],
+      agent: AGENT_EXTRACTION,
+      // ⚠️ LE PLAFOND DE SORTIE, ET NON UNE ESTIMATION SERRÉE : une réponse
+      // JSON tronquée ne parse pas et fait perdre tout l'appel, alors qu'une
+      // réservation trop haute est rendue au règlement (le Socle solde sur la
+      // consommation réelle). Les deux risques ne sont pas du même ordre.
+      maxOutputTokens: MAX_OUTPUT_TOKENS,
+      json: true,
+      ctx: aiContext,
     });
+    const extracted = parseJsonAnswer<ExtractedInfo>(answer);
 
     // Validate and sanitize against org data (same pattern as analyze-courier)
     const suggestedService = validateAgainstNames(extracted.suggested_service_name, serviceNames);
@@ -382,12 +327,9 @@ ${combinedText}`;
 
     if (senderEmail || senderLastName) {
       try {
-        const { data: org } = await admin
-          .from("organizations")
-          .select("socle_org_id")
-          .eq("id", orgId)
-          .single();
-        const socleOrgId = (org?.socle_org_id as string | null) ?? null;
+        // `socleOrgId` est déjà résolu plus haut pour l'imputation IA : le
+        // relire ici ferait une requête pour rien, et laisserait deux sources
+        // pour un même rattachement.
         const contactsKey = contactsApiKeyForOrg(socleOrgId);
         if (contactsKey) {
           if (senderEmail) {
@@ -425,11 +367,22 @@ ${combinedText}`;
       quota_exceeded: quotaExceeded,
     });
   } catch (err) {
+    // Les refus du guichet arrivent déjà traduits, avec leur statut : plafond
+    // de la collectivité atteint (message du Socle mot pour mot, date de
+    // renouvellement comprise), cadence dépassée, fournisseur muet.
+    if (err instanceof SocleAiError) {
+      return jsonResponse({
+        error: err.message,
+        code: err.code,
+        // La date vient du Socle, jamais recalculée ici : l'appelant (écran ou
+        // worker de file) doit pouvoir la relayer sans risquer de la contredire.
+        renews_at: err instanceof AiQuotaExceededError ? err.renewsAt : null,
+      }, err.status);
+    }
     const message = err instanceof Error ? err.message : "Internal error";
     const status =
       message === "Unauthorized" ? 401
       : message.startsWith("Forbidden") ? 403
-      : err instanceof AiQuotaExceededError ? 429
       : 500;
     return jsonResponse({ error: message }, status);
   }

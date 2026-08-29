@@ -3,120 +3,183 @@ import "../mocks/supabase";
 import { mockSupabase } from "../mocks/supabase";
 
 // Import after mock is registered
-const { getAiUsageSummary, upsertAiUsageQuota } = await import("@/services/aiUsageService");
+const { getAiUsageSummary, quotaView, renewalLabel, formatTokens } = await import(
+  "@/services/aiUsageService"
+);
 
-const ORG_ID = "org-1";
+const ORG_ID = "3f6a2c10-0000-4000-8000-000000000001";
 
 beforeEach(() => {
   vi.clearAllMocks();
 });
 
-/** Builder chaînable (select/eq tous chaînables) qui se résout en `resolved` une fois "then" appelé (await). */
-function chainable(resolved: { data: unknown[] | null; error: Error | null }) {
-  const builder: Record<string, unknown> = {};
-  const methods = ["select", "eq", "upsert"];
-  for (const m of methods) {
-    builder[m] = vi.fn(() => builder);
-  }
-  builder.then = vi.fn((resolve: (v: unknown) => unknown) => Promise.resolve(resolved).then(resolve));
-  return builder;
+/** Réponse type de l'edge function `socle-ai-usage` (déjà sanitisée par elle). */
+function usageResponse(overrides: Record<string, unknown> = {}) {
+  return {
+    data: {
+      usage: {
+        period: "2026-08",
+        renews_at: "2026-09-01",
+        limit: 1_000_000,
+        used_tokens: 420_000,
+        reserved_tokens: 30_000,
+        by_consumer: [
+          { consumer: "clara", feature: "analyse-courrier", calls: 12, tokens: 300_000 },
+          { consumer: "iris", feature: null, calls: 4, tokens: 150_000 },
+        ],
+        ...overrides,
+      },
+    },
+    error: null,
+  };
 }
 
-describe("aiUsageService", () => {
-  describe("getAiUsageSummary", () => {
-    it("fusionne quota et compteur quand les deux existent", async () => {
-      mockSupabase.from
-        .mockReturnValueOnce(
-          chainable({ data: [{ provider: null, monthly_limit_tokens: 100000, is_active: true }], error: null }),
-        )
-        .mockReturnValueOnce(
-          chainable({ data: [{ provider: null, used_tokens: 4200, reserved_tokens: 300 }], error: null }),
-        );
+describe("getAiUsageSummary", () => {
+  // ⚠️ LE POINT LE PLUS IMPORTANT DE CE FICHIER : depuis la centralisation du
+  // 2026-08-29, ce service ne lit AUCUNE table. Les tables `ai_usage_*` de
+  // Clara ont été supprimées ; les relire rouvrirait un second compteur, qui
+  // afficherait zéro pendant que la collectivité dépense son mois ailleurs.
+  it("passe par l'edge function, jamais par une table", async () => {
+    mockSupabase.functions.invoke.mockResolvedValueOnce(usageResponse());
 
-      const result = await getAiUsageSummary(ORG_ID);
+    await getAiUsageSummary(ORG_ID);
 
-      expect(result).toEqual([
-        {
-          provider: null,
-          period: expect.any(String),
-          monthlyLimitTokens: 100000,
-          usedTokens: 4200,
-          reservedTokens: 300,
-          isActive: true,
-        },
-      ]);
+    expect(mockSupabase.functions.invoke).toHaveBeenCalledWith("socle-ai-usage", {
+      body: { organization_id: ORG_ID },
     });
+    expect(mockSupabase.from).not.toHaveBeenCalled();
+  });
 
-    it("retourne usedTokens/reservedTokens à 0 si aucun compteur n'existe encore pour la période", async () => {
-      mockSupabase.from
-        .mockReturnValueOnce(
-          chainable({ data: [{ provider: "mistral", monthly_limit_tokens: 50000, is_active: true }], error: null }),
-        )
-        .mockReturnValueOnce(chainable({ data: [], error: null }));
+  it("rend la consommation et la ventilation par application", async () => {
+    mockSupabase.functions.invoke.mockResolvedValueOnce(usageResponse());
 
-      const result = await getAiUsageSummary(ORG_ID);
+    const summary = await getAiUsageSummary(ORG_ID);
 
-      expect(result).toHaveLength(1);
-      expect(result[0].usedTokens).toBe(0);
-      expect(result[0].reservedTokens).toBe(0);
-    });
-
-    it("retourne un tableau vide si aucun quota n'est configuré (organisation illimitée)", async () => {
-      mockSupabase.from.mockReturnValue(chainable({ data: [], error: null }));
-
-      const result = await getAiUsageSummary(ORG_ID);
-
-      expect(result).toEqual([]);
-    });
-
-    it("gère plusieurs quotas par fournisseur indépendamment", async () => {
-      mockSupabase.from
-        .mockReturnValueOnce(
-          chainable({
-            data: [
-              { provider: "mistral", monthly_limit_tokens: 50000, is_active: true },
-              { provider: "openai", monthly_limit_tokens: 20000, is_active: false },
-            ],
-            error: null,
-          }),
-        )
-        .mockReturnValueOnce(
-          chainable({ data: [{ provider: "mistral", used_tokens: 1000, reserved_tokens: 0 }], error: null }),
-        );
-
-      const result = await getAiUsageSummary(ORG_ID);
-
-      expect(result).toHaveLength(2);
-      const mistral = result.find((r) => r.provider === "mistral");
-      const openai = result.find((r) => r.provider === "openai");
-      expect(mistral?.usedTokens).toBe(1000);
-      expect(openai?.usedTokens).toBe(0);
-      expect(openai?.isActive).toBe(false);
-    });
-
-    it("propage l'erreur Supabase sur les quotas", async () => {
-      mockSupabase.from.mockReturnValue(chainable({ data: null, error: new Error("DB error") }));
-      await expect(getAiUsageSummary(ORG_ID)).rejects.toThrow("DB error");
+    expect(summary).toEqual({
+      period: "2026-08",
+      renewsAt: "2026-09-01",
+      limitTokens: 1_000_000,
+      usedTokens: 420_000,
+      reservedTokens: 30_000,
+      byConsumer: [
+        { consumer: "clara", feature: "analyse-courrier", calls: 12, tokens: 300_000 },
+        { consumer: "iris", feature: null, calls: 4, tokens: 150_000 },
+      ],
     });
   });
 
-  describe("upsertAiUsageQuota", () => {
-    it("appelle upsert avec onConflict organization_id,provider", async () => {
-      const upsertFn = vi.fn().mockResolvedValue({ data: null, error: null });
-      mockSupabase.from.mockReturnValue({ upsert: upsertFn });
+  it("transmet la période demandée quand elle est fournie", async () => {
+    mockSupabase.functions.invoke.mockResolvedValueOnce(usageResponse({ period: "2026-07" }));
 
-      await upsertAiUsageQuota(ORG_ID, null, 100000);
+    await getAiUsageSummary(ORG_ID, "2026-07");
 
-      expect(mockSupabase.from).toHaveBeenCalledWith("ai_usage_quotas");
-      expect(upsertFn).toHaveBeenCalledWith(
-        { organization_id: ORG_ID, provider: "__global__", monthly_limit_tokens: 100000, is_active: true },
-        { onConflict: "organization_id,provider" },
-      );
+    expect(mockSupabase.functions.invoke).toHaveBeenCalledWith("socle-ai-usage", {
+      body: { organization_id: ORG_ID, period: "2026-07" },
+    });
+  });
+
+  it("une réponse vide ou inattendue ne casse pas l'écran", async () => {
+    mockSupabase.functions.invoke.mockResolvedValueOnce({ data: null, error: null });
+
+    const summary = await getAiUsageSummary(ORG_ID);
+
+    expect(summary.limitTokens).toBe(null);
+    expect(summary.usedTokens).toBe(0);
+    expect(summary.byConsumer).toEqual([]);
+  });
+
+  it("relaie l'erreur de l'edge function", async () => {
+    mockSupabase.functions.invoke.mockResolvedValueOnce({
+      data: null,
+      error: new Error("socle_unreachable"),
     });
 
-    it("propage l'erreur Supabase", async () => {
-      mockSupabase.from.mockReturnValue({ upsert: vi.fn().mockResolvedValue({ data: null, error: new Error("RLS denied") }) });
-      await expect(upsertAiUsageQuota(ORG_ID, "mistral", 1000)).rejects.toThrow("RLS denied");
-    });
+    await expect(getAiUsageSummary(ORG_ID)).rejects.toThrow("socle_unreachable");
+  });
+});
+
+describe("quotaView", () => {
+  const base = {
+    period: "2026-08",
+    renewsAt: "2026-09-01",
+    usedTokens: 0,
+    reservedTokens: 0,
+    byConsumer: [],
+  };
+
+  it("aucun plafond ⇒ illimité", () => {
+    const view = quotaView({ ...base, limitTokens: null });
+    expect(view.unlimited).toBe(true);
+    expect(view.remainingTokens).toBe(null);
+    expect(view.percent).toBe(0);
+  });
+
+  it("un plafond nul ou négatif vaut aucun plafond", () => {
+    expect(quotaView({ ...base, limitTokens: 0 }).unlimited).toBe(true);
+    expect(quotaView({ ...base, limitTokens: -5 }).unlimited).toBe(true);
+  });
+
+  // ⚠️ Un appel en cours a DÉJÀ mordu sur le plafond : l'ignorer ferait
+  // annoncer un reliquat qui n'existe pas.
+  it("le réservé compte dans l'engagé", () => {
+    const view = quotaView({ ...base, limitTokens: 1000, usedTokens: 400, reservedTokens: 100 });
+    expect(view.engagedTokens).toBe(500);
+    expect(view.remainingTokens).toBe(500);
+    expect(view.percent).toBe(50);
+  });
+
+  // ⚠️ LE TON SE DÉCIDE SUR LE RATIO, JAMAIS SUR `percent` : 79,9 % s'arrondit
+  // à 80 et déclencherait une alerte que l'engagé réel ne justifie pas.
+  it("799/1000 reste calme malgré un affichage à 80 %", () => {
+    const view = quotaView({ ...base, limitTokens: 1000, usedTokens: 799 });
+    expect(view.percent).toBe(80);
+    expect(view.tone).toBe("ok");
+  });
+
+  it("800/1000 avertit", () => {
+    expect(quotaView({ ...base, limitTokens: 1000, usedTokens: 800 }).tone).toBe("warn");
+  });
+
+  // ⚠️ Un dépassement ramené à 100 % serait lu comme un simple avertissement.
+  it("un dépassement est critique, et la jauge ne déborde pas", () => {
+    const view = quotaView({ ...base, limitTokens: 1000, usedTokens: 1500 });
+    expect(view.tone).toBe("critical");
+    expect(view.percent).toBe(100);
+    expect(view.remainingTokens).toBe(0);
+  });
+});
+
+describe("renewalLabel", () => {
+  // ⚠️ La date vient du SOCLE et n'est jamais recalculée ici : Clara ne fait
+  // que la mettre en français. Deux calculs de période qui dérivent ne cassent
+  // rien de visible — ils font simplement mentir le message.
+  it("met en français une date du Socle", () => {
+    expect(renewalLabel("2026-09-01")).toBe("1ᵉʳ septembre 2026");
+    expect(renewalLabel("2027-01-01")).toBe("1ᵉʳ janvier 2027");
+  });
+
+  it("accepte une date ISO complète", () => {
+    expect(renewalLabel("2026-09-01T00:00:00Z")).toBe("1ᵉʳ septembre 2026");
+  });
+
+  it("rien à afficher quand le Socle n'a rien dit", () => {
+    expect(renewalLabel(null)).toBe("");
+    expect(renewalLabel(undefined)).toBe("");
+  });
+
+  // Mieux vaut afficher ce que le serveur a dit qu'inventer un mois.
+  it("rend telle quelle une entrée qui n'est pas une date", () => {
+    expect(renewalLabel("bientôt")).toBe("bientôt");
+  });
+});
+
+describe("formatTokens", () => {
+  it("sépare les milliers par une espace fine insécable", () => {
+    expect(formatTokens(1250000)).toBe("1 250 000");
+    expect(formatTokens(999)).toBe("999");
+  });
+
+  it("jamais de négatif à l'écran", () => {
+    expect(formatTokens(-10)).toBe("0");
   });
 });

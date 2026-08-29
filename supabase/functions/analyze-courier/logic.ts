@@ -1,10 +1,22 @@
 // Logique pure de l'analyse : catalogue de démarches injecté au prompt,
 // extraction des champs de formulaire Socle, condensé de base de connaissance,
-// schéma dynamique du tool "report_prefill" et sanitisation de sa sortie.
+// schéma dynamique de sortie du préremplissage et sanitisation de cette sortie.
 // AUCUN import Deno ici : ce module est importé par index.ts (edge function)
 // ET par les tests Vitest (src/test/socle/).
+//
+// ⚠️ « report_prefill », « report_analysis » et `toolParameters` sont des NOMS
+// D'ÉPOQUE : jusqu'au 2026-08-29, ces schémas voyageaient dans le champ `tools`
+// de l'API du fournisseur, et le modèle était forcé d'« appeler l'outil ». Le
+// guichet du Socle refuse `tools`/`tool_choice` — chaque outil est un second
+// chemin d'accès aux données, non audité — et n'offre que `response_format:
+// "json"`. Les schémas n'ont donc pas disparu : ils voyagent maintenant DANS LE
+// PROMPT (`_shared/jsonSchemaPrompt.ts`). Les noms sont conservés parce qu'ils
+// servent d'étiquettes dans les journaux et les tests, mais plus aucun outil
+// n'existe. Ce qui n'a pas changé du tout : `sanitizePrefillArguments` reste la
+// vraie défense — un schéma d'outil n'a JAMAIS empêché un modèle d'inventer une
+// valeur bien formée et fausse.
 
-// ── Catalogue de démarches (appel 1 — report_analysis) ──────────────────────
+// ── Catalogue de démarches (appel 1 — l'analyse) ────────────────────────────
 
 export interface ProcedureCatalogEntry {
   id: string;
@@ -229,7 +241,7 @@ export function selectPrefillCandidates(
   return out;
 }
 
-// ── Tool "report_prefill" : schéma dynamique + bloc de prompt ───────────────
+// ── Préremplissage : schéma de sortie dynamique + bloc de prompt ────────────
 
 export const PREFILL_AUDIENCES = ["citoyen", "entreprise", "association"] as const;
 export type PrefillAudience = (typeof PREFILL_AUDIENCES)[number];
@@ -276,7 +288,7 @@ function fieldJsonSchema(field: FillableField): JsonSchema {
 }
 
 export interface PrefillTool {
-  /** `parameters` du tool report_prefill (JSON Schema). */
+  /** Schéma JSON de la réponse attendue, joint au prompt système. */
   toolParameters: JsonSchema;
   /** Descriptif des démarches et de leurs champs, à injecter dans le prompt. */
   promptBlock: string;
@@ -449,9 +461,13 @@ function sanitizeFieldValue(field: FillableField, raw: unknown): unknown | undef
 }
 
 /**
- * Valide la sortie brute du tool report_prefill contre les démarches
- * effectivement soumises : clés inconnues supprimées, valeurs d'options
- * vérifiées, coercitions. Ne retourne que les démarches avec du contenu.
+ * Valide la sortie brute du préremplissage contre les démarches effectivement
+ * soumises : clés inconnues supprimées, valeurs d'options vérifiées,
+ * coercitions. Ne retourne que les démarches avec du contenu.
+ *
+ * ⚠️ C'EST LA VRAIE DÉFENSE, et elle l'était déjà avant la centralisation IA.
+ * Le guichet garantit que la réponse PARSE (`response_format: "json"`), jamais
+ * qu'elle respecte le schéma — pas plus que le tool-calling ne le garantissait.
  */
 export function sanitizePrefillArguments(
   rawArgs: unknown,

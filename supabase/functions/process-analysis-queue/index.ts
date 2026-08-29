@@ -57,13 +57,26 @@ async function getCronSecret(admin: ReturnType<typeof createClient>): Promise<st
   }
 }
 
+/**
+ * Ce que rend un appel à analyze-courier.
+ *
+ * `kind` remplace l'ancien couple `{ ok, quotaExceeded }` : depuis la
+ * centralisation IA, un refus n'a plus deux formes mais trois, et une seule
+ * d'entre elles justifie d'endormir le job jusqu'au mois suivant.
+ */
+type CallOutcome =
+  | { ok: true; kind: "ok"; error?: undefined }
+  | { ok: false; kind: "quota_exceeded"; error: string; renewsAt: string | null }
+  | { ok: false; kind: "rate_limited"; error: string }
+  | { ok: false; kind: "error"; error: string };
+
 /** Appelle analyze-courier en interne, authentifié par le secret cron. */
 async function callAnalyzeCourier(
   action: "ocr-courier" | "analyze",
   orgId: string,
   courierId: string,
   cronSecret: string,
-): Promise<{ ok: boolean; quotaExceeded: boolean; error?: string }> {
+): Promise<CallOutcome> {
   const resp = await fetch(`${SUPABASE_URL}/functions/v1/analyze-courier?action=${action}`, {
     method: "POST",
     headers: {
@@ -79,21 +92,58 @@ async function callAnalyzeCourier(
 
   const payload = await resp.json().catch(() => ({}));
 
-  if (resp.status === 429) return { ok: false, quotaExceeded: true, error: "quota_exceeded" };
+  // ⚠️ DEUX REFUS PARTAGENT LE 429 DEPUIS LA CENTRALISATION IA, et les
+  // confondre coûterait un mois. Le plafond de la collectivité est épuisé :
+  // rien à tenter avant son renouvellement. La CADENCE est dépassée : le
+  // crédit est intact, il suffit d'attendre quelques secondes. Avant le
+  // guichet, seul le premier cas existait — d'où l'ancien « tout 429 vaut
+  // quota », qui endormirait aujourd'hui jusqu'au mois suivant un courrier
+  // simplement arrivé dans une rafale.
+  if (resp.status === 429) {
+    if (payload?.code === "ai_rate_limited") {
+      return { ok: false, kind: "rate_limited", error: "ai_rate_limited" };
+    }
+    return {
+      ok: false,
+      kind: "quota_exceeded",
+      error: "quota_exceeded",
+      // Date du Socle, jamais recalculée ici (voir `deferUntil`).
+      renewsAt: typeof payload?.renews_at === "string" ? payload.renews_at : null,
+    };
+  }
   if (!resp.ok) {
-    return { ok: false, quotaExceeded: false, error: payload?.error ?? `HTTP ${resp.status}` };
+    return { ok: false, kind: "error", error: payload?.error ?? `HTTP ${resp.status}` };
   }
   // ocr-courier répond 200 même si des documents ont échoué : le quota épuisé
   // en cours de lot remonte par ce drapeau, pas par le statut HTTP.
-  if (payload?.quotaExceeded) return { ok: false, quotaExceeded: true, error: "quota_exceeded" };
-  return { ok: true, quotaExceeded: false };
+  if (payload?.quotaExceeded) {
+    return { ok: false, kind: "quota_exceeded", error: "quota_exceeded", renewsAt: null };
+  }
+  return { ok: true, kind: "ok" };
 }
 
-/** Début du mois suivant : les quotas IA sont mensuels, réessayer avant ne sert
- *  à rien et brûlerait les tentatives restantes. */
-function startOfNextMonth(): string {
+/**
+ * Quand replanifier un job reporté faute de crédit.
+ *
+ * ⚠️ LA DATE DU SOCLE PRIME, TOUJOURS. Depuis la centralisation, le plafond,
+ * la période et le renouvellement vivent chez lui, et il joint `renews_at` à
+ * son refus. Le calcul local ne sert QUE de repli quand le refus n'a pas porté
+ * la date (échec en cours de lot, réponse tronquée) — deux calculs de période
+ * qui dérivent ne cassent rien de visible, ils endorment simplement un
+ * courrier un mois de trop.
+ */
+function deferUntil(renewsAt: string | null): string {
+  if (renewsAt) {
+    const parsed = new Date(`${renewsAt.slice(0, 10)}T00:00:00Z`);
+    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
+  }
   const now = new Date();
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString();
+}
+
+/** Attente courte après un refus de cadence : le crédit est intact. */
+function retryAfterRateLimit(): string {
+  return new Date(Date.now() + 5 * 60 * 1000).toISOString();
 }
 
 Deno.serve(async (req) => {
@@ -131,7 +181,7 @@ Deno.serve(async (req) => {
 
   for (const job of claimed) {
     try {
-      let outcome = { ok: true, quotaExceeded: false, error: undefined as string | undefined };
+      let outcome: CallOutcome = { ok: true, kind: "ok" };
 
       if (job.kind === "full" || job.kind === "ocr") {
         outcome = await callAnalyzeCourier("ocr-courier", job.organization_id, job.courier_id, provided);
@@ -151,17 +201,20 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      if (outcome.quotaExceeded) {
-        // Report SANS consommer de tentative : le quota n'est pas un défaut du
-        // job. Sans ce rollback, trois passages de cron suffiraient à abandonner
-        // définitivement un courrier parfaitement analysable le mois suivant.
+      // Deux reports, DEUX ÉCHÉANCES. Dans les deux cas la tentative est
+      // rendue : ni le crédit épuisé ni la rafale ne sont un défaut du job, et
+      // sans ce rollback trois passages de cron suffiraient à abandonner
+      // définitivement un courrier parfaitement analysable.
+      if (outcome.kind === "quota_exceeded" || outcome.kind === "rate_limited") {
         await admin
           .from("courier_analysis_jobs")
           .update({
             status: "pending",
             attempts: Math.max(0, job.attempts - 1),
-            scheduled_at: startOfNextMonth(),
-            last_error: "quota_exceeded",
+            scheduled_at: outcome.kind === "quota_exceeded"
+              ? deferUntil(outcome.renewsAt)
+              : retryAfterRateLimit(),
+            last_error: outcome.error,
             started_at: null,
           })
           .eq("id", job.id);

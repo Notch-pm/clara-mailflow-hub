@@ -10,7 +10,15 @@ import { anonClient, clientAs, loadFixtures, type Fixtures } from "./helpers";
 //   branche utilisateur SEULEMENT — le worker cron passe par x-cron-secret) ;
 //   x-cron-secret erroné → 401. Un éditeur légitime passe l'auth et atteint le
 //   routage (« Unknown action » 400 sans query) — contrôle positif SANS coût IA.
-// On ne teste QUE des chemins de refus + ce 400 post-auth : aucun appel Mistral.
+// On ne teste QUE des chemins de refus + ce 400 post-auth : aucun appel au
+// guichet IA du Socle.
+//
+// ⚠️ LE 400 « Unknown action » ARRIVE AVANT LE CONTRÔLE DE RACCORDEMENT au
+// guichet, et cet ordre est délibéré (voir analyze-courier/index.ts) : une
+// action inconnue est inconnue, que l'instance soit raccordée ou non. Inverser
+// les deux rendrait ce contrôle positif dépendant de SOCLE_API_KEY et du
+// socle_org_id du tenant de test — il virerait au 503 sans qu'aucune règle
+// d'autorisation n'ait bougé.
 
 let fx: Fixtures;
 let membreAlpha: SupabaseClient;

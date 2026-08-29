@@ -7,7 +7,7 @@
 **Clara** est une solution SaaS de **gestion électronique de courrier (GEC)** pour collectivités publiques françaises. Elle permet de :
 
 - **Recevoir** des courriers (papier, emails, formulaires et autres sollicitations ressaisies par les agents) via saisie manuelle, import en masse, IMAP ou boîte de numérisation.
-- **Analyser** chaque courrier (OCR des pièces jointes + LLM via Lovable AI Gateway) : résumé, intentions, sentiment, actions suggérées.
+- **Analyser** chaque courrier (OCR des pièces jointes + LLM) **via le guichet IA du Socle** : résumé, intentions, sentiment, actions suggérées.
 - **Traiter** via workflows configurables (états + transitions), tags, assignation à une **organisation** (hiérarchie synchronisée depuis le Socle — les organisations remplacent les anciens « services »), actions internes minimales. Une action fondée sur une **démarche du référentiel** est déposée dans **Iris**, propriétaire exclusif des demandes d’usagers — les « demandes libres » restent dans Clara ; les démarches partenaires (Arpège) gardent leur connecteur.
 - **Répondre** : brouillon généré par IA, signature électronique (image), envoi via le serveur d’envoi (SMTP) de l’organisation — **défini dans le Socle**, dont Clara ne tient qu’un miroir rafraîchi par la sync (plus aucune saisie SMTP dans Clara).
 - **Tracer** : historique d'événements, notes, liens entre courriers, références séquentielles annuelles.
@@ -19,7 +19,8 @@ Multi-tenant strict : toute donnée est scopée par `organization_id`. Repo (pri
 
 - **Frontend** : React 18 + Vite 5 + TypeScript + Tailwind + shadcn/ui + React Router + TanStack Query.
 - **Backend** : Supabase (Postgres + RLS + Auth + Storage + Edge Functions Deno + pg_cron).
-- **IA** : Lovable AI Gateway (modèles Gemini par défaut) via edge functions.
+- **IA** : **guichet du Socle** (edge function `ai-api`) depuis le 2026-08-29 — Clara n'a plus de
+  clé de fournisseur et ne compte plus les jetons. Voir la règle d'or n°7.
 - **Tests** : Vitest.
 
 ## Règles d'or (à ne jamais violer)
@@ -30,6 +31,12 @@ Multi-tenant strict : toute donnée est scopée par `organization_id`. Repo (pri
 4. **Design system** : tokens sémantiques HSL dans `src/index.css` + `tailwind.config.ts`. Pas de couleurs hardcodées dans les composants. Palette Notch (vert `#0acf83`, jaune `#ffcd57`), police Nunito Sans.
 5. **Edge functions** : `supabase/functions/<name>/index.ts`, Deno, CORS, auth check explicite (JWT user OU service role OU `x-cron-secret`).
 6. **Migrations** : toute modif de schéma passe par un fichier `supabase/migrations/<timestamp>_<slug>.sql`.
+7. **IA : jamais de fournisseur en direct.** Tout appel LLM ou OCR passe par
+   `_shared/socleAi.ts` → guichet du Socle (`ai-api`), qui détient la clé et compte les jetons pour
+   toute la gamme. Un `fetch("https://api.mistral.ai/…")` rouvrirait un **second compteur** : le
+   total par collectivité redeviendrait faux, sans que rien n'échoue visiblement. Clara ne stocke
+   plus ni plafond, ni compteur, ni nombre de jetons (tables `ai_usage_*` supprimées le
+   2026-08-29). Un test de non-régression scanne `supabase/functions/` (`src/test/socle/socle-ai.test.ts`).
 
 ## Carte du projet
 

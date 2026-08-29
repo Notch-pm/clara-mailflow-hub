@@ -1,5 +1,14 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
-import { withAiUsageGuard, AiQuotaExceededError, estimateTextTokens } from "../_shared/aiUsage.ts";
+import {
+  AGENT_REDACTION,
+  AiQuotaExceededError,
+  FEATURE_DRAFT,
+  fitMessage,
+  isAiConfigured,
+  SocleAiError,
+  socleCompletion,
+  socleOrgIdFor,
+} from "../_shared/socleAi.ts";
 import { assertEditor } from "../_shared/authz.ts";
 
 const corsHeaders = {
@@ -9,13 +18,15 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const MISTRAL_CHAT_URL = "https://api.mistral.ai/v1/chat/completions";
-const MISTRAL_AGENT_URL = "https://api.mistral.ai/v1/agents/completions";
-const CHAT_MODEL = "mistral-large-latest";
-// Si le secret est posé, la rédaction passe par l'agent Mistral « rédaction »
-// (ton et typologie AR/suivi/clôture portés par son prompt, modifiables dans
-// la console Mistral sans redéploiement). Sinon : chat/completions historique.
-const REDACTION_AGENT_ID = Deno.env.get("MISTRAL_REDACTION_AGENT_ID") ?? null;
+/**
+ * Budget de sortie d'une lettre : le corps seul, sans en-tête ni formule.
+ *
+ * Volontairement SOUS le plafond du guichet (2000), contrairement aux appels
+ * JSON de l'analyse : ici une sortie tronquée dégrade sans casser — l'agent
+ * reçoit une lettre un peu courte, qu'il édite, là où un JSON tronqué ne parse
+ * pas et fait perdre l'appel entier.
+ */
+const DRAFT_OUTPUT_TOKENS = 1500;
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -82,8 +93,18 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "Accès refusé : rôle consultant en lecture seule" }, 403);
     }
 
-    const mistralKey = Deno.env.get("MISTRAL_API_KEY");
-    if (!mistralKey) return jsonResponse({ error: "Clé API Mistral manquante" }, 500);
+    // ⚠️ Ce n'est PAS la clé d'un fournisseur — Clara n'en a plus. C'est le
+    // raccordement au guichet IA du Socle, qui détient la clé et le crédit.
+    if (!isAiConfigured()) {
+      return jsonResponse({ error: "L'assistant IA n'est pas configuré sur cette instance." }, 503);
+    }
+    const socleOrgId = await socleOrgIdFor(admin, orgId);
+    if (!socleOrgId) {
+      return jsonResponse(
+        { error: "Organisation non rattachée au Socle (socle_org_id manquant) — la consommation IA ne serait imputable à personne." },
+        503,
+      );
+    }
 
     // Fetch courier + participants
     const { data: courier, error: cErr } = await admin
@@ -129,16 +150,19 @@ Deno.serve(async (req) => {
         }).join("\n")
       : "Aucune action liée.";
 
-    // Build prompt — via l'agent, le ton et la typologie AR/suivi/clôture
-    // viennent de son prompt : Clara n'envoie que les contraintes de sortie.
-    const outputConstraints = `Retourne UNIQUEMENT le corps de la lettre en HTML, avec des balises <p>, <strong>, <em>, <ul>, <li> uniquement.
+    // ⚠️ LE PROMPT SYSTÈME EST DÉSORMAIS AUTOSUFFISANT, et le changement n'est
+    // pas cosmétique. Clara envoyait autrefois les seules contraintes de sortie
+    // quand l'agent de rédaction était configuré, son ton venant de la console
+    // du fournisseur. Clara ne sait plus si l'alias `redaction-reponse` résout
+    // chez le Socle : un alias inconnu retombe sur le modèle par défaut, sans
+    // refus et sans avertissement. Un prompt qui compterait sur l'agent
+    // produirait alors du texte sans ton ni cadre — silencieusement. On écrit
+    // donc tout ; si l'agent existe, le rappel est redondant, jamais nuisible.
+    const systemPrompt = `Tu es un assistant expert en rédaction de courrier administratif pour une collectivité française.
+Contexte : rédaction de la réponse à un courrier entrant.
+Ta réponse doit être professionnelle, claire, et adaptée au type de réponse demandé.
+Retourne UNIQUEMENT le corps de la lettre en HTML, avec des balises <p>, <strong>, <em>, <ul>, <li> uniquement.
 N'inclus pas les coordonnées, la date, l'objet, la formule d'appel ni la formule de politesse finale.`;
-    const systemPrompt = REDACTION_AGENT_ID
-      ? outputConstraints
-      : `Tu es un assistant expert en rédaction de courrier administratif.
-Contexte : Rédaction de réponse à un courrier entrant.
-Ta réponse doit être professionnelle, claire et adaptée au type de réponse demandé.
-${outputConstraints}`;
 
     const userPrompt = `Type de réponse : ${responseType}
 ${additionalInstructions ? `Instructions complémentaires : ${additionalInstructions}` : ""}
@@ -158,52 +182,37 @@ ${ticketsText}
 
 Rédige maintenant le corps de la lettre de réponse.`;
 
-    const draftHtml = await withAiUsageGuard({
-      admin,
-      organizationId: orgId,
-      provider: "mistral",
-      resourceType: REDACTION_AGENT_ID ? "agent" : "chat",
-      estimatedTokens: estimateTextTokens(systemPrompt.length + userPrompt.length, 1500),
-      userId: user.id,
-      run: async () => {
-        const messages = [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ];
-        const chatResp = await fetch(REDACTION_AGENT_ID ? MISTRAL_AGENT_URL : MISTRAL_CHAT_URL, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${mistralKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(
-            REDACTION_AGENT_ID
-              ? { agent_id: REDACTION_AGENT_ID, messages, max_tokens: 1500 }
-              : { model: CHAT_MODEL, messages, temperature: 0.4, max_tokens: 1500 },
-          ),
-        });
-
-        if (!chatResp.ok) {
-          const err = await chatResp.text();
-          throw new Error(`Erreur Mistral : ${err}`);
-        }
-
-        const chatData = await chatResp.json();
-        let html = chatData.choices?.[0]?.message?.content ?? "";
-        // Strip markdown code block if Mistral wraps the output
-        html = html.replace(/^```(?:html)?\s*/i, "").replace(/\s*```$/i, "").trim();
-        const actualTokens = chatData?.usage?.total_tokens ?? null;
-        return { result: html, actualTokens };
+    // Le guichet réserve, appelle et solde : Clara ne compte plus rien.
+    const answer = await socleCompletion({
+      system: systemPrompt,
+      messages: [{ role: "user", content: fitMessage(userPrompt) }],
+      agent: AGENT_REDACTION,
+      maxOutputTokens: DRAFT_OUTPUT_TOKENS,
+      ctx: {
+        socleOrgId,
+        feature: FEATURE_DRAFT,
+        reference: { kind: "courier", id: courierId },
+        actorId: user.id,
       },
     });
 
+    // Certains modèles enrobent la sortie d'une clôture markdown malgré la
+    // consigne — le seul écart jamais observé, et il se retire en une ligne.
+    const draftHtml = answer.replace(/^```(?:html)?\s*/i, "").replace(/\s*```$/i, "").trim();
+
     return jsonResponse({ html: draftHtml });
   } catch (err) {
-    if (err instanceof AiQuotaExceededError) {
-      return jsonResponse({ error: err.message }, 429);
-    }
-    if (err instanceof Error && err.message.startsWith("Erreur Mistral")) {
-      return jsonResponse({ error: err.message }, 502);
+    // Le guichet a déjà traduit ses refus en messages destinés à l'agent :
+    // plafond atteint (avec la date de renouvellement, mot pour mot du Socle),
+    // cadence dépassée, panne de fournisseur, configuration absente.
+    if (err instanceof SocleAiError) {
+      return jsonResponse({
+        error: err.message,
+        code: err.code,
+        // La date vient du Socle, jamais recalculée ici : l'appelant (écran ou
+        // worker de file) doit pouvoir la relayer sans risquer de la contredire.
+        renews_at: err instanceof AiQuotaExceededError ? err.renewsAt : null,
+      }, err.status);
     }
     const message = err instanceof Error ? err.message : "Erreur interne";
     return jsonResponse({ error: message }, 500);

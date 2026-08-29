@@ -41,7 +41,14 @@ Pour servir un document privé : passer par l'edge function `storage-documents` 
 ## Secrets (à configurer côté Supabase / Lovable Cloud)
 
 - `SUPABASE_SERVICE_ROLE_KEY` — interne, jamais côté client.
-- `LOVABLE_API_KEY` — Lovable AI Gateway (analyse + draft).
+- `SOCLE_API_KEY` — **clé plateforme unique Socle↔Clara**, scopes `read` + `contacts` + `smtp` +
+  **`ai`**, avec une *application imputable* (`clara`) côté Socle. ⚠️ **Aucune clé de fournisseur
+  LLM n'existe plus côté Clara** depuis le 2026-08-29 (`MISTRAL_API_KEY` et
+  `MISTRAL_*_AGENT_ID` retirés des secrets) : le Socle détient la clé, et une application
+  compromise ne la compromet plus. C'est le premier gain de la centralisation, avant même le
+  budget unique.
+- `SOCLE_API_URL` — base des edge functions du Socle ; l'URL du guichet IA en est dérivée
+  (`public-api` → `ai-api`). `SOCLE_AI_API_URL` la surcharge si besoin.
 - `RESEND_API_KEY` — emails transactionnels (invite, reset).
 - `CRON_SECRET` — header `x-cron-secret` pour pg_cron → edge functions. Doit aussi être inséré dans `vault.decrypted_secrets` (key = `cron_secret`).
 - `ARPEGE_*` — credentials API Arpège (URL, client_id, secret).

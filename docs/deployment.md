@@ -149,6 +149,73 @@ WHERE n.nspname = 'public' AND p.proname = 'search_couriers';
 Une **seule** ligne doit sortir : deux signatures coexistantes rendraient la
 résolution PostgREST ambiguë (`PGRST203`).
 
+## Bascule vers le guichet IA du Socle (2026-08-29)
+
+⚠️ **CHANTIER À DEUX DÉPÔTS, ET L'ORDRE N'EST PAS NÉGOCIABLE.** Clara appelle deux routes du
+guichet qui n'existaient pas dans sa v1 : `POST /v1/ocr` et `response_format: "json"` sur
+`POST /v1/completions`. Déployer Clara avant le Socle laisserait l'analyse de courrier en `400`
+sur chaque appel — traduit en « erreur interne » pour l'agent, sans indice sur la cause.
+
+**Dans le Socle, d'abord :**
+
+1. Déployer `ai-api` (aucune migration : `ai_usage_events.resource_type` accepte `'ocr'` depuis
+   l'origine).
+2. Vérifier que le contrat est bien publié — `GET {SOCLE_URL}/functions/v1/ai-api/openapi.json`
+   doit lister `/v1/ocr`, et `CompletionRequest` porter `response_format`.
+3. Créer (ou compléter) la clé API de Clara : scope **`ai`** en plus de `read` + `contacts` +
+   `smtp`, et surtout une **application imputable** (`consumer = "clara"`). Sans elle, le guichet
+   refuse tout appel en `403` — une dépense non imputable n'a pas lieu.
+4. Poser le plafond mensuel de chaque collectivité côté Socle. **Aucun plafond = illimité** : le
+   déploiement progressif ne casse personne, mais personne n'est plafonné non plus.
+
+**Dans Clara, ensuite :**
+
+5. Déployer les edge functions : `analyze-courier`, `draft-reply`, `extract-courier-info`,
+   `process-analysis-queue`, et la nouvelle `socle-ai-usage`.
+6. Mettre à jour les secrets Supabase :
+   - **ajouter** `SOCLE_API_KEY` s'il n'a pas déjà le scope `ai` (c'est la même clé plateforme que
+     pour les contacts — il suffit de lui ajouter le scope côté Socle) ;
+   - **retirer** `MISTRAL_API_KEY`, `MISTRAL_EXTRACTION_AGENT_ID`, `MISTRAL_REDACTION_AGENT_ID` :
+     plus aucun code ne les lit, et les laisser entretiendrait l'idée qu'un appel direct reste
+     possible. C'est le premier gain de la bascule — la clé du fournisseur n'est plus distribuée.
+7. **La migration `20260829140000_retrait_plafond_ia.sql` EN DERNIER**, une fois les fonctions
+   déployées et un appel vérifié de bout en bout. Avant, elle supprimerait les RPC dont l'ancien
+   code encore en ligne dépend.
+
+   ⚠️ **Elle supprime le journal `ai_usage_events` sans sommation** — là où la migration jumelle
+   d'Iris refuse de s'exécuter sur une table non vide. Le garde-fou n'a pas été oublié : il a été
+   **levé sciemment** le 2026-08-29, les lignes présentes étant des **essais de recette** dont
+   aucune facturation ne dépend. Le script annonce en `NOTICE` le nombre d'événements et de jetons
+   détruits — c'est la seule trace qui subsistera, la sortie du déploiement mérite donc d'être
+   conservée.
+
+   ⚠️ **Cette décision ne vaut que pour cette base, à cette date.** Rejouer le script sur une base
+   restaurée ou dérivée où de la consommation réelle aurait été enregistrée détruirait des pièces
+   comptables. Dans ce cas seulement, exporter d'abord :
+
+   ```sql
+   COPY (SELECT * FROM public.ai_usage_events) TO STDOUT WITH CSV HEADER;
+   ```
+
+   Le journal du Socle ne reprend rien rétroactivement : il commence à la bascule, et c'est assumé.
+
+8. Régénérer `src/integrations/supabase/types.ts` : sans cela le typage annonce trois tables et
+   trois RPC qui n'existent plus.
+
+**Vérifications qui valent le détour :**
+
+```sql
+-- Le retrait est complet (aucune ligne attendue) :
+SELECT to_regclass('public.ai_usage_quotas'), to_regclass('public.ai_usage_counters'),
+       to_regclass('public.ai_usage_events');
+SELECT jobname FROM cron.job WHERE jobname LIKE '%ai%';
+```
+
+Puis, dans l'application : analyser un courrier **avec une pièce jointe scannée** (le seul chemin
+qui exerce `/v1/ocr`), et ouvrir Paramètres › Consommation IA — la ventilation par application
+doit montrer la ligne `clara`. Un `403` ici signifie une clé sans scope `ai` ou sans application
+imputable ; un `503`, un tenant sans `socle_org_id`.
+
 ## Vérification post-déploiement
 
 ```sql

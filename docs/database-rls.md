@@ -127,12 +127,19 @@ Pas d'`organization_id` sur cette table → policies spécifiques (une par actio
 | `users_update` | UPDATE | soi-même, superadmin, ou admin d'une org du user cible ; `WITH CHECK` interdit `is_superadmin = true` aux non-superadmins (en plus du trigger) |
 | `service_role_full_users` | ALL | `true` (`TO service_role`) |
 
-#### `ai_usage_quotas`
-| Policy | CMD | Condition |
-|---|---|---|
-| `auth_select` | SELECT | `is_member_of(organization_id)` |
-| `superadmin_insert/update/delete` | INSERT/UPDATE/DELETE | `is_superadmin((select auth.uid()))` (les lignes globales `organization_id NULL` restent superadmin-only) |
-| `service_role_full` | ALL | `true` (`TO service_role`) |
+#### `ai_usage_quotas` / `ai_usage_counters` / `ai_usage_events` — **supprimées le 2026-08-29**
+
+Migration `20260829140000_retrait_plafond_ia.sql`. Le plafond IA vit désormais dans le **Socle**
+(`ai-api`), qui le tient pour toute la gamme : Clara n'en voyait qu'une part et ne pouvait plus en
+être le comptable.
+
+⚠️ **Ne pas les recréer.** Ce qui subsisterait ne serait pas du code mort mais un **second
+compteur** : quelqu'un lirait `ai_usage_counters`, y verrait zéro pour le mois, et en conclurait
+que la collectivité n'a rien consommé — alors qu'elle aurait dépensé son mois via le Socle.
+
+La lecture de la consommation passe désormais par l'edge function `socle-ai-usage`, en
+`service_role` : **la garde d'appartenance y est écrite en dur**, puisque le RLS ne s'applique
+plus. Elle reprend exactement l'ancienne policy `auth_select` (`is_member_of`).
 
 ---
 
@@ -151,7 +158,7 @@ Résout les 32 lints `auth_rls_initplan` et les 29 `multiple_permissive_policies
 - 8 policies `service_role_full` déclarées sans `TO` (donc évaluées aussi pour `authenticated`) recréées `TO service_role` : `portal_form_submissions`, `portal_forms`, `socle_*` ;
 - `auth.uid()` / `current_setting()` wrappés `(select ...)` partout où ils restaient nus ;
 - policies superadmin redondantes supprimées (`organization_users.superadmin_all`, `smtp_settings.superadmin_all_smtp` — les helpers incluent le superadmin) ;
-- fusion par action sur `users`, `organizations`, `organization_users`, `ai_usage_quotas` ;
+- fusion par action sur `users`, `organizations`, `organization_users`, `ai_usage_quotas` (table depuis supprimée, cf. ci-dessus) ;
 - `courier_relations` normalisée sur le pattern standard (dernier scoping x-org-id supprimé) ;
 - durcissements au passage : les branches x-org-id de `users` (`org_members_select`/`org_members_update`) ne vérifiaient pas l'appartenance du demandeur à l'org du header (énumération/écriture cross-org) → remplacées par « admin d'une org du user cible » ; l'INSERT `users` n'autorise plus `is_superadmin = true` pour un non-superadmin.
 

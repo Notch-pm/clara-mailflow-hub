@@ -94,7 +94,7 @@ export default function OrgSettings() {
           </div>
         )}
         {activeSection === "organisations" && <SocleOrganizationTree orgId={orgId!} isAdminOverride />}
-        {activeSection === "ia" && <AiUsageSettings organizationId={orgId!} editable />}
+        {activeSection === "ia" && <AiUsageSettings organizationId={orgId!} />}
       </div>
     );
   }

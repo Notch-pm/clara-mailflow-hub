@@ -12,9 +12,9 @@ interface Props {
   maxFileSize: number;
 }
 
-// Pas de TIFF : l'OCR (analyze-courier) le route vers Mistral, qui ne le gère
-// pas — le fichier passait l'upload puis échouait sans message. Les copieurs
-// doivent être configurés en PDF.
+// Pas de TIFF : l'OCR (analyze-courier → guichet du Socle) ne le gère pas — le
+// fichier passait l'upload puis échouait sans message. Les copieurs doivent
+// être configurés en PDF.
 const ACCEPTED_TYPES = [
   "application/pdf",
   "image/jpeg",

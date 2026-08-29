@@ -1,40 +1,50 @@
-import { useState } from "react";
-import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Sparkles } from "lucide-react";
-import { toast } from "sonner";
-import { getAiUsageSummary, upsertAiUsageQuota } from "@/services/aiUsageService";
+import {
+  formatTokens,
+  getAiUsageSummary,
+  quotaView,
+  renewalLabel,
+} from "@/services/aiUsageService";
 
+/**
+ * Consommation IA de la collectivité.
+ *
+ * ⚠️ ÉCRAN EN LECTURE SEULE, ET DÉFINITIVEMENT. Depuis la centralisation du
+ * 2026-08-29, le plafond est celui de la COLLECTIVITÉ, tenu par le Socle pour
+ * toute la gamme (Clara, Iris, Ariane). Le champ « nouveau plafond mensuel »
+ * qui vivait ici a été retiré : il n'aurait plus réglé que la part de Clara,
+ * c'est-à-dire rien — le compteur est commun. Le plafond se règle dans le
+ * Socle, par un super admin, et s'applique partout à la fois.
+ *
+ * Ce que la bascule fait GAGNER à cet écran : la ventilation par application.
+ * Un administrateur voit enfin ce que sa collectivité dépense en tout, et par
+ * quel produit — un total que Clara seule ne pouvait pas produire.
+ */
 interface AiUsageSettingsProps {
   organizationId: string;
-  /** true uniquement depuis la vue superadmin — les admins d'organisation
-   *  voient leur consommation en lecture seule (le plafond est un levier de
-   *  maîtrise des coûts côté Notch, pas un paramètre métier délégué). */
-  editable?: boolean;
 }
 
-export default function AiUsageSettings({ organizationId, editable = false }: AiUsageSettingsProps) {
-  const queryClient = useQueryClient();
-  const [editValue, setEditValue] = useState("");
+const TONE_CLASSES: Record<string, string> = {
+  ok: "text-muted-foreground",
+  warn: "text-amber-600 dark:text-amber-500",
+  critical: "text-destructive",
+};
 
-  const { data: summary, isLoading } = useQuery({
+/** Nom d'affichage des applications de la gamme ; inconnu ⇒ tel quel. */
+const CONSUMER_LABELS: Record<string, string> = {
+  clara: "Clara (courrier)",
+  iris: "Iris (demandes)",
+  ariane: "Ariane",
+};
+
+export default function AiUsageSettings({ organizationId }: AiUsageSettingsProps) {
+  const { data: summary, isLoading, error } = useQuery({
     queryKey: ["ai-usage-summary", organizationId],
     queryFn: () => getAiUsageSummary(organizationId),
     enabled: !!organizationId,
-  });
-
-  const saveMutation = useMutation({
-    mutationFn: (monthlyLimitTokens: number) => upsertAiUsageQuota(organizationId, null, monthlyLimitTokens),
-    onSuccess: () => {
-      toast.success("Plafond IA mis à jour");
-      queryClient.invalidateQueries({ queryKey: ["ai-usage-summary", organizationId] });
-      setEditValue("");
-    },
-    onError: (err: Error) => toast.error(err.message),
   });
 
   if (isLoading) {
@@ -45,11 +55,18 @@ export default function AiUsageSettings({ organizationId, editable = false }: Ai
     );
   }
 
-  // Plafond global (provider=null) prioritaire s'il existe ; sinon premier
-  // plafond spécifique à un fournisseur. En v1, l'édition ne propose que le
-  // plafond global (un seul mode à la fois, pas de combinaison global + par
-  // fournisseur, pour éviter toute ambiguïté de configuration).
-  const usage = (summary ?? []).find((s) => s.provider === null) ?? summary?.[0] ?? null;
+  if (error || !summary) {
+    return (
+      <Card>
+        <CardContent className="py-8 text-center text-sm text-muted-foreground">
+          Consommation IA indisponible — le référentiel n'a pas répondu.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const view = quotaView(summary);
+  const renewal = renewalLabel(summary.renewsAt);
 
   return (
     <Card>
@@ -59,52 +76,62 @@ export default function AiUsageSettings({ organizationId, editable = false }: Ai
           <h3 className="font-medium">Consommation IA</h3>
         </div>
 
-        {!usage ? (
+        <p className="text-xs text-muted-foreground">
+          Le crédit est celui de votre collectivité, commun à toutes les applications de la gamme.
+          Il se règle dans le Socle.
+        </p>
+
+        {view.unlimited ? (
           <p className="text-sm text-muted-foreground">
-            Aucun plafond configuré pour cette organisation — consommation illimitée.
+            Aucun plafond configuré pour cette collectivité — consommation illimitée.
           </p>
         ) : (
           <div className="space-y-2">
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Période {usage.period}</span>
-              <span className="font-medium">
-                {(usage.usedTokens + usage.reservedTokens).toLocaleString("fr-FR")} /{" "}
-                {usage.monthlyLimitTokens.toLocaleString("fr-FR")} tokens (estimé)
+              <span className="text-muted-foreground">
+                Période {summary.period}
+                {renewal && ` — renouvellement le ${renewal}`}
+              </span>
+              <span className={`font-medium ${TONE_CLASSES[view.tone]}`}>
+                {formatTokens(view.engagedTokens)} / {formatTokens(view.limitTokens ?? 0)} jetons
               </span>
             </div>
-            <Progress
-              value={Math.min(100, ((usage.usedTokens + usage.reservedTokens) / usage.monthlyLimitTokens) * 100)}
-            />
-            {usage.reservedTokens > 0 && (
+            <Progress value={view.percent} />
+            {view.reservedTokens > 0 && (
               <p className="text-xs text-muted-foreground">
-                dont {usage.reservedTokens.toLocaleString("fr-FR")} en cours de traitement
+                dont {formatTokens(view.reservedTokens)} en cours de traitement
               </p>
             )}
-            {!usage.isActive && (
-              <p className="text-xs text-muted-foreground">Plafond désactivé — consommation illimitée.</p>
+            {view.tone === "critical" && (
+              <p className="text-xs text-destructive">
+                Plafond atteint : les traitements IA sont suspendus
+                {renewal ? ` jusqu'au ${renewal}` : ""}.
+              </p>
             )}
           </div>
         )}
 
-        {editable && (
-          <div className="flex items-end gap-2 pt-2 border-t">
-            <div className="flex flex-col gap-1.5 flex-1 max-w-[220px]">
-              <Label className="text-xs text-muted-foreground">Nouveau plafond mensuel (tokens)</Label>
-              <Input
-                type="number"
-                min={1}
-                placeholder={usage ? String(usage.monthlyLimitTokens) : "ex. 1000000"}
-                value={editValue}
-                onChange={(e) => setEditValue(e.target.value)}
-              />
-            </div>
-            <Button
-              size="sm"
-              disabled={!editValue.trim() || saveMutation.isPending}
-              onClick={() => saveMutation.mutate(Number(editValue))}
-            >
-              Enregistrer
-            </Button>
+        {summary.byConsumer.length > 0 && (
+          <div className="space-y-1 pt-2 border-t">
+            <p className="text-xs font-medium text-muted-foreground">Par application</p>
+            <ul className="space-y-1">
+              {summary.byConsumer.map((row) => (
+                <li
+                  key={`${row.consumer}:${row.feature ?? ""}`}
+                  className="flex items-center justify-between text-sm"
+                >
+                  <span>
+                    {CONSUMER_LABELS[row.consumer] ?? row.consumer}
+                    {row.feature && (
+                      <span className="text-muted-foreground"> · {row.feature}</span>
+                    )}
+                  </span>
+                  <span className="text-muted-foreground">
+                    {formatTokens(row.tokens)} jetons ({row.calls} appel{row.calls > 1 ? "s" : ""})
+                  </span>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
       </CardContent>
