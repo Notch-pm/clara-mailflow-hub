@@ -61,12 +61,39 @@ FROM net._http_response ORDER BY id DESC LIMIT 3;
 
 À l'inverse, une fonction appelée par une autre edge function avec `Authorization: Bearer <service_role>` peut garder `verify_jwt` : la clé service_role est un JWT valide.
 
+## Frontend : Cloudflare Workers
+
+Le bundle Vite est servi comme **assets statiques d'un Worker** (`clara-mailflow-hub`), déployé par
+Workers Builds à chaque push de la branche connectée : `bun install --frozen-lockfile`, puis
+`bun run build`, puis `npx wrangler deploy`. La configuration tient dans `wrangler.jsonc` :
+`assets.directory = ./dist` et `not_found_handling = single-page-application` (React Router en
+`BrowserRouter` : toute URL profonde doit renvoyer `index.html`, sinon un rechargement sur
+`/courriers/<id>` répond 404).
+
+⚠️ **`wrangler.jsonc` doit exister.** Sans lui, `wrangler deploy` détecte un projet Vite et tente de
+réécrire `vite.config.ts` pour y injecter `@cloudflare/vite-plugin` — et échoue sur notre tableau
+`plugins` construit avec `.filter(Boolean)` : « Cannot modify Vite config: could not find a valid
+plugins array ». Constaté le 2026-09-09 : le build passait, le déploiement tombait là. Ne pas
+« corriger » en ajoutant le plugin Cloudflare : le Worker n'a pas de script, il n'y a rien à brancher.
+
+Les variables `VITE_SUPABASE_URL` et `VITE_SUPABASE_PUBLISHABLE_KEY` sont **figées dans le bundle au
+build** : elles doivent être posées dans les variables de build du projet Cloudflare (valeurs
+publiques par design, cf. `.env.example`). Absentes, le build passe quand même et l'application
+s'ouvre sur une page blanche (`createClient` refuse une URL vide).
+
+Vérification locale, sans compte Cloudflare :
+
+```bash
+npx wrangler deploy --dry-run   # valide wrangler.jsonc et le manifeste d'assets
+npx wrangler dev                # sert dist/ en local, avec le repli SPA
+```
+
 ## Ordre de déploiement
 
-> **Le frontend n'est publié nulle part.** Clara n'est pas en production : il n'y a que le
-> dépôt git et l'exécution locale (`bun run dev` / `bun run build`). Les lignes « Publier le
-> frontend » des lots ci-dessous sont donc sans objet — mais l'ORDRE reste vrai le jour où une
-> publication existera, et il vaut toujours pour ce qui est réellement déployé : le projet
+> **Le frontend est déployé sur Cloudflare Workers** (assets statiques, Workers Builds) — voir la
+> section « Frontend : Cloudflare Workers » ci-dessus. Jusqu'au 2026-09-09, Clara n'existait qu'en
+> dépôt git et en exécution locale : les lignes « Publier le frontend » des lots antérieurs étaient
+> sans objet à l'époque. L'ORDRE, lui, vaut désormais pour de vrai — et il valait déjà pour le projet
 > Supabase `aullweizxcjbvtdspjli` (migrations + edge functions), qui est bien commun et vivant.
 
 L'ordre général est **SQL → edge functions → frontend**, avec deux nuances :
@@ -78,8 +105,8 @@ L'ordre général est **SQL → edge functions → frontend**, avec deux nuances
 # 1-3, 5 : migrations, via apply_migration (MCP) — pas db push
 # 4 : fonctions
 bunx supabase functions deploy <nom> --project-ref aullweizxcjbvtdspjli
-# 6 : frontend
-bun run build
+# 6 : frontend — Workers Builds le fait au push (cf. « Frontend : Cloudflare Workers »)
+bun run build && npx wrangler deploy --dry-run
 ```
 
 ### Lot « connecteur Iris » (2026-08-23) — appliqué le 2026-08-23

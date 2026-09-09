@@ -38,3 +38,6 @@ playwright-report/
 
 # Réglages Claude Code propres à la machine (contiennent des clés en clair)
 .claude/settings.local.json
+
+# État local de wrangler (wrangler dev)
+.wrangler/

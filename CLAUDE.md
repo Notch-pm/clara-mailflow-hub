@@ -70,7 +70,7 @@ docs/             # Documentation détaillée pour Claude Code (ce répertoire)
 | `docs/routes.md` | Map URL → page → rôle requis. |
 | `docs/conventions.md` | Style de code, design system, patterns récurrents. |
 | `docs/security.md` | Modèle de sécurité, RLS, secrets, ce qui est public intentionnellement. |
-| `docs/deployment.md` | Ordre de déploiement, pièges `config.toml`/cron, **dérive du registre de migrations**. À lire avant toute migration. |
+| `docs/deployment.md` | Frontend sur Cloudflare Workers (`wrangler.jsonc`), ordre de déploiement, pièges `config.toml`/cron, **dérive du registre de migrations**. À lire avant toute migration ou tout changement de build/déploiement. |
 
 ## Commandes utiles
 

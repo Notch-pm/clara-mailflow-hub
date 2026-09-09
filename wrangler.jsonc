@@ -1,0 +1,13 @@
+// Déploiement du frontend sur Cloudflare Workers (assets statiques, sans script).
+// Ce fichier DOIT exister : sans lui, `wrangler deploy` détecte un projet Vite et tente
+// de réécrire vite.config.ts pour injecter @cloudflare/vite-plugin — ce qui échoue sur
+// notre tableau `plugins` construit avec `.filter(Boolean)`. Voir docs/deployment.md.
+{
+  "name": "clara-mailflow-hub",
+  "compatibility_date": "2026-09-08",
+  "assets": {
+    "directory": "./dist",
+    // React Router en BrowserRouter : toute URL profonde doit renvoyer index.html.
+    "not_found_handling": "single-page-application"
+  }
+}
