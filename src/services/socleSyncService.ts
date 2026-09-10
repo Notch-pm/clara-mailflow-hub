@@ -37,6 +37,11 @@ export interface SocleSyncCounters {
   categories: SocleEntityCounters;
   document_types: SocleEntityCounters;
   procedures: SocleEntityCounters;
+  /**
+   * Miroir « quelle organisation propose quelle démarche » (opt-in strict du
+   * référentiel). Absent des runs antérieurs au 2026-09-10.
+   */
+  activations?: SocleEntityCounters;
   /** Serveur d'envoi recopié depuis le référentiel (0 ou 1 : un relais par tenant). */
   smtp_synchronises?: number;
   /** Serveur d'envoi effacé, le référentiel n'en déclarant plus (0 ou 1). */

@@ -297,6 +297,20 @@ Démarches administratives. **Source de vérité : le Socle** (référentiel cen
 | `synced_at` | timestamptz | dernière sync |
 | `obsoleted_at` | timestamptz | soft-delete : disparue du Socle ou embryon remplacé (jamais de DELETE — `action_tickets.procedure_id` est `ON DELETE RESTRICT`) |
 
+#### `procedure_organizations`
+Miroir de l'**activation des démarches par organisation** (le Socle porte `organization_procedures`, servie par `GET /v1/procedures?enabled_for=<org>`). Clé primaire `(organization_id, procedure_id, socle_organization_id)`, RLS `auth_select` = `is_member_of` + `service_role_full` — **aucune écriture client** : rien ne s'active depuis Clara.
+
+| Colonne | Type | Notes |
+|---|---|---|
+| `organization_id` | uuid FK → organizations | tenant Clara |
+| `procedure_id` | uuid FK → procedures | démarche mirrorée |
+| `socle_organization_id` | uuid FK → socle_organizations | organisation qui l'assure |
+| `synced_at` / `obsoleted_at` | timestamptz | soft-delete : activation retirée côté Socle |
+
+**Sémantique opt-in strict, avec une exception** : une démarche du référentiel n'est proposée que par les organisations listées ici ; une démarche que le référentiel ne connaît pas (Arpège, embryon local) n'a **aucune ligne** et reste proposée partout — sans quoi le flux partenaire se fermerait. Règles partagées : `src/lib/procedure-activation.ts` (dialogue de demande, écran Démarches) et la garde avant-réseau de `push-iris-request`.
+
+⚠️ **Le catalogue `procedures` est l'UNION du sous-arbre**, pas la seule racine : le filtre `enabled_for` du Socle **n'est pas récursif**, la sync interroge donc chaque organisation. Avant le 2026-09-10, Clara ne mirrorait que la racine — les démarches propres à une sous-organisation étaient invisibles (7 mirrorées sur 15 proposées, côté ACCM).
+
 #### `socle_categories` / `socle_document_types`
 Miroirs du référentiel Socle, dupliqués par org Clara (`UNIQUE (organization_id, socle_id)`). Lecture seule côté client (pas de policy d'écriture utilisateur, seule l'edge function écrit via service_role). Colonnes : `socle_id`, `name`, `icon` (catégories uniquement), `synced_at`, `obsoleted_at`.
 
@@ -454,6 +468,7 @@ Tâches dérivées d'un courrier, liées ou non à une procédure (action libre)
 | `assignee_id` | uuid FK → users | nullable en DB (tickets Arpège) ; exigé côté formulaire pour les tickets Clara |
 | `status` | text | `'open'` par défaut |
 | `socle_data` | jsonb | démarche du référentiel : demandeur déclaré + réponses au formulaire + pièces sélectionnées (`src/lib/socle-form.ts`) |
+| `socle_organization_id` | uuid FK → socle_organizations | **organisation destinataire choisie par l'agent** — commande la liste des démarches proposées et l'organisme transmis à Iris. Nullable : à null, on retombe sur celle du courrier (tickets antérieurs au 2026-09-10). Adresser une demande à un service ne déplace pas le courrier |
 | `arpege_demande_ref` / `arpege_demande_status` | text | |
 
 **Suivi de la demande déposée dans Iris** (écrit par le serveur uniquement — cf.

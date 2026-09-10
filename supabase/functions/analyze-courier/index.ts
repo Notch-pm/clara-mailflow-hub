@@ -31,9 +31,11 @@ import {
   attachSoclePrefill,
   buildProcedureCatalog,
   planPrefillCalls,
+  resolveSuggestedOrganization,
   sanitizePrefillArguments,
   selectPrefillCandidates,
   splitPrefillCall,
+  type OrganizationRef,
   type PrefillCall,
   type PrefillProcedureSource,
   type ProcedureCatalogEntry,
@@ -398,6 +400,28 @@ async function analyzeCourier(
     .eq("organization_id", orgId)
     .eq("status", "active")
     .is("obsoleted_at", null);
+
+  // Qui assure quoi (miroir `procedure_organizations`) : le modèle doit choisir
+  // l'organisation DANS cette liste, sans quoi Iris refuse le dépôt.
+  const knownOrgs = new Map<string, OrganizationRef>(
+    (socleOrgRows ?? []).map((o: OrganizationRef) => [o.id, { id: o.id, name: o.name }]),
+  );
+  const { data: activationRows } = await admin
+    .from("procedure_organizations")
+    .select("procedure_id, socle_organization_id")
+    .eq("organization_id", orgId)
+    .is("obsoleted_at", null);
+  const orgsByProcedure = new Map<string, OrganizationRef[]>();
+  for (const row of (activationRows ?? []) as Array<{ procedure_id: string; socle_organization_id: string }>) {
+    const org = knownOrgs.get(row.socle_organization_id);
+    if (!org) continue; // organisation obsolète : plus proposable
+    const list = orgsByProcedure.get(row.procedure_id) ?? [];
+    list.push(org);
+    orgsByProcedure.set(row.procedure_id, list);
+  }
+  for (const proc of procedureList) {
+    proc.organizations = orgsByProcedure.get(proc.id) ?? [];
+  }
   let serviceNames: string[] = (socleOrgRows ?? [])
     .map((s: { name: string }) => s.name)
     .filter((n: string) => typeof n === "string" && n.trim().length > 0);
@@ -456,6 +480,7 @@ async function analyzeCourier(
 - suggested_actions: 2 à 5 actions concrètes que l'organisation devrait entreprendre. Pour chaque action :
   • label: description courte de l'action
   • procedure_id: si une démarche de la liste correspond réellement à l'action (vérifie la cohérence avec sa description et ses mots-clés, pas seulement son nom), indique son id exact. Sinon null. Ne force jamais une correspondance approximative.
+  • socle_organization_id: organisation à qui adresser la demande. Choisis-la EXCLUSIVEMENT parmi celles listées après « assurée par » sur la démarche retenue (copie l'id exact indiqué par « [org: … ] »), en te fondant sur le lieu ou le service concerné par le courrier. Si aucune ne s'impose, ou si l'action ne porte aucune démarche, renvoie null. N'invente jamais d'organisation.
   • prefill: si des données personnelles sont identifiables dans le courrier (nom, prénom, email, téléphone, date de naissance, civilité), extrais-les ici pour pré-remplir le formulaire. N'invente aucune donnée absente du courrier.
 ${SUGGESTED_FIELDS_PROMPT_RULES}
 Sois factuel, en français. Si le corps de l'email et les pièces jointes coexistent, traite-les comme un tout cohérent. Ne retourne que ce qui est clairement identifiable — ne devine rien.
@@ -507,6 +532,10 @@ ${serviceNames.length ? serviceNames.join(", ") : "(aucun)"}`;
           properties: {
             label: { type: "string", description: "Action concrète à entreprendre" },
             procedure_id: { type: ["string", "null"], description: "ID exact de la procédure correspondante, ou null" },
+            socle_organization_id: {
+              type: ["string", "null"],
+              description: "ID exact de l'organisation qui assure cette démarche, ou null",
+            },
             prefill: {
               type: "object",
               description: "Données extractibles du courrier pour pré-remplir le formulaire demandeur",
@@ -535,7 +564,12 @@ ${serviceNames.length ? serviceNames.join(", ") : "(aucun)"}`;
     summary: string;
     intents: string[];
     sentiment: string;
-    suggested_actions: Array<{ label: string; procedure_id?: string | null; prefill?: Record<string, string> }>;
+    suggested_actions: Array<{
+      label: string;
+      procedure_id?: string | null;
+      socle_organization_id?: string | null;
+      prefill?: Record<string, string>;
+    }>;
     suggested_subject?: string;
     suggested_service_name?: string;
     recipient_name?: string;
@@ -575,10 +609,19 @@ ${jsonSchemaInstruction(analysisSchema)}`,
   const safeActions = Array.isArray(parsed.suggested_actions)
     ? parsed.suggested_actions.map((a) => {
         const validId = a.procedure_id && validProcedureIds.has(a.procedure_id) ? a.procedure_id : null;
+        // Organisation destinataire : revalidée contre le miroir d'activation,
+        // et imposée d'office quand une seule organisation assure la démarche.
+        const org = resolveSuggestedOrganization(
+          a.socle_organization_id,
+          validId ? (orgsByProcedure.get(validId) ?? []) : [],
+          knownOrgs,
+        );
         return {
           label: a.label ?? "",
           procedure_id: validId,
           procedure_name: validId ? (procedureById.get(validId) ?? null) : null,
+          socle_organization_id: org?.id ?? null,
+          socle_organization_name: org?.name ?? null,
           prefill: a.prefill ?? {},
         };
       })

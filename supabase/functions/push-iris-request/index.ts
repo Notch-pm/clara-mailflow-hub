@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
     // ── Le ticket, et tout ce qui compose la demande, relus côté serveur ──
     const { data: ticket, error: ticketErr } = await supabaseAdmin
       .from("action_tickets")
-      .select("id, organization_id, courier_id, procedure_id, title, description, socle_data, iris_idempotency_key, iris_request_id")
+      .select("id, organization_id, courier_id, procedure_id, title, description, socle_data, socle_organization_id, iris_idempotency_key, iris_request_id")
       .eq("id", ticket_id)
       .maybeSingle();
     if (ticketErr) throw ticketErr;
@@ -126,16 +126,59 @@ Deno.serve(async (req) => {
     ]);
     if (!courier) return json({ error: "Courrier introuvable" }, 404);
 
-    // `couriers.socle_organization_id` pointe le MIROIR Clara : Iris attend
-    // l'UUID Socle, on traverse donc le miroir.
+    // Organisme destinataire : celui que l'agent a CHOISI sur l'action, et à
+    // défaut celui du courrier (actions créées avant que le choix n'existe).
+    // Les deux colonnes pointent le MIROIR Clara ; Iris attend l'UUID Socle, on
+    // traverse donc le miroir.
+    const mirrorOrgId =
+      (ticket.socle_organization_id as string | null) ??
+      (courier.socle_organization_id as string | null);
     let socleOrganizationSocleId: string | null = null;
-    if (courier.socle_organization_id) {
+    if (mirrorOrgId) {
       const { data: mirror } = await supabaseAdmin
         .from("socle_organizations")
         .select("socle_id")
-        .eq("id", courier.socle_organization_id)
+        .eq("id", mirrorOrgId)
         .maybeSingle();
       socleOrganizationSocleId = mirror?.socle_id ?? null;
+    }
+
+    // Garde AVANT le réseau : Iris refuse (trigger
+    // `t18_requests_require_procedure_active`) une démarche que l'organisme
+    // n'assure pas. Le miroir Clara connaît déjà la réponse — autant la donner
+    // ici, où l'on sait nommer l'organisation et la démarche. Le miroir d'Iris
+    // reste le dernier mot : il peut être plus ancien que celui de Clara, son
+    // message est alors repris tel quel.
+    if (ticket.procedure_id && mirrorOrgId) {
+      const { data: offering } = await supabaseAdmin
+        .from("procedure_organizations")
+        .select("socle_organization_id")
+        .eq("organization_id", organizationId)
+        .eq("procedure_id", ticket.procedure_id)
+        .is("obsoleted_at", null);
+      const offeringIds = (offering ?? []).map(
+        (r: { socle_organization_id: string }) => r.socle_organization_id,
+      );
+      // AUCUNE ligne = on ne conclut rien, exactement comme le dialogue :
+      // démarche hors référentiel (Arpège, embryon local), ou miroir pas encore
+      // peuplé. Refuser ici fermerait le dépôt pour tout le monde entre la
+      // migration et la première synchronisation.
+      if (offeringIds.length > 0 && !offeringIds.includes(mirrorOrgId)) {
+        const { data: orgRow } = await supabaseAdmin
+          .from("socle_organizations")
+          .select("name")
+          .eq("id", mirrorOrgId)
+          .maybeSingle();
+        const orgName = orgRow?.name ?? "cette organisation";
+        const message =
+          `« ${procedure?.name ?? "Cette démarche"} » n'est pas assurée par ${orgName} dans le référentiel : ` +
+          `choisissez une autre organisation destinataire, ou faites-la activer dans le référentiel.`;
+        await supabaseAdmin
+          .from("action_tickets")
+          .update({ iris_last_attempt_at: new Date().toISOString(), iris_last_error: message })
+          .eq("id", ticket.id);
+        return json({ error: message }, 400);
+      }
     }
 
     // Usager rapproché : l'expéditeur du courrier, s'il porte une référence Socle.

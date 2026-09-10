@@ -18,6 +18,13 @@ export interface SuggestedAction {
   label: string;
   procedure_id?: string | null;
   procedure_name?: string | null;
+  /**
+   * Organisation destinataire suggérée (id du miroir `socle_organizations`),
+   * choisie parmi celles qui assurent réellement la démarche — revalidée côté
+   * serveur, jamais reprise telle quelle du modèle.
+   */
+  socle_organization_id?: string | null;
+  socle_organization_name?: string | null;
   prefill?: {
     CIVILITE?: string;
     NOM_USUEL?: string;

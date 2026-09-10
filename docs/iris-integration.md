@@ -21,6 +21,22 @@ La frontière n'est pas une règle de Clara, elle tombe du contrat : `socle_proc
 Une action libre n'est donc pas un échec de dépôt : c'est le cas nominal de l'autre côté de la
 frontière, et le produit ne doit rien signaler à l'agent.
 
+### Une démarche ne vaut que pour l'organisme qui l'assure
+
+Le référentiel active les démarches **par organisation**, et Iris le **fait respecter** au dépôt
+(trigger `t18_requests_require_procedure_active` : « Cette démarche n'est pas activée pour cet
+organisme dans le référentiel Socle. »). L'organisme vérifié est celui de l'enveloppe.
+
+Depuis le 2026-09-10, l'agent **choisit l'organisation destinataire** dans le dialogue de demande,
+et ne se voit proposer que les démarches qu'elle assure (miroir `procedure_organizations`, cf.
+`docs/data-model.md`) : le refus est prévenu au lieu d'être subi. `push-iris-request` reprend la
+même garde avant le réseau — mais **le miroir d'Iris reste le dernier mot** : il a sa propre
+synchronisation nocturne, et peut être plus ancien que celui de Clara. Un dépôt refusé pour ce
+motif après une activation toute fraîche se règle en synchronisant le référentiel **dans Iris**,
+puis en cliquant « Renvoyer ». (Incident fondateur : le 2026-09-10, la démarche « Signalement
+d'éclairage public défectueux » activée pour ACCM dans le Socle était refusée par Iris, dont le
+miroir datait de 07:52 le matin même.)
+
 ## 2. Le contrat, et où le lire
 
 - **OpenAPI 3.1, référence exclusive et publique** (aucune clé requise pour la lire) :
@@ -46,7 +62,7 @@ Trois règles à ne pas re-déduire :
 | `external_id` | `action_tickets.id` — **l'id du ticket, jamais celui du courrier** : un courrier peut engendrer plusieurs demandes |
 | `idempotency_key` | `action_tickets.iris_idempotency_key`, tirée à la création et **rejouée telle quelle** |
 | `socle_root_organization_id` | `organization_integrations.socle_root_org_id` — **la racine de l'intégration**, pas celle du tenant (voir §5) |
-| `socle_organization_id` | organisation destinataire du courrier : `couriers.socle_organization_id` → `socle_organizations.socle_id` (traversée du miroir : Iris attend l'UUID **Socle**) |
+| `socle_organization_id` | organisation destinataire **choisie sur l'action** : `action_tickets.socle_organization_id`, à défaut `couriers.socle_organization_id` → `socle_organizations.socle_id` (traversée du miroir : Iris attend l'UUID **Socle**) |
 | `socle_procedure_id` | `procedures.socle_id` |
 | `socle_contact_id` | `courier_participants.socle_contact_id` du participant `sender` |
 | `subject` | `action_tickets.title`, à défaut le nom de la démarche (500 car. max) |

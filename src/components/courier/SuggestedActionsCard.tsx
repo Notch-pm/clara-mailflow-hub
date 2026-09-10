@@ -45,6 +45,13 @@ export default function SuggestedActionsCard({ courierId, onCreateTicket, readOn
                     {action.procedure_name}
                   </span>
                 )}
+                {/* Organisation à qui adresser la demande : elle décide de la
+                    recevabilité de la démarche, autant la montrer ici. */}
+                {action.socle_organization_name && (
+                  <span className="ml-1.5 text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full">
+                    {action.socle_organization_name}
+                  </span>
+                )}
               </span>
               {onCreateTicket && !readOnly && (
                 <Button

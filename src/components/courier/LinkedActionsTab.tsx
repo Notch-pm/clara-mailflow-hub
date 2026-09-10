@@ -23,6 +23,8 @@ import type { SuggestedAction } from "@/services/courierAnalysisService";
 interface Props {
   courierId: string;
   organizationId: string;
+  /** Organisation gestionnaire du courrier : destinataire par défaut d'une demande. */
+  courierSocleOrganizationId?: string | null;
   /** When true, disables ticket creation and deletion. */
   readOnly?: boolean;
 }
@@ -128,7 +130,12 @@ function assigneeName(t: ActionTicketWithProcedure) {
   );
 }
 
-export default function LinkedActionsTab({ courierId, organizationId, readOnly = false }: Props) {
+export default function LinkedActionsTab({
+  courierId,
+  organizationId,
+  courierSocleOrganizationId = null,
+  readOnly = false,
+}: Props) {
   const qc = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [suggestedAction, setSuggestedAction] = useState<SuggestedAction | null>(null);
@@ -362,6 +369,8 @@ export default function LinkedActionsTab({ courierId, organizationId, readOnly =
         initialProcedureId={suggestedAction?.procedure_id ?? undefined}
         initialArpegeValues={suggestedAction?.prefill}
         initialSoclePrefill={suggestedAction?.socle_prefill ?? undefined}
+        initialSocleOrganizationId={suggestedAction?.socle_organization_id ?? undefined}
+        courierSocleOrganizationId={courierSocleOrganizationId}
         ticket={editingTicket}
       />
     </div>

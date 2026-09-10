@@ -1400,6 +1400,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   <LinkedActionsTab
                     courierId={courier.id}
                     organizationId={organizationId}
+                    courierSocleOrganizationId={localSocleOrgId}
                     readOnly={effectiveReadOnly || isFinalState}
                   />
                 </TabsContent>
