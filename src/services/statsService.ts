@@ -2,7 +2,16 @@ import { supabase } from "@/integrations/supabase/client";
 
 export interface StatMonthPoint { month: string; count: number }
 export interface StatDayPoint { day: string; count: number }
-export interface StatTagPoint { period: string; tag_name: string; count: number }
+export interface StatTagPoint {
+  period: string;
+  tag_name: string;
+  /**
+   * Groupe du tag, résolu côté SQL par jointure sur le nom. Un tag appliqué
+   * puis retiré du référentiel n'en a plus : il compte en `theme`.
+   */
+  tag_group: "theme" | "sentiment";
+  count: number;
+}
 export interface StatChannelPoint { channel: string; count: number }
 export interface StatServicePoint { socle_organization_id: string | null; service_name: string; count: number }
 export interface StatProcessingPoint {

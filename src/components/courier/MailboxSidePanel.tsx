@@ -45,7 +45,8 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { updateCourier, getCourierById } from "@/services/courierService";
 import { logEvent } from "@/services/courierEventService";
-import { listTags, type CourierTag } from "@/services/courierTagService";
+import { listTags, TAG_GROUPS, type CourierTag, type TagGroup } from "@/services/courierTagService";
+import { splitAppliedTags } from "@/lib/courier-tags";
 import {
   assignableOrgs,
   assignOrganization,
@@ -132,7 +133,8 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
   // Point de vérité unique : un consultant (lecteur seul) ne peut jamais
   // écrire, quelle que soit la valeur de la prop `readOnly` passée par l'appelant.
   const effectiveReadOnly = readOnly || !canEditCouriers(profile, membership);
-  const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
+  // Un sélecteur par groupe : l'état porte le groupe ouvert, pas un booléen.
+  const [tagPopoverGroup, setTagPopoverGroup] = useState<TagGroup | null>(null);
   const [servicePopoverOpen, setServicePopoverOpen] = useState(false);
   const [replyState, setReplyState] = useState<{ name: string; category: string | null } | null>(null);
   const [transferTargetServiceId, setTransferTargetServiceId] = useState<string>("");
@@ -279,6 +281,11 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
   const tagByName = new Map<string, CourierTag>(
     (orgTags ?? []).map((t) => [t.name.toLowerCase(), t]),
   );
+
+  // Les tags appliqués se lisent PAR GROUPE : « de quoi ça parle » et « sur
+  // quel ton » sont deux questions distinctes, mêlées dans une seule rangée
+  // jusqu'au 2026-09-10.
+  const appliedByGroup = splitAppliedTags(selectedTags, orgTags ?? []);
 
   // Organisations (miroir Socle) assignables — remplacent les services.
   const { data: services } = useQuery({
@@ -1080,89 +1087,103 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
 
             {/* Column 3: Tags + Service gestionnaire */}
             <div className="space-y-2 min-w-0">
-              <div className="space-y-1.5">
-                <span className="text-muted-foreground text-sm">Tags</span>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {selectedTags.length === 0 && (
-                    <span className="text-xs text-muted-foreground italic">Aucun tag</span>
-                  )}
-                  {selectedTags.map((tagName) => {
-                    const tag = tagByName.get(tagName.toLowerCase());
-                    const orphan = !tag;
-                    const fg = tag?.color ? readableTextColor(tag.color) : undefined;
-                    return (
-                      <Badge
-                        key={tagName}
-                        variant="secondary"
-                        className={cn(
-                          "gap-1 pl-2 pr-1 border-transparent text-xs",
-                          orphan && "opacity-60 italic",
-                          effectiveReadOnly && "pr-2",
-                        )}
-                        style={tag?.color ? { backgroundColor: tag.color, color: fg } : undefined}
-                      >
-                        {tagName}
-                        {!effectiveReadOnly && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              removeTag(tagName);
-                            }}
-                            className="ml-0.5 rounded-full p-0.5 hover:bg-black/20 transition-colors"
-                            aria-label={`Retirer ${tagName}`}
-                            style={fg ? { color: fg } : undefined}
+              {TAG_GROUPS.map((group) => {
+                const applied = appliedByGroup[group.value];
+                const available = (orgTags ?? []).filter((t) => t.tag_group === group.value);
+                return (
+                  <div key={group.value} className="space-y-1.5">
+                    <span className="text-muted-foreground text-sm">{group.label}</span>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {applied.length === 0 && (
+                        <span className="text-xs text-muted-foreground italic">Aucun</span>
+                      )}
+                      {applied.map(({ name: tagName, tag }) => {
+                        // Orphelin : appliqué sur le courrier, retiré du référentiel depuis.
+                        const orphan = !tag;
+                        const fg = tag?.color ? readableTextColor(tag.color) : undefined;
+                        return (
+                          <Badge
+                            key={tagName}
+                            variant="secondary"
+                            className={cn(
+                              "gap-1 pl-2 pr-1 border-transparent text-xs",
+                              orphan && "opacity-60 italic",
+                              effectiveReadOnly && "pr-2",
+                            )}
+                            style={tag?.color ? { backgroundColor: tag.color, color: fg } : undefined}
                           >
-                            <X className="h-3 w-3" />
-                          </button>
-                        )}
-                      </Badge>
-                    );
-                  })}
-                  {!effectiveReadOnly && (
-                    <Popover open={tagPopoverOpen} onOpenChange={setTagPopoverOpen}>
-                      <PopoverTrigger asChild>
-                        <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" aria-label="Gérer les tags">
-                          <TagIcon className="h-3.5 w-3.5" />
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-64 p-0" align="start">
-                        <Command>
-                          <CommandInput placeholder="Rechercher un tag…" />
-                          <CommandList>
-                            <CommandEmpty>
-                              Aucun tag défini. Allez dans Paramètres → Classification.
-                            </CommandEmpty>
-                            <CommandGroup>
-                              {(orgTags ?? []).map((tag) => {
-                                const checked = selectedTags.some(
-                                  (t) => t.toLowerCase() === tag.name.toLowerCase(),
-                                );
-                                return (
-                                  <CommandItem
-                                    key={tag.id}
-                                    value={tag.name}
-                                    onSelect={() => toggleTag(tag.name)}
-                                    className="gap-2"
-                                  >
-                                    <span
-                                      className="h-2.5 w-2.5 rounded-full shrink-0"
-                                      style={{ backgroundColor: tag.color ?? "hsl(var(--muted-foreground))" }}
-                                    />
-                                    <span className="flex-1">{tag.name}</span>
-                                    {checked && <Check className="h-4 w-4" />}
-                                  </CommandItem>
-                                );
-                              })}
-                            </CommandGroup>
-                          </CommandList>
-                        </Command>
-                      </PopoverContent>
-                    </Popover>
-                  )}
-                </div>
-              </div>
+                            {tagName}
+                            {!effectiveReadOnly && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  removeTag(tagName);
+                                }}
+                                className="ml-0.5 rounded-full p-0.5 hover:bg-black/20 transition-colors"
+                                aria-label={`Retirer ${tagName}`}
+                                style={fg ? { color: fg } : undefined}
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            )}
+                          </Badge>
+                        );
+                      })}
+                      {!effectiveReadOnly && (
+                        <Popover
+                          open={tagPopoverGroup === group.value}
+                          onOpenChange={(o) => setTagPopoverGroup(o ? group.value : null)}
+                        >
+                          <PopoverTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-6 w-6 shrink-0"
+                              aria-label={`Gérer les tags — ${group.label}`}
+                            >
+                              <TagIcon className="h-3.5 w-3.5" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-64 p-0" align="start">
+                            <Command>
+                              <CommandInput placeholder={`Rechercher — ${group.label.toLowerCase()}…`} />
+                              <CommandList>
+                                <CommandEmpty>
+                                  Aucun tag dans ce groupe. Allez dans Paramètres → Classification.
+                                </CommandEmpty>
+                                <CommandGroup>
+                                  {available.map((tag) => {
+                                    const checked = selectedTags.some(
+                                      (t) => t.toLowerCase() === tag.name.toLowerCase(),
+                                    );
+                                    return (
+                                      <CommandItem
+                                        key={tag.id}
+                                        value={tag.name}
+                                        onSelect={() => toggleTag(tag.name)}
+                                        className="gap-2"
+                                      >
+                                        <span
+                                          className="h-2.5 w-2.5 rounded-full shrink-0"
+                                          style={{ backgroundColor: tag.color ?? "hsl(var(--muted-foreground))" }}
+                                        />
+                                        <span className="flex-1">{tag.name}</span>
+                                        {checked && <Check className="h-4 w-4" />}
+                                      </CommandItem>
+                                    );
+                                  })}
+                                </CommandGroup>
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
 
               <div className="space-y-1">
                 <span className="text-muted-foreground text-sm">Organisation gestionnaire</span>

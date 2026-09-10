@@ -10,7 +10,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { getDocuments } from "@/services/courierDocumentService";
 import { getCourierById, updateCourier } from "@/services/courierService";
 import { COURIER_LIST_QUERY_PREFIXES } from "@/services/courierListService";
-import { listTags } from "@/services/courierTagService";
+import { listTags, TAG_GROUPS } from "@/services/courierTagService";
+import { splitAppliedTags } from "@/lib/courier-tags";
 import { readableTextColor } from "@/lib/tag-color";
 import {
   getExtracts,
@@ -29,16 +30,6 @@ interface Props {
   /** Service gestionnaire modifiable uniquement à l'état initial du workflow. */
   isInitialState?: boolean;
 }
-
-const SENTIMENT_VARIANT: Record<string, { label: string; className: string }> = {
-  neutre: { label: "Neutre", className: "bg-muted text-foreground" },
-  courtois: { label: "Courtois", className: "bg-primary/15 text-primary" },
-  urgent: { label: "Urgent", className: "bg-orange-500/15 text-orange-700 dark:text-orange-400" },
-  mécontent: { label: "Mécontent", className: "bg-destructive/15 text-destructive" },
-  agressif: { label: "Agressif", className: "bg-destructive/25 text-destructive" },
-  satisfait: { label: "Satisfait", className: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" },
-  inquiet: { label: "Inquiet", className: "bg-amber-500/15 text-amber-700 dark:text-amber-400" },
-};
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString("fr-FR", {
@@ -88,17 +79,16 @@ export default function ContentIntentsTab({ courierId, organizationId, readOnly 
     enabled: !!organizationId,
   });
 
-  const tagByLowerName = useMemo(() => {
-    const m = new Map<string, { name: string; color: string | null }>();
-    (orgTags ?? []).forEach((t) => m.set(t.name.toLowerCase(), { name: t.name, color: t.color }));
-    return m;
-  }, [orgTags]);
-
   // État local de la sélection d'intents (modifiable avant application)
   const [selectedIntents, setSelectedIntents] = useState<string[]>([]);
   useEffect(() => {
     setSelectedIntents(analysis?.intents ?? []);
   }, [analysis?.intents, courierId]);
+
+  const intentsByGroup = useMemo(
+    () => splitAppliedTags(selectedIntents, orgTags ?? []),
+    [selectedIntents, orgTags],
+  );
 
   const currentCourierTags = useMemo(
     () => ((courierData?.metadata as Record<string, unknown> | null)?.tags as string[] | undefined) ?? [],
@@ -462,7 +452,7 @@ export default function ContentIntentsTab({ courierId, organizationId, readOnly 
             <Card className="p-3">
               <div className="flex items-center justify-between mb-2 gap-2">
                 <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Intentions (tags)
+                  Tags proposés
                 </h4>
                 <Button
                   size="sm"
@@ -486,29 +476,43 @@ export default function ContentIntentsTab({ courierId, organizationId, readOnly 
                     : "Tous les tags ont été retirés. Cliquez sur 'Appliquer' pour valider."}
                 </p>
               ) : (
-                <div className="flex flex-wrap gap-1.5">
-                  {selectedIntents.map((intent) => {
-                    const meta = tagByLowerName.get(intent.toLowerCase());
-                    const fg = meta?.color ? readableTextColor(meta.color) : undefined;
+                // Un groupe par rangée : le thème et le sentiment ne se lisent
+                // pas ensemble, et l'agent retire souvent l'un sans l'autre.
+                <div className="space-y-2">
+                  {TAG_GROUPS.map((group) => {
+                    const applied = intentsByGroup[group.value];
+                    if (applied.length === 0) return null;
                     return (
-                      <Badge
-                        key={intent}
-                        variant="secondary"
-                        className="gap-1 pl-2 pr-1 py-0.5 text-xs border-transparent"
-                        style={meta?.color ? { backgroundColor: meta.color, color: fg } : undefined}
-                      >
-                        {meta?.name ?? intent}
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setSelectedIntents((prev) => prev.filter((t) => t !== intent))
-                          }
-                          className="ml-0.5 rounded-full p-0.5 hover:bg-background/30 transition-colors"
-                          aria-label={`Retirer ${intent}`}
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </Badge>
+                      <div key={group.value} className="space-y-1">
+                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70">
+                          {group.label}
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {applied.map(({ name: intent, tag: meta }) => {
+                            const fg = meta?.color ? readableTextColor(meta.color) : undefined;
+                            return (
+                              <Badge
+                                key={intent}
+                                variant="secondary"
+                                className="gap-1 pl-2 pr-1 py-0.5 text-xs border-transparent"
+                                style={meta?.color ? { backgroundColor: meta.color, color: fg } : undefined}
+                              >
+                                {meta?.name ?? intent}
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setSelectedIntents((prev) => prev.filter((t) => t !== intent))
+                                  }
+                                  className="ml-0.5 rounded-full p-0.5 hover:bg-background/30 transition-colors"
+                                  aria-label={`Retirer ${intent}`}
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </Badge>
+                            );
+                          })}
+                        </div>
+                      </div>
                     );
                   })}
                 </div>
@@ -520,21 +524,10 @@ export default function ContentIntentsTab({ courierId, organizationId, readOnly 
               )}
             </Card>
 
-            {analysis.sentiment && (
-              <Card className="p-3">
-                <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-                  État d'esprit
-                </h4>
-                <Badge
-                  className={
-                    SENTIMENT_VARIANT[analysis.sentiment]?.className ?? "bg-muted text-foreground"
-                  }
-                >
-                  {SENTIMENT_VARIANT[analysis.sentiment]?.label ?? analysis.sentiment}
-                </Badge>
-              </Card>
-            )}
-
+            {/* L'ancien encart « État d'esprit » (liste figée dans le code) a
+                disparu le 2026-09-10 : le sentiment est devenu un TAG, rangé
+                ci-dessus avec les autres — paramétrable, applicable au courrier
+                et compté dans les statistiques. */}
 
             <SuggestedActionsCard courierId={courierId} readOnly={readOnly} />
           </div>

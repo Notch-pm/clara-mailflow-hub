@@ -246,7 +246,7 @@ Deno.serve(async (req) => {
         .eq("organization_id", orgId)
         .eq("status", "active")
         .is("obsoleted_at", null),
-      admin.from("courier_tags").select("name").eq("organization_id", orgId),
+      admin.from("courier_tags").select("name, tag_group").eq("organization_id", orgId),
     ]);
 
     let serviceNames: string[] = (socleOrgRows ?? []).map((s: { name: string }) => s.name);
@@ -257,11 +257,18 @@ Deno.serve(async (req) => {
         .eq("organization_id", orgId);
       serviceNames = (orgServices ?? []).map((s: { name: string }) => s.name);
     }
-    const tagNames: string[] = (orgTags ?? []).map((t: { name: string }) => t.name);
+    // Deux groupes, deux listes dans le prompt : le thème dit de quoi parle le
+    // courrier, le sentiment sur quel ton. La sortie, elle, reste UNE liste de
+    // noms — le groupe est une propriété du tag, pas de son application.
+    const tagRows = (orgTags ?? []) as Array<{ name: string; tag_group: string }>;
+    const namesOfGroup = (group: string) =>
+      tagRows.filter((t) => (t.tag_group ?? "theme") === group).map((t) => t.name);
+    const themeTagNames = namesOfGroup("theme");
+    const sentimentTagNames = namesOfGroup("sentiment");
+    const tagNames: string[] = [...themeTagNames, ...sentimentTagNames];
 
-    const tagListForPrompt = tagNames.length > 0
-      ? tagNames.map((n) => `- ${n}`).join("\n")
-      : "(aucun tag défini — laisse suggested_tag_names vide)";
+    const listForPrompt = (names: string[], empty: string) =>
+      names.length > 0 ? names.map((n) => `- ${n}`).join("\n") : empty;
 
     // Le schéma de sortie — celui-là même qui vivait dans `tools` avant la
     // centralisation. Il n'a pas disparu, il a changé de place : le guichet du
@@ -282,12 +289,15 @@ Analyse le texte extrait d'un courrier et restitue les informations structurées
 Règles :
 - Ne retourne QUE ce qui est clairement identifiable dans le texte. Ne devine rien.
 ${SUGGESTED_FIELDS_PROMPT_RULES}
-- suggested_tag_names : choisis EXCLUSIVEMENT dans la liste des tags disponibles ci-dessous (copie exacte du nom, sensible à la casse). N'invente AUCUN tag. Liste vide si aucun ne correspond.
+- suggested_tag_names : choisis EXCLUSIVEMENT dans les deux listes ci-dessous (copie exacte du nom, sensible à la casse). N'invente AUCUN tag. Retiens les thèmes qui qualifient le sujet, et AU PLUS UN sentiment pour le ton du rédacteur. Liste vide si rien ne correspond.
 
 Services disponibles : ${serviceNames.length ? serviceNames.join(", ") : "(aucun)"}
 
-Tags disponibles pour suggested_tag_names :
-${tagListForPrompt}
+Thèmes disponibles (sujet du courrier) :
+${listForPrompt(themeTagNames, "(aucun thème défini)")}
+
+Sentiments disponibles (ton du rédacteur) :
+${listForPrompt(sentimentTagNames, "(aucun sentiment défini)")}
 
 ${jsonSchemaInstruction(responseSchema)}`;
 
