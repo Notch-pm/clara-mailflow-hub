@@ -7,9 +7,11 @@ import {
 } from "@/lib/procedure-activation";
 import {
   countersFromActivationPlan,
+  hasFullConfig,
   planActivationSync,
   type ActivationItem,
   type ActivationRow,
+  type SocleProcedure,
 } from "../../../supabase/functions/sync-socle-referentiel/logic";
 import { resolveSuggestedOrganization } from "../../../supabase/functions/analyze-courier/logic";
 
@@ -130,6 +132,29 @@ describe("planActivationSync", () => {
   it("dédoublonne une activation rendue deux fois", () => {
     const plan = planActivationSync([], [item(ECLAIRAGE, ACCM), item(ECLAIRAGE, ACCM)], [ACCM]);
     expect(plan.toInsert).toHaveLength(1);
+  });
+});
+
+// ── Économie d'appels : la liste suffit-elle ? ──────────────────────────────
+
+describe("hasFullConfig", () => {
+  const listed = {
+    id: "p1",
+    name: "Demande d'intervention voirie",
+    requester_config: null,
+    form_schema: { content: [] },
+    knowledge_base: null,
+    translations: null,
+  } as unknown as SocleProcedure;
+
+  it("accepte une démarche dont les blocs de config sont présents, même à null", () => {
+    // `null` = démarche sans formulaire : c'est une valeur, pas une absence.
+    expect(hasFullConfig(listed)).toBe(true);
+  });
+
+  it("réclame le détail quand un bloc manque carrément", () => {
+    const { form_schema: _omit, ...amputee } = listed as Record<string, unknown>;
+    expect(hasFullConfig(amputee as unknown as SocleProcedure)).toBe(false);
   });
 });
 

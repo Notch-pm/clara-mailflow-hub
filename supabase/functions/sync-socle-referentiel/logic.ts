@@ -40,6 +40,22 @@ export interface SocleProcedure {
   updated_at?: string | null;
 }
 
+/**
+ * La démarche rendue par la LISTE porte-t-elle déjà sa configuration complète ?
+ * Le Socle sert le même DTO à la liste et au détail — cette garde n'existe que
+ * pour rattraper un éventuel allègement futur du DTO de liste, sans quoi Clara
+ * mirrorerait des formulaires vides sans que rien n'échoue.
+ *
+ * `null` est une valeur légitime (démarche sans formulaire) : seule l'ABSENCE
+ * de la clé trahit un objet amputé.
+ */
+export function hasFullConfig(proc: SocleProcedure): boolean {
+  const keys = Object.keys(proc ?? {});
+  return ["requester_config", "form_schema", "knowledge_base", "translations"].every((k) =>
+    keys.includes(k),
+  );
+}
+
 export interface SocleOrgApi {
   id: string;
   parent_id: string | null;

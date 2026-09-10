@@ -26,6 +26,7 @@ import {
   countersFromOrgPlan,
   countersFromProcedurePlan,
   filterSubtree,
+  hasFullConfig,
   rootOrgId,
   mapSocleOrganization,
   mapSocleProcedure,
@@ -84,6 +85,24 @@ function socleBaseUrl(): string {
   ).replace(/\/+$/, "");
 }
 
+/** Plafond d'attente d'un « Retry after » : au-delà, le run n'a plus de sens. */
+const MAX_RATE_LIMIT_WAIT_MS = 45_000;
+
+/**
+ * Délai demandé par un plafond de cadence, lu dans le message de l'erreur
+ * (« Rate limit exceeded for trace …. Retry after 39185ms. » — l'erreur est
+ * levée par le runtime, il n'y a pas de réponse HTTP à en-têtes à lire).
+ * Rend `null` pour toute autre erreur : le backoff maison reprend la main.
+ */
+function retryAfterMs(e: unknown): number | null {
+  const message = e instanceof Error ? e.message : String(e);
+  if (!/rate limit/i.test(message)) return null;
+  const match = message.match(/retry after (\d+)\s*ms/i);
+  const hinted = match ? Number(match[1]) : NaN;
+  if (!Number.isFinite(hinted) || hinted <= 0) return MAX_RATE_LIMIT_WAIT_MS;
+  return Math.min(hinted + 500, MAX_RATE_LIMIT_WAIT_MS);
+}
+
 async function fetchSocle(path: string): Promise<unknown> {
   // trim défensif : un espace/retour à la ligne collé au secret casserait le hash SHA-256 côté Socle
   const apiKey = Deno.env.get("SOCLE_API_KEY")?.trim();
@@ -91,9 +110,15 @@ async function fetchSocle(path: string): Promise<unknown> {
   const url = `${socleBaseUrl()}${path}`;
 
   let lastError: unknown = null;
+  let rateLimitWaitMs: number | null = null;
   for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
     if (attempt > 0) {
-      await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt - 1]));
+      // Un plafond de cadence dit COMBIEN attendre : le respecter est le seul
+      // moyen de repasser. Le backoff maison (1s/3s/9s) est bien trop court
+      // pour ça — les trois tentatives se consommeraient pour rien.
+      const delay = rateLimitWaitMs ?? RETRY_DELAYS_MS[attempt - 1];
+      rateLimitWaitMs = null;
+      await new Promise((r) => setTimeout(r, delay));
     }
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), SOCLE_TIMEOUT_MS);
@@ -136,6 +161,7 @@ async function fetchSocle(path: string): Promise<unknown> {
       if (e instanceof SocleAuthError || e instanceof SocleApiError) throw e;
       // Erreur réseau ou timeout : on retente.
       lastError = e;
+      rateLimitWaitMs = retryAfterMs(e);
       console.warn(
         `[sync-socle] ${path} tentative ${attempt + 1} échouée: ${e instanceof Error ? e.message : e}`,
       );
@@ -532,9 +558,19 @@ async function syncOrg(
     }
   }
 
+  // ⚠️ PAS d'appel de détail par démarche : `GET /v1/procedures?enabled_for=`
+  // et `GET /v1/procedures/{id}` passent par le MÊME sérialiseur côté Socle —
+  // la liste porte déjà `form_schema`, `requester_config`, `knowledge_base` et
+  // `translations`. Les rappeler une à une multipliait les appels par trois et
+  // faisait sauter le plafond de cadence de la plateforme (constaté le
+  // 2026-09-10, à l'élargissement au sous-arbre). On ne redemande le détail que
+  // si la liste rend un objet manifestement amputé — garde contre un futur
+  // allègement du DTO de liste, jamais le cas nominal.
   const detailed: SocleProcedure[] = [];
-  for (const id of catalogue.keys()) {
-    detailed.push((await fetchSocle(`/v1/procedures/${id}`)) as SocleProcedure);
+  for (const [id, listed] of catalogue) {
+    detailed.push(
+      hasFullConfig(listed) ? listed : ((await fetchSocle(`/v1/procedures/${id}`)) as SocleProcedure),
+    );
   }
 
   // 3) Plan de sync (upsert par socle_id, adoption par nom, obsolescence).
