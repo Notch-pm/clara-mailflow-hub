@@ -527,9 +527,8 @@ async function syncOrg(
     false,
   );
 
-  // 2) Démarches proposées par CHAQUE organisation du sous-arbre, puis config
-  //    intégrale par démarche distincte (appels séquentiels — volumes faibles,
-  //    pas de pagination côté API).
+  // 2) Démarches proposées par CHAQUE organisation du sous-arbre (appels
+  //    séquentiels — volumes faibles, pas de pagination côté API).
   //
   //    ⚠️ Un seul appel sur la racine ne suffit pas : le filtre `enabled_for`
   //    N'EST PAS RÉCURSIF. Interroger ACCM ne dit rien de ce que proposent ses
