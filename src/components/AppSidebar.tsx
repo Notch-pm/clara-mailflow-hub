@@ -1,5 +1,5 @@
 import { NavLink } from "@/components/NavLink";
-import { LayoutDashboard, Send, FileClock, Users, CheckCircle2, Archive, Search, Mailbox, BarChart3, LucideIcon } from "lucide-react";
+import { Home, Send, FileClock, Users, CheckCircle2, Archive, Search, Mailbox, BarChart3, LucideIcon } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -16,7 +16,7 @@ interface NavItem {
 }
 
 const baseNavItems: NavItem[] = [
-  { title: "Tableau de bord", url: "/", icon: LayoutDashboard },
+  { title: "Tableau de bord", url: "/", icon: Home },
   { title: "Boîte aux lettres", url: "/boite-aux-lettres", icon: Mailbox },
   { title: "Courriers en instruction", url: "/courriers-en-instruction", icon: FileClock },
   { title: "Courriers traités", url: "/courriers-traites", icon: CheckCircle2 },
@@ -59,6 +59,7 @@ export function AppSidebar() {
   return (
     <TooltipProvider delayDuration={150}>
       <nav aria-label="Navigation principale" className="hidden md:flex flex-col items-center w-[52px] shrink-0 py-3 bg-primary h-full relative">
+        {/* Tableau de bord épinglé tout en haut du rail */}
         <ul className="contents">
           <SidebarItem item={navItems[0]} />
         </ul>

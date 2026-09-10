@@ -1,5 +1,5 @@
 import { NavLink } from "@/components/NavLink";
-import { LayoutDashboard, Send, FileClock, CheckCircle2, Archive, Mailbox, BarChart3, LucideIcon } from "lucide-react";
+import { Home, Send, FileClock, CheckCircle2, Archive, Mailbox, BarChart3, LucideIcon } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { canAccessStats } from "@/lib/permissions";
 
@@ -10,7 +10,7 @@ interface NavItem {
 }
 
 const baseNavItems: NavItem[] = [
-  { title: "Accueil", url: "/", icon: LayoutDashboard },
+  { title: "Accueil", url: "/", icon: Home },
   { title: "Boîte", url: "/boite-aux-lettres", icon: Mailbox },
   { title: "Instruction", url: "/courriers-en-instruction", icon: FileClock },
   { title: "Traités", url: "/courriers-traites", icon: CheckCircle2 },

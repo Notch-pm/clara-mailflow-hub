@@ -12,8 +12,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/contexts/AuthContext";
+import { AppSwitcher } from "@/components/AppSwitcher";
 import { NotificationBell } from "@/components/NotificationBell";
 import { canAccessSettings } from "@/lib/permissions";
+import { CURRENT_APP } from "@/lib/apps";
 
 export function AppHeader() {
   const location = useLocation();
@@ -32,32 +34,55 @@ export function AppHeader() {
 
   const roleName = membership?.role ?? "—";
 
+  const organizationName = membership?.organization_name;
+  const organizationLogo = membership?.organization_logo_url;
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b bg-background px-4 shrink-0">
-      {/* Left: Notch logo + org logo */}
-      <div className="flex items-center gap-3 shrink-0">
-        <Link to="/">
-          <img src={notchLogo} alt="Notch - Clara" className="h-6 object-contain shadow-none" />
+    <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b bg-background pl-0 pr-4 shrink-0">
+      {/* Left: sélecteur d'application + marque + client */}
+      <div className="flex min-w-0 items-center gap-3">
+        {/* Même gouttière que le rail latéral : l'icône tombe dans sa colonne. */}
+        <div className="grid w-[52px] shrink-0 place-items-center">
+          <AppSwitcher />
+        </div>
+
+        <Link to="/" className="hidden shrink-0 md:block">
+          <img src={notchLogo} alt="Edilumen" className="h-6 object-contain shadow-none" />
         </Link>
-        {membership?.organization_logo_url && (
-          <>
-            <Separator orientation="vertical" className="h-6" />
-            <img
-              src={membership.organization_logo_url}
-              alt={membership.organization_name}
-              className="h-7 max-w-[120px] object-contain"
-            />
-          </>
-        )}
-        {!membership?.organization_logo_url && membership?.organization_name && (
-          <>
-            <Separator orientation="vertical" className="h-6" />
-            <span className="text-sm font-medium text-muted-foreground">{membership.organization_name}</span>
-          </>
+
+        <Separator orientation="vertical" className="hidden h-6 shrink-0 md:block" />
+
+        {/* Client (organisation courante) : son logo, à défaut son nom */}
+        {organizationLogo ? (
+          <img
+            src={organizationLogo}
+            alt={organizationName ?? ""}
+            className="h-7 max-w-[100px] shrink-0 object-contain sm:max-w-[140px]"
+          />
+        ) : (
+          organizationName && (
+            <span className="truncate text-sm font-medium text-muted-foreground" title={organizationName}>
+              {organizationName}
+            </span>
+          )
         )}
       </div>
 
       <div className="flex-1" />
+
+      {/* Produit courant, calé à droite contre le bloc utilisateur */}
+      <div className="flex shrink-0 items-center gap-2">
+        <span
+          aria-hidden="true"
+          className="grid h-6 w-6 place-items-center rounded-[7px] bg-primary/10 text-xs font-extrabold text-primary"
+        >
+          {CURRENT_APP.initial}
+        </span>
+        <span className="text-[17px] font-bold tracking-tight text-primary max-sm:sr-only">
+          {CURRENT_APP.name}
+        </span>
+      </div>
+
+      <Separator orientation="vertical" className="h-6 shrink-0" />
 
       {/* Right: Notifications + Settings + Profile */}
       <div className="flex items-center gap-2 shrink-0">
