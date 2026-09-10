@@ -153,7 +153,7 @@ describe("hasFullConfig", () => {
   });
 
   it("réclame le détail quand un bloc manque carrément", () => {
-    const { form_schema: _omit, ...amputee } = listed as Record<string, unknown>;
+    const { form_schema: _omit, ...amputee } = listed as unknown as Record<string, unknown>;
     expect(hasFullConfig(amputee as unknown as SocleProcedure)).toBe(false);
   });
 });

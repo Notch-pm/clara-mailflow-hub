@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BarChart3, Mail, Send, Clock } from "lucide-react";
 import { listOrgsWithConfig } from "@/services/socleOrgConfigService";
+import { listTags } from "@/services/courierTagService";
 import {
   getInboundByMonth,
   getInboundByDay,
@@ -98,6 +99,23 @@ export default function StatistiquesPage() {
     enabled,
   });
 
+  // Les courbes reprennent la couleur paramétrée de chaque tag — c'est ce qui
+  // rend le dégradé vert → rouge des sentiments lisible d'un coup d'œil.
+  const { data: orgTags } = useQuery({
+    queryKey: ["courier-tags", organizationId],
+    queryFn: () => listTags(organizationId!),
+    enabled,
+  });
+  const tagColorByName = useMemo(
+    () =>
+      new Map(
+        (orgTags ?? [])
+          .filter((t) => !!t.color)
+          .map((t) => [t.name.toLowerCase(), t.color as string]),
+      ),
+    [orgTags],
+  );
+
   const { data: channelData, isLoading: loadingChannel } = useQuery({
     queryKey: ["stats-channel", organizationId, socleOrgId, sinceISO],
     queryFn: () => getByChannel(organizationId!, since, socleOrgId ?? undefined),
@@ -185,7 +203,18 @@ export default function StatistiquesPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <InboundVolumeChart data={monthlyData} loading={loadingMonthly} />
         <InboundDailyChart data={dailyData} loading={loadingDaily} />
-        <TagEvolutionChart data={tagData} loading={loadingTags} />
+        <TagEvolutionChart
+          data={tagData}
+          loading={loadingTags}
+          group="theme"
+          colorByName={tagColorByName}
+        />
+        <TagEvolutionChart
+          data={tagData}
+          loading={loadingTags}
+          group="sentiment"
+          colorByName={tagColorByName}
+        />
         <ByChannelChart data={channelData} loading={loadingChannel} />
         <RepliesChart data={repliesData} loading={loadingReplies} />
         <ByServiceChart data={inboundByService} loading={loadingInboundService} direction="inbound" />

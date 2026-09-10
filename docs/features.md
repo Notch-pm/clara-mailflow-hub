@@ -167,7 +167,13 @@ Les angles morts de l'ancienne détection côté client (doublon au **téléphon
 
 ## 9. Tags & recherche
 
-- Tags libres par org (`tags` + `courier_tags`). Couleurs gérées via `src/lib/tag-color.ts`.
+- Tags libres par org (`courier_tags`), en **deux groupes** depuis le 2026-09-10 : **Thème** (de quoi parle le courrier) et **Sentiment** (sur quel ton). Un tag dit l'un ou l'autre, jamais les deux — mêlés, ils se comptaient ensemble dans les statistiques et se peignaient dans la même palette.
+  - **Paramétrage** : `ClassificationSettings.tsx` — une carte par groupe, création / **modification** (nom, couleur, groupe) / suppression dans chacune. Renommer un tag ne renomme pas ce qui est déjà appliqué (le nom est la clé) : l'écran le dit.
+  - **Code couleur** (`src/services/courierTagService.ts`) : le sentiment suit un **dégradé vert → rouge ordonné par valence** — la position porte le sens, c'est ce qui rend une courbe lisible ; le thème prend des **teintes diversifiées**, ni vertes ni rouges, pour ne pas se lire comme une alerte.
+  - **Sur le courrier** : le panneau latéral affiche une rangée par groupe, avec un sélecteur par groupe ; l'onglet Contenu et intentions range de même les tags proposés par l'analyse.
+  - **Analyse IA** : le prompt sert **deux listes** et le schéma **deux champs** (`intents` pour les thèmes, `sentiments` pour le ton — au plus un ou deux) ; la revalidation serveur vérifie l'appartenance **au bon groupe**, un modèle à qui l'on donne deux listes rangeant parfois un sentiment dans les thèmes. Le stockage, lui, reste une seule liste de noms.
+  - **Statistiques** : deux courbes distinctes (`TagEvolutionChart` avec sa prop `group`), aux couleurs paramétrées des tags. Le RPC `stats_tag_evolution` rend le groupe.
+- Contraste du texte sur un fond de tag : `src/lib/tag-color.ts` (gère `hsl(h s% l%)` autant que l'hexadécimal).
 - Recherche côté pages courriers : ILIKE sur `subject` (cf `courierService.getCouriers`). Pour fulltext avancé, ajouter une colonne `tsvector` + index GIN (non fait à ce jour).
 
 ## 10. Super-admin

@@ -697,6 +697,7 @@ export type Database = {
           id: string
           name: string
           organization_id: string
+          tag_group: string
         }
         Insert: {
           color?: string | null
@@ -705,6 +706,7 @@ export type Database = {
           id?: string
           name: string
           organization_id: string
+          tag_group?: string
         }
         Update: {
           color?: string | null
@@ -713,6 +715,7 @@ export type Database = {
           id?: string
           name?: string
           organization_id?: string
+          tag_group?: string
         }
         Relationships: [
           {
@@ -2314,6 +2317,7 @@ export type Database = {
         Returns: {
           count: number
           period: string
+          tag_group: string
           tag_name: string
         }[]
       }

@@ -339,12 +339,17 @@ Remplacées par les organisations Socle (données migrées le 2026-07-11, conser
 Journal des synchronisations Socle : une ligne par org et par run (`started_at`, `finished_at`, `status` running/success/error, `dry_run`, `counters` jsonb, `error`).
 
 #### `courier_tags`
-Dictionnaire de tags (étiquettes) de l'org. Les tags appliqués sont dans `couriers.metadata->'tags'` (array de noms).
+Dictionnaire de tags (étiquettes) de l'org, en **deux groupes**. Les tags appliqués sont dans `couriers.metadata->'tags'` (array de **noms**) : le groupe est une propriété du tag, jamais de son application — il se relit par rapprochement sur le nom, insensible à la casse.
 
-| Colonne | Type |
-|---|---|
-| `name` | varchar |
-| `color` | varchar |
+| Colonne | Type | Notes |
+|---|---|---|
+| `name` | varchar | `UNIQUE (organization_id, name)` |
+| `color` | varchar | `hsl(h s% l%)` — dégradé vert→rouge pour un sentiment, teinte diversifiée pour un thème (palettes dans `src/services/courierTagService.ts`) |
+| `tag_group` | text | `theme` (le sujet) ou `sentiment` (le ton), `CHECK`, défaut `theme` |
+
+**Un tag appliqué puis retiré du référentiel — un « orphelin » — compte en `theme`.** Même règle des deux côtés : `src/lib/courier-tags.ts` pour l'affichage, `stats_tag_evolution` pour les statistiques ; le ranger d'office en sentiment fausserait la courbe la plus lue.
+
+Le champ figé `courier_analyses.sentiment` (liste en dur : neutre, courtois, urgent, mécontent, agressif, satisfait, inquiet) a été **remplacé par ce groupe le 2026-09-10** : ses sept valeurs sont devenues des tags de départ, renommables et applicables. La colonne subsiste pour les analyses antérieures mais n'est plus ni écrite ni affichée.
 
 #### `roles`
 Rôles personnalisés d'une organisation (usage libre, pas de lien direct RLS).

@@ -41,7 +41,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { createCourier } from "@/services/courierService";
 import { addParticipant } from "@/services/courierParticipantService";
 import { assignableOrgs, listOrgsWithConfig } from "@/services/socleOrgConfigService";
-import { listTags } from "@/services/courierTagService";
+import { listTags, TAG_GROUPS } from "@/services/courierTagService";
 import { storage } from "@/services/storageService";
 import { extractCourierInfo, runFullAnalysis } from "@/services/courierAnalysisService";
 import ContactPicker from "@/components/courier/ContactPicker";
@@ -830,18 +830,26 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
                           <CommandInput placeholder="Rechercher un tag…" />
                           <CommandList>
                             <CommandEmpty>Aucun tag défini.</CommandEmpty>
-                            <CommandGroup>
-                              {(orgTags ?? []).map((tag) => {
-                                const checked = selectedTags.some((t) => t.toLowerCase() === tag.name.toLowerCase());
-                                return (
-                                  <CommandItem key={tag.id} value={tag.name} onSelect={() => toggleTag(tag.name)} className="gap-2">
-                                    <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: tag.color ?? "hsl(var(--muted-foreground))" }} />
-                                    <span className="flex-1">{tag.name}</span>
-                                    <Check className={cn("h-4 w-4", checked ? "opacity-100" : "opacity-0")} />
-                                  </CommandItem>
-                                );
-                              })}
-                            </CommandGroup>
+                            {/* Un groupe par intitulé : le thème dit de quoi
+                                parle le courrier, le sentiment sur quel ton. */}
+                            {TAG_GROUPS.map((group) => {
+                              const available = (orgTags ?? []).filter((t) => t.tag_group === group.value);
+                              if (available.length === 0) return null;
+                              return (
+                                <CommandGroup key={group.value} heading={group.label}>
+                                  {available.map((tag) => {
+                                    const checked = selectedTags.some((t) => t.toLowerCase() === tag.name.toLowerCase());
+                                    return (
+                                      <CommandItem key={tag.id} value={tag.name} onSelect={() => toggleTag(tag.name)} className="gap-2">
+                                        <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: tag.color ?? "hsl(var(--muted-foreground))" }} />
+                                        <span className="flex-1">{tag.name}</span>
+                                        <Check className={cn("h-4 w-4", checked ? "opacity-100" : "opacity-0")} />
+                                      </CommandItem>
+                                    );
+                                  })}
+                                </CommandGroup>
+                              );
+                            })}
                           </CommandList>
                         </Command>
                       </PopoverContent>

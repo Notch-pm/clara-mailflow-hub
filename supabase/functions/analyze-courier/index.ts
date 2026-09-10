@@ -367,14 +367,24 @@ async function analyzeCourier(
     .eq("courier_id", courierId)
     .eq("organization_id", orgId);
 
-  // Tags disponibles dans l'organisation — le LLM ne peut choisir QUE parmi ceux-ci
+  // Tags disponibles dans l'organisation — le LLM ne peut choisir QUE parmi
+  // ceux-ci, et EN DEUX LISTES : le thème dit de quoi parle le courrier, le
+  // sentiment sur quel ton. Mêlés, le modèle en choisissait cinq du même bord.
   const { data: orgTags } = await admin
     .from("courier_tags")
-    .select("name")
+    .select("name, tag_group")
     .eq("organization_id", orgId);
-  const availableTagNames = (orgTags ?? [])
-    .map((t: { name: string }) => t.name)
-    .filter((n) => typeof n === "string" && n.trim().length > 0);
+  const tagRows = (orgTags ?? []) as Array<{ name: string; tag_group: string }>;
+  const namesOfGroup = (group: string) =>
+    tagRows
+      .filter((t) => (t.tag_group ?? "theme") === group)
+      .map((t) => t.name)
+      .filter((n) => typeof n === "string" && n.trim().length > 0);
+  const themeTagNames = namesOfGroup("theme");
+  const sentimentTagNames = namesOfGroup("sentiment");
+  // Ce qui est appliqué au courrier reste UNE liste de noms : le groupe est une
+  // propriété du tag, pas de son application (cf. src/lib/courier-tags.ts).
+  const availableTagNames = [...themeTagNames, ...sentimentTagNames];
 
   // Démarches disponibles — données Socle incluses : descriptions/mots-clés
   // pour la pertinence des recommandations, form_schema/knowledge_base pour
@@ -467,16 +477,20 @@ async function analyzeCourier(
     throw new Error("Aucun contenu à analyser. Lancez d'abord l'extraction OCR ou ajoutez un corps d'email.");
   }
 
-  const tagListForPrompt = availableTagNames.length > 0
-    ? availableTagNames.map((n) => `- ${n}`).join("\n")
-    : "(aucun tag défini — laisse intents vide)";
+  const listForPrompt = (names: string[], empty: string) =>
+    names.length > 0 ? names.map((n) => `- ${n}`).join("\n") : empty;
+  const themeListForPrompt = listForPrompt(themeTagNames, "(aucun thème défini — laisse intents vide)");
+  const sentimentListForPrompt = listForPrompt(
+    sentimentTagNames,
+    "(aucun sentiment défini — laisse sentiments vide)",
+  );
 
   const procedureListForPrompt = buildProcedureCatalog(procedureList);
 
   const systemPrompt = `Tu es un assistant expert en gestion de courrier administratif. Analyse le contenu fourni et restitue les éléments suivants :
 - summary: résumé concis (2-3 phrases) du contenu
-- intents: liste des tags qui qualifient ce courrier, choisis EXCLUSIVEMENT dans la liste des tags disponibles ci-dessous (copie exacte du nom, sensible à la casse). N'invente AUCUN tag. Si aucun tag ne s'applique, renvoie une liste vide.
-- sentiment: ton/état d'esprit du rédacteur, parmi: neutre, courtois, urgent, mécontent, agressif, satisfait, inquiet
+- intents: les THÈMES du courrier — de quoi il parle. Choisis EXCLUSIVEMENT dans la liste des thèmes disponibles ci-dessous (copie exacte du nom, sensible à la casse). N'invente AUCUN tag. Si aucun ne s'applique, renvoie une liste vide.
+- sentiments: le TON du rédacteur. Choisis EXCLUSIVEMENT dans la liste des sentiments disponibles ci-dessous (copie exacte du nom). En règle générale UN SEUL suffit, deux au maximum quand le courrier est franchement partagé. Liste vide si le ton n'est pas lisible.
 - suggested_actions: 2 à 5 actions concrètes que l'organisation devrait entreprendre. Pour chaque action :
   • label: description courte de l'action
   • procedure_id: si une démarche de la liste correspond réellement à l'action (vérifie la cohérence avec sa description et ses mots-clés, pas seulement son nom), indique son id exact. Sinon null. Ne force jamais une correspondance approximative.
@@ -485,8 +499,11 @@ async function analyzeCourier(
 ${SUGGESTED_FIELDS_PROMPT_RULES}
 Sois factuel, en français. Si le corps de l'email et les pièces jointes coexistent, traite-les comme un tout cohérent. Ne retourne que ce qui est clairement identifiable — ne devine rien.
 
-Tags disponibles pour intents :
-${tagListForPrompt}
+Thèmes disponibles pour intents :
+${themeListForPrompt}
+
+Sentiments disponibles pour sentiments :
+${sentimentListForPrompt}
 
 Procédures disponibles (utilise l'id exact pour procedure_id) :
 ${procedureListForPrompt}
@@ -503,10 +520,12 @@ ${serviceNames.length ? serviceNames.join(", ") : "(aucun)"}`;
   }
   const userPrompt = sections.join("\n\n");
 
-  const intentsSchema: Record<string, unknown> = { type: "array", items: { type: "string" } };
-  if (availableTagNames.length > 0) {
-    intentsSchema.items = { type: "string", enum: availableTagNames };
-  }
+  const namesSchema = (names: string[]): Record<string, unknown> => ({
+    type: "array",
+    items: names.length > 0 ? { type: "string", enum: names } : { type: "string" },
+  });
+  const intentsSchema = namesSchema(themeTagNames);
+  const sentimentsSchema = namesSchema(sentimentTagNames);
 
   // ⚠️ CE SCHÉMA VIVAIT DANS `tools`. Il n'a pas disparu avec la
   // centralisation : il a changé de place. Le guichet du Socle refuse
@@ -520,10 +539,7 @@ ${serviceNames.length ? serviceNames.join(", ") : "(aucun)"}`;
     {
       summary: { type: "string" },
       intents: intentsSchema,
-      sentiment: {
-        type: "string",
-        enum: ["neutre", "courtois", "urgent", "mécontent", "agressif", "satisfait", "inquiet"],
-      },
+      sentiments: sentimentsSchema,
       ...SUGGESTED_FIELDS_PROPERTIES,
       suggested_actions: {
         type: "array",
@@ -557,13 +573,13 @@ ${serviceNames.length ? serviceNames.join(", ") : "(aucun)"}`;
         },
       },
     },
-    ["summary", "intents", "sentiment", "suggested_actions", ...SUGGESTED_FIELDS_KEYS],
+    ["summary", "intents", "sentiments", "suggested_actions", ...SUGGESTED_FIELDS_KEYS],
   );
 
   type ParsedAnalysis = {
     summary: string;
     intents: string[];
-    sentiment: string;
+    sentiments: string[];
     suggested_actions: Array<{
       label: string;
       procedure_id?: string | null;
@@ -596,12 +612,21 @@ ${jsonSchemaInstruction(analysisSchema)}`,
   });
   const parsed = parseJsonAnswer<ParsedAnalysis>(analysisAnswer);
 
-  // Sécurité : filtrer les intents pour ne garder que ceux qui appartiennent
-  // bien aux tags de l'organisation (mapping strict, insensible à la casse).
-  const allowed = new Set(availableTagNames.map((n) => n.toLowerCase()));
-  const safeIntents = Array.isArray(parsed.intents)
-    ? parsed.intents.filter((i) => typeof i === "string" && allowed.has(i.toLowerCase()))
-    : [];
+  // Sécurité : ne garder que les tags qui appartiennent bien à l'organisation,
+  // ET AU BON GROUPE — un modèle à qui l'on donne deux listes range parfois un
+  // sentiment dans les thèmes. Mapping strict, insensible à la casse.
+  const keepFrom = (names: string[], proposed: unknown): string[] => {
+    const allowed = new Set(names.map((n) => n.toLowerCase()));
+    return Array.isArray(proposed)
+      ? proposed.filter((i): i is string => typeof i === "string" && allowed.has(i.toLowerCase()))
+      : [];
+  };
+  // Les deux groupes se rejoignent dans UNE liste : ce qui est appliqué au
+  // courrier est une liste de noms, le groupe se relit dans le référentiel.
+  const safeIntents = [
+    ...keepFrom(themeTagNames, parsed.intents),
+    ...keepFrom(sentimentTagNames, parsed.sentiments),
+  ];
 
   // Sécurité : s'assurer que les procedure_id retournés par le LLM appartiennent bien à l'org
   const validProcedureIds = new Set(procedureList.map((p) => p.id));
@@ -706,7 +731,9 @@ ${jsonSchemaInstruction(call.tool.toolParameters as Record<string, unknown>)}`;
         organization_id: orgId,
         summary: parsed.summary,
         intents: safeIntents,
-        sentiment: parsed.sentiment,
+        // `sentiment` (colonne de l'ancien champ figé) n'est plus écrite depuis
+        // le 2026-09-10 : le sentiment est un tag, rangé dans `intents`. La
+        // colonne subsiste pour les analyses antérieures.
         suggested_actions: actionsToStore,
         suggested_subject: safeSuggestedSubject,
         suggested_service_name: safeSuggestedService,
