@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import {
+  listProcedureActivations,
   listProcedures,
   updateProcedureVisibility,
   type Procedure,
@@ -9,9 +10,11 @@ import {
 import {
   getLastSyncRun,
   listSocleCategories,
+  listSocleOrganizationTree,
   triggerSocleSync,
   type SocleSyncResult,
 } from "@/services/socleSyncService";
+import { buildActivationIndex, organizationsOfferingProcedure } from "@/lib/procedure-activation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -81,11 +84,37 @@ export default function ProceduresSettings({ organizationId, isAdminOverride }: 
     enabled: !!orgId,
   });
 
+  // Le référentiel active les démarches PAR organisation : sans cette colonne,
+  // une démarche proposée par une seule sous-organisation paraît disponible
+  // partout — et c'est justement ce qu'Iris refuse au dépôt.
+  const { data: activations = [] } = useQuery({
+    queryKey: ["procedure-activations", orgId],
+    queryFn: () => listProcedureActivations(orgId!),
+    enabled: !!orgId,
+  });
+  const { data: socleOrgs = [] } = useQuery({
+    queryKey: ["socle-organizations", orgId],
+    queryFn: () => listSocleOrganizationTree(orgId!),
+    enabled: !!orgId,
+  });
+
   const categoryNames = useMemo(() => {
     const map = new Map<string, string>();
     for (const c of categories) map.set(c.socle_id, c.name);
     return map;
   }, [categories]);
+
+  const activationIndex = useMemo(() => buildActivationIndex(activations), [activations]);
+  const orgNames = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const o of socleOrgs) map.set(o.id, o.name);
+    return map;
+  }, [socleOrgs]);
+  const offeringNamesOf = (procedureId: string) =>
+    organizationsOfferingProcedure(activationIndex, procedureId)
+      .map((id) => orgNames.get(id))
+      .filter((n): n is string => !!n)
+      .sort((a, b) => a.localeCompare(b, "fr"));
 
   const updateMutation = useMutation({
     mutationFn: ({ id, isDisplayed }: { id: string; isDisplayed: boolean }) =>
@@ -103,6 +132,8 @@ export default function ProceduresSettings({ organizationId, isAdminOverride }: 
         description: syncSummaryMessage(result),
       });
       queryClient.invalidateQueries({ queryKey: ["procedures", orgId] });
+      queryClient.invalidateQueries({ queryKey: ["procedure-activations", orgId] });
+      queryClient.invalidateQueries({ queryKey: ["socle-organizations", orgId] });
       queryClient.invalidateQueries({ queryKey: ["socle-categories", orgId] });
       queryClient.invalidateQueries({ queryKey: ["socle-last-sync", orgId] });
     },
@@ -197,6 +228,7 @@ export default function ProceduresSettings({ organizationId, isAdminOverride }: 
                     <TableRow>
                       <TableHead>Démarche</TableHead>
                       <TableHead className="w-40">Catégorie</TableHead>
+                      <TableHead className="w-56">Assurée par</TableHead>
                       <TableHead className="w-24 text-center">Visible</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -206,6 +238,7 @@ export default function ProceduresSettings({ organizationId, isAdminOverride }: 
                         key={p.id}
                         procedure={p}
                         categoryName={p.socle_category_id ? categoryNames.get(p.socle_category_id) : undefined}
+                        offeringNames={offeringNamesOf(p.id)}
                         isAdmin={!!isAdmin}
                         onToggle={(proc, val) =>
                           updateMutation.mutate({ id: proc.id, isDisplayed: val })
@@ -232,7 +265,8 @@ export default function ProceduresSettings({ organizationId, isAdminOverride }: 
                       <TableHeader>
                         <TableRow>
                           <TableHead>Démarche</TableHead>
-                          <TableHead className="w-40">Catégorie</TableHead>
+                      <TableHead className="w-40">Catégorie</TableHead>
+                      <TableHead className="w-56">Assurée par</TableHead>
                           <TableHead className="w-24 text-center">Visible</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -242,6 +276,7 @@ export default function ProceduresSettings({ organizationId, isAdminOverride }: 
                             key={p.id}
                             procedure={p}
                             categoryName={p.socle_category_id ? categoryNames.get(p.socle_category_id) : undefined}
+                            offeringNames={offeringNamesOf(p.id)}
                             isAdmin={!!isAdmin}
                             faded
                             onToggle={(proc, val) =>
@@ -265,12 +300,15 @@ export default function ProceduresSettings({ organizationId, isAdminOverride }: 
 function ProcedureRow({
   procedure,
   categoryName,
+  offeringNames = [],
   isAdmin,
   faded,
   onToggle,
 }: {
   procedure: Procedure;
   categoryName?: string;
+  /** Organisations qui assurent la démarche dans le référentiel (miroir). */
+  offeringNames?: string[];
   isAdmin: boolean;
   faded?: boolean;
   onToggle: (p: Procedure, val: boolean) => void;
@@ -327,6 +365,17 @@ function ProcedureRow({
       </TableCell>
       <TableCell className="text-sm text-muted-foreground">
         {categoryName ?? "—"}
+      </TableCell>
+      <TableCell className="text-xs text-muted-foreground">
+        {offeringNames.length > 0 ? (
+          <span className="line-clamp-2">{offeringNames.join(", ")}</span>
+        ) : procedure.external_source === "socle" ? (
+          // Démarche du référentiel qu'aucune organisation n'assure : elle
+          // s'affiche, mais aucun dépôt ne passera.
+          <span className="italic">Aucune organisation</span>
+        ) : (
+          "—"
+        )}
       </TableCell>
       <TableCell className="text-center">
         <Switch

@@ -21,6 +21,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   catalogueForRoot,
+  countersFromActivationPlan,
   countersFromMirrorPlan,
   countersFromOrgPlan,
   countersFromProcedurePlan,
@@ -28,10 +29,13 @@ import {
   rootOrgId,
   mapSocleOrganization,
   mapSocleProcedure,
+  planActivationSync,
   planMirrorSync,
   planOrganizationSync,
   planProcedureSync,
   planTenantIdentityUpdate,
+  type ActivationItem,
+  type ActivationRow,
   type EntityCounters,
   type MirrorItem,
   type MirrorRow,
@@ -342,6 +346,8 @@ interface OrgSyncResult {
     categories: EntityCounters;
     document_types: EntityCounters;
     procedures: EntityCounters;
+    /** Miroir « quelle organisation propose quelle démarche ». */
+    activations: EntityCounters;
     /** Miroirs du serveur d'envoi écrits (0 ou 1 : un relais par tenant). */
     smtp_synchronises: number;
     /** Miroirs effacés faute de relais déclaré côté Socle (0 ou 1). */
@@ -495,14 +501,40 @@ async function syncOrg(
     false,
   );
 
-  // 2) Démarches activées pour cette org, puis config intégrale par démarche
-  //    (appels séquentiels — volumes faibles, pas de pagination côté API).
-  const enabled = (await fetchSocle(
-    `/v1/procedures?enabled_for=${encodeURIComponent(org.socle_org_id)}`,
-  )) as SocleProcedure[];
+  // 2) Démarches proposées par CHAQUE organisation du sous-arbre, puis config
+  //    intégrale par démarche distincte (appels séquentiels — volumes faibles,
+  //    pas de pagination côté API).
+  //
+  //    ⚠️ Un seul appel sur la racine ne suffit pas : le filtre `enabled_for`
+  //    N'EST PAS RÉCURSIF. Interroger ACCM ne dit rien de ce que proposent ses
+  //    sous-organisations — et le sous-arbre en propose deux fois plus que la
+  //    racine. Le catalogue Clara est donc l'UNION du sous-arbre, et le miroir
+  //    `procedure_organizations` dit qui propose quoi (étape 5).
+  const activations: Array<{ socleOrgId: string; name: string; procedureSocleIds: string[] }> = [];
+  const muteOrgs: string[] = [];
+  const catalogue = new Map<string, SocleProcedure>();
+  for (const socleOrg of subtree) {
+    try {
+      const enabled = (await fetchSocle(
+        `/v1/procedures?enabled_for=${encodeURIComponent(socleOrg.id)}`,
+      )) as SocleProcedure[];
+      const ids = (enabled ?? []).map((p) => p.id).filter((id): id is string => typeof id === "string");
+      activations.push({ socleOrgId: socleOrg.id, name: socleOrg.name, procedureSocleIds: ids });
+      for (const p of enabled ?? []) if (p?.id) catalogue.set(p.id, p);
+    } catch (e) {
+      // Clé invalide : rien ne servira, on remonte sans insister.
+      if (e instanceof SocleAuthError) throw e;
+      // Organisation muette : on ne conclut RIEN pour elle (ni catalogue, ni
+      // obsolescence) — la périmer fermerait son guichet jusqu'au run suivant.
+      const message = e instanceof Error ? e.message : String(e);
+      console.warn(`[sync-socle] org ${org.name}: démarches de « ${socleOrg.name} » illisibles: ${message}`);
+      muteOrgs.push(socleOrg.name);
+    }
+  }
+
   const detailed: SocleProcedure[] = [];
-  for (const p of enabled) {
-    detailed.push((await fetchSocle(`/v1/procedures/${p.id}`)) as SocleProcedure);
+  for (const id of catalogue.keys()) {
+    detailed.push((await fetchSocle(`/v1/procedures/${id}`)) as SocleProcedure);
   }
 
   // 3) Plan de sync (upsert par socle_id, adoption par nom, obsolescence).
@@ -513,6 +545,15 @@ async function syncOrg(
   if (existingError) throw existingError;
 
   const plan = planProcedureSync(existing as ProcedureRow[], detailed, syncedAt);
+  // Une organisation muette ampute l'union : ses démarches exclusives
+  // paraîtraient disparues du Socle. On suspend TOUTE obsolescence de
+  // catalogue pour ce run plutôt que d'en périmer à tort.
+  if (muteOrgs.length > 0 && plan.toObsolete.length > 0) {
+    plan.warnings.push(
+      `Obsolescence des démarches suspendue : ${muteOrgs.length} organisation(s) illisible(s) (${muteOrgs.join(", ")}).`,
+    );
+    plan.toObsolete = [];
+  }
   for (const w of plan.warnings) console.warn(`[sync-socle] org ${org.name}: ${w}`);
 
   // 4) Exécution (sauf dry-run).
@@ -543,17 +584,121 @@ async function syncOrg(
     }
   }
 
+  // 5) Miroir « qui propose quoi ». Écrit APRÈS le catalogue : les lignes
+  //    référencent `procedures.id`, qui n'existe qu'une fois les démarches
+  //    insérées. En dry-run, rien n'a été écrit — on ne peut donc rien mirrorer.
+  const activationsCounters = dryRun
+    ? { created: 0, updated: 0, adopted: 0, obsoleted: 0, unchanged: 0 }
+    : await syncActivations(supabaseAdmin, org, activations, muteOrgs, syncedAt);
+
+  const warnings = [...smtp.warnings, ...plan.warnings];
+  if (muteOrgs.length > 0) {
+    warnings.push(
+      `Démarches illisibles pour ${muteOrgs.length} organisation(s) (${muteOrgs.join(", ")}) — leur miroir est inchangé.`,
+    );
+  }
+
   return {
     counters: {
       organizations: organizationsCounters,
       categories: categoriesCounters,
       document_types: documentTypesCounters,
       procedures: countersFromProcedurePlan(plan),
+      activations: activationsCounters,
       smtp_synchronises: smtp.synchronises,
       smtp_retires: smtp.retires,
     },
-    warnings: [...smtp.warnings, ...plan.warnings],
+    warnings,
   };
+}
+
+// ── Miroir d'activation des démarches par organisation ──
+//
+// Opt-in strict : ce que le Socle n'active pas n'est pas proposé. Les lignes
+// portent des ids CLARA (démarche mirrorée × organisation mirrorée), la
+// traversée des deux miroirs se fait ici, une fois pour toutes.
+async function syncActivations(
+  supabaseAdmin: AdminClient,
+  org: ClaraOrg,
+  activations: Array<{ socleOrgId: string; name: string; procedureSocleIds: string[] }>,
+  muteOrgs: string[],
+  syncedAt: string,
+): Promise<EntityCounters> {
+  const [{ data: orgMirror, error: orgErr }, { data: procMirror, error: procErr }] = await Promise.all([
+    supabaseAdmin
+      .from("socle_organizations")
+      .select("id, socle_id")
+      .eq("organization_id", org.id),
+    supabaseAdmin
+      .from("procedures")
+      .select("id, socle_id")
+      .eq("organization_id", org.id)
+      .not("socle_id", "is", null),
+  ]);
+  if (orgErr) throw new Error(`miroir organisations: ${orgErr.message}`);
+  if (procErr) throw new Error(`miroir démarches: ${procErr.message}`);
+
+  const orgIdBySocleId = new Map(
+    (orgMirror ?? []).map((r: { id: string; socle_id: string }) => [r.socle_id, r.id]),
+  );
+  const procIdBySocleId = new Map(
+    (procMirror ?? []).map((r: { id: string; socle_id: string }) => [r.socle_id, r.id]),
+  );
+
+  const incoming: ActivationItem[] = [];
+  const observedOrgIds: string[] = [];
+  for (const activation of activations) {
+    const mirrorOrgId = orgIdBySocleId.get(activation.socleOrgId);
+    if (!mirrorOrgId) continue; // organisation hors miroir (premier run partiel)
+    observedOrgIds.push(mirrorOrgId);
+    for (const socleProcId of activation.procedureSocleIds) {
+      const procedureId = procIdBySocleId.get(socleProcId);
+      if (!procedureId) continue; // démarche non mirrorée (détail illisible)
+      incoming.push({ procedure_id: procedureId, socle_organization_id: mirrorOrgId });
+    }
+  }
+
+  const { data: existing, error: existingError } = await supabaseAdmin
+    .from("procedure_organizations")
+    .select("procedure_id, socle_organization_id, obsoleted_at")
+    .eq("organization_id", org.id);
+  if (existingError) throw existingError;
+
+  const plan = planActivationSync(existing as ActivationRow[], incoming, observedOrgIds);
+
+  const upserts = [...plan.toInsert, ...plan.toReactivate];
+  if (upserts.length > 0) {
+    const { error } = await supabaseAdmin
+      .from("procedure_organizations")
+      .upsert(
+        upserts.map((a) => ({
+          organization_id: org.id,
+          procedure_id: a.procedure_id,
+          socle_organization_id: a.socle_organization_id,
+          synced_at: syncedAt,
+          obsoleted_at: null,
+        })),
+        { onConflict: "organization_id,procedure_id,socle_organization_id" },
+      );
+    if (error) throw new Error(`activations: ${error.message}`);
+  }
+
+  // Soft-delete ligne à ligne : la clé est composite, `.in()` ne sait pas
+  // l'exprimer. Les volumes sont ceux d'un référentiel (quelques dizaines).
+  for (const a of plan.toObsolete) {
+    const { error } = await supabaseAdmin
+      .from("procedure_organizations")
+      .update({ obsoleted_at: syncedAt })
+      .eq("organization_id", org.id)
+      .eq("procedure_id", a.procedure_id)
+      .eq("socle_organization_id", a.socle_organization_id);
+    if (error) throw new Error(`activations obsolescence: ${error.message}`);
+  }
+
+  console.log(
+    `[sync-socle] org ${org.name}: activations créées=${plan.toInsert.length} réactivées=${plan.toReactivate.length} retirées=${plan.toObsolete.length} inchangées=${plan.unchanged}${muteOrgs.length ? ` (${muteOrgs.length} organisation(s) muette(s))` : ""}`,
+  );
+  return countersFromActivationPlan(plan);
 }
 
 // ── Serveur d'envoi (miroir du Socle) ──

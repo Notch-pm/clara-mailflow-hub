@@ -86,7 +86,7 @@ export default function SettingsPage() {
         description: syncSummaryMessage(result),
       });
       // Rafraîchit toutes les données miroir du Socle (préfixes, toutes orgs confondues).
-      for (const key of ["socle-organizations", "socle-orgs-config", "socle-categories", "socle-last-sync", "procedures", "procedures-displayed"]) {
+      for (const key of ["socle-organizations", "socle-orgs-config", "socle-categories", "socle-last-sync", "procedures", "procedures-displayed", "procedure-activations"]) {
         queryClient.invalidateQueries({ queryKey: [key] });
       }
     },

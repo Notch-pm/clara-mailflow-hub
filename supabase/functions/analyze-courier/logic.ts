@@ -25,6 +25,17 @@ export interface ProcedureCatalogEntry {
   keywords?: unknown;
   agent_description?: string | null;
   description?: string | null;
+  /**
+   * Organisations qui ASSURENT cette démarche (miroir `procedure_organizations`).
+   * Absent ou vide = démarche hors référentiel (Arpège, embryon local) : aucune
+   * organisation ne s'impose.
+   */
+  organizations?: OrganizationRef[];
+}
+
+export interface OrganizationRef {
+  id: string;
+  name: string;
 }
 
 /** Coupe au dernier espace avant `max` et ajoute une ellipse. */
@@ -47,6 +58,12 @@ function catalogLine(entry: ProcedureCatalogEntry, descriptionMax: number): stri
   const parts = [`- [id: ${entry.id}] ${entry.name}${source}`];
   const kw = keywordsOf(entry);
   if (kw.length > 0) parts.push(`mots-clés: ${kw.join(", ")}`);
+  // Le choix d'organisation est CONTRAINT par cette liste : une démarche
+  // déposée sur un organisme qui ne l'assure pas est refusée par Iris.
+  const orgs = entry.organizations ?? [];
+  if (orgs.length > 0) {
+    parts.push(`assurée par: ${orgs.map((o) => `${o.name} [org: ${o.id}]`).join(" | ")}`);
+  }
   if (descriptionMax > 0) {
     const desc = (entry.agent_description ?? entry.description ?? "").trim();
     if (desc) parts.push(truncate(desc, descriptionMax));
@@ -503,12 +520,40 @@ export function sanitizePrefillArguments(
   return out;
 }
 
+// ── Organisation destinataire suggérée ──────────────────────────────────────
+
+/**
+ * Retient l'organisation à qui adresser la demande. Le modèle PROPOSE, la
+ * fonction dispose — même défense que pour `procedure_id` : un id bien formé
+ * n'est pas un id valide, et une organisation qui n'assure pas la démarche
+ * vaut un refus d'Iris.
+ *
+ * `offering` = organisations qui assurent la démarche (vide = démarche hors
+ * référentiel : aucune contrainte, on accepte toute organisation connue).
+ * Quand une seule organisation l'assure, elle s'impose : rien à deviner.
+ */
+export function resolveSuggestedOrganization(
+  proposed: string | null | undefined,
+  offering: OrganizationRef[],
+  known: Map<string, OrganizationRef>,
+): OrganizationRef | null {
+  const id = typeof proposed === "string" && proposed.length > 0 ? proposed : null;
+  if (offering.length > 0) {
+    const chosen = id ? offering.find((o) => o.id === id) : undefined;
+    if (chosen) return chosen;
+    return offering.length === 1 ? offering[0] : null;
+  }
+  return (id && known.get(id)) || null;
+}
+
 // ── Injection dans les actions suggérées ────────────────────────────────────
 
 export interface ActionWithPrefill {
   label: string;
   procedure_id: string | null;
   procedure_name: string | null;
+  socle_organization_id: string | null;
+  socle_organization_name: string | null;
   prefill: Record<string, string>;
   socle_prefill?: SanitizedPrefill;
 }

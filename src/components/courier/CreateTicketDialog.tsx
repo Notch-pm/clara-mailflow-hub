@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Loader2, Check, ChevronsUpDown, X, User, FileText } from "lucide-react";
+import { Loader2, Check, ChevronsUpDown, X, User, FileText, Building2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -31,11 +31,19 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import {
+  listProcedureActivations,
   listProcedures,
   type ArpegeConfigField,
   type ArpegeFormComponent,
   type Procedure,
 } from "@/services/procedureService";
+import { listSocleOrganizationTree } from "@/services/socleSyncService";
+import { buildSocleOrgTree, flattenSocleOrgTree } from "@/lib/socleOrgTree";
+import {
+  buildActivationIndex,
+  filterProceduresForOrganization,
+  isProcedureOfferedBy,
+} from "@/lib/procedure-activation";
 import {
   createTicket,
   createArpegeTicket,
@@ -85,6 +93,10 @@ interface Props {
   initialArpegeValues?: Record<string, string>;
   /** Préremplissage Socle de l'action suggérée (audience + valeurs par clé). */
   initialSoclePrefill?: SoclePrefill | null;
+  /** Organisation destinataire suggérée par l'analyse IA (id du miroir Socle). */
+  initialSocleOrganizationId?: string | null;
+  /** Organisation gestionnaire du courrier — destinataire par défaut de la demande. */
+  courierSocleOrganizationId?: string | null;
   ticket?: ActionTicketWithProcedure | null;
 }
 
@@ -460,11 +472,20 @@ export default function CreateTicketDialog({
   initialProcedureId,
   initialArpegeValues,
   initialSoclePrefill,
+  initialSocleOrganizationId,
+  courierSocleOrganizationId,
   ticket = null,
 }: Props) {
   const qc = useQueryClient();
   const isEdit = !!ticket;
   const [procedureId, setProcedureId] = useState<string>("");
+  // Organisation DESTINATAIRE de la demande (id du miroir socle_organizations) :
+  // elle commande la liste des démarches proposées et l'organisme transmis à
+  // Iris. Distincte de l'organisation gestionnaire du courrier, qui n'en est
+  // que la valeur par défaut — adresser une demande aux services techniques ne
+  // déplace pas le courrier.
+  const [socleOrgId, setSocleOrgId] = useState<string | null>(null);
+  const [orgPopoverOpen, setOrgPopoverOpen] = useState(false);
   const [title, setTitle] = useState<string>(initialTitle);
   const [description, setDescription] = useState<string>(initialDescription);
   const [assigneeId, setAssigneeId] = useState<string | null>(null);
@@ -484,12 +505,16 @@ export default function CreateTicketDialog({
         setDescription(ticket.description ?? "");
         setProcedureId(ticket.procedure_id ?? "");
         setAssigneeId(ticket.assignee_id ?? null);
+        setSocleOrgId(ticket.socle_organization_id ?? null);
         setArpegeValues({});
       } else {
         setTitle(initialTitle);
         setDescription(initialDescription);
         setProcedureId(initialProcedureId ?? "");
         setAssigneeId(null);
+        // Suggestion de l'analyse d'abord, organisation du courrier ensuite :
+        // l'IA a lu le courrier, le rattachement du courrier n'est qu'un défaut.
+        setSocleOrgId(initialSocleOrganizationId ?? courierSocleOrganizationId ?? null);
         setArpegeValues(initialArpegeValues ?? {});
       }
       setBusinessValues({});
@@ -498,7 +523,10 @@ export default function CreateTicketDialog({
       setSocleRequesterValues({});
       setSocleFormValues({});
     }
-  }, [open, initialTitle, initialDescription, initialProcedureId, initialArpegeValues, isEdit, ticket]);
+  }, [
+    open, initialTitle, initialDescription, initialProcedureId, initialArpegeValues,
+    initialSocleOrganizationId, courierSocleOrganizationId, isEdit, ticket,
+  ]);
 
   const { data: procedures, isLoading: loadingProcedures } = useQuery({
     queryKey: ["procedures-displayed", organizationId],
@@ -506,8 +534,53 @@ export default function CreateTicketDialog({
     enabled: !!organizationId && open,
   });
 
+  // Miroir « qui propose quoi » : le référentiel active les démarches PAR
+  // organisation, et Iris refuse le dépôt d'une démarche qu'un organisme
+  // n'assure pas. Proposer un catalogue non filtré revient à laisser l'agent
+  // buter sur ce refus après coup.
+  const { data: activations } = useQuery({
+    queryKey: ["procedure-activations", organizationId],
+    queryFn: () => listProcedureActivations(organizationId),
+    enabled: !!organizationId && open,
+  });
+  const activationIndex = useMemo(
+    () => buildActivationIndex(activations ?? []),
+    [activations],
+  );
+
+  const { data: socleOrgs, isLoading: loadingSocleOrgs } = useQuery({
+    queryKey: ["socle-organizations", organizationId],
+    queryFn: () => listSocleOrganizationTree(organizationId),
+    enabled: !!organizationId && open && !isEdit,
+  });
+  // Liste indentée par la hiérarchie (motif ImapSettings / SignaturesSettings) :
+  // « Services techniques » sous « ACCM » se lit mieux qu'un ordre alphabétique.
+  const selectableOrgs = useMemo(
+    () =>
+      flattenSocleOrgTree(
+        buildSocleOrgTree(
+          (socleOrgs ?? []).filter((o) => !o.obsoleted_at && o.status !== "obsolete"),
+        ),
+      ),
+    [socleOrgs],
+  );
+  const selectedOrg = selectableOrgs.find((o) => o.id === socleOrgId) ?? null;
+
   // Les démarches obsolètes (retirées du Socle / embryons remplacés) ne sont plus proposées.
-  const displayedProcedures = (procedures ?? []).filter((p) => p.is_displayed && !p.obsoleted_at);
+  const visibleProcedures = useMemo(
+    () => (procedures ?? []).filter((p) => p.is_displayed && !p.obsoleted_at),
+    [procedures],
+  );
+  // …ni celles que l'organisation destinataire n'assure pas. Une démarche que
+  // le référentiel ne connaît pas (Arpège, embryon local) n'a aucune activation
+  // et reste proposée — cf. src/lib/procedure-activation.ts.
+  const displayedProcedures = useMemo(
+    () =>
+      isEdit
+        ? visibleProcedures
+        : filterProceduresForOrganization(visibleProcedures, activationIndex, socleOrgId),
+    [visibleProcedures, activationIndex, socleOrgId, isEdit],
+  );
   const selectedProcedure = displayedProcedures.find((p) => p.id === procedureId) ?? null;
 
   // Le flux Arpège dépend de la présence effective des références Arpège
@@ -668,6 +741,16 @@ export default function CreateTicketDialog({
     prefillAppliedRef.current = null;
   };
 
+  // Changer de destinataire peut retirer la démarche en cours du catalogue de
+  // l'organisation : on la lâche plutôt que de laisser une sélection invisible
+  // (et refusée au dépôt) survivre au changement.
+  const selectSocleOrg = (id: string | null) => {
+    setSocleOrgId(id);
+    if (procedureId && !isProcedureOfferedBy(activationIndex, procedureId, id)) {
+      selectProcedure("");
+    }
+  };
+
   const handleArpegeChange = (code: string, value: string) =>
     setArpegeValues((prev) => ({ ...prev, [code]: value }));
 
@@ -766,11 +849,13 @@ export default function CreateTicketDialog({
         description,
         assigneeId,
         socleData,
+        socleOrganizationId: socleOrgId,
       });
       await logEvent(organizationId, courierId, "ticket_created", {
         ticket_id: created.id,
         procedure_id: procedureId || null,
         assignee_id: assigneeId,
+        socle_organization_id: socleOrgId,
         title: title.trim() || null,
         description: description?.slice(0, 200) || null,
       });
@@ -838,6 +923,70 @@ export default function CreateTicketDialog({
 
         <div className="flex-1 overflow-y-auto min-h-0 pr-1 space-y-5 py-1">
 
+          {/* Organisation destinataire — commande la liste des démarches */}
+          {!isEdit && (
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Organisation destinataire</Label>
+              <div className="flex items-center gap-1.5">
+                <Popover open={orgPopoverOpen} onOpenChange={setOrgPopoverOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={orgPopoverOpen}
+                      className="flex-1 justify-between h-9 min-w-0"
+                      disabled={loadingSocleOrgs}
+                    >
+                      <span className="flex items-center gap-2 truncate">
+                        <Building2 className="h-4 w-4 shrink-0 opacity-50" />
+                        {selectedOrg ? (
+                          <span className="truncate">{selectedOrg.name}</span>
+                        ) : loadingSocleOrgs ? "Chargement…" : (
+                          <span className="text-muted-foreground">Toutes les organisations</span>
+                        )}
+                      </span>
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                    <Command>
+                      <CommandInput placeholder="Rechercher une organisation…" />
+                      <CommandList>
+                        <CommandEmpty>Aucune organisation trouvée</CommandEmpty>
+                        <CommandGroup>
+                          {selectableOrgs.map((o) => (
+                            <CommandItem
+                              key={o.id}
+                              value={o.name}
+                              onSelect={() => {
+                                selectSocleOrg(o.id);
+                                setOrgPopoverOpen(false);
+                              }}
+                            >
+                              <Check className={cn("mr-2 h-4 w-4", socleOrgId === o.id ? "opacity-100" : "opacity-0")} />
+                              <span className="truncate" style={{ paddingLeft: `${(o.depth - 1) * 12}px` }}>
+                                {o.name}
+                              </span>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+                {selectedOrg && (
+                  <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0"
+                    onClick={() => selectSocleOrg(null)} title="Retirer l'organisation">
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+              <p className="text-[10px] text-muted-foreground/70">
+                Les démarches proposées sont celles que cette organisation assure dans le référentiel.
+              </p>
+            </div>
+          )}
+
           {/* Démarche (facultative) */}
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">Démarche (facultative)</Label>
@@ -865,7 +1014,11 @@ export default function CreateTicketDialog({
                   <Command>
                     <CommandInput placeholder="Rechercher une démarche…" />
                     <CommandList>
-                      <CommandEmpty>Aucune démarche trouvée</CommandEmpty>
+                      <CommandEmpty>
+                        {displayedProcedures.length === 0 && selectedOrg
+                          ? `${selectedOrg.name} n'assure aucune démarche dans le référentiel.`
+                          : "Aucune démarche trouvée"}
+                      </CommandEmpty>
                       <CommandGroup>
                         {displayedProcedures.map((p) => (
                           <CommandItem

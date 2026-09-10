@@ -323,6 +323,88 @@ export function planMirrorSync(existing: MirrorRow[], incoming: MirrorItem[]): M
   return plan;
 }
 
+// ── Activation des démarches par organisation (miroir `procedure_organizations`) ──
+//
+// Le Socle décide QUELLE ORGANISATION propose QUELLE DÉMARCHE ; Clara n'en tient
+// qu'un miroir opt-in strict. La lecture ne se fait que dans un sens
+// (`GET /v1/procedures?enabled_for=<org>`, un appel par organisation du
+// sous-arbre) : le DTO d'une démarche ne dit jamais qui l'a activée.
+
+/** Ligne du miroir, telle que relue en base (ids CLARA). */
+export interface ActivationRow {
+  procedure_id: string;
+  socle_organization_id: string;
+  obsoleted_at: string | null;
+}
+
+/** Activation observée côté Socle, traduite en ids Clara. */
+export interface ActivationItem {
+  procedure_id: string;
+  socle_organization_id: string;
+}
+
+export interface ActivationSyncPlan {
+  toInsert: ActivationItem[];
+  /** Réactivée côté Socle après avoir été retirée. */
+  toReactivate: ActivationItem[];
+  toObsolete: ActivationItem[];
+  unchanged: number;
+}
+
+const activationKey = (a: ActivationItem) => `${a.procedure_id}|${a.socle_organization_id}`;
+
+/**
+ * Plan idempotent du miroir d'activation.
+ *
+ * ⚠️ `observedOrgIds` n'est PAS décoratif : c'est la liste des organisations
+ * dont la lecture a RÉUSSI. Une organisation muette (Socle injoignable, 5xx)
+ * ne prouve pas que ses démarches ont été retirées — la périmer fermerait le
+ * guichet pour elle jusqu'à la sync suivante. On ne retire donc que ce qu'on a
+ * réellement observé.
+ */
+export function planActivationSync(
+  existing: ActivationRow[],
+  incoming: ActivationItem[],
+  observedOrgIds: string[],
+): ActivationSyncPlan {
+  const plan: ActivationSyncPlan = { toInsert: [], toReactivate: [], toObsolete: [], unchanged: 0 };
+  const known = new Map(existing.map((r) => [activationKey(r), r]));
+  const observed = new Set(observedOrgIds);
+  const seen = new Set<string>();
+
+  for (const item of incoming) {
+    const key = activationKey(item);
+    if (seen.has(key)) continue; // même activation rendue deux fois
+    seen.add(key);
+    const row = known.get(key);
+    if (!row) plan.toInsert.push(item);
+    else if (row.obsoleted_at !== null) plan.toReactivate.push(item);
+    else plan.unchanged++;
+  }
+
+  for (const row of existing) {
+    if (row.obsoleted_at !== null) continue;
+    if (!observed.has(row.socle_organization_id)) continue;
+    if (seen.has(activationKey(row))) continue;
+    plan.toObsolete.push({
+      procedure_id: row.procedure_id,
+      socle_organization_id: row.socle_organization_id,
+    });
+  }
+
+  return plan;
+}
+
+export function countersFromActivationPlan(plan: ActivationSyncPlan): EntityCounters {
+  return {
+    created: plan.toInsert.length,
+    updated: plan.toReactivate.length,
+    adopted: 0,
+    obsoleted: plan.toObsolete.length,
+    unchanged: plan.unchanged,
+  };
+}
+
 // ── Hiérarchie d'organisations (phase 2) ──
 
 /**

@@ -75,6 +75,8 @@ export interface ActionTicket {
   arpege_demande_ref: string | null;
   arpege_demande_status: string | null;
   socle_data: unknown;
+  /** Organisation destinataire choisie (miroir Socle). Null = celle du courrier. */
+  socle_organization_id: string | null;
   /** Suivi de la demande déposée dans Iris — écrit par le serveur uniquement. */
   iris_request_id: string | null;
   iris_reference: string | null;
@@ -130,6 +132,11 @@ export async function createTicket(payload: {
   assigneeId?: string | null;
   /** Valeurs saisies pour une démarche Socle (demandeur + formulaire), voir socle-form.ts. */
   socleData?: unknown;
+  /**
+   * Organisation destinataire (id du miroir `socle_organizations`). À null,
+   * l'organisme transmis à Iris reste celui du courrier.
+   */
+  socleOrganizationId?: string | null;
 }): Promise<ActionTicket> {
   const {
     data: { user },
@@ -144,6 +151,7 @@ export async function createTicket(payload: {
       description: payload.description?.trim() || null,
       assignee_id: payload.assigneeId ?? null,
       socle_data: payload.socleData ?? null,
+      socle_organization_id: payload.socleOrganizationId ?? null,
       created_by: user?.id ?? null,
     } as any)
     .select("*")

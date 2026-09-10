@@ -1,4 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
+import type { ProcedureActivation } from "@/lib/procedure-activation";
+
+export type { ProcedureActivation };
 
 export interface ArpegeConfigField {
   Code: string;
@@ -68,6 +71,22 @@ export async function listProcedures(orgId: string): Promise<Procedure[]> {
     .order("name", { ascending: true });
   if (error) throw error;
   return (data ?? []) as unknown as Procedure[];
+}
+
+/**
+ * Miroir « quelle organisation propose quelle démarche » (`procedure_organizations`,
+ * alimenté par la sync depuis le référentiel). Lecture seule : rien ne s'active
+ * depuis Clara. Volume d'un référentiel — on charge tout le tenant et on filtre
+ * en mémoire (`src/lib/procedure-activation.ts`).
+ */
+export async function listProcedureActivations(orgId: string): Promise<ProcedureActivation[]> {
+  const { data, error } = await supabase
+    .from("procedure_organizations")
+    .select("procedure_id, socle_organization_id")
+    .eq("organization_id", orgId)
+    .is("obsoleted_at", null);
+  if (error) throw error;
+  return (data ?? []) as ProcedureActivation[];
 }
 
 /**

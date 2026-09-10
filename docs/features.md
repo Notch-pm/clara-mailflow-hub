@@ -101,6 +101,14 @@ rien, il se rejoue depuis l'onglet « Actions liées » avec la même clé d'ide
 sans interface Iris ne voit rien — il ne dépose simplement pas ses demandes là-bas. Statuts
 relus chaque nuit par `sync-iris-requests` (03:30), avec garde de version monotone.
 
+**L'agent choisit l'organisation destinataire** (depuis le 2026-09-10). Le dialogue « Nouvelle
+demande » ouvre sur ce choix — suggestion de l'analyse IA, à défaut l'organisation gestionnaire
+du courrier — et **n'offre ensuite que les démarches que cette organisation assure** dans le
+référentiel (miroir `procedure_organizations`). Adresser une demande aux services techniques ne
+déplace pas le courrier : l'organisation retenue est portée par l'action
+(`action_tickets.socle_organization_id`), pas par le courrier. Une démarche hors référentiel
+(Arpège, embryon local) n'a aucune activation et reste proposée quelle que soit l'organisation.
+
 Détail complet — contrat, raccordement des champs, périmètre, exploitation :
 `docs/iris-integration.md`.
 
@@ -147,7 +155,7 @@ Les angles morts de l'ancienne détection côté client (doublon au **téléphon
 
 ## 7. Démarches & intégration partenaire (Arpège)
 
-- Table `procedures` (multi-tenant, RLS via `is_member_of` / `is_admin_of`). **Source de vérité : le Socle** (sync nocturne `sync-socle-referentiel`, cf. §Socle) — Clara ne crée/modifie plus les démarches, hors toggle de visibilité `is_displayed`.
+- Table `procedures` (multi-tenant, RLS via `is_member_of` / `is_admin_of`). **Source de vérité : le Socle** (sync nocturne `sync-socle-referentiel`, cf. §Socle) — Clara ne crée/modifie plus les démarches, hors toggle de visibilité `is_displayed`. Le catalogue est l'**union du sous-arbre d'organisations** du tenant, et `procedure_organizations` dit qui assure quoi (colonne « Assurée par » dans `ProceduresSettings.tsx`) : le filtre `enabled_for` du Socle n'étant pas récursif, la sync interroge chaque organisation.
 - Résidu partenaire : `external_reference_id` + `external_source` (`arpege` legacy) + `arpege_config_fields` (jsonb) — nécessaires pour **poster une demande** chez Arpège. UI : `ProceduresSettings.tsx` (badge « Arpège » sur les démarches d'origine partenaire).
 - **Intégration partenaire** (spec + refonte en cours : `docs/partenaires-integration.md`) : config de connexion par tenant dans `organization_integrations` (superadmin), récupération manuelle des démarches via l'edge `sync-arpege-services` (bouton superadmin — le cron `sync-arpege-procedures-nightly` et sa fonction SQL `trigger_arpege_sync()` sont **décommissionnés**, migrations `20260711091000` + `20260723155049`), création de demandes via `create-arpege-demande` (tickets `action_tickets.arpege_demande_ref/status`), suivi de statut via `check-arpege-ticket-status` (badge dans `LinkedActionsTab`).
 - `sync-arpege-appointments` (RDV) : **supprimée** (morte — aucun appelant, aucune écriture).
