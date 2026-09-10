@@ -67,7 +67,7 @@ import InlineEditField from "./InlineEditField";
 import LinkedActionsTab from "./LinkedActionsTab";
 import ParticipantManager from "./ParticipantManager";
 import ReplyComposer from "./ReplyComposer";
-import SimilarCouriersAlert from "./SimilarCouriersAlert";
+import LinkedCouriersSection from "./LinkedCouriersSection";
 import CloseLinkedCouriersDialog from "./CloseLinkedCouriersDialog";
 import {
   channelLabels,
@@ -436,10 +436,13 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
           <div className="min-w-0 flex-1 basis-[560px]">
             <TabsContent value="detail" className="mt-0 flex flex-col gap-5 focus-visible:outline-none">
               {!isOutbound && isInitialState && (
-                <SimilarCouriersAlert
+                <LinkedCouriersSection
                   courierId={courier.id}
                   organizationId={organizationId}
                   disabled={effectiveReadOnly}
+                  // Les liens déjà posés ont leur onglet « Liens » : ici on ne
+                  // sert que les suggestions restées à trancher.
+                  showRelations={false}
                 />
               )}
 

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import LinkCourierDialog from "./LinkCourierDialog";
-import SimilarCouriersAlert from "./SimilarCouriersAlert";
+import LinkedCouriersSection from "./LinkedCouriersSection";
 import {
   deleteRelation,
   listRelationsForCourier,
@@ -142,10 +142,12 @@ export default function CourierLinksTab({ courierId, organizationId, readOnly }:
         )}
       </div>
 
-      <SimilarCouriersAlert
+      <LinkedCouriersSection
         courierId={courierId}
         organizationId={organizationId}
         disabled={readOnly}
+        // Cet onglet liste déjà les liens posés, juste en dessous.
+        showRelations={false}
       />
 
       {isLoading ? (

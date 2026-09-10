@@ -3,9 +3,7 @@ import { useSearchParams, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,10 +14,21 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Search, Sparkles, Plus, Trash2, ArrowRightLeft, Upload, Weight } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowRightLeft,
+  ArrowUp,
+  ChevronRight,
+  Plus,
+  Search,
+  Sparkles,
+  Upload,
+  Weight,
+} from "lucide-react";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { canEditCouriers } from "@/lib/permissions";
+import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { deleteCourier } from "@/services/courierService";
 import type {
@@ -31,12 +40,7 @@ import { useUserServiceFilter } from "@/hooks/useUserServiceFilter";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useCourierList } from "@/hooks/useCourierList";
 import { DataTablePagination } from "@/components/data-table/data-table-pagination";
-import {
-  SortableHeader,
-  ariaSort,
-  type SortDirection,
-} from "@/components/data-table/data-table-column-header";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { type SortDirection } from "@/components/data-table/data-table-column-header";
 import { toast } from "@/hooks/use-toast";
 import MailboxSidePanel from "@/components/courier/MailboxSidePanel";
 import NewCourierDialog from "@/components/courier/NewCourierDialog";
@@ -52,6 +56,14 @@ function getLastLogin(): string | null {
 export function recordLogin() {
   localStorage.setItem(LAST_LOGIN_KEY, new Date().toISOString());
 }
+
+/**
+ * Gabarit de colonnes partagé par l'en-tête et les lignes de la liste. Sous
+ * `md`, la place manque pour quatre colonnes : date et expéditeur passent sous
+ * l'objet, en ligne de contexte.
+ */
+const ROW_GRID =
+  "grid grid-cols-[minmax(0,1fr)_28px] items-center gap-3 md:grid-cols-[92px_minmax(0,1fr)_130px_28px]";
 
 export default function BoiteAuxLettres() {
   const { organizationId } = useOrganization();
@@ -81,7 +93,6 @@ export default function BoiteAuxLettres() {
     }
     toast({ title: "Courrier supprimé" });
     if (selectedCourier?.id === courierToDelete.id) {
-      setPanelOpen(false);
       setSelectedCourier(null);
     }
     setCourierToDelete(null);
@@ -91,7 +102,6 @@ export default function BoiteAuxLettres() {
   }
   const [search, setSearch] = useState("");
   const [selectedCourier, setSelectedCourier] = useState<CourierWithRelations | null>(null);
-  const [panelOpen, setPanelOpen] = useState(false);
   const [newDialogOpen, setNewDialogOpen] = useState(false);
 
   const [searchParams, setSearchParams] = useSearchParams();
@@ -143,9 +153,8 @@ export default function BoiteAuxLettres() {
     defaultSort: { key: "received_at", dir: "desc" },
   });
 
-  // Cette page compose sa propre <Table> (colonne « nouveau », icônes de
-  // transfert et de volume) plutôt que d'utiliser DataTable : elle pilote donc
-  // le tri à la main, via le même état serveur que les autres listes.
+  // La liste est une maîtresse-détail, pas un tableau : elle pilote son tri à
+  // la main, via le même état serveur que les autres listes.
   function toggleSort(key: CourierSortKey, descFirst: boolean) {
     const current = list.sorting[0];
     const desc = current?.id === key ? !current.desc : descFirst;
@@ -156,6 +165,29 @@ export default function BoiteAuxLettres() {
     const current = list.sorting[0];
     if (current?.id !== key) return false;
     return current.desc ? "desc" : "asc";
+  }
+
+  /** En-tête de colonne triable de la liste. */
+  function SortButton({ label, sortKey, descFirst }: { label: string; sortKey: CourierSortKey; descFirst: boolean }) {
+    const dir = sortDirection(sortKey);
+    return (
+      <button
+        type="button"
+        onClick={() => toggleSort(sortKey, descFirst)}
+        aria-label={`Trier par ${label.toLowerCase()}`}
+        className={cn(
+          "inline-flex items-center gap-1 transition-colors hover:text-foreground",
+          dir && "text-foreground",
+        )}
+      >
+        {label}
+        {dir === "asc" ? (
+          <ArrowUp className="h-3 w-3" />
+        ) : dir === "desc" ? (
+          <ArrowDown className="h-3 w-3" />
+        ) : null}
+      </button>
+    );
   }
 
   // Étape 1 : capture le paramètre ?open= et nettoie l'URL immédiatement.
@@ -182,14 +214,24 @@ export default function BoiteAuxLettres() {
       .maybeSingle()
       .then(({ data }) => {
         if (cancelled) return;
-        if (data) {
-          setSelectedCourier(data as CourierWithRelations);
-          setPanelOpen(true);
-        }
+        if (data) setSelectedCourier(data as CourierWithRelations);
         setPendingOpenId(null);
       });
     return () => { cancelled = true; };
   }, [pendingOpenId, organizationId]);
+
+  // Premier courrier sélectionné d'office : le panneau de droite n'a de sens
+  // que rempli, et le tri met en tête celui qu'on veut traiter. Le ref retient
+  // la tentative : sans lui, un courrier que la requête par identifiant ne
+  // rend pas (droits, suppression concurrente) serait redemandé sans fin.
+  const autoSelectedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (selectedCourier || pendingOpenId || !list.rows.length) return;
+    const first = list.rows[0].id;
+    if (autoSelectedRef.current === first) return;
+    autoSelectedRef.current = first;
+    setPendingOpenId(first);
+  }, [list.rows, selectedCourier, pendingOpenId]);
 
   function isNew(courier: CourierListRow): boolean {
     if (!lastLogin) return false;
@@ -203,18 +245,10 @@ export default function BoiteAuxLettres() {
     return new Date(receivedAt) > new Date(pageOpenTime.current);
   }
 
-  function getSender(courier: CourierListRow): { last: string; first: string } {
-    // Le RPC renvoie nom et prénom séparément, précisément pour cette colonne.
-    return {
-      last: courier.sender_last_name ?? courier.sender_name ?? "—",
-      first: courier.sender_first_name ?? "—",
-    };
-  }
-
-  // Le panneau latéral attend un CourierWithRelations complet, que le RPC ne
-  // produit pas. On réutilise le chemin `pendingOpenId` déjà présent, qui
-  // recharge le courrier par identifiant : un aller-retour de plus au clic, et
-  // le panneau reçoit un enregistrement plus riche (documents, événements).
+  // Le panneau attend un CourierWithRelations complet, que le RPC ne produit
+  // pas. On réutilise le chemin `pendingOpenId` déjà présent, qui recharge le
+  // courrier par identifiant : un aller-retour de plus au clic, et le panneau
+  // reçoit un enregistrement plus riche (documents, événements).
   function handleRowClick(courier: CourierListRow) {
     setPendingOpenId(courier.id);
   }
@@ -222,29 +256,51 @@ export default function BoiteAuxLettres() {
   function renderRow(c: CourierListRow) {
     const isNewCourier = isNew(c);
     const isJustArrived = isNewThisSession(c);
-    const sender = getSender(c);
+    const selected = selectedCourier?.id === c.id;
+    const senderName = c.sender_name ?? [c.sender_last_name, c.sender_first_name].filter(Boolean).join(" ");
     return (
-      <TableRow
+      <button
         key={c.id}
+        type="button"
         onClick={() => handleRowClick(c)}
-        className={[
-          "cursor-pointer hover:bg-muted/50 transition-colors",
-          isNewCourier ? "border-l-[3px] border-l-secondary" : "border-l-[3px] border-l-transparent",
-          isJustArrived ? "bg-secondary/10" : "",
-        ].join(" ")}
+        aria-current={selected}
+        className={cn(
+          ROW_GRID,
+          "w-full border-b border-l-[3px] border-border px-4 py-3.5 text-left transition-colors last:border-b-0",
+          selected
+            ? "border-l-primary bg-primary/[0.06]"
+            : "border-l-transparent hover:bg-muted/50",
+        )}
       >
-        <TableCell className="w-10">
+        <span className="hidden items-center gap-1.5 text-sm tabular-nums text-muted-foreground md:flex">
           {isNewCourier && (
-            <Sparkles className={`h-4 w-4 ${isJustArrived ? "text-secondary animate-pulse" : "text-secondary/70"}`} />
+            <Sparkles
+              className={cn(
+                "h-3.5 w-3.5 shrink-0",
+                isJustArrived ? "animate-pulse text-secondary" : "text-secondary/70",
+              )}
+              aria-label={isJustArrived ? "Arrivé à l'instant" : "Nouveau depuis votre dernière visite"}
+            />
           )}
-        </TableCell>
-        <TableCell className="text-sm">
-          {c.received_at
-            ? new Date(c.received_at).toLocaleDateString("fr-FR")
-            : "—"}
-        </TableCell>
-        <TableCell className="text-sm font-medium max-w-[280px] truncate">
-          <span className="inline-flex items-center gap-1.5">
+          {c.received_at ? new Date(c.received_at).toLocaleDateString("fr-FR") : "—"}
+        </span>
+
+        <span className="min-w-0">
+          {c.assigned_service && (
+            <span className="mb-0.5 block truncate text-xs font-bold text-primary">
+              {c.assigned_service}
+            </span>
+          )}
+          <span className="flex min-w-0 items-center gap-1.5">
+            {isNewCourier && (
+              <Sparkles
+                className={cn(
+                  "h-3.5 w-3.5 shrink-0 md:hidden",
+                  isJustArrived ? "animate-pulse text-secondary" : "text-secondary/70",
+                )}
+                aria-label={isJustArrived ? "Arrivé à l'instant" : "Nouveau depuis votre dernière visite"}
+              />
+            )}
             {/* Remplace l'encadré « Courriers transférés » : l'information reste
                 visible ligne par ligne, y compris dans l'onglet « Tous ». */}
             {c.is_transferred && (
@@ -262,69 +318,56 @@ export default function BoiteAuxLettres() {
                 aria-label="Courrier volumineux"
               />
             )}
-            {c.subject ?? "Sans titre"}
+            <span className="truncate text-sm font-semibold">{c.subject ?? "Sans titre"}</span>
           </span>
-        </TableCell>
-        <TableCell className="text-sm font-medium">{c.recipient_name ?? "—"}</TableCell>
-        <TableCell className="text-sm font-medium">{sender.last}</TableCell>
-        <TableCell className="text-sm">{sender.first}</TableCell>
-        <TableCell className="w-10">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-muted-foreground hover:text-destructive"
-            onClick={(e) => {
-              e.stopPropagation();
-              setCourierToDelete(c);
-            }}
-            aria-label="Supprimer le courrier"
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </TableCell>
-      </TableRow>
+          <span className="mt-0.5 block truncate text-xs text-muted-foreground md:hidden">
+            {[c.received_at ? new Date(c.received_at).toLocaleDateString("fr-FR") : null, senderName]
+              .filter(Boolean)
+              .join(" · ") || "—"}
+          </span>
+        </span>
+
+        <span className="hidden truncate text-sm md:block">{senderName || "—"}</span>
+
+        <ChevronRight
+          className={cn("h-4 w-4 justify-self-center", selected ? "text-primary" : "text-border")}
+        />
+      </button>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto w-full max-w-[1600px] px-4 py-5 pb-8 md:px-6">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <img src={mailboxIcon} alt="" className="h-6 w-6 text-primary" style={{ filter: "var(--icon-primary-filter, none)" }} />
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Boîte aux lettres</h1>
-          <p className="text-muted-foreground">
-            Retrouvez ici les courriers reçus en attente de prise en charge.
-          </p>
-        </div>
-      </div>
-
-      {/* Search + actions */}
-      <div className="flex items-center gap-2 justify-between flex-wrap">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Rechercher par objet…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
+      <div className="mb-4 flex flex-wrap items-end gap-4">
+        <div className="flex min-w-0 flex-1 basis-[320px] items-center gap-3">
+          <img
+            src={mailboxIcon}
+            alt=""
+            className="h-6 w-6 text-primary"
+            style={{ filter: "var(--icon-primary-filter, none)" }}
           />
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold tracking-tight">Boîte aux lettres</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Retrouvez ici les courriers reçus en attente de prise en charge.
+            </p>
+          </div>
         </div>
         {organizationId && canEdit && (
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => navigate("/import-en-masse")}>
-              <Upload className="h-4 w-4 mr-1" />
+          <div className="flex items-center gap-2.5">
+            <Button variant="outline" className="h-10 gap-2" onClick={() => navigate("/import-en-masse")}>
+              <Upload className="h-4 w-4" />
               Importer en masse
             </Button>
-            <Button onClick={() => setNewDialogOpen(true)}>
-              <Plus className="h-4 w-4 mr-1" />
+            <Button className="h-10 gap-2 font-bold" onClick={() => setNewDialogOpen(true)}>
+              <Plus className="h-4 w-4" />
               Nouveau courrier
             </Button>
           </div>
         )}
       </div>
 
-      {/* Content */}
       {!organizationId ? (
         <Card>
           <CardContent className="py-8 text-center text-muted-foreground">
@@ -332,82 +375,112 @@ export default function BoiteAuxLettres() {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-4">
-          {/* Les transférés étaient auparavant un second tableau, alimenté par un
-              partage client de la liste. Devenu un filtre serveur : paginé, un
-              partage n'aurait montré que les transférés de la page courante. */}
-          <Tabs value={tab} onValueChange={(v) => setTab(v as "all" | "transferred")}>
-            <TabsList>
-              <TabsTrigger value="all">Tous</TabsTrigger>
-              <TabsTrigger value="transferred">
-                <ArrowRightLeft className="h-4 w-4 mr-1.5" />
-                Transférés
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
+        <div className="flex flex-wrap items-start gap-5">
+          <section className="flex min-w-0 flex-1 basis-[620px] flex-col gap-3.5">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="relative min-w-0 max-w-[360px] flex-1 basis-[260px]">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Rechercher par objet…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="h-11 pl-9"
+                />
+              </div>
+              {/* Les transférés étaient auparavant un second tableau, alimenté par
+                  un partage client de la liste. Devenu un filtre serveur : paginé,
+                  un partage n'aurait montré que les transférés de la page courante. */}
+              <div className="flex rounded-full bg-muted p-1" role="tablist" aria-label="Filtre">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === "all"}
+                  onClick={() => setTab("all")}
+                  className={cn(
+                    "h-[34px] rounded-full px-4 text-sm font-bold transition-colors",
+                    tab === "all"
+                      ? "bg-card shadow-airbnb-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  Tous
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === "transferred"}
+                  onClick={() => setTab("transferred")}
+                  className={cn(
+                    "inline-flex h-[34px] items-center gap-1.5 rounded-full px-4 text-sm font-semibold transition-colors",
+                    tab === "transferred"
+                      ? "bg-card font-bold shadow-airbnb-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <ArrowRightLeft className="h-3.5 w-3.5" />
+                  Transférés
+                </button>
+              </div>
+              <div className="flex-1" />
+              <span className="text-sm text-muted-foreground">
+                {list.totalCount} courrier{list.totalCount > 1 ? "s" : ""} en attente
+              </span>
+            </div>
 
-          <Card>
-            {list.isLoading ? (
-              <CardContent className="py-8 text-center text-muted-foreground">Chargement…</CardContent>
-            ) : !list.rows.length ? (
-              <CardContent className="py-8 text-center text-muted-foreground">
-                {tab === "transferred"
-                  ? "Aucun courrier transféré."
-                  : "Aucun courrier en attente dans la boîte aux lettres."}
-              </CardContent>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-10"></TableHead>
-                    <TableHead aria-sort={ariaSort(sortDirection("received_at"))}>
-                      <SortableHeader
-                        title="Date de réception"
-                        direction={sortDirection("received_at")}
-                        onToggle={() => toggleSort("received_at", true)}
-                      />
-                    </TableHead>
-                    <TableHead aria-sort={ariaSort(sortDirection("subject"))}>
-                      <SortableHeader
-                        title="Objet"
-                        direction={sortDirection("subject")}
-                        onToggle={() => toggleSort("subject", false)}
-                      />
-                    </TableHead>
-                    {/* Destinataire et expéditeur ne sont pas triables : le RPC
-                        les tire de courier_participants APRÈS le découpage, sur
-                        la seule page retenue. */}
-                    <TableHead>Destinataire</TableHead>
-                    <TableHead>Nom expéditeur</TableHead>
-                    <TableHead>Prénom expéditeur</TableHead>
-                    <TableHead className="w-10"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>{list.rows.map((c) => renderRow(c))}</TableBody>
-              </Table>
-            )}
-            <DataTablePagination
-              page={list.page}
-              pageCount={list.pageCount}
-              pageSize={list.pageSize}
-              totalCount={list.totalCount}
-              onPageChange={list.setPage}
-              onPageSizeChange={list.setPageSize}
-              isLoading={list.isFetching}
+            <Card className="overflow-hidden p-0 shadow-airbnb-sm">
+              {list.isLoading ? (
+                <div className="py-8 text-center text-sm text-muted-foreground">Chargement…</div>
+              ) : !list.rows.length ? (
+                <div className="py-8 text-center text-sm text-muted-foreground">
+                  {tab === "transferred"
+                    ? "Aucun courrier transféré."
+                    : "Aucun courrier en attente dans la boîte aux lettres."}
+                </div>
+              ) : (
+                <>
+                  {/* Le tri par colonne est une affordance de bureau : sous `md`
+                      la liste garde son ordre par défaut (plus récents d'abord). */}
+                  <div
+                    className={cn(
+                      ROW_GRID,
+                      "hidden border-b border-l-[3px] border-l-transparent bg-muted/50 px-4 py-3 text-xs font-bold text-muted-foreground md:grid",
+                    )}
+                  >
+                    <SortButton label="Réception" sortKey="received_at" descFirst />
+                    <SortButton label="Objet" sortKey="subject" descFirst={false} />
+                    {/* Expéditeur n'est pas triable : le RPC le tire de
+                        courier_participants APRÈS le découpage, sur la seule
+                        page retenue. */}
+                    <span>Expéditeur</span>
+                    <span />
+                  </div>
+                  {list.rows.map((c) => renderRow(c))}
+                </>
+              )}
+              <DataTablePagination
+                page={list.page}
+                pageCount={list.pageCount}
+                pageSize={list.pageSize}
+                totalCount={list.totalCount}
+                onPageChange={list.setPage}
+                onPageSizeChange={list.setPageSize}
+                isLoading={list.isFetching}
+              />
+            </Card>
+          </section>
+
+          <aside
+            className="flex w-full min-w-0 flex-1 basis-[420px] flex-col gap-3.5 lg:sticky lg:top-0 lg:max-w-[520px] lg:self-start"
+            aria-label="Courrier sélectionné"
+          >
+            <MailboxSidePanel
+              courier={selectedCourier}
+              organizationId={organizationId}
+              onClose={() => setSelectedCourier(null)}
+              onDelete={(c) => setCourierToDelete(c as unknown as CourierListRow)}
             />
-          </Card>
+          </aside>
         </div>
-      )}
-
-      {/* Side panel */}
-      {organizationId && (
-        <MailboxSidePanel
-          courier={selectedCourier}
-          open={panelOpen}
-          onOpenChange={setPanelOpen}
-          organizationId={organizationId}
-          onDelete={(c) => setCourierToDelete(c as unknown as CourierListRow)}
-        />
       )}
 
       {/* New courier dialog */}
