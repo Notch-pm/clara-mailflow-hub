@@ -8,7 +8,7 @@
 
 La transition d'état d'un courrier (ou d'une réponse) est un **simple UPDATE** de `couriers.workflow_state_id` :
 
-- Courrier entrant : `MailboxSidePanel.tsx:498` → `updateCourier({ workflow_state_id })` (update générique).
+- Courrier entrant : `useCourierWorkspace.ts:400` → `updateCourier({ workflow_state_id })` (update générique).
 - Réponse : `courierReplyService.ts:205` → `.update({ workflow_state_id })`. Les réponses **sont** des lignes `couriers` (`direction='outbound'`, `parent_courier_id`, workflow `type='reply'`).
 
 **Aucun filet serveur** ne valide la légalité de la transition (vérifié en base) :
@@ -25,7 +25,7 @@ La transition d'état d'un courrier (ou d'une réponse) est un **simple UPDATE**
 Un retour arrière d'état **est** une `workflow_transitions` de `kind='previous'` :
 
 - `ReplyComposer.tsx:285-291,751` : toutes les transitions offertes (suivante, précédente, autres) proviennent exclusivement des `workflow_transitions` configurées (`from_state_id = état courant`).
-- `MailboxSidePanel.tsx:776` : le bouton retour cherche une transition `kind='previous'`.
+- `CourierWorkspacePage.tsx` / `MailboxSidePanel.tsx` : le bouton retour cherche une transition `kind='previous'` parmi celles servies par `useCourierWorkspace`.
 
 Le garde vérifie l'existence d'une transition `(from=OLD, to=NEW)` **sans regarder le `kind`** → il **autorise** tout retour arrière configuré. **Aucune régression, aucun travail de config requis.** (Prod au 2026-07-23 : `kind` ∈ {`next` ×17, `NULL` ×12}, aucune arête `previous` → aucun retour arrière n'est même proposé aujourd'hui.)
 
@@ -110,7 +110,7 @@ Nouveau `src/test-integration/garde-transitions.itest.ts` (moule `droits-roles.i
 
 ## 9. Chemins de production à re-tester manuellement après implémentation
 
-`MailboxSidePanel.tsx:498` (transition), `:433` (réassignation reset) · `CloseLinkedCouriersDialog.tsx:162` (clôture cascade) · `courierReplyService.ts:205` (transition réponse) · `NewCourierDialog.tsx:254` (création) · import en masse.
+`useCourierWorkspace.ts:400` (transition), `:334` (réassignation reset) · `CloseLinkedCouriersDialog.tsx:162` (clôture cascade) · `courierReplyService.ts:205` (transition réponse) · `NewCourierDialog.tsx:254` (création) · import en masse.
 
 ## 10. Risques
 

@@ -1,16 +1,13 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
-import { X, ArrowRight, ArrowLeft, ArrowRightLeft, Tag as TagIcon, Check, Briefcase, FileText, Trash2, Maximize2, ExternalLink, ChevronDown } from "lucide-react";
+import { useState } from "react";
+import { X, ArrowLeft, ArrowRightLeft, Tag as TagIcon, Check, FileText, Trash2, ExternalLink, ChevronDown } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Tabs, TabsContent } from "@/components/ui/tabs";
-import { ResponsiveTabsList, type ResponsiveTabItem } from "@/components/courier/ResponsiveTabsList";
+import { Link, useNavigate } from "react-router-dom";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,717 +38,100 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
-import { updateCourier, getCourierById } from "@/services/courierService";
-import { logEvent } from "@/services/courierEventService";
-import { listTags, TAG_GROUPS, type CourierTag, type TagGroup } from "@/services/courierTagService";
-import { splitAppliedTags } from "@/lib/courier-tags";
-import {
-  assignableOrgs,
-  assignOrganization,
-  listOrgsWithConfig,
-} from "@/services/socleOrgConfigService";
-import { useUserServiceFilter } from "@/hooks/useUserServiceFilter";
-import { getDocuments } from "@/services/courierDocumentService";
-import { addParticipant, updateParticipant } from "@/services/courierParticipantService";
-import {
-  contactRelationLines,
-  findContactByEmail,
-  getContact,
-  type SocleContact,
-} from "@/services/socleContactService";
-import { formatContactAddressInline } from "@/lib/prefill-mapping";
+import { TAG_GROUPS, type TagGroup } from "@/services/courierTagService";
+import { assignableOrgs } from "@/services/socleOrgConfigService";
 import { cn } from "@/lib/utils";
 import { readableTextColor } from "@/lib/tag-color";
-import { useAuth } from "@/contexts/AuthContext";
-import { canEditCouriers } from "@/lib/permissions";
+import { categoryTone } from "@/lib/workflow-category";
 import DocumentManager from "./DocumentManager";
 import DocumentViewer from "./DocumentViewer";
 import InlineEditField from "./InlineEditField";
-import ContactPicker, { contactDisplay } from "./ContactPicker";
+import ContactPicker from "./ContactPicker";
 import { QuartierBadge } from "@/components/contacts/QuartierBadge";
 import CourierNotes from "./CourierNotes";
-import FloatingNotesPanel from "./FloatingNotesPanel";
-import { listNotes, type CourierNote } from "@/services/courierNoteService";
-import ParticipantManager from "./ParticipantManager";
-import CourierHistoryTab from "./CourierHistoryTab";
-import ContentIntentsTab from "./ContentIntentsTab";
-import LinkedActionsTab from "./LinkedActionsTab";
-import ReplyComposer from "./ReplyComposer";
-import CourierLinksTab from "./CourierLinksTab";
 import SimilarCouriersAlert from "./SimilarCouriersAlert";
 import CloseLinkedCouriersDialog from "./CloseLinkedCouriersDialog";
-import { listRepliesForCourier } from "@/services/courierReplyService";
-import { listRelationsForCourier } from "@/services/courierRelationService";
-import { listTicketsForCourier } from "@/services/actionTicketService";
-import type { CourierChannel, CourierParticipant, WorkflowTransition, WorkflowState, WorkflowCategory } from "@/types/courier";
-
-/** Champs d'un participant modifiables depuis la colonne latérale. */
-type ParticipantFields = Parameters<typeof updateParticipant>[1];
-
-const channelLabels: Record<CourierChannel, string> = {
-  paper: "Papier",
-  email: "Email",
-  portal: "Portail",
-};
-
-interface MailboxCourier {
-  id: string;
-  subject: string | null;
-  channel: CourierChannel;
-  received_at: string | null;
-  metadata: any;
-  workflow_state_id: string | null;
-  organization_id: string;
-  assigned_service: string | null;
-  courier_participants?: CourierParticipant[];
-  [key: string]: any;
-}
+import {
+  channelLabels,
+  useCourierWorkspace,
+  type WorkspaceCourier,
+} from "@/hooks/useCourierWorkspace";
+import type { CourierChannel } from "@/types/courier";
 
 interface Props {
-  courier: MailboxCourier | null;
+  courier: WorkspaceCourier | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   organizationId: string;
-  /** When true, displays the body inside tabs (Détail / Actions liées / Réponse). */
-  withTabs?: boolean;
   /** When true, the panel is fully read-only: no edits, no transitions, no uploads, no notes. */
   readOnly?: boolean;
   /** When provided, displays a delete button in the header. */
-  onDelete?: (courier: MailboxCourier) => void;
-  /** When true, the sheet takes the full screen width (used by the detail page). */
-  fullScreen?: boolean;
-  /** When true, hides the full-screen navigation button. */
-  disableFullScreen?: boolean;
+  onDelete?: (courier: WorkspaceCourier) => void;
 }
 
-export default function MailboxSidePanel({ courier, open, onOpenChange, organizationId, withTabs = false, readOnly = false, onDelete, fullScreen = false, disableFullScreen = false }: Props) {
-  const queryClient = useQueryClient();
+/**
+ * Panneau de tri de la boîte aux lettres : on qualifie le courrier (expéditeur,
+ * tags, organisation gestionnaire) puis on le passe en instruction. L'écran
+ * d'instruction lui-même vit dans `CourierWorkspacePage`.
+ */
+export default function MailboxSidePanel({ courier, open, onOpenChange, organizationId, readOnly = false, onDelete }: Props) {
   const navigate = useNavigate();
-  const { profile, membership } = useAuth();
-  // Point de vérité unique : un consultant (lecteur seul) ne peut jamais
-  // écrire, quelle que soit la valeur de la prop `readOnly` passée par l'appelant.
-  const effectiveReadOnly = readOnly || !canEditCouriers(profile, membership);
   // Un sélecteur par groupe : l'état porte le groupe ouvert, pas un booléen.
   const [tagPopoverGroup, setTagPopoverGroup] = useState<TagGroup | null>(null);
   const [servicePopoverOpen, setServicePopoverOpen] = useState(false);
-  const [replyState, setReplyState] = useState<{ name: string; category: string | null } | null>(null);
-  const [transferTargetServiceId, setTransferTargetServiceId] = useState<string>("");
-  const [transferConfirmOpen, setTransferConfirmOpen] = useState(false);
-  const [closeLinkedOpen, setCloseLinkedOpen] = useState(false);
-  const [closeLinkedIds, setCloseLinkedIds] = useState<string[]>([]);
-  const [searchParams] = useSearchParams();
-  const initialTabParam = searchParams.get("tab");
-  const initialReplyIdParam = searchParams.get("replyId");
-  const initialEditParam = searchParams.get("edit") === "1";
-  const [activeTab, setActiveTab] = useState<string>(initialTabParam || "detail");
 
-  const { data: replyList = [] } = useQuery({
-    queryKey: ["courier-replies", courier?.id],
-    queryFn: () => listRepliesForCourier(organizationId, courier!.id),
-    enabled: !!courier?.id && !!organizationId,
-  });
-
-  const { data: notesList = [] } = useQuery<CourierNote[]>({
-    queryKey: ["courier-notes", courier?.id],
-    queryFn: () => listNotes(courier!.id),
-    enabled: !!courier?.id,
-  });
-
-  // Même clé ET même queryFn que LinkedActionsTab : deux queryFn différentes sur
-  // une clé partagée s'écrasent mutuellement dans le cache (badge vs. liste).
-  const { data: ticketsList = [] } = useQuery({
-    queryKey: ["action-tickets", courier?.id],
-    queryFn: () => listTicketsForCourier(courier!.id),
-    enabled: !!courier?.id,
-  });
-
-  const { data: relationsList = [] } = useQuery({
-    queryKey: ["courier-relations", courier?.id],
-    queryFn: () => listRelationsForCourier(courier!.id),
-    enabled: !!courier?.id,
-  });
-
-  const isOutbound = courier?.direction === "outbound";
-
-  const participants = courier?.courier_participants ?? [];
-  const sender = participants.find((p) => p.role === "sender");
-  const recipient = participants.find((p) => p.role === "recipient");
-
-  // Fiche référentiel de l'expéditeur lié : affiche ses relations sous le nom
-  // (ex. « Gérant — Boulangerie du Forum SARL »). Best-effort, jamais bloquant.
-  const { data: senderContact } = useQuery({
-    queryKey: ["socle-contact", organizationId, sender?.socle_contact_id],
-    queryFn: async () => {
-      try {
-        return await getContact(organizationId, sender!.socle_contact_id!);
-      } catch {
-        return null;
-      }
-    },
-    enabled: open && !!organizationId && !!sender?.socle_contact_id,
-    staleTime: 30_000,
-  });
-  const senderRelationLines = senderContact ? contactRelationLines(senderContact) : [];
-
-  const countBadge = (n: number) => (
-    <span className="inline-flex items-center justify-center rounded-full bg-primary/15 text-primary px-1.5 text-[10px] font-medium leading-none min-w-[18px] h-[18px]">
-      {n}
-    </span>
-  );
-
-  const tabItems: ResponsiveTabItem[] = useMemo(() => {
-    const items: ResponsiveTabItem[] = [{ value: "detail", label: "Détail du courrier" }];
-    if (!isOutbound) {
-      items.push({ value: "content", label: "Contenu et intentions" });
-      items.push({
-        value: "actions",
-        label: "Actions liées",
-        badge: ticketsList.length > 0 ? countBadge(ticketsList.length) : null,
-      });
-      items.push({
-        value: "response",
-        label: replyList.length > 1 ? "Réponses" : "Réponse",
-        badge: (
-          <>
-            {replyList.length > 0 && countBadge(replyList.length)}
-            {replyState && (
-              <span
-                className={cn(
-                  "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none",
-                  replyState.category === "processed"
-                    ? "bg-green-500/15 text-green-700"
-                    : replyState.category === "processing"
-                    ? "bg-blue-500/15 text-blue-700"
-                    : "bg-yellow-500/15 text-yellow-700",
-                )}
-              >
-                {replyState.name}
-              </span>
-            )}
-          </>
-        ),
-      });
-    }
-    items.push({
-      value: "participants",
-      label: "Participants",
-      badge: participants.length > 0 ? countBadge(participants.length) : null,
-    });
-    if (!isOutbound) {
-      items.push({
-        value: "links",
-        label: "Liens",
-        badge: relationsList.length > 0 ? countBadge(relationsList.length) : null,
-      });
-    }
-    items.push({ value: "history", label: "Historique" });
-    return items;
-  }, [isOutbound, ticketsList.length, replyList.length, replyState, participants.length, relationsList.length]);
-
-  // For outbound couriers, fetch the linked parent inbound courier
-  const { data: parentCourier } = useQuery({
-    queryKey: ["courier", courier?.parent_courier_id, organizationId],
-    queryFn: async () => {
-      const { data, error } = await getCourierById(organizationId, courier!.parent_courier_id!);
-      if (error) throw error;
-      return data;
-    },
-    enabled: isOutbound && !!courier?.parent_courier_id && !!organizationId,
-  });
-  const parentSender = parentCourier?.courier_participants?.find((p: CourierParticipant) => p.role === "sender");
-
-  // Local copy of tags so the UI reflects mutations immediately
-  // (the parent's `courier` prop is a snapshot and doesn't refetch on tag change).
-  const [selectedTags, setSelectedTags] = useState<string[]>(
-    (courier?.metadata?.tags as string[] | undefined) ?? [],
-  );
-  useEffect(() => {
-    setSelectedTags((courier?.metadata?.tags as string[] | undefined) ?? []);
-  }, [courier?.id, courier?.metadata]);
-
-  // Available tags for the org
-  const { data: orgTags } = useQuery({
-    queryKey: ["courier-tags", organizationId],
-    queryFn: () => listTags(organizationId),
-    enabled: !!organizationId && open,
-  });
-
-  const tagByName = new Map<string, CourierTag>(
-    (orgTags ?? []).map((t) => [t.name.toLowerCase(), t]),
-  );
-
-  // Les tags appliqués se lisent PAR GROUPE : « de quoi ça parle » et « sur
-  // quel ton » sont deux questions distinctes, mêlées dans une seule rangée
-  // jusqu'au 2026-09-10.
-  const appliedByGroup = splitAppliedTags(selectedTags, orgTags ?? []);
-
-  // Organisations (miroir Socle) assignables — remplacent les services.
-  const { data: services } = useQuery({
-    queryKey: ["socle-orgs-config", organizationId],
-    queryFn: () => listOrgsWithConfig(organizationId),
-    enabled: !!organizationId && open,
-  });
-
-  // Local override for assigned_service so the UI reflects the change immediately
-  // after the user picks an organization (the parent prop is a snapshot and only
-  // updates after the next mailbox-couriers refetch resolves).
-  const [localAssignedService, setLocalAssignedService] = useState<string | null>(
-    courier?.assigned_service ?? null,
-  );
-  // UUID de l'organisation gestionnaire — clé de résolution (le nom n'est qu'affichage).
-  const [localSocleOrgId, setLocalSocleOrgId] = useState<string | null>(
-    (courier?.socle_organization_id as string | null) ?? null,
-  );
-  // Same for workflow_state_id — when assigning an organization we land in its
-  // initial state, and we need transitions to be queryable straight away (without
-  // waiting for the parent's snapshot to refetch and reach this component again).
-  const [localWorkflowStateId, setLocalWorkflowStateId] = useState<string | null>(
-    courier?.workflow_state_id ?? null,
-  );
-  useEffect(() => {
-    setLocalAssignedService(courier?.assigned_service ?? null);
-    setLocalSocleOrgId((courier?.socle_organization_id as string | null) ?? null);
-    setLocalWorkflowStateId(courier?.workflow_state_id ?? null);
-    setReplyState(null);
-  }, [courier?.id, courier?.assigned_service, courier?.socle_organization_id, courier?.workflow_state_id]);
-
-  const userServiceFilter = useUserServiceFilter();
-
-  // Si le courrier vient d'une config IMAP précise, restreindre les organisations proposées.
-  const imapSettingsId = (courier?.metadata?.imap_settings_id as string | null) ?? null;
-  const availableServices = useMemo(() => {
-    if (!services) return [];
-    let list = assignableOrgs(services);
-    if (imapSettingsId) {
-      const linked = list.filter((o) =>
-        (o.imap_configs ?? []).some((c) => c.id === imapSettingsId),
-      );
-      if (linked.length > 0) list = linked;
-    }
-    if (userServiceFilter !== null) {
-      list = list.filter((o) => userServiceFilter.includes(o.id));
-    }
-    // Always include the currently assigned organization so the Select can display it,
-    // even if it was filtered out (e.g. different IMAP box or rights filter).
-    const currentId = localSocleOrgId;
-    if (currentId) {
-      const current = services.find((o) => o.id === currentId);
-      if (current && !list.find((o) => o.id === current.id)) {
-        list = [current, ...list];
-      }
-    }
-    return list;
-  }, [services, imapSettingsId, userServiceFilter, localSocleOrgId]);
-
-  // Resolve courier's current organization by UUID (fallback nom pour l'existant legacy)
-  const currentService = useMemo(() => {
-    if (!services) return null;
-    if (localSocleOrgId) {
-      const byId = services.find((o) => o.id === localSocleOrgId);
-      if (byId) return byId;
-    }
-    if (!localAssignedService) return null;
-    return (
-      services.find(
-        (o) => o.name.toLowerCase() === localAssignedService.toLowerCase(),
-      ) ?? null
-    );
-  }, [localSocleOrgId, localAssignedService, services]);
-
-  // Transitions from current state, scoped to the service's workflow
-  const { data: transitions } = useQuery({
-    queryKey: [
-      "mailbox-transitions",
-      localWorkflowStateId,
-      currentService?.workflow_id,
-    ],
-    queryFn: async () => {
-      if (!localWorkflowStateId || !currentService?.workflow_id) return [];
-      const { data, error } = await supabase
-        .from("workflow_transitions")
-        .select("*, to_state:workflow_states!workflow_transitions_to_state_id_fkey(id, name, category)")
-        .eq("workflow_id", currentService.workflow_id)
-        .eq("from_state_id", localWorkflowStateId);
-      if (error) throw error;
-      return (data ?? []) as (WorkflowTransition & { to_state: WorkflowState })[];
-    },
-    enabled: !!localWorkflowStateId && !!currentService?.workflow_id,
-  });
-
-  // Is the current state a final one? (used to decide if notes can be added)
-  const { data: currentStateInfo } = useQuery({
-    queryKey: ["workflow-state-info", localWorkflowStateId],
-    queryFn: async () => {
-      if (!localWorkflowStateId) return null;
-      const { data, error } = await supabase
-        .from("workflow_states")
-        .select("id, name, category, is_final, is_initial")
-        .eq("id", localWorkflowStateId)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!localWorkflowStateId && open,
-  });
-  const isFinalState = currentStateInfo?.is_final === true;
-  const isInitialState = !localWorkflowStateId || currentStateInfo?.is_initial === true;
-
-  const serviceMutation = useMutation({
-    mutationFn: async (newOrgId: string) => {
-      if (!courier) return null;
-      const newOrg = services?.find((o) => o.id === newOrgId);
-      if (!newOrg) throw new Error("Organisation introuvable");
-      return assignOrganization(organizationId, courier, newOrg);
-    },
-    onSuccess: (result, newOrgId) => {
-      if (result?.name) setLocalAssignedService(result.name);
-      setLocalSocleOrgId(newOrgId);
-      // Also update the local workflow state so transitions become queryable
-      // immediately, without waiting for the parent's snapshot to refetch.
-      setLocalWorkflowStateId(result?.initialStateId ?? null);
-      queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
-      queryClient.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
-      queryClient.invalidateQueries({ queryKey: ["courier-events", courier?.id] });
-      toast.success("Organisation gestionnaire mise à jour");
-    },
-    onError: (err: Error) => toast.error(err.message),
-  });
-
-  const transferMutation = useMutation({
-    mutationFn: async ({ targetServiceId, loseAccess }: { targetServiceId: string; loseAccess: boolean }) => {
-      if (!courier) return null;
-      const targetOrg = services?.find((o) => o.id === targetServiceId);
-      if (!targetOrg) throw new Error("Organisation introuvable");
-
-      // Fetch initial state of target organization's workflow
-      let initial: { id: string; name: string; category: string } | null = null;
-      if (targetOrg.workflow_id) {
-        const { data, error: stateErr } = await supabase
-          .from("workflow_states")
-          .select("id, name, category")
-          .eq("workflow_id", targetOrg.workflow_id)
-          .eq("is_initial", true)
-          .maybeSingle();
-        if (stateErr) throw stateErr;
-        initial = data as typeof initial;
-      }
-
-      const previousService = courier.assigned_service ?? null;
-      const currentMeta = courier.metadata ?? {};
-      const { error: updateErr } = await updateCourier(organizationId, courier.id, {
-        assigned_service: targetOrg.name,
-        socle_organization_id: targetOrg.id,
-        workflow_state_id: initial?.id ?? null,
-        metadata: { ...currentMeta, socle_organization_id: targetOrg.id },
-      });
-      if (updateErr) throw updateErr;
-
-      await logEvent(organizationId, courier.id, "service_transferred", {
-        from: previousService,
-        to: targetOrg.name,
-      });
-
-      // Notify all members of the target organization
-      const { data: members } = await supabase
-        .from("socle_organization_members")
-        .select("user_id")
-        .eq("socle_organization_id", targetOrg.id);
-      if (members && (members as { user_id: string }[]).length > 0) {
-        const subject = (courier as any).subject ?? "(sans objet)";
-        const notifs = (members as { user_id: string }[]).map((m) => ({
-          organization_id: organizationId,
-          user_id: m.user_id,
-          type: "courier_transferred",
-          title: `Transféré : ${subject}`,
-          resource_id: courier.id,
-        }));
-        const { error: notifError } = await supabase.from("notifications").insert(notifs);
-        // Non-bloquant (le transfert lui-même a réussi) mais plus silencieux :
-        // c'est ce silence qui a masqué l'absence de policy INSERT.
-        if (notifError) console.error("Notifications de transfert non créées :", notifError);
-      }
-
-      return { name: targetOrg.name, initialStateId: initial?.id ?? null, loseAccess };
-    },
-    onSuccess: (result) => {
-      setTransferConfirmOpen(false);
-      setTransferTargetServiceId("");
-      queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
-      queryClient.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
-      queryClient.invalidateQueries({ queryKey: ["instruction-couriers"] });
-      toast.success("Courrier transféré");
-      onOpenChange(false);
-    },
-    onError: (err: Error) => toast.error(err.message),
-  });
-
-  const transitionMutation = useMutation({
-    mutationFn: async (toStateId: string) => {
-      if (!courier) return;
-
-      // Look up current and target state metadata for the event payload.
-      const fromState = transitions?.find(
-        (t) => (t.to_state as any)?.id === toStateId,
-      );
-      const { data: toStateRow } = await supabase
-        .from("workflow_states")
-        .select("id, name, category, is_initial, is_final")
-        .eq("id", toStateId)
-        .maybeSingle();
-      const fromStateRow = courier.workflow_state_id
-        ? (await supabase
-            .from("workflow_states")
-            .select("id, name, category")
-            .eq("id", courier.workflow_state_id)
-            .maybeSingle()).data
-        : null;
-
-      const { error } = await updateCourier(organizationId, courier.id, {
-        workflow_state_id: toStateId,
-      });
-      if (error) throw error;
-
-      await logEvent(organizationId, courier.id, "state_changed", {
-        from_id: fromStateRow?.id ?? null,
-        from_name: fromStateRow?.name ?? null,
-        to_id: toStateRow?.id ?? null,
-        to_name: toStateRow?.name ?? fromState?.name ?? null,
-      });
-
-      // First time entering a processing state → instruction_started + contact match.
-      if (
-        toStateRow?.category === "processing" &&
-        fromStateRow?.category !== "processing"
-      ) {
-        await logEvent(organizationId, courier.id, "instruction_started", {
-          state_name: toStateRow.name,
-        });
-
-        // Rapprochement automatique de l'expéditeur avec un contact Socle par
-        // email (best-effort : un Socle indisponible ne bloque jamais le passage
-        // en instruction). Pas d'auto-création : le Socle exige la civilité
-        // pour une personne — l'agent crée/associe la fiche via les participants.
-        const senderParticipant = courier.courier_participants?.find(
-          (p) => p.role === "sender",
-        );
-        if (senderParticipant && !senderParticipant.socle_contact_id && senderParticipant.email) {
-          try {
-            const matched = await findContactByEmail(organizationId, senderParticipant.email);
-            if (matched) {
-              await updateParticipant(senderParticipant.id, { socle_contact_id: matched.id });
-            }
-          } catch (e) {
-            console.warn("Rapprochement contact Socle impossible :", e);
-          }
-        }
-      }
-      return { toStateId, isInitial: toStateRow?.is_initial === true, isFinal: toStateRow?.is_final === true };
-    },
-    onSuccess: (result) => {
-      if (!result) return;
-      queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
-      queryClient.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
-      queryClient.invalidateQueries({ queryKey: ["instruction-couriers"] });
-      queryClient.invalidateQueries({ queryKey: ["courier-events", courier?.id] });
-      queryClient.invalidateQueries({ queryKey: ["courier-participants", courier?.id] });
-      toast.success("Courrier déplacé");
-
-      // If we just closed this courier and it has linked couriers that are
-      // not yet closed, propose to close them too.
-      if (result.isFinal && courier) {
-        const siblingIds = (relationsList ?? [])
-          .map((r) => r.related?.id)
-          .filter((id): id is string => !!id && id !== courier.id);
-        if (siblingIds.length > 0) {
-          setCloseLinkedIds(siblingIds);
-          setCloseLinkedOpen(true);
-          setLocalWorkflowStateId(result.toStateId);
-          return;
-        }
-      }
-
-      if (!fullScreen && !result.isInitial) {
-        navigate(`/courrier/${courier?.id}`);
-      } else {
-        setLocalWorkflowStateId(result.toStateId);
-      }
-    },
-    onError: (err: Error) => toast.error(err.message),
-  });
-
-  const tagMutation = useMutation({
-    mutationFn: async (updatedTags: string[]) => {
-      if (!courier) return;
-      const currentMeta = courier.metadata ?? {};
-      const { error } = await updateCourier(organizationId, courier.id, {
-        metadata: { ...currentMeta, tags: updatedTags },
-      });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
-      queryClient.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
-    },
-    onError: (err: Error) => toast.error(err.message),
-  });
-
-  function toggleTag(tagName: string) {
-    const exists = selectedTags.some((t) => t.toLowerCase() === tagName.toLowerCase());
-    const next = exists
-      ? selectedTags.filter((t) => t.toLowerCase() !== tagName.toLowerCase())
-      : [...selectedTags, tagName];
-    const previous = selectedTags;
-    setSelectedTags(next);
-    tagMutation.mutate(next, { onError: () => setSelectedTags(previous) });
-  }
-
-  function removeTag(tagName: string) {
-    const previous = selectedTags;
-    const next = selectedTags.filter(
-      (t) => t.toLowerCase() !== tagName.toLowerCase(),
-    );
-    setSelectedTags(next);
-    tagMutation.mutate(next, { onError: () => setSelectedTags(previous) });
-  }
-
-  // Documents for this courier
-  const { data: documents = [] } = useQuery({
-    queryKey: ["courier-documents", courier?.id],
-    queryFn: () => getDocuments(courier!.id),
-    enabled: !!courier?.id && open,
-  });
-
-  // If the courier metadata holds an email body (body_html / body_text), inject it as
-  // a synthetic "first document" so it appears in the Aperçu just like an attachment.
-  const displayDocuments = useMemo(() => {
-    const meta = courier?.metadata ?? {};
-    const html = (meta.body_html as string | undefined) ?? null;
-    const text = (meta.body_text as string | undefined) ?? null;
-    if (!html && !text) return documents;
-    const inlineDoc = {
-      id: `inline:email-body:${courier?.id}`,
-      courier_id: courier?.id,
-      organization_id: organizationId,
-      file_name: "Corps de l'email",
-      mime_type: html ? "text/html" : "text/plain",
-      file_size: null,
-      document_type: "original",
-      storage_key: "",
-      checksum: null,
-      created_at: new Date().toISOString(),
-      inline_html: html,
-      inline_text: text,
-    };
-    return [inlineDoc, ...documents];
-  }, [documents, courier?.id, courier?.metadata, organizationId]);
-
-  const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
-  useEffect(() => {
-    setSelectedDocId(null);
-  }, [courier?.id]);
-
-  // ── Inline edit handlers ────────────────────────────────────────────
-
-  async function persistCourierUpdate(patch: Record<string, unknown>, successMsg = "Modifié") {
-    if (!courier) return;
-    const { error } = await updateCourier(organizationId, courier.id, patch);
-    if (error) {
-      toast.error(error.message);
-      throw error;
-    }
-    queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
-    queryClient.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
-    toast.success(successMsg);
-  }
-
-  async function upsertParticipant(
-    role: "sender" | "recipient",
-    fields: ParticipantFields,
-    successMsg = "Modifié",
-  ) {
-    if (!courier) return;
-    const existing = participants.find((p) => p.role === role);
-    try {
-      if (existing) {
-        // If both name and email become empty, leave the row but blank the fields.
-        await updateParticipant(existing.id, fields);
-      } else {
-        // Don't create empty participants
-        const hasContent =
-          fields.name?.trim() || fields.email?.trim() || fields.socle_contact_id;
-        if (!hasContent) return;
-        await addParticipant({
-          courier_id: courier.id,
-          organization_id: organizationId,
-          role,
-          ...fields,
-        });
-      }
-      queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
-      queryClient.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
-      queryClient.invalidateQueries({ queryKey: ["courier", courier.id] });
-      queryClient.invalidateQueries({ queryKey: ["courier-participants", courier.id] });
-      toast.success(successMsg);
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Erreur lors de la modification");
-      throw err;
-    }
-  }
-
-  /**
-   * Rattache l'expéditeur du courrier à une fiche du référentiel Socle : les
-   * champs du participant sont alignés sur la fiche, qui fait foi sur
-   * l'identité. `null` dissocie la fiche sans effacer ce que porte le courrier.
-   */
-  async function linkSenderContact(contact: SocleContact | null) {
-    if (!contact) {
-      await upsertParticipant("sender", { socle_contact_id: null }, "Expéditeur dissocié");
-      return;
-    }
-    const address = formatContactAddressInline(contact);
-    await upsertParticipant(
-      "sender",
-      {
-        socle_contact_id: contact.id,
-        name: contactDisplay(contact),
-        first_name: contact.first_name,
-        last_name: contact.last_name ?? contact.legal_name,
-        email: contact.email,
-        phone: contact.mobile_phone ?? contact.landline_phone,
-        address: address || null,
-      },
-      "Expéditeur associé au référentiel",
-    );
-  }
+  const {
+    effectiveReadOnly,
+    isOutbound,
+    sender,
+    senderContact,
+    senderRelationLines,
+    recipient,
+    parentCourier,
+    parentSender,
+    selectedTags,
+    orgTags,
+    appliedByGroup,
+    toggleTag,
+    removeTag,
+    services,
+    availableServices,
+    currentService,
+    localAssignedService,
+    userServiceFilter,
+    serviceMutation,
+    transferMutation,
+    transferTargetServiceId,
+    setTransferTargetServiceId,
+    transferConfirmOpen,
+    setTransferConfirmOpen,
+    transitions,
+    currentStateInfo,
+    isFinalState,
+    isInitialState,
+    transitionMutation,
+    closeLinkedOpen,
+    setCloseLinkedOpen,
+    closeLinkedIds,
+    displayDocuments,
+    selectedDocId,
+    setSelectedDocId,
+    persistCourierUpdate,
+    upsertParticipant,
+    linkSenderContact,
+  } = useCourierWorkspace({ courier, organizationId, open, readOnly, onOpenChange });
 
   if (!courier) return null;
 
   const body = (
     <>
       <div className="flex flex-col text-center sm:text-left border-b shrink-0">
-          <div className={cn("flex items-center justify-between gap-4 px-4", fullScreen ? "py-2 pr-4" : "py-3 pr-8")}>
+          <div className="flex items-center justify-between gap-4 px-4 py-3 pr-8">
             <div className="flex-1 min-w-0 flex items-center gap-3">
-
-              {fullScreen && (
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-8 w-8 -ml-1 text-muted-foreground hover:text-foreground shrink-0"
-                  onClick={() => navigate(-1)}
-                  title="Retour"
-                  aria-label="Retour à la liste"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
-              )}
               <div className="min-w-0 flex-1">
-                {!fullScreen && (
-                  <SheetTitle className="text-lg sr-only">
-                    {courier.subject ?? "Sans titre"}
-                  </SheetTitle>
-                )}
+                <SheetTitle className="text-lg sr-only">
+                  {courier.subject ?? "Sans titre"}
+                </SheetTitle>
                 <InlineEditField
                   label=""
                   value={courier.subject ?? ""}
@@ -767,16 +147,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
               </div>
               {currentStateInfo?.name && (
                 <Badge variant="secondary" className="gap-1.5 font-medium shrink-0">
-                  <span
-                    className={cn(
-                      "h-2 w-2 rounded-full",
-                      currentStateInfo.category === "pending" && "bg-amber-500",
-                      currentStateInfo.category === "processing" && "bg-blue-500",
-                      currentStateInfo.category === "processed" && "bg-emerald-500",
-                      currentStateInfo.category === "archived" && "bg-slate-400",
-                      !currentStateInfo.category && "bg-gray-300",
-                    )}
-                  />
+                  <span className={cn("h-2 w-2 rounded-full", categoryTone(currentStateInfo.category).dot)} />
                   {currentStateInfo.name}
                 </Badge>
               )}
@@ -790,16 +161,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                     const nominalIds = new Set([nextT?.id, prevT?.id].filter(Boolean));
                     const others = transitions.filter((t) => !nominalIds.has(t.id));
                     const dot = (category?: string | null) => (
-                      <span
-                        className={cn(
-                          "h-2 w-2 rounded-full shrink-0",
-                          category === "pending" && "bg-amber-500",
-                          category === "processing" && "bg-blue-500",
-                          category === "processed" && "bg-emerald-500",
-                          category === "archived" && "bg-slate-400",
-                          !category && "bg-gray-300",
-                        )}
-                      />
+                      <span className={cn("h-2 w-2 shrink-0 rounded-full", categoryTone(category).dot)} />
                     );
                     return (
                       <>
@@ -857,33 +219,6 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                   })()}
 
                 </>
-              )}
-              {!fullScreen && !disableFullScreen && (
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
-                  onClick={() => {
-                    onOpenChange(false);
-                    navigate(`/courrier/${courier.id}`);
-                  }}
-                  title="Ouvrir en plein écran"
-                  aria-label="Ouvrir en plein écran"
-                >
-                  <Maximize2 className="h-4 w-4" />
-                </Button>
-              )}
-              {fullScreen && (
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
-                  onClick={() => onOpenChange(false)}
-                  title="Fermer"
-                  aria-label="Fermer le courrier"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
               )}
               {!effectiveReadOnly && onDelete && (
                 <Button
@@ -1281,25 +616,7 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
             </div>
           </aside>
 
-          <Tabs
-            value={activeTab}
-            onValueChange={setActiveTab}
-            className="flex flex-col mb-px flex-1 min-h-0 overflow-hidden relative"
-          >
-          {withTabs && (
-            <div className={cn("shrink-0", fullScreen ? "mx-4 mt-1 mb-1" : "mx-6 mt-[4px] mb-[4px]")}>
-              <ResponsiveTabsList
-                activeValue={activeTab}
-                onValueChange={setActiveTab}
-                tabs={tabItems}
-              />
-            </div>
-          )}
-          <TabsContent
-            value="detail"
-            className="mt-0 data-[state=inactive]:hidden flex-1 min-h-0 overflow-hidden"
-            forceMount
-          >
+          <div className="flex flex-col mb-px flex-1 min-h-0 overflow-hidden relative">
             <section
               aria-label="Aperçu du courrier"
               className="h-full px-6 py-5 space-y-5 bg-muted/10 overflow-y-auto"
@@ -1340,18 +657,13 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
                 />
               </div>
 
-              {!withTabs && (
-                <>
-                  <Separator />
-                  <CourierNotes
-                    courierId={courier.id}
-                    organizationId={organizationId}
-                    readOnly={effectiveReadOnly || isFinalState}
-                  />
-                </>
-              )}
+              <Separator />
+              <CourierNotes
+                courierId={courier.id}
+                organizationId={organizationId}
+                readOnly={effectiveReadOnly || isFinalState}
+              />
             </section>
-          </TabsContent>
 
           {/* Always-mounted dialogs (service transfer + close linked couriers) */}
           <AlertDialog
@@ -1396,111 +708,10 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
             sourceTitle={courier?.subject ?? courier?.chrono ?? "ce courrier"}
           />
 
-
-
-          {withTabs && (
-            <>
-              {!isOutbound && (
-                <TabsContent
-                  value="content"
-                  className="flex-1 overflow-y-auto px-6 py-5 mt-0"
-                >
-                  <ContentIntentsTab
-                    courierId={courier.id}
-                    organizationId={organizationId}
-                    readOnly={effectiveReadOnly || isFinalState}
-                    isInitialState={isInitialState}
-                  />
-                </TabsContent>
-              )}
-              {!isOutbound && (
-                <TabsContent
-                  value="actions"
-                  className="flex-1 overflow-y-auto px-6 py-5 mt-0"
-                >
-                  <LinkedActionsTab
-                    courierId={courier.id}
-                    organizationId={organizationId}
-                    courierSocleOrganizationId={localSocleOrgId}
-                    readOnly={effectiveReadOnly || isFinalState}
-                  />
-                </TabsContent>
-              )}
-              {!isOutbound && (
-                <TabsContent
-                  value="response"
-                  className="flex-1 min-h-0 overflow-hidden px-6 py-5 mt-0 flex flex-col data-[state=inactive]:hidden"
-                >
-                  <ReplyComposer
-                    courierId={courier.id}
-                    organizationId={organizationId}
-                    parentSubject={courier.subject ?? null}
-                    assignedService={localAssignedService}
-                    socleOrganizationId={localSocleOrgId}
-                    sender={sender ?? null}
-                    readOnly={effectiveReadOnly}
-                    onStateChange={setReplyState}
-                    initialReplyId={initialReplyIdParam}
-                    initialOpenEditor={initialEditParam}
-                  />
-                </TabsContent>
-              )}
-              <TabsContent
-                value="participants"
-                className="flex-1 overflow-y-auto px-6 py-5 mt-0"
-              >
-                <ParticipantManager
-                  courierId={courier.id}
-                  organizationId={organizationId}
-                  readOnly={effectiveReadOnly}
-                />
-              </TabsContent>
-              {!isOutbound && (
-                <TabsContent
-                  value="links"
-                  className="flex-1 overflow-y-auto px-6 py-5 mt-0"
-                >
-                  <CourierLinksTab
-                    courierId={courier.id}
-                    organizationId={organizationId}
-                    readOnly={effectiveReadOnly}
-                  />
-                </TabsContent>
-              )}
-              <TabsContent
-                value="history"
-                className="flex-1 overflow-y-auto px-6 py-5 mt-0"
-              >
-                <CourierHistoryTab
-                  courierId={courier.id}
-                  organizationId={organizationId}
-                />
-              </TabsContent>
-            </>
-          )}
-
-          {/* Floating retractable notes panel — accessible from any tab */}
-          {withTabs && !isOutbound && (
-            <FloatingNotesPanel
-              courierId={courier.id}
-              organizationId={organizationId}
-              notes={notesList}
-              readOnly={effectiveReadOnly || isFinalState}
-            />
-          )}
-        </Tabs>
+          </div>
         </div>
     </>
-
   );
-
-  if (fullScreen) {
-    return (
-      <div className="flex flex-col h-full overflow-hidden">
-        {body}
-      </div>
-    );
-  }
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -1510,4 +721,3 @@ export default function MailboxSidePanel({ courier, open, onOpenChange, organiza
     </Sheet>
   );
 }
-

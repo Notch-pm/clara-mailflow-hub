@@ -33,7 +33,7 @@ Toute nouvelle route doit être ajoutée ici dans la même PR que son ajout dans
 | `/courriers-traites` | `CourriersTraites` | États `processed`. |
 | `/courriers-archives` | `CourriersArchives` | États `archived`. |
 | `/courriers-sortants` | `CourriersSortants` | Réponses + courriers outbound. |
-| `/courrier/:id` | `CourierDetail` | Vue détail (contenu/IA, historique, actions liées, notes, réponses). |
+| `/courrier/:id` | `CourierDetail` → `CourierWorkspacePage` | Écran d'instruction : en-tête d'identité, onglets (détail, contenu/IA, actions liées, réponses, participants, liens, historique) et colonne latérale (expéditeur, classement, avancement workflow). |
 | `/workflows/:id` | `WorkflowDetail` | Éditeur React Flow lazy-loaded. |
 | `/parametres` | `SettingsPage` | Hub vers les paramètres de l'organisation active. |
 | `/mon-profil` | `MonProfil` | Profil utilisateur. |
