@@ -12,6 +12,9 @@ import { cn } from "@/lib/utils";
 export type ResponsiveTabItem = {
   value: string;
   label: React.ReactNode;
+  /** Compteur affiché en pastille à droite du libellé (masqué si 0 ou absent). */
+  count?: number | null;
+  /** Complément libre (ex. état de la réponse), rendu après la pastille. */
   badge?: React.ReactNode;
 };
 
@@ -23,8 +26,25 @@ type Props = {
   className?: string;
 };
 
+/** Espace horizontal entre deux onglets, en px — doit refléter le `gap-1` ci-dessous. */
+const TAB_GAP = 4;
+
 const triggerClass =
-  "relative inline-flex items-center gap-2 whitespace-nowrap px-1 pt-2 pb-3 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:text-foreground data-[state=active]:text-primary after:absolute after:left-0 after:right-0 after:-bottom-px after:h-[2px] after:rounded-full after:bg-primary after:opacity-0 data-[state=active]:after:opacity-100";
+  "inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-t-md border-b-2 border-transparent px-3.5 pb-3 pt-2.5 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:text-foreground data-[state=active]:border-primary data-[state=active]:font-bold data-[state=active]:text-primary";
+
+/** Pastille de comptage : elle prend la teinte de l'onglet actif. */
+function CountPill({ value, active }: { value: number; active: boolean }) {
+  return (
+    <span
+      className={cn(
+        "inline-grid h-5 min-w-[20px] place-items-center rounded-full px-1.5 text-[11px] font-bold leading-none",
+        active ? "bg-primary/12 text-primary" : "bg-muted text-muted-foreground",
+      )}
+    >
+      {value}
+    </span>
+  );
+}
 
 export function ResponsiveTabsList({ tabs, activeValue, onValueChange, className }: Props) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
@@ -37,13 +57,12 @@ export function ResponsiveTabsList({ tabs, activeValue, onValueChange, className
     if (!container || !measure) return;
     const containerWidth = container.clientWidth;
     const items = Array.from(measure.children) as HTMLElement[];
-    const gap = 24; // gap-6
     const moreWidth = 90;
 
     // First try: everything fits
     let total = 0;
     items.forEach((el, i) => {
-      total += el.offsetWidth + (i > 0 ? gap : 0);
+      total += el.offsetWidth + (i > 0 ? TAB_GAP : 0);
     });
     if (total <= containerWidth) {
       setVisibleCount(tabs.length);
@@ -53,8 +72,8 @@ export function ResponsiveTabsList({ tabs, activeValue, onValueChange, className
     let used = 0;
     let count = 0;
     for (let i = 0; i < items.length; i++) {
-      const w = items[i].offsetWidth + (i > 0 ? gap : 0);
-      if (used + w + gap + moreWidth <= containerWidth) {
+      const w = items[i].offsetWidth + (i > 0 ? TAB_GAP : 0);
+      if (used + w + TAB_GAP + moreWidth <= containerWidth) {
         used += w;
         count++;
       } else {
@@ -87,12 +106,20 @@ export function ResponsiveTabsList({ tabs, activeValue, onValueChange, className
     }
   }
 
+  const contents = (t: ResponsiveTabItem) => (
+    <>
+      {t.label}
+      {!!t.count && <CountPill value={t.count} active={t.value === activeValue} />}
+      {t.badge}
+    </>
+  );
+
   return (
     <>
       <div
         ref={measureRef}
         aria-hidden
-        className="flex gap-6"
+        className="flex gap-1"
         style={{
           position: "fixed",
           top: -9999,
@@ -103,31 +130,26 @@ export function ResponsiveTabsList({ tabs, activeValue, onValueChange, className
       >
         {tabs.map((t) => (
           <span key={t.value} className={triggerClass}>
-            {t.label}
-            {t.badge}
+            {contents(t)}
           </span>
         ))}
       </div>
 
       <TabsPrimitive.List
         ref={containerRef}
-        className={cn(
-          "flex items-center gap-6 border-b border-border w-full px-1",
-          className,
-        )}
+        className={cn("flex w-full items-center gap-1 border-b border-border", className)}
       >
         {visible.map((t) => (
           <TabsPrimitive.Trigger key={t.value} value={t.value} className={triggerClass}>
-            {t.label}
-            {t.badge}
+            {contents(t)}
           </TabsPrimitive.Trigger>
         ))}
         {overflow.length > 0 && (
           <DropdownMenu>
             <DropdownMenuTrigger
               className={cn(
-                "ml-auto inline-flex items-center gap-1 whitespace-nowrap px-1 pt-2 pb-3 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none",
-                overflow.some((t) => t.value === activeValue) && "text-primary",
+                "ml-auto inline-flex shrink-0 items-center gap-1 whitespace-nowrap border-b-2 border-transparent px-3.5 pb-3 pt-2.5 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none",
+                overflow.some((t) => t.value === activeValue) && "border-primary text-primary",
               )}
             >
               Autres
@@ -139,12 +161,11 @@ export function ResponsiveTabsList({ tabs, activeValue, onValueChange, className
                   key={t.value}
                   onSelect={() => onValueChange?.(t.value)}
                   className={cn(
-                    "w-full justify-start gap-2 cursor-pointer",
-                    t.value === activeValue && "text-primary font-semibold",
+                    "w-full cursor-pointer justify-start gap-2",
+                    t.value === activeValue && "font-semibold text-primary",
                   )}
                 >
-                  {t.label}
-                  {t.badge}
+                  {contents(t)}
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>

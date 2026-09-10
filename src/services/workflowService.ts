@@ -232,3 +232,55 @@ export async function clearSendFlag(workflowId: string, exceptStateId: string) {
     .eq("workflow_id", workflowId)
     .neq("id", exceptStateId);
 }
+
+export type WorkflowChainState = {
+  id: string;
+  name: string;
+  category: WorkflowCategory;
+  is_initial: boolean | null;
+  is_final: boolean | null;
+};
+
+/**
+ * Chaîne nominale d'un workflow : on part de l'état initial et on suit les
+ * transitions marquées « next ». Un workflow reste un graphe — cette lecture
+ * linéaire ne sert qu'à dessiner une frise d'avancement ; les états atteignables
+ * uniquement par une transition secondaire n'y figurent pas.
+ */
+export async function getWorkflowStateChain(workflowId: string): Promise<WorkflowChainState[]> {
+  const [{ data: states, error: statesError }, { data: transitions, error: transitionsError }] =
+    await Promise.all([
+      supabase
+        .from("workflow_states")
+        .select("id, name, category, is_initial, is_final")
+        .eq("workflow_id", workflowId),
+      supabase
+        .from("workflow_transitions")
+        .select("from_state_id, to_state_id, kind")
+        .eq("workflow_id", workflowId)
+        .eq("kind", "next"),
+    ]);
+  if (statesError) throw statesError;
+  if (transitionsError) throw transitionsError;
+
+  const byId = new Map((states ?? []).map((s) => [s.id, s as WorkflowChainState]));
+  const nextOf = new Map(
+    (transitions ?? []).map((t) => [t.from_state_id as string, t.to_state_id as string]),
+  );
+
+  const start = (states ?? []).find((s) => s.is_initial) ?? (states ?? [])[0];
+  if (!start) return [];
+
+  const chain: WorkflowChainState[] = [];
+  const seen = new Set<string>();
+  let cursor: string | undefined = start.id;
+  // Garde-fou : un workflow mal configuré peut boucler sur lui-même.
+  while (cursor && !seen.has(cursor)) {
+    const state = byId.get(cursor);
+    if (!state) break;
+    seen.add(cursor);
+    chain.push(state);
+    cursor = nextOf.get(cursor);
+  }
+  return chain;
+}
