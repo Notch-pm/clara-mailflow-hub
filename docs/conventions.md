@@ -36,6 +36,14 @@ const { data, error } = await supabase
 - **Tokens HSL** dans `src/index.css` (`--background`, `--foreground`, `--primary`, `--accent`, `--card`, etc.).
 - **Tailwind** : utiliser les classes sémantiques (`bg-primary`, `text-foreground`, `border-border`). **Jamais** de couleurs hardcodées dans les composants.
 - **Palette Notch** : vert principal `#0acf83`, jaune accent `#ffcd57` (définis comme HSL dans `index.css`).
+- **Rail de navigation** (`AppSidebar`, et `MobileNav` qui le remplace sur mobile) : **bleu nuit `#0B132B`**,
+  icônes blanches — jeton dédié `--rail` / `--rail-foreground` (`bg-rail`, `text-rail-foreground/70`,
+  états en `rail-foreground/10|20`), identique en thème sombre. ⚠️ La couleur du rail est **propre à
+  chaque application** de la gamme : ce qu'elles partagent, ce sont ses mesures et sa disposition
+  (52 px, tuiles de 36 px, tableau de bord épinglé en haut, le reste centré). Au 2026-09-11 : Clara
+  en bleu nuit, Socle en beurre, Iris et Ariane en vert primaire — une teinte qui diffère n'est pas
+  un écart à réaligner. Changer de couleur, c'est changer `--rail` et `--rail-foreground` ensemble,
+  jamais repasser le rail sur `bg-primary`.
 - **Typo** : Nunito Sans (chargée via Google Fonts dans `index.html`).
 - **Ombres** : style Airbnb (soft, layered) — variables `--shadow-*` dans `index.css`.
 - **shadcn** : composants dans `components/ui/`. Étendre via `cva` plutôt que créer une variante inline.

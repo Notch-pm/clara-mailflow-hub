@@ -45,6 +45,12 @@
     --sidebar-border: 160 8% 20%;
     --sidebar-ring: 153 82% 43%;
 
+    /* Rail de navigation (AppSidebar, MobileNav) : bleu nuit #0B132B, icônes
+       blanches. Couleur propre à Clara — la gamme partage les mesures du rail,
+       pas sa teinte. Même valeur en thème sombre. */
+    --rail: 225 59.3% 10.6%;
+    --rail-foreground: 0 0% 100%;
+
     --success: 153 90% 32%;
     --success-foreground: 0 0% 100%;
     --warning: 42 92% 44%;
