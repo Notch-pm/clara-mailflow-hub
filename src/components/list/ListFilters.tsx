@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { Check, ListFilter, X } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -26,9 +26,22 @@ interface ListFilterButtonProps {
  * toute une rangée au-dessus des listes : les choix s'appliquent sans
  * validation, et chaque filtre posé redevient visible — et retirable — dans
  * `ListActiveFilters`.
+ *
+ * Un champ marqué `data-autofocus` (la recherche) reçoit le focus à
+ * l'ouverture : on tape aussitôt, comme dans l'ancienne barre. Pas sur écran
+ * tactile, où le clavier virtuel recouvrirait les autres filtres.
  */
 export function ListFilterButton({ title, activeCount, resultLabel, onReset, children }: ListFilterButtonProps) {
   const [open, setOpen] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  function focusField(event: Event) {
+    const field = contentRef.current?.querySelector<HTMLElement>("[data-autofocus]");
+    if (!field || !window.matchMedia?.("(pointer: fine)").matches) return;
+    event.preventDefault();
+    field.focus({ preventScroll: true });
+  }
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <ToolbarTooltip label="Filtres" hideFromXl>
@@ -52,7 +65,13 @@ export function ListFilterButton({ title, activeCount, resultLabel, onReset, chi
           />
         </PopoverTrigger>
       </ToolbarTooltip>
-      <PopoverContent align="end" collisionPadding={16} className="w-80 overflow-hidden rounded-lg p-0 shadow-airbnb-xl">
+      <PopoverContent
+        ref={contentRef}
+        align="end"
+        collisionPadding={16}
+        onOpenAutoFocus={focusField}
+        className="w-80 overflow-hidden rounded-lg p-0 shadow-airbnb-xl"
+      >
         <div className="flex items-center justify-between px-3.5 pb-2.5 pt-3">
           <span className="text-[13.5px] font-bold">{title}</span>
           <button

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -8,7 +8,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { listTags } from "@/services/courierTagService";
 import { listOrgsWithConfig } from "@/services/socleOrgConfigService";
 import { useUserServiceFilter } from "@/hooks/useUserServiceFilter";
-import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useCourierList } from "@/hooks/useCourierList";
 import { useCourierFacets } from "@/hooks/useCourierFacets";
 import { useCourierCsvExport } from "@/hooks/useCourierCsvExport";
@@ -18,7 +17,7 @@ import { DataTableColumnToggle } from "@/components/data-table/data-table-column
 import { DataTableGroupingMenu } from "@/components/data-table/data-table-grouping-menu";
 import { useDataTableInstance } from "@/components/data-table/use-data-table-instance";
 import { ListActiveFilters, ListFilterButton } from "@/components/list/ListFilters";
-import { ListDensityToggle, ListExportButton, ListMessage, ListPage, ListSearch, ListToolbar } from "@/components/list/ListPage";
+import { ListDensityToggle, ListExportButton, ListMessage, ListPage, ListToolbar } from "@/components/list/ListPage";
 import { CourierFacetFields } from "@/components/courier/CourierFacetFields";
 import {
   dateColumn,
@@ -32,7 +31,6 @@ import {
 export default function CourriersArchives() {
   const { organizationId } = useOrganization();
   const navigate = useNavigate();
-  const [search, setSearch] = useState("");
 
   // Archived states for the org
   const { data: archivedStates } = useQuery({
@@ -80,7 +78,6 @@ export default function CourriersArchives() {
 
   const facets = useCourierFacets({ services, states: archivedStates, tags, withPeriod: true });
   const userServiceFilter = useUserServiceFilter();
-  const debouncedSearch = useDebouncedValue(search, 300);
 
   const filters = useMemo<CourierListFilters | null>(() => {
     if (!organizationId || !stateIds.length) return null;
@@ -92,11 +89,11 @@ export default function CourriersArchives() {
       socleOrganizationId: facets.serviceId,
       tagNames: facets.tagNames.length ? facets.tagNames : null,
       dateFrom: facets.dateFrom,
-      keywords: debouncedSearch || null,
+      keywords: facets.keywords || null,
       prefixMatch: true,
       visibleSocleOrganizationIds: userServiceFilter,
     };
-  }, [organizationId, stateIds, facets.stateIds, facets.serviceId, facets.tagNames, facets.dateFrom, debouncedSearch, userServiceFilter]);
+  }, [organizationId, stateIds, facets.stateIds, facets.serviceId, facets.tagNames, facets.dateFrom, facets.keywords, userServiceFilter]);
 
   // updated_at : les archivages les plus récents d'abord. À ne pas confondre
   // avec la colonne « Archivé le » ci-dessous, calculée par une seconde requête
@@ -172,7 +169,6 @@ export default function CourriersArchives() {
         title="Courriers archivés"
         count={list.filters && !list.isLoading ? list.totalCount : null}
         countLabel="courriers"
-        search={<ListSearch value={search} onChange={setSearch} placeholder="Rechercher par objet…" />}
       >
         {tableInstance && <DataTableGroupingMenu table={tableInstance} />}
         <ListFilterButton
@@ -201,7 +197,7 @@ export default function CourriersArchives() {
           sorting={list.sorting}
           onSortingChange={list.onSortingChange}
           emptyMessage={
-            facets.activeCount || debouncedSearch
+            facets.activeCount
               ? "Aucun courrier archivé ne correspond à ces critères."
               : "Aucun courrier archivé."
           }

@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import type { ActiveFilterChip } from "@/components/list/ListFilters";
 import type { CourierTag } from "@/services/courierTagService";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 
 /** Périodes proposées sur la date de réception (le RPC ne filtre que celle-là). */
 export const RECEIPT_PERIODS = [
@@ -32,19 +33,31 @@ function localIsoDate(date: Date): string {
 }
 
 /**
- * Filtres des listes de courriers (organisation, état, tags, période), et
- * leurs pastilles « filtres actifs ». Chaque choix s'applique aussitôt : la
- * page traduit les valeurs en `CourierListFilters`, tout est filtré en SQL.
+ * Filtres des listes de courriers (recherche par objet, organisation, état,
+ * tags, période), et leurs pastilles « filtres actifs ». Chaque choix
+ * s'applique aussitôt : la page traduit les valeurs en `CourierListFilters`,
+ * tout est filtré en SQL.
+ *
+ * La recherche vit dans le panneau « Filtres », plus dans la barre : elle y
+ * gagne une pastille et compte parmi les filtres actifs — sans quoi, panneau
+ * fermé, rien ne dirait pourquoi la liste est réduite.
  *
  * Organisation : un seul choix (le RPC compare à une organisation). États et
  * tags : plusieurs — le RPC reçoit des tableaux, un courrier sort s'il porte
  * l'un des états, l'un des tags.
  */
 export function useCourierFacets(sources: CourierFacetSources) {
+  const [search, setSearch] = useState("");
   const [serviceId, setServiceId] = useState<string | null>(null);
   const [stateIds, setStateIds] = useState<string[]>([]);
   const [tagNames, setTagNames] = useState<string[]>([]);
   const [period, setPeriod] = useState<ReceiptPeriod | null>(null);
+
+  // Mots-clés envoyés au RPC, et pastille. Pendant la frappe, attendre qu'elle
+  // s'arrête évite une requête — et une pastille qui clignote — à chaque
+  // lettre ; un effacement (pastille, « Tout effacer ») s'applique aussitôt.
+  const trimmedSearch = search.trim();
+  const keywords = useDebouncedValue(trimmedSearch, trimmedSearch ? 300 : 0);
 
   const toggleService = useCallback((id: string) => setServiceId((cur) => (cur === id ? null : id)), []);
   const toggleState = useCallback((id: string) => setStateIds((cur) => toggleIn(cur, id)), []);
@@ -54,6 +67,7 @@ export function useCourierFacets(sources: CourierFacetSources) {
     [],
   );
   const reset = useCallback(() => {
+    setSearch("");
     setServiceId(null);
     setStateIds([]);
     setTagNames([]);
@@ -71,6 +85,7 @@ export function useCourierFacets(sources: CourierFacetSources) {
   const { services, states, tags } = sources;
   const chips = useMemo<ActiveFilterChip[]>(() => {
     const out: ActiveFilterChip[] = [];
+    if (keywords) out.push({ key: "search", label: `Recherche : « ${keywords} »`, onRemove: () => setSearch("") });
     // Une valeur que la liste ne propose plus (autre organisation, état
     // supprimé) ne s'affiche pas : la page l'ignore aussi.
     const service = services?.find((s) => s.id === serviceId);
@@ -85,10 +100,13 @@ export function useCourierFacets(sources: CourierFacetSources) {
     const p = RECEIPT_PERIODS.find((x) => x.value === period);
     if (p) out.push({ key: "period", label: `Reçu : ${p.label}`, onRemove: () => setPeriod(null) });
     return out;
-  }, [services, states, serviceId, stateIds, tagNames, period, toggleState, toggleTag]);
+  }, [keywords, services, states, serviceId, stateIds, tagNames, period, toggleState, toggleTag]);
 
   return {
     sources,
+    search,
+    setSearch,
+    keywords,
     serviceId,
     stateIds,
     tagNames,

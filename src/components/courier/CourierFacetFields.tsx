@@ -1,11 +1,24 @@
 import { FilterChips, FilterOptionList, FilterSection } from "@/components/list/ListFilters";
+import { ListSearch } from "@/components/list/ListPage";
 import { RECEIPT_PERIODS, type CourierFacets } from "@/hooks/useCourierFacets";
 
-/** Contenu du panneau « Filtres » des listes de courriers. */
+/** Contenu du panneau « Filtres » des listes de courriers, recherche en tête. */
 export function CourierFacetFields({ facets }: { facets: CourierFacets }) {
   const { services, states, tags, withPeriod } = facets.sources;
   return (
     <>
+      {/* Le RPC cherche dans l'objet, le texte, les correspondants et les
+          pièces extraites — pas seulement l'objet, comme le disait l'ancien
+          « Rechercher par objet… ». */}
+      <FilterSection label="Recherche">
+        <ListSearch
+          value={facets.search}
+          onChange={facets.setSearch}
+          placeholder="Objet, correspondant, texte…"
+          ariaLabel="Rechercher dans les courriers"
+          focusOnOpen
+        />
+      </FilterSection>
       {states && states.length > 1 && (
         <FilterSection label="État">
           <FilterChips

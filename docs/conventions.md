@@ -59,11 +59,15 @@ partagent un gabarit, `src/components/list/` (refonte du 2026-09-11) :
   (`ListScrollArea`) — c'est ce qui supprime le double défilement page + tableau. La boîte aux
   lettres (`fill="lg"`) ne tient dans l'écran qu'à partir de `lg` ; en dessous, liste et panneau
   s'empilent et la page défile.
-- **`ListToolbar`** : une seule barre de 56 px — titre + compteur, `ListSearch`, actions rondes
-  (`ToolbarButton` + `ToolbarTooltip`, libellé visible à partir de `xl`), action principale à droite.
-  Sous `md`, deux lignes. Pas de sous-titre ni de carte « Recherche ».
+- **`ListToolbar`** : une seule barre de 56 px — titre + compteur, `ListSearch` (contacts et page
+  Recherche seulement), actions rondes (`ToolbarButton` + `ToolbarTooltip`, libellé visible à partir
+  de `xl`), action principale à droite. Sous `md`, la recherche passe à la ligne ; sans recherche, les
+  actions restent à côté du titre tant qu'elles y tiennent. Pas de sous-titre ni de carte « Recherche ».
 - **Filtres** : `ListFilterButton` (panneau dont chaque choix s'applique aussitôt) + `ListActiveFilters`
-  (pastilles retirables). Pour les courriers : `useCourierFacets` + `CourierFacetFields`.
+  (pastilles retirables). Pour les courriers (boîte aux lettres comprise) : `useCourierFacets` +
+  `CourierFacetFields`, **recherche en tête du panneau** et non dans la barre — elle devient une
+  pastille « Recherche : « … » » et compte dans le badge « Filtres ». Un champ `data-autofocus`
+  (`ListSearch focusOnOpen`) reçoit le focus à l'ouverture, sauf sur écran tactile.
 - **Densité** : `ListDensityToggle`, 48 ou 36 px, mémorisée dans `localStorage` pour toutes les listes ;
   la ligne de contexte de `ListCellTitle` disparaît en compact.
 - **`DataTable`** remplit la page : en-tête collé, `table-fixed` (chaque colonne déclare

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -8,7 +8,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { listTags } from "@/services/courierTagService";
 import { listOrgsWithConfig } from "@/services/socleOrgConfigService";
 import { useUserServiceFilter } from "@/hooks/useUserServiceFilter";
-import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useCourierList } from "@/hooks/useCourierList";
 import { useCourierFacets } from "@/hooks/useCourierFacets";
 import { useCourierCsvExport } from "@/hooks/useCourierCsvExport";
@@ -18,7 +17,7 @@ import { DataTableColumnToggle } from "@/components/data-table/data-table-column
 import { DataTableGroupingMenu } from "@/components/data-table/data-table-grouping-menu";
 import { useDataTableInstance } from "@/components/data-table/use-data-table-instance";
 import { ListActiveFilters, ListFilterButton } from "@/components/list/ListFilters";
-import { ListDensityToggle, ListExportButton, ListMessage, ListPage, ListSearch, ListToolbar } from "@/components/list/ListPage";
+import { ListDensityToggle, ListExportButton, ListMessage, ListPage, ListToolbar } from "@/components/list/ListPage";
 import { CourierFacetFields } from "@/components/courier/CourierFacetFields";
 import {
   dateColumn,
@@ -32,7 +31,6 @@ import {
 export default function CourriersEnInstruction() {
   const { organizationId } = useOrganization();
   const navigate = useNavigate();
-  const [search, setSearch] = useState("");
 
   // Processing states for the org
   const { data: processingStates } = useQuery({
@@ -81,7 +79,6 @@ export default function CourriersEnInstruction() {
 
   const facets = useCourierFacets({ services, states: processingStates, tags, withPeriod: true });
   const userServiceFilter = useUserServiceFilter();
-  const debouncedSearch = useDebouncedValue(search, 300);
 
   // Tout est filtré en SQL. Auparavant service/état/tag étaient appliqués en JS
   // sur les 200 lignes déjà chargées : choisir un tag ne cherchait donc que dans
@@ -98,11 +95,11 @@ export default function CourriersEnInstruction() {
       socleOrganizationId: facets.serviceId,
       tagNames: facets.tagNames.length ? facets.tagNames : null,
       dateFrom: facets.dateFrom,
-      keywords: debouncedSearch || null,
+      keywords: facets.keywords || null,
       prefixMatch: true,
       visibleSocleOrganizationIds: userServiceFilter,
     };
-  }, [organizationId, stateIds, facets.stateIds, facets.serviceId, facets.tagNames, facets.dateFrom, debouncedSearch, userServiceFilter]);
+  }, [organizationId, stateIds, facets.stateIds, facets.serviceId, facets.tagNames, facets.dateFrom, facets.keywords, userServiceFilter]);
 
   // updated_at : les dossiers qui viennent de bouger d'abord. Aucun en-tête ne
   // porte cette colonne, aucune flèche n'est donc visible au chargement.
@@ -140,7 +137,6 @@ export default function CourriersEnInstruction() {
         title="Courriers en instruction"
         count={list.filters && !list.isLoading ? list.totalCount : null}
         countLabel="courriers"
-        search={<ListSearch value={search} onChange={setSearch} placeholder="Rechercher par objet…" />}
       >
         {tableInstance && <DataTableGroupingMenu table={tableInstance} />}
         <ListFilterButton
@@ -169,7 +165,7 @@ export default function CourriersEnInstruction() {
           sorting={list.sorting}
           onSortingChange={list.onSortingChange}
           emptyMessage={
-            facets.activeCount || debouncedSearch
+            facets.activeCount
               ? "Aucun courrier en instruction ne correspond à ces critères."
               : "Aucun courrier en cours d'instruction."
           }

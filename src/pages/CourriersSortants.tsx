@@ -23,7 +23,6 @@ import {
   ListExportButton,
   ListMessage,
   ListPage,
-  ListSearch,
   ListToolbar,
   ToolbarButton,
   ToolbarTooltip,
@@ -40,7 +39,6 @@ import { createCourier } from "@/services/courierService";
 import { listOrgsWithConfig } from "@/services/socleOrgConfigService";
 import type { CourierListFilters, CourierListRow } from "@/services/courierListService";
 import { useUserServiceFilter } from "@/hooks/useUserServiceFilter";
-import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useCourierList } from "@/hooks/useCourierList";
 import { useCourierFacets } from "@/hooks/useCourierFacets";
 import { useCourierCsvExport } from "@/hooks/useCourierCsvExport";
@@ -55,7 +53,6 @@ export default function CourriersSortants() {
   const { organizationId } = useOrganization();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const form = useForm<z.infer<typeof schema>>({
@@ -74,19 +71,17 @@ export default function CourriersSortants() {
   const facets = useCourierFacets({ services });
   const userServiceFilter = useUserServiceFilter();
 
-  const debouncedSearch = useDebouncedValue(search, 300);
-
   const filters = useMemo<CourierListFilters | null>(() => {
     if (!organizationId) return null;
     return {
       organizationId,
       direction: "outbound",
       socleOrganizationId: facets.serviceId,
-      keywords: debouncedSearch || null,
+      keywords: facets.keywords || null,
       prefixMatch: true,
       visibleSocleOrganizationIds: userServiceFilter,
     };
-  }, [organizationId, facets.serviceId, debouncedSearch, userServiceFilter]);
+  }, [organizationId, facets.serviceId, facets.keywords, userServiceFilter]);
 
   // created_at et non sent_at : un courrier en préparation n'a pas encore de
   // date d'envoi, trier dessus le renverrait en fin de liste alors que c'est
@@ -183,7 +178,6 @@ export default function CourriersSortants() {
         title="Courriers sortants"
         count={list.filters && !list.isLoading ? list.totalCount : null}
         countLabel="courriers"
-        search={<ListSearch value={search} onChange={setSearch} placeholder="Rechercher par objet…" />}
         primary={newCourier}
       >
         {tableInstance && <DataTableGroupingMenu table={tableInstance} />}
@@ -213,7 +207,7 @@ export default function CourriersSortants() {
           sorting={list.sorting}
           onSortingChange={list.onSortingChange}
           emptyMessage={
-            facets.activeCount || debouncedSearch
+            facets.activeCount
               ? "Aucun courrier sortant ne correspond à ces critères."
               : "Aucun courrier sortant."
           }

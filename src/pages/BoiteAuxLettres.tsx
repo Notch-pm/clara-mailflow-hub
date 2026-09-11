@@ -24,22 +24,23 @@ import type {
   CourierSortKey,
 } from "@/services/courierListService";
 import { useUserServiceFilter } from "@/hooks/useUserServiceFilter";
-import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useCourierList } from "@/hooks/useCourierList";
+import { useCourierFacets } from "@/hooks/useCourierFacets";
 import { DataTablePagination } from "@/components/data-table/data-table-pagination";
 import { SortableHeader, type SortDirection } from "@/components/data-table/data-table-column-header";
 import { LIST_HEADER_SURFACE, ListCellDate, ListCellText, ListCellTitle } from "@/components/list/ListCells";
+import { ListActiveFilters, ListFilterButton } from "@/components/list/ListFilters";
 import {
   ListDensityToggle,
   ListMessage,
   ListPage,
-  ListSearch,
   ListSegmented,
   ListToolbar,
   ToolbarButton,
   ToolbarTooltip,
 } from "@/components/list/ListPage";
 import { ListScrollArea } from "@/components/list/ListScrollArea";
+import { CourierFacetFields } from "@/components/courier/CourierFacetFields";
 import { courierSenderName } from "@/components/courier/courierListColumns";
 import { toast } from "@/hooks/use-toast";
 import MailboxSidePanel from "@/components/courier/MailboxSidePanel";
@@ -100,7 +101,6 @@ export default function BoiteAuxLettres() {
     // avec celle-ci (paramètre includeNullState du RPC).
     queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
   }
-  const [search, setSearch] = useState("");
   const [selectedCourier, setSelectedCourier] = useState<CourierWithRelations | null>(null);
   const [newDialogOpen, setNewDialogOpen] = useState(false);
 
@@ -125,7 +125,9 @@ export default function BoiteAuxLettres() {
   });
 
   const serviceFilter = useUserServiceFilter();
-  const debouncedSearch = useDebouncedValue(search, 300);
+  // Pas d'autre filtre dans la boîte : son panneau ne porte que la recherche,
+  // qui y rejoint celle des autres listes de courriers.
+  const facets = useCourierFacets({});
 
   // Une seule requête là où il y en avait deux (états initiaux + état NULL),
   // fusionnées puis retriées en JS sur 100 lignes chacune : le tri combiné
@@ -138,7 +140,7 @@ export default function BoiteAuxLettres() {
       direction: "inbound",
       workflowStateIds: initialStateIds,
       includeNullState: true,
-      keywords: debouncedSearch || null,
+      keywords: facets.keywords || null,
       prefixMatch: true,
       visibleSocleOrganizationIds: serviceFilter,
       // Onglet « Transférés » : filtre serveur, et non plus un partage de la
@@ -146,7 +148,7 @@ export default function BoiteAuxLettres() {
       // transférés de la page courante.
       transferredOnly: tab === "transferred" ? true : null,
     };
-  }, [organizationId, initialStateIds, debouncedSearch, serviceFilter, tab]);
+  }, [organizationId, initialStateIds, facets.keywords, serviceFilter, tab]);
 
   const list = useCourierList(filters, {
     queryKeyPrefix: "mailbox-couriers",
@@ -328,7 +330,6 @@ export default function BoiteAuxLettres() {
         title="Boîte aux lettres"
         count={list.filters && !list.isLoading ? list.totalCount : null}
         countLabel="courriers en attente"
-        search={<ListSearch value={search} onChange={setSearch} placeholder="Rechercher par objet…" />}
         primary={
           organizationId && canEdit ? (
             <>
@@ -367,6 +368,14 @@ export default function BoiteAuxLettres() {
             { value: "transferred", label: "Transférés", icon: <ArrowRightLeft /> },
           ]}
         />
+        <ListFilterButton
+          title="Filtrer les courriers"
+          activeCount={facets.activeCount}
+          resultLabel={list.isFetching ? "…" : `${list.totalCount} résultat${list.totalCount > 1 ? "s" : ""}`}
+          onReset={facets.reset}
+        >
+          <CourierFacetFields facets={facets} />
+        </ListFilterButton>
         <ListDensityToggle />
       </ListToolbar>
 
@@ -378,6 +387,8 @@ export default function BoiteAuxLettres() {
               lignes défilent, entre un en-tête et une pagination qui restent en
               place. */}
           <section aria-label="Courriers en attente" className="flex min-w-0 flex-col lg:min-h-0 lg:flex-1">
+            {/* Au-dessus de la liste seule : la recherche ne touche pas au panneau. */}
+            <ListActiveFilters chips={facets.chips} onReset={facets.reset} />
             {!list.isLoading && list.rows.length > 0 && (
               /* Le tri par colonne est une affordance de bureau : sous `md`
                  la liste garde son ordre par défaut (plus récents d'abord). */
@@ -405,9 +416,11 @@ export default function BoiteAuxLettres() {
                 <ListMessage>Chargement…</ListMessage>
               ) : !list.rows.length ? (
                 <ListMessage>
-                  {tab === "transferred"
-                    ? "Aucun courrier transféré."
-                    : "Aucun courrier en attente dans la boîte aux lettres."}
+                  {facets.activeCount
+                    ? "Aucun courrier en attente ne correspond à cette recherche."
+                    : tab === "transferred"
+                      ? "Aucun courrier transféré."
+                      : "Aucun courrier en attente dans la boîte aux lettres."}
                 </ListMessage>
               ) : (
                 list.rows.map((c) => renderRow(c))

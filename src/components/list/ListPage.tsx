@@ -70,7 +70,7 @@ interface ListToolbarProps {
  * Barre unique de la liste : remplace l'ancien empilement titre + sous-titre,
  * rangée de boutons et carte « Recherche » (~300 px avant la première ligne).
  * Sous `md`, elle passe sur deux lignes : titre et action principale, puis
- * recherche et actions.
+ * recherche et actions — une seule s'il n'y a pas de recherche et que tout tient.
  */
 export function ListToolbar({
   icon,
@@ -83,7 +83,9 @@ export function ListToolbar({
 }: ListToolbarProps) {
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b bg-card px-4 py-2.5 md:h-14 md:flex-nowrap md:px-5 md:py-0">
-      <div className="flex min-w-0 flex-1 items-center gap-2.5 md:flex-initial">
+      {/* Sans recherche, base = largeur du titre : si les actions ne tiennent
+          pas à côté, elles passent à la ligne au lieu de le tronquer. */}
+      <div className={cn("flex min-w-0 items-center gap-2.5 md:flex-initial", search ? "flex-1" : "flex-auto")}>
         <span
           aria-hidden="true"
           className="flex shrink-0 [&_img]:h-[18px] [&_img]:w-[18px] [&_svg]:h-[18px] [&_svg]:w-[18px]"
@@ -106,10 +108,13 @@ export function ListToolbar({
         </div>
       )}
 
-      <div aria-hidden="true" className="basis-full md:hidden" />
-
+      {/* Sous `md`, la recherche passe à la ligne. Sans elle, les actions
+          restent à côté du titre tant qu'elles y tiennent. */}
       {search ? (
-        <div className="flex min-w-0 flex-1 md:min-w-[150px] md:justify-center">{search}</div>
+        <>
+          <div aria-hidden="true" className="basis-full md:hidden" />
+          <div className="flex min-w-0 flex-1 md:min-w-[150px] md:justify-center">{search}</div>
+        </>
       ) : (
         <div aria-hidden="true" className="hidden flex-1 md:block" />
       )}
@@ -123,10 +128,18 @@ interface ListSearchProps {
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
+  /** Nom accessible, s'il diffère du texte indicatif. */
+  ariaLabel?: string;
+  /** Focus à l'ouverture du panneau « Filtres » qui contient le champ (`ListFilterButton`). */
+  focusOnOpen?: boolean;
   className?: string;
 }
 
-export function ListSearch({ value, onChange, placeholder, className }: ListSearchProps) {
+/**
+ * Champ de recherche arrondi. Dans la barre pour les contacts et la page
+ * Recherche ; dans le panneau « Filtres » pour les listes de courriers.
+ */
+export function ListSearch({ value, onChange, placeholder, ariaLabel, focusOnOpen, className }: ListSearchProps) {
   return (
     <div className={cn("relative w-full md:max-w-[360px]", className)}>
       <Search
@@ -139,7 +152,8 @@ export function ListSearch({ value, onChange, placeholder, className }: ListSear
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        aria-label={placeholder}
+        aria-label={ariaLabel ?? placeholder}
+        data-autofocus={focusOnOpen || undefined}
         className="h-9 rounded-full pl-9 pr-9 focus-visible:ring-[3px] focus-visible:ring-ring/20 focus-visible:ring-offset-0 md:text-[13.5px] [&::-webkit-search-cancel-button]:appearance-none"
       />
       {value && (
