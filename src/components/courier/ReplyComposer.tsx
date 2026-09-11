@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Send, Save, Lock, PenLine, X, Plus, Pencil, Trash2, ArrowLeft, Printer, ChevronDown, Sparkles } from "lucide-react";
+import { Send, Save, Lock, PenLine, X, Plus, Pencil, Eye, Trash2, ArrowLeft, Printer, ChevronDown, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -566,6 +566,9 @@ export default function ReplyComposer({
     );
   };
 
+  /** Modifiable : ni lecteur seul, ni réponse verrouillée par son état final. */
+  const canEdit = (final: boolean) => !readOnly && !final;
+
   const dotColor = (cat: string | null) => cn(
     "h-2 w-2 rounded-full shrink-0",
     cat === "pending" && "bg-amber-500",
@@ -623,27 +626,36 @@ export default function ReplyComposer({
                     )}
                   </div>
                   <Badge variant="outline" className="text-xs shrink-0">{replyStateName(r)}</Badge>
-                  {!readOnly && (
-                    <div className="flex items-center gap-1 shrink-0">
-                      {renderMaybeTooltip(
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          disabled={final}
-                          onClick={() => { setActiveReplyId(r.id); setView("editor"); }}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>,
-                        final ? "Réponse verrouillée (état final)." : null,
-                        `edit-${r.id}`,
-                      )}
-                      {renderMaybeTooltip(
+                  <div className="flex items-center gap-1 shrink-0">
+                    {/* Une réponse envoyée s'ouvre toujours — l'éditeur la rend en
+                        lecture seule. Tant que le seul bouton d'ouverture était
+                        le crayon, verrouillé avec l'état final, une réponse
+                        partie n'était plus consultable du tout. */}
+                    {renderMaybeTooltip(
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        aria-label={
+                          canEdit(final)
+                            ? `Modifier la réponse n°${i + 1}`
+                            : `Consulter la réponse n°${i + 1}`
+                        }
+                        onClick={() => { setActiveReplyId(r.id); setView("editor"); }}
+                      >
+                        {canEdit(final) ? <Pencil className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>,
+                      canEdit(final) ? null : "Réponse verrouillée : ouverture en lecture seule.",
+                      `open-${r.id}`,
+                    )}
+                    {!readOnly &&
+                      renderMaybeTooltip(
                         <Button
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8 text-destructive hover:text-destructive"
                           disabled={final}
+                          aria-label={`Supprimer la réponse n°${i + 1}`}
                           onClick={() => setDeleteTarget(r)}
                         >
                           <Trash2 className="h-4 w-4" />
@@ -651,8 +663,7 @@ export default function ReplyComposer({
                         final ? "Réponse verrouillée (état final)." : null,
                         `del-${r.id}`,
                       )}
-                    </div>
-                  )}
+                  </div>
                 </div>
               );
             })}
