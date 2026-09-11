@@ -181,7 +181,74 @@ Les angles morts de l'ancienne détection côté client (doublon au **téléphon
 ## 8. Notifications
 
 - Table `notifications` + cloche `NotificationBell.tsx` + hook `useNotifications`.
-- Types : nouveau courrier reçu, réponse envoyée, ticket créé, etc.
+- Quatre types aujourd'hui : `new_courier` (fan-out à tous les membres actifs de l'org, par
+  `fn_create_courier_notifications`, sauf l'auteur du courrier), `courier_transferred`
+  (inséré côté client depuis `useCourierWorkspace`), `action_assigned` et `action_unassigned`
+  (edge `send-assignment-notification`, sans appelant depuis le 2026-09-11).
+- Le `title` de la ligne est **déjà une phrase française**, préfixée par le producteur
+  (« Transféré : … ») ; la cloche retire ce préfixe à l'affichage, et le push aussi.
+
+### Push sur appareil (Web Push / VAPID, 2026-09-11)
+
+La cloche ne sonne que si Clara est ouverte dans un onglet. Un courrier qui arrive à 17 h 50,
+une action affectée pendant une réunion : personne ne l'apprend avant le lendemain. Le push met
+la même information sur l'écran verrouillé, **application fermée**.
+
+- **Le push SUIT la cloche.** Aucun réglage par type d'événement : ce qui entre dans
+  `notifications` part sur les appareils inscrits. Le seul réglage est **par appareil** —
+  l'interrupteur « Notifications sur cet appareil » (`PushDeviceToggle`, sur « Mon profil »).
+  ⚠️ **Conséquence à surveiller** : `new_courier` est un fan-out vers TOUS les membres actifs.
+  Une collectivité qui reçoit trente courriers par jour fera vibrer trente fois chaque téléphone
+  inscrit. Si cela devient bruyant, la règle vit **dans un seul endroit** — le trigger
+  `notifications_push_queue()` —, pas dans les producteurs.
+- **`push_subscriptions`** : UN abonnement PAR APPAREIL (endpoint du service de push, clés
+  `p256dh`/`auth` — publiques par construction, elles servent à chiffrer VERS l'appareil).
+  L'enregistrement passe par la RPC **`register_push_subscription`** (DEFINER), seule porte
+  d'écriture : sur un poste partagé d'accueil, le navigateur rend le **même endpoint** au
+  titulaire suivant, et la RPC **reprend** la ligne (`on conflict (endpoint) do update set
+  user_id`), ce qu'un `insert` borné à `user_id = auth.uid()` ne pourrait pas. La table n'est
+  **pas** scopée par organisation : un téléphone appartient à un compte, et le cloisonnement
+  reste porté par `notifications`, qui l'est.
+- **`push_status`** (+ `push_attempts`, `push_attempted_at`, `push_sent_at`,
+  `push_next_attempt_at`, `push_error`) sur `notifications`. La valeur initiale est décidée par
+  le trigger **`trg_notifications_push_queue`** (BEFORE INSERT) : `pending` ssi le destinataire
+  a au moins un appareil actif, `skipped` sinon — une règle, appliquée aux trois sites
+  d'insertion sans toucher aucun producteur. Un producteur qui poserait `push_status` serait
+  écrasé : voulu.
+- **Le facteur** : edge function `notifications-push` sur cron (`* * * * *`, même porte que le
+  worker d'analyse — `x-cron-secret` comparé à `get_cron_secret()`, aucun CORS).
+  `claim_notification_pushes` renonce d'abord aux lignes **déjà lues** (fréquent : Clara en
+  marque en masse quand un courrier quitte « à traiter ») et à celles **sans appareil actif**,
+  puis réclame atomiquement avec les appareils du destinataire en JSON. Un envoi par appareil ;
+  la ligne est `sent` dès qu'UN appareil a reçu ; 404/410 ⇒ `disable_push_subscription` ; le
+  reste ⇒ temporisation croissante (2, 4, 8, 16 min) puis `failed` à la 5ᵉ tentative
+  (`_shared/push/outcome.ts`, pur, testé). **Sans clés VAPID, la fonction répond 503 sans
+  réclamer** : réclamer consommerait les tentatives d'une file qu'elle ne peut pas servir.
+- **Ce qui sort** (`_shared/push/message.ts`, pur, testé) : titre = motif · collectivité ;
+  corps = l'objet du courrier (ou le libellé de l'action), tronqué à 140 caractères. Jamais le
+  corps du courrier, son analyse, son expéditeur ni ses pièces. L'objet, lui, EST repris : il
+  quitte déjà Clara par les e-mails de notification, et sans lui la carte ne distingue rien.
+  Texte chiffré de bout en bout (RFC 8291) : le service de push ne le lit pas.
+  `tag = clara:<resource_id>` — une carte par courrier, la plus récente remplace. Le clic mène
+  là où mène la cloche : `/courrier/<id>?tab=actions` pour une action, `/boite-aux-lettres?open=<id>`
+  sinon (parité figée par un test).
+- **Service worker `public/sw.js` — push SEUL** : aucun `fetch`, aucun cache (une GEC ne doit
+  jamais servir un état de workflow périmé). Enregistré **à l'activation de l'interrupteur**,
+  jamais au démarrage. `PushBootstrap` (monté une fois dans `ProtectedRoutes`) touche
+  `last_seen_at` et écoute le worker : `clara:navigate` (clic quand l'app est ouverte) et
+  `clara:push-resubscribed` (rotation d'abonnement par le navigateur).
+- **Déconnexion** : `signOut` retire l'abonnement de l'appareil (best effort) — poste partagé.
+  Un abonnement du navigateur **sans ligne à moi** est retiré à la lecture d'état.
+- **Clé publique VAPID** en `VITE_VAPID_PUBLIC_KEY` : elle voyage dans chaque abonnement, ce
+  n'est pas un secret (cf. `.env.example`). Clé privée et sujet (`VAPID_PRIVATE_KEY`,
+  `VAPID_SUBJECT`) dans les secrets d'edge functions. Absente ⇒ état `not_configured`, rien ne
+  casse.
+- **iOS** : Safari n'expose le push qu'en application AJOUTÉE À L'ÉCRAN D'ACCUEIL (≥ 16.4) ;
+  l'état `needs_install` l'explique. C'est une détection de **capacité**, pas de layout.
+- Fichiers : `src/lib/push.ts` (pur, testé — 30 cas), `src/services/pushSubscriptionService.ts`,
+  `src/hooks/usePushSubscription.ts`, `src/components/PushDeviceToggle.tsx`, `public/sw.js`,
+  `supabase/functions/_shared/push/{config,message,outcome,transport}.ts` (les trois premiers
+  purs, testés — 45 cas), `supabase/functions/notifications-push/index.ts`.
 
 ## 9. Tags & recherche
 

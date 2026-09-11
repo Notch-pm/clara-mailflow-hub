@@ -3,6 +3,7 @@ import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { setOrganizationId } from "@/integrations/supabase/client";
 import { recordLogin } from "@/pages/BoiteAuxLettres";
+import { forgetDevicePush } from "@/services/pushSubscriptionService";
 
 interface UserProfile {
   id: string;
@@ -148,6 +149,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   async function signOut() {
+    // Poste partagé d'accueil : l'appareil ne doit pas continuer à recevoir les
+    // notifications de l'agent qui s'en va. Best effort — jamais bloquant.
+    await forgetDevicePush();
     await supabase.auth.signOut();
   }
 

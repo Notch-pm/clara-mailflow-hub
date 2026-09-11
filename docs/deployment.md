@@ -112,6 +112,56 @@ bunx supabase functions deploy <nom> --project-ref aullweizxcjbvtdspjli
 bun run build && npx wrangler deploy --dry-run
 ```
 
+### Lot « notifications push » (2026-09-11) — **à appliquer**
+
+Web Push / VAPID : la cloche ne sonne que si Clara est ouverte, le push met la même information
+sur l'écran verrouillé. Détail de la conception : `docs/features.md` §8.
+
+| # | Action | Pourquoi cet ordre | État |
+|---|---|---|---|
+| 1 | Générer la paire VAPID (`npx web-push generate-vapid-keys`) | Les secrets de l'étape 3 et la variable de build de l'étape 5 en sortent | À faire |
+| 2 | `20260911180000_notifications_push.sql` **sans sa section 5** (le cron) | Table, colonnes, trigger et RPC : la fonction de l'étape 4 les lit | À faire |
+| 3 | Poser `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` (et `APP_ORIGIN` si absente) dans les secrets d'edge functions | Sans elles la fonction répond 503 **sans réclamer** — inoffensif, mais rien ne part | À faire |
+| 4 | Déployer `notifications-push` | Lit les RPC de l'étape 2. ⚠️ `[functions.notifications-push] verify_jwt = false` est **déjà** dans `config.toml` : le vérifier après déploiement (cf. « le piège des fonctions cron ») | À faire |
+| 5 | Rejouer la **section 5** de la migration (cron) | **Hors ordre du fichier, délibérément** : planifier avant l'étape 4 ferait échouer l'appel toutes les minutes jusqu'au déploiement | À faire |
+| 6 | Poser `VITE_VAPID_PUBLIC_KEY` dans les variables de build Cloudflare, puis publier le frontend | La clé publique est **figée dans le bundle au build**. Absente, l'interrupteur affiche « non configuré » et rien ne casse — mais personne ne peut s'inscrire | À faire |
+| 7 | Régénérer `src/integrations/supabase/types.ts` | `push_subscriptions` et `register_push_subscription` n'y sont pas : `pushSubscriptionService.ts` travaille sous `as never` en attendant, et le commentaire en tête dit de les retirer | À faire |
+
+⚠️ **La migration est un seul fichier**, mais ses sections 1-4 et sa section 5 ne passent pas au
+même moment (étapes 2 et 5). Elle est rejouable en entier (`IF NOT EXISTS`, `CREATE OR REPLACE`,
+`cron.unschedule` gardé) : la repasser complète à l'étape 5 est sans effet de bord.
+
+Vérification, une fois un appareil inscrit — **le piège du premier essai** : `new_courier` n'est
+pas créée pour l'auteur du courrier (`fn_create_courier_notifications` exclut `created_by`). Un
+essai demande donc que le courrier entre **autrement que par vous** (IMAP, portail, ou un
+second compte).
+
+```sql
+-- 1. L'appareil est-il inscrit, et pour QUEL compte ?
+SELECT u.email, s.user_agent, s.disabled_at, s.disabled_reason, s.created_at
+  FROM public.push_subscriptions s JOIN public.users u ON u.id = s.user_id;
+
+-- 2. La notification a-t-elle été produite, pour QUI, et qu'a décidé la file ?
+--    skipped + push_error NULL → décidé à l'insertion : aucun appareil du DESTINATAIRE
+--    skipped + « lue avant envoi » / « aucun appareil actif » → renoncement au claim
+--    pending + push_error → envoi en échec, temporisation en cours
+SELECT n.type, u.email AS destinataire, n.push_status, n.push_attempts, n.push_error,
+       n.created_at, n.push_sent_at
+  FROM public.notifications n JOIN public.users u ON u.id = n.user_id
+ WHERE n.created_at > now() - interval '1 hour' ORDER BY n.created_at DESC;
+
+-- 3. Le cron atteint-il la fonction ?
+--    200 {claimed…sent…} attendu ; 401 = secret cron, 503 = VAPID, 404 = non déployée
+SELECT status_code, left(content::text, 120), created FROM net._http_response
+ WHERE created > now() - interval '10 minutes' ORDER BY created DESC;
+
+SELECT jobname, schedule, active FROM cron.job WHERE jobname = 'notifications-push-every-min';
+```
+
+Côté navigateur, le texte sous l'interrupteur nomme l'état : « non configuré » = clé publique
+absente du build ; « bloquées dans les réglages » = permission refusée. `Notification.permission`
+et `navigator.serviceWorker.getRegistration('/')` dans la console confirment.
+
 ### Lot « connecteur Iris » (2026-08-23) — appliqué le 2026-08-23
 
 | # | Action | Pourquoi cet ordre | État |

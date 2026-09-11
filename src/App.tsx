@@ -33,6 +33,7 @@ import BulkImport from "@/pages/BulkImport";
 import NotFound from "@/pages/NotFound";
 import PortalFormPage from "@/pages/PortalFormPage";
 import Accessibility from "@/pages/Accessibility";
+import { PushBootstrap } from "@/hooks/usePushSubscription";
 import { Loader2 } from "lucide-react";
 
 const queryClient = new QueryClient();
@@ -95,7 +96,15 @@ function ProtectedRoutes() {
     return <NoOrganizationFallback />;
   }
 
-  return <Outlet />;
+  return (
+    <>
+      {/* Un seul point de montage pour le push : touche `last_seen_at` de
+          l'appareil et écoute le service worker (clic sur une carte quand
+          Clara est déjà ouverte, renouvellement d'abonnement). */}
+      <PushBootstrap />
+      <Outlet />
+    </>
+  );
 }
 
 function SuperAdminRoute() {

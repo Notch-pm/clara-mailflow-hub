@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { UserAvatar } from "@/components/UserAvatar";
 import { uploadUserAvatar, removeUserAvatar } from "@/services/avatarService";
+import { PushDeviceToggle } from "@/components/PushDeviceToggle";
 import { supabase } from "@/integrations/supabase/client";
 
 const profileSchema = z.object({
@@ -211,6 +212,14 @@ export default function MonProfil() {
               </Button>
             </form>
           </Form>
+        </CardContent>
+      </Card>
+
+      {/* La cloche ne sonne que si Clara est ouverte : le push met la même
+          information sur l'écran verrouillé, application fermée. */}
+      <Card>
+        <CardContent className="pt-6">
+          <PushDeviceToggle footnote />
         </CardContent>
       </Card>
     </div>

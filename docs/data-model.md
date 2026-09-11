@@ -493,7 +493,7 @@ d'avant (cf. `docs/features.md` § 4).
 | `iris_attachments_error` | text | pièces réclamées par le formulaire de la démarche qu'Iris a refusées au dernier dépôt (format hors liste, 25 Mo, fichier introuvable) : la demande est **déposée mais incomplète**, et la ligne du ticket le dit. NULL = rien à signaler — **jamais** la preuve que tout est arrivé : les demandes d'avant le 2026-09-11 sont parties sans aucune pièce |
 
 #### `notifications`
-Notifications in-app. RLS scoped `user_id = auth.uid()`.
+Notifications in-app **et** boîte d'envoi push. RLS scoped `user_id = auth.uid()`.
 
 | Colonne | Type |
 |---|---|
@@ -501,6 +501,32 @@ Notifications in-app. RLS scoped `user_id = auth.uid()`.
 | `type` | text (`'new_courier'` par défaut) |
 | `resource_id` | uuid |
 | `read` | boolean |
+| `push_status` | text — `pending` \| `sending` \| `sent` \| `skipped` \| `failed`. **Décidé par le trigger `trg_notifications_push_queue` (BEFORE INSERT), jamais par le producteur** : `pending` ssi le destinataire a au moins un appareil actif |
+| `push_attempts` / `push_attempted_at` / `push_sent_at` / `push_next_attempt_at` | compteur et horodatages de la file (temporisation 2, 4, 8, 16 min ; abandon à la 5ᵉ) |
+| `push_error` | text — dernière cause d'échec, ou le motif d'un renoncement (« lue avant envoi », « aucun appareil actif »). **Jamais un endpoint ni le texte de la carte** |
+
+#### `push_subscriptions`
+Abonnements Web Push, **un par appareil**. ⚠️ **Seule table non scopée par `organization_id`** :
+un téléphone appartient à un compte, pas à une collectivité, et un agent rattaché à deux
+organisations ne l'inscrit pas deux fois. Le cloisonnement reste porté par `notifications`.
+
+| Colonne | Type |
+|---|---|
+| `user_id` | uuid FK → users |
+| `endpoint` | text **UNIQUE** — l'adresse de l'appareil rendue par le navigateur (FCM, Mozilla, Apple). Pas un secret |
+| `p256dh` / `auth` | text — clé publique ECDH et sel de chiffrement **vers** cet appareil (RFC 8291) ; publics par construction |
+| `user_agent` | text — libellé d'affichage (« Android · Chrome »), pour l'affichage seul |
+| `created_at` / `last_seen_at` | timestamptz |
+| `disabled_at` / `disabled_reason` | posés par le facteur sur 404/410 du service de push ; un nouvel enregistrement réactive la ligne |
+
+**Pas de policy INSERT cliente** : l'écriture passe par la RPC `register_push_subscription`
+(DEFINER), seule à pouvoir **reprendre** un endpoint pour son nouveau titulaire — sur un poste
+partagé d'accueil, le navigateur rend le même endpoint au suivant, et une clé
+`(user_id, endpoint)` lui ferait recevoir les notifications de son collègue de la veille.
+SELECT / UPDATE / DELETE restent en direct sous RLS (soi seul).
+
+Fonctions de service (aucune `EXECUTE` cliente) : `claim_notification_pushes`,
+`settle_notification_push`, `disable_push_subscription`, `notification_push_max_attempts`.
 
 ---
 

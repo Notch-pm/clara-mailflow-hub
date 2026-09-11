@@ -117,6 +117,19 @@ Pour les tables en écriture admin seulement, `auth_insert/update/delete` utilis
 | `notifications_update_own` | UPDATE | `user_id = (select auth.uid())` |
 | `notifications_delete_own` | DELETE | `user_id = (select auth.uid())` |
 
+#### `push_subscriptions`
+Abonnements Web Push (un par appareil). **Pas de policy INSERT** : l'écriture passe par la RPC
+`register_push_subscription`, seule à pouvoir reprendre un endpoint pour son nouveau titulaire
+(poste partagé). Table volontairement **non scopée par organisation** — un appareil appartient
+à un compte.
+
+| Policy | CMD | Condition |
+|---|---|---|
+| `push_subscriptions_select` | SELECT | `user_id = (select auth.uid())` |
+| `push_subscriptions_update` | UPDATE | `user_id = (select auth.uid())` |
+| `push_subscriptions_delete` | DELETE | `user_id = (select auth.uid())` |
+| `push_subscriptions_service` | ALL | `service_role` (le facteur `notifications-push`) |
+
 #### `users`
 Pas d'`organization_id` sur cette table → policies spécifiques (une par action) :
 
@@ -178,6 +191,8 @@ Résout les 32 lints `auth_rls_initplan` et les 29 `multiple_permissive_policies
 | `prevent_superadmin_escalation()` | trigger SECURITY DEFINER | Bloque le changement de `is_superadmin` si non-superadmin |
 | `rls_auto_enable()` | event trigger | Active RLS automatiquement sur toute nouvelle table `public.*` |
 | `fn_create_courier_notifications()` | trigger | Crée une notification `new_courier` pour tous les membres actifs de l'org à chaque INSERT de courrier inbound |
+| `notifications_push_queue()` | trigger | BEFORE INSERT sur `notifications` : pose `push_status = 'pending'` ssi le destinataire a au moins un appareil actif, `'skipped'` sinon. **Écrase ce que poserait un producteur** — la règle vit ici et nulle part ailleurs |
+| `register_push_subscription(text,text,text,text)` | DEFINER | Enregistre ou **reprend** l'abonnement push de cet appareil pour le compte connecté. Seule porte d'écriture ; `EXECUTE` à `authenticated` |
 | `action_tickets_prevent_courier_change()` | trigger | Empêche la modification du `courier_id` d'un ticket |
 | `couriers_enforce_transition()` | trigger SECURITY DEFINER | Garde des transitions de workflow (`20260723101849`) : valide la topologie (successeur légal, reset à l'initial, clôture, tenant/workflow de référence) sur INSERT/UPDATE de `workflow_state_id`/`socle_organization_id`. Bypass service_role (claim JWT) + GUC `clara.bypass_transition_guard` |
 | `couriers_enforce_signature()` | trigger SECURITY DEFINER | Garde de la signature (`20260723163536`) : tout changement de `metadata.signed_at/signed_by/signed_state_id` exige que l'acteur soit un signataire lié à l'organisation gestionnaire (`signatories.user_id` × `socle_organization_signatories`). Mêmes bypass que le garde de transitions |
