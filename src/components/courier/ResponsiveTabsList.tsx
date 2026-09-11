@@ -7,6 +7,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 
 export type ResponsiveTabItem = {
@@ -50,6 +51,11 @@ export function ResponsiveTabsList({ tabs, activeValue, onValueChange, className
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const measureRef = React.useRef<HTMLDivElement | null>(null);
   const [visibleCount, setVisibleCount] = React.useState(tabs.length);
+  // Sur un téléphone, la colonne de travail ne laisse la place qu'à UN onglet :
+  // le repli mettait six onglets sur sept derrière « Autres », c'est-à-dire la
+  // page entière dans un menu. La barre y défile donc horizontalement, motif
+  // habituel des onglets sur mobile.
+  const isMobile = useIsMobile();
 
   const recompute = React.useCallback(() => {
     const container = containerRef.current;
@@ -92,8 +98,8 @@ export function ResponsiveTabsList({ tabs, activeValue, onValueChange, className
     return () => ro.disconnect();
   }, [recompute]);
 
-  let visible = tabs.slice(0, visibleCount);
-  let overflow = tabs.slice(visibleCount);
+  let visible = isMobile ? tabs : tabs.slice(0, visibleCount);
+  let overflow = isMobile ? [] : tabs.slice(visibleCount);
 
   // Ensure active tab is always visible
   if (overflow.some((t) => t.value === activeValue)) {
@@ -105,6 +111,13 @@ export function ResponsiveTabsList({ tabs, activeValue, onValueChange, className
       overflow = [displaced, ...overflow];
     }
   }
+
+  React.useEffect(() => {
+    if (!isMobile) return;
+    const container = containerRef.current;
+    const active = container?.querySelector<HTMLElement>('[data-state="active"]');
+    active?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [isMobile, activeValue]);
 
   const contents = (t: ResponsiveTabItem) => (
     <>
@@ -137,7 +150,14 @@ export function ResponsiveTabsList({ tabs, activeValue, onValueChange, className
 
       <TabsPrimitive.List
         ref={containerRef}
-        className={cn("flex w-full items-center gap-1 border-b border-border", className)}
+        className={cn(
+          "flex w-full items-center gap-1 border-b border-border",
+          // `scrollbar-width`/`::-webkit-scrollbar` : la barre de défilement
+          // masquerait le trait d'onglet actif, épais de 2 px seulement.
+          isMobile &&
+            "overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+          className,
+        )}
       >
         {visible.map((t) => (
           <TabsPrimitive.Trigger key={t.value} value={t.value} className={triggerClass}>

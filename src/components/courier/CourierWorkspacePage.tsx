@@ -388,34 +388,49 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
           {subtitle && <p className="mt-1.5 text-sm text-muted-foreground">{subtitle}</p>}
         </div>
 
-        <div className="flex shrink-0 flex-wrap items-center gap-2.5">
+        {/* Sous sm les actions s'empilent sur toute la largeur. `shrink-0` sur
+            la rangee et `whitespace-nowrap` sur les boutons rendaient un
+            libelle de transition long — « Transmettre au service instructeur »
+            — irreductible : la page entiere s'elargissait derriere lui. */}
+        <div className="flex w-full shrink-0 flex-col gap-2.5 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
           {!effectiveReadOnly && prevTransition && (
             <Button
               variant="outline"
               onClick={() => transitionMutation.mutate(prevTransition.to_state.id)}
               disabled={transitionMutation.isPending}
-              className="h-10 gap-2"
+              className="h-10 w-full min-w-0 gap-2 sm:w-auto"
             >
-              <ArrowLeft className="h-4 w-4" />
-              {prevTransition.name ?? prevTransition.to_state?.name ?? "Précédent"}
+              <ArrowLeft className="h-4 w-4 shrink-0" />
+              <span className="truncate">
+                {prevTransition.name ?? prevTransition.to_state?.name ?? "Précédent"}
+              </span>
             </Button>
           )}
           {!effectiveReadOnly && nextTransition && (
             <Button
               onClick={() => transitionMutation.mutate(nextTransition.to_state.id)}
               disabled={transitionMutation.isPending}
-              className="h-10 gap-2 font-bold shadow-airbnb"
+              className="h-10 w-full min-w-0 gap-2 font-bold shadow-airbnb sm:w-auto"
             >
               <span
-                className={cn("h-2 w-2 rounded-full", categoryTone(nextTransition.to_state?.category).dot)}
+                className={cn(
+                  "h-2 w-2 shrink-0 rounded-full",
+                  categoryTone(nextTransition.to_state?.category).dot,
+                )}
               />
-              {nextTransition.name ?? nextTransition.to_state?.name ?? "Suivant"}
+              <span className="truncate">
+                {nextTransition.name ?? nextTransition.to_state?.name ?? "Suivant"}
+              </span>
             </Button>
           )}
           {!effectiveReadOnly && otherTransitions.length > 0 && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="h-10 gap-1.5" disabled={transitionMutation.isPending}>
+                <Button
+                  variant="outline"
+                  className="h-10 w-full gap-1.5 sm:w-auto"
+                  disabled={transitionMutation.isPending}
+                >
                   Autres actions
                   <ChevronDown className="h-4 w-4" />
                 </Button>
