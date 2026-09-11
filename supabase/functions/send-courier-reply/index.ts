@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import nodemailer from "npm:nodemailer@6";
 import { assertEditor } from "../_shared/authz.ts";
+import { contactsApiKeyForOrg, fetchContactsApi } from "../_shared/socleContactsClient.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -115,21 +116,52 @@ Deno.serve(async (req) => {
     // Recipient = participant of the reply with role=recipient (fallback: parent sender)
     const { data: replyParts } = await supabase
       .from("courier_participants")
-      .select("role, email, name")
+      .select("role, email, name, socle_contact_id")
       .eq("courier_id", reply.id);
     let recipient = (replyParts ?? []).find((p) => p.role === "recipient");
     if (!recipient?.email && reply.parent_courier_id) {
       const { data: parentParts } = await supabase
         .from("courier_participants")
-        .select("role, email, name")
+        .select("role, email, name, socle_contact_id")
         .eq("courier_id", reply.parent_courier_id);
       recipient = (parentParts ?? []).find((p) => p.role === "sender") ?? recipient;
     }
+
+    // Dernier recours : l'adresse tenue par le référentiel. Le participant
+    // n'est qu'un instantané du dépôt — un email ajouté après coup sur la fiche
+    // de l'usager n'y redescend jamais, et la réponse resterait impossible à
+    // envoyer. Best-effort : un référentiel injoignable laisse l'erreur 400.
+    if (!recipient?.email && recipient?.socle_contact_id) {
+      try {
+        const { data: org } = await supabase
+          .from("organizations")
+          .select("socle_org_id")
+          .eq("id", organization_id)
+          .single();
+        const socleOrgId = (org?.socle_org_id as string | null) ?? null;
+        const contactsKey = contactsApiKeyForOrg(socleOrgId);
+        if (contactsKey) {
+          const { body } = await fetchContactsApi(contactsKey, {
+            method: "GET",
+            path: `/v1/contacts/${recipient.socle_contact_id}`,
+            idempotent: true,
+          }, { socleOrgId });
+          const referentialEmail = (body as { email?: string | null } | null)?.email?.trim();
+          if (referentialEmail) recipient = { ...recipient, email: referentialEmail };
+        }
+      } catch (e) {
+        console.warn("send-courier-reply: adresse du référentiel indisponible:", e);
+      }
+    }
+
     if (!recipient?.email) {
-      return new Response(JSON.stringify({ error: "Aucune adresse email destinataire" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({
+          error:
+            "Aucune adresse email destinataire : ni sur le courrier, ni sur la fiche du destinataire dans le référentiel.",
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
     // SMTP config

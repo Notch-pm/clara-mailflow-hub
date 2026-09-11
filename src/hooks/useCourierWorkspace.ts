@@ -142,6 +142,13 @@ export function useCourierWorkspace({
     staleTime: 30_000,
   });
   const senderRelationLines = senderContact ? contactRelationLines(senderContact) : [];
+
+  // Adresse à laquelle répondre : celle portée par le courrier d'abord (c'est
+  // l'adresse qui a écrit), sinon celle de la fiche du référentiel. Sans ce
+  // repli, un courrier déposé alors que l'usager n'avait pas encore d'email
+  // restait à jamais « sans adresse », même après l'ajout de l'email sur sa
+  // fiche : le participant n'est qu'un instantané, jamais rafraîchi.
+  const senderReplyEmail = sender?.email?.trim() || senderContact?.email?.trim() || null;
   // For outbound couriers, fetch the linked parent inbound courier
   const { data: parentCourier } = useQuery({
     queryKey: ["courier", courier?.parent_courier_id, organizationId],
@@ -624,6 +631,7 @@ export function useCourierWorkspace({
     recipient,
     senderContact,
     senderRelationLines,
+    senderReplyEmail,
     parentCourier,
     parentSender,
     // Onglets et compteurs

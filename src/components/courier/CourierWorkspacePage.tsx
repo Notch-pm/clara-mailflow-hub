@@ -196,6 +196,7 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
     sender,
     senderContact,
     senderRelationLines,
+    senderReplyEmail,
     recipient,
     parentCourier,
     parentSender,
@@ -611,6 +612,7 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
                     assignedService={localAssignedService}
                     socleOrganizationId={localSocleOrgId}
                     sender={sender ?? null}
+                    senderReplyEmail={senderReplyEmail}
                     readOnly={effectiveReadOnly}
                     onStateChange={setReplyState}
                     initialReplyId={initialReplyIdParam}

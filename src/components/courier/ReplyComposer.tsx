@@ -78,6 +78,12 @@ interface Props {
   /** UUID de l'organisation gestionnaire (miroir Socle) — clé de résolution. */
   socleOrganizationId?: string | null;
   sender: CourierParticipant | null;
+  /**
+   * Adresse de réponse résolue par le workspace : celle du courrier, sinon
+   * celle de la fiche du référentiel (voir `useCourierWorkspace`). L'email du
+   * participant seul ne suffit pas — c'est un instantané du dépôt.
+   */
+  senderReplyEmail?: string | null;
   readOnly?: boolean;
   onStateChange?: (state: { name: string; category: string | null } | null) => void;
   initialReplyId?: string | null;
@@ -88,6 +94,10 @@ const CATEGORY_ORDER: Record<string, number> = { pending: 0, processing: 1, proc
 
 const CHANNEL_LABELS: Record<string, string> = { email: "Courriel", paper: "Courrier", fax: "Fax" };
 
+/** Dit aussi OÙ ajouter l'adresse manquante : le courrier ou la fiche usager. */
+const NO_EMAIL_REASON =
+  "Aucune adresse email : ni sur le courrier, ni sur la fiche de l'expéditeur dans le référentiel.";
+
 export default function ReplyComposer({
   courierId,
   organizationId,
@@ -95,6 +105,7 @@ export default function ReplyComposer({
   assignedService,
   socleOrganizationId,
   sender,
+  senderReplyEmail = null,
   readOnly,
   onStateChange,
   initialReplyId = null,
@@ -103,7 +114,7 @@ export default function ReplyComposer({
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const currentUserId = user?.id ?? null;
-  const senderEmail = sender?.email?.trim() || null;
+  const senderEmail = sender?.email?.trim() || senderReplyEmail?.trim() || null;
   const canEmail = !!senderEmail;
 
   // ─── Organisations (miroir Socle) & workflow ────────────────────────
@@ -332,7 +343,7 @@ export default function ReplyComposer({
       socleOrganizationId: currentService?.id ?? socleOrganizationId ?? null,
       initialStateId: workflow?.initialState?.id ?? null,
       recipient: sender
-        ? { name: sender.name, email: sender.email, first_name: sender.first_name, last_name: sender.last_name }
+        ? { name: sender.name, email: senderEmail, first_name: sender.first_name, last_name: sender.last_name }
         : null,
     });
     if (signatoryId) {
@@ -767,7 +778,7 @@ export default function ReplyComposer({
             ? "Sélectionnez un signataire."
             : null)
       : nextRequiresSend
-        ? (!canEmail ? "L'expéditeur n'a pas d'adresse email." : null)
+        ? (!canEmail ? NO_EMAIL_REASON : null)
         : null;
 
     const onClickNext = () => {
@@ -914,7 +925,7 @@ export default function ReplyComposer({
                   </Label>
                 </div>
               </TooltipTrigger>
-              {!canEmail && <TooltipContent>L'expéditeur n'a pas d'adresse email.</TooltipContent>}
+              {!canEmail && <TooltipContent>{NO_EMAIL_REASON}</TooltipContent>}
             </Tooltip>
           </RadioGroup>
         </div>
