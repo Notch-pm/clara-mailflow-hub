@@ -19,7 +19,7 @@ import { useOrganization } from "@/contexts/OrganizationContext";
 import { DataTable } from "@/components/data-table/data-table";
 import { DataTableColumnHeader } from "@/components/data-table/data-table-column-header";
 import { DataTableColumnToggle } from "@/components/data-table/data-table-column-toggle";
-import { DataTableGroupingSelect } from "@/components/data-table/data-table-grouping-select";
+import { DataTableGroupingMenu } from "@/components/data-table/data-table-grouping-menu";
 import { buildCsv, downloadCsv, type CsvColumn } from "@/components/data-table/csv-export";
 import { createCourier } from "@/services/courierService";
 import {
@@ -247,7 +247,7 @@ export default function CourriersEntrants() {
 
       {organizationId && (
         <div className="flex items-center justify-end gap-2">
-          {tableInstance && <DataTableGroupingSelect table={tableInstance} />}
+          {tableInstance && <DataTableGroupingMenu table={tableInstance} />}
           {tableInstance && <DataTableColumnToggle table={tableInstance} />}
           <Button variant="outline" size="sm" onClick={handleExportCsv} disabled={isExporting || !list.totalCount}>
             <Download className="h-4 w-4 mr-1" />

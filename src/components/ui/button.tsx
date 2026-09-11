@@ -15,12 +15,18 @@ const buttonVariants = cva(
         secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80 shadow-sm hover:shadow active:shadow-sm",
         ghost: "hover:bg-accent hover:text-accent-foreground",
         link: "text-primary underline-offset-4 hover:underline",
+        // Barre d'outils des listes : bouton cerclé, discret au repos. Un
+        // réglage en vigueur (groupement, filtres) se signale par `data-active`.
+        toolbar:
+          "border border-input bg-background font-semibold text-foreground hover:bg-secondary/35 data-[state=open]:bg-secondary/35 data-[active=true]:border-primary data-[active=true]:bg-primary/10 data-[active=true]:text-primary",
       },
       size: {
         default: "h-10 px-4 py-2",
         sm: "h-9 rounded-md px-3",
         lg: "h-11 rounded-md px-8",
         icon: "h-10 w-10",
+        pill: "h-9 gap-1.5 rounded-full px-3 text-[13px] [&_svg]:size-[15px]",
+        "pill-icon": "h-9 w-9 rounded-full [&_svg]:size-[15px]",
       },
     },
     defaultVariants: {

@@ -62,8 +62,20 @@ export function AppLayout() {
               la barre de navigation mobile est fixe, le contenu passerait
               dessous. Les classes précédentes se neutralisaient entre elles —
               `px-0 py-0` annulait `p-4` — ce qui collait le contenu aux bords
-              sur mobile. */}
-          <main ref={mainRef} className="flex-1 overflow-auto p-4 pb-20 md:p-6 md:pb-6">
+              sur mobile.
+
+              Seule exception : les pages de liste (`ListPage`, reconnues à
+              `data-list-page`) occupent toute la zone, bord à bord, et ne
+              laissent défiler que leurs lignes. `main` retire alors sa
+              gouttière — sauf la réserve basse sous `md` — et cesse de
+              défiler, sans quoi page et tableau défileraient l'un dans
+              l'autre. La boîte aux lettres (`fill-lg`) ne tient dans l'écran
+              qu'à partir de `lg` : en dessous, liste et panneau s'empilent et
+              `main` défile comme ailleurs. */}
+          <main
+            ref={mainRef}
+            className="flex-1 overflow-auto p-4 pb-20 has-[>[data-list-page]]:px-0 has-[>[data-list-page]]:pt-0 has-[>[data-list-page=fill]]:overflow-hidden md:p-6 md:pb-6 md:has-[>[data-list-page]]:pb-0 lg:has-[>[data-list-page=fill-lg]]:overflow-hidden"
+          >
             <Outlet />
           </main>
 

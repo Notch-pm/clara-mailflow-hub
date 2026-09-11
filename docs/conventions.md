@@ -49,6 +49,31 @@ const { data, error } = await supabase
 - **shadcn** : composants dans `components/ui/`. Étendre via `cva` plutôt que créer une variante inline.
 - **Icônes** : `lucide-react` exclusivement.
 
+## Pages de liste
+
+Boîte aux lettres, courriers (instruction, traités, archivés, sortants), contacts et recherche
+partagent un gabarit, `src/components/list/` (refonte du 2026-09-11) :
+
+- **`ListPage`** occupe toute la zone de contenu, bord à bord : `AppLayout` la reconnaît à
+  `data-list-page`, retire sa gouttière et **cesse de défiler**. Seules les lignes défilent
+  (`ListScrollArea`) — c'est ce qui supprime le double défilement page + tableau. La boîte aux
+  lettres (`fill="lg"`) ne tient dans l'écran qu'à partir de `lg` ; en dessous, liste et panneau
+  s'empilent et la page défile.
+- **`ListToolbar`** : une seule barre de 56 px — titre + compteur, `ListSearch`, actions rondes
+  (`ToolbarButton` + `ToolbarTooltip`, libellé visible à partir de `xl`), action principale à droite.
+  Sous `md`, deux lignes. Pas de sous-titre ni de carte « Recherche ».
+- **Filtres** : `ListFilterButton` (panneau dont chaque choix s'applique aussitôt) + `ListActiveFilters`
+  (pastilles retirables). Pour les courriers : `useCourierFacets` + `CourierFacetFields`.
+- **Densité** : `ListDensityToggle`, 48 ou 36 px, mémorisée dans `localStorage` pour toutes les listes ;
+  la ligne de contexte de `ListCellTitle` disparaît en compact.
+- **`DataTable`** remplit la page : en-tête collé, `table-fixed` (chaque colonne déclare
+  `meta.width`, la principale prend le reste), pagination en pied. Ne jamais la reposer dans une
+  `Card` ni dans le `Table` de shadcn, dont l'enveloppe `overflow-auto` recrée un second défilement.
+  Colonnes de courriers : `components/courier/courierListColumns.tsx` ; export CSV :
+  `useCourierCsvExport` (colonnes visibles, `meta.exportExtra` pour une cellule à deux informations).
+- Instance de table pour la barre d'outils : `useDataTableInstance`, pas un `useState` nu — l'instance
+  TanStack est stable et les menus afficheraient l'état précédent.
+
 ## Formulaires
 
 - `react-hook-form` + `@hookform/resolvers/zod` + `zod` pour la validation.

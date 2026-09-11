@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import type { ColumnDef } from "@tanstack/react-table";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
@@ -11,15 +12,14 @@ import {
   Building2,
   ChevronLeft,
   ChevronRight,
-  Download,
   ExternalLink,
   HeartHandshake,
   Landmark,
   Pencil,
   Plus,
-  Search,
   Trash2,
   User,
+  Users,
 } from "lucide-react";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import DuplicateContactsAlert from "@/components/contacts/DuplicateContactsAlert";
@@ -39,6 +39,28 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { buildCsv, downloadCsv, type CsvColumn } from "@/components/data-table/csv-export";
+import { DataTable } from "@/components/data-table/data-table";
+import { DataTableColumnToggle } from "@/components/data-table/data-table-column-toggle";
+import { useDataTableInstance } from "@/components/data-table/use-data-table-instance";
+import { ListCellText, ListCellTitle, StatusDot } from "@/components/list/ListCells";
+import {
+  FilterChips,
+  FilterSection,
+  ListActiveFilters,
+  ListFilterButton,
+  type ActiveFilterChip,
+} from "@/components/list/ListFilters";
+import {
+  ListDensityToggle,
+  ListExportButton,
+  ListFooter,
+  ListMessage,
+  ListPage,
+  ListSearch,
+  ListToolbar,
+  ToolbarButton,
+  ToolbarTooltip,
+} from "@/components/list/ListPage";
 import {
   archiveContact,
   createContact,
@@ -956,6 +978,7 @@ function ContactsList() {
   const [page, setPage] = useState(0);
   const [createOpen, setCreateOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [tableInstance, onTableInstanceChange] = useDataTableInstance<SocleContact>();
 
   const filters = useMemo(
     () => ({
@@ -978,9 +1001,10 @@ function ContactsList() {
     staleTime: 30_000,
   });
 
-  const fetched = contactsQuery.data ?? [];
-  const hasNextPage = fetched.length > PAGE_SIZE;
-  const contacts = hasNextPage ? fetched.slice(0, PAGE_SIZE) : fetched;
+  const fetched = contactsQuery.data;
+  const hasNextPage = (fetched?.length ?? 0) > PAGE_SIZE;
+  // Stable d'un rendu à l'autre : le tableau ne recalcule ses lignes qu'à l'arrivée d'une page.
+  const contacts = useMemo(() => (fetched ?? []).slice(0, PAGE_SIZE), [fetched]);
 
   async function handleExportCsv() {
     if (!organizationId) return;
@@ -1009,134 +1033,202 @@ function ContactsList() {
     }
   }
 
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-semibold">Contacts</h1>
-          <p className="text-sm text-muted-foreground">
-            Référentiel de contacts partagé avec les autres
-            applications de la collectivité.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={handleExportCsv} disabled={exporting}>
-            <Download className="h-4 w-4 mr-2" />
-            {exporting ? "Export…" : "Exporter"}
-          </Button>
-          <Button onClick={() => setCreateOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" /> Nouveau contact
-          </Button>
-        </div>
-      </div>
-
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="relative flex-1 min-w-[220px] max-w-sm">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Rechercher par nom…"
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(0); }}
-            className="pl-8"
+  const columns = useMemo<ColumnDef<SocleContact>[]>(() => {
+    const cols: ColumnDef<SocleContact>[] = [
+      {
+        id: "type",
+        accessorFn: (c) => SOCLE_CONTACT_TYPE_LABELS[c.contact_type],
+        header: "Type",
+        cell: ({ row }) => {
+          const TypeIcon = typeIcons[row.original.contact_type];
+          return (
+            <span className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+              <TypeIcon aria-hidden="true" className="h-4 w-4 shrink-0" />
+              <span className="truncate">{SOCLE_CONTACT_TYPE_LABELS[row.original.contact_type]}</span>
+            </span>
+          );
+        },
+        meta: { label: "Type", width: 160 },
+      },
+      {
+        id: "name",
+        accessorFn: (c) => c.display_name ?? "",
+        header: "Nom",
+        cell: ({ row }) => <ListCellTitle title={row.original.display_name ?? "—"} />,
+        enableHiding: false,
+        meta: { label: "Nom", minWidth: 220 },
+      },
+      {
+        id: "email",
+        accessorFn: (c) => c.email ?? "",
+        header: "Email",
+        cell: ({ row }) => <ListCellText>{row.original.email ?? "—"}</ListCellText>,
+        meta: { label: "Email", width: 260 },
+      },
+      {
+        id: "phone",
+        accessorFn: (c) => contactPhone(c),
+        header: "Téléphone",
+        cell: ({ row }) => <ListCellText className="tabular-nums">{contactPhone(row.original)}</ListCellText>,
+        meta: { label: "Téléphone", width: 150 },
+      },
+      {
+        id: "city",
+        accessorFn: (c) => c.city ?? "",
+        header: "Ville",
+        cell: ({ row }) => <ListCellText>{row.original.city ?? "—"}</ListCellText>,
+        meta: { label: "Ville", width: 170 },
+      },
+    ];
+    // Le statut ne dit rien quand seuls les actifs sont affichés.
+    if (statusFilter !== "active") {
+      cols.push({
+        id: "status",
+        accessorFn: (c) => (c.status === "archived" ? "Archivé" : "Actif"),
+        header: "Statut",
+        cell: ({ row }) => (
+          <StatusDot
+            label={row.original.status === "archived" ? "Archivé" : "Actif"}
+            tone={row.original.status === "archived" ? "muted" : "primary"}
           />
-        </div>
-        <Select value={typeFilter} onValueChange={(v) => { setTypeFilter(v as SocleContactType | "all"); setPage(0); }}>
-          <SelectTrigger className="w-[170px]"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Tous les types</SelectItem>
-            {Object.entries(SOCLE_CONTACT_TYPE_LABELS).map(([type, label]) => (
-              <SelectItem key={type} value={type}>{label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v as "active" | "archived" | "all"); setPage(0); }}>
-          <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="active">Actifs</SelectItem>
-            <SelectItem value="archived">Archivés</SelectItem>
-            <SelectItem value="all">Tous</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+        ),
+        meta: { label: "Statut", width: 110 },
+      });
+    }
+    return cols;
+  }, [statusFilter]);
 
-      <Card>
-        <CardContent className="p-0">
-          {contactsQuery.isError ? (
-            <div className="py-10 text-center text-sm text-destructive">
-              {contactsQuery.error instanceof Error ? contactsQuery.error.message : "Erreur de chargement des contacts"}
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[140px]">Type</TableHead>
-                  <TableHead>Nom</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Téléphone</TableHead>
-                  <TableHead>Ville</TableHead>
-                  {statusFilter !== "active" && <TableHead>Statut</TableHead>}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {contactsQuery.isLoading && (
-                  <TableRow>
-                    <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
-                      Chargement…
-                    </TableCell>
-                  </TableRow>
-                )}
-                {!contactsQuery.isLoading && contacts.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
-                      Aucun contact.
-                    </TableCell>
-                  </TableRow>
-                )}
-                {contacts.map((c) => {
-                  const TypeIcon = typeIcons[c.contact_type];
-                  return (
-                    <TableRow
-                      key={c.id}
-                      className="cursor-pointer"
-                      onClick={() => navigate(`/contacts/${c.id}`)}
-                    >
-                      <TableCell>
-                        <span className="flex items-center gap-2">
-                          <TypeIcon className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-xs text-muted-foreground">
-                            {SOCLE_CONTACT_TYPE_LABELS[c.contact_type]}
-                          </span>
-                        </span>
-                      </TableCell>
-                      <TableCell className="font-medium">{c.display_name ?? "—"}</TableCell>
-                      <TableCell>{c.email ?? "—"}</TableCell>
-                      <TableCell>{contactPhone(c)}</TableCell>
-                      <TableCell>{c.city ?? "—"}</TableCell>
-                      {statusFilter !== "active" && (
-                        <TableCell>
-                          {c.status === "archived"
-                            ? <Badge variant="destructive">Archivé</Badge>
-                            : <Badge variant="secondary">Actif</Badge>}
-                        </TableCell>
-                      )}
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+  // Réinitialiser, c'est revenir à l'affichage par défaut : les contacts actifs.
+  function resetFilters() {
+    setTypeFilter("all");
+    setStatusFilter("active");
+    setPage(0);
+  }
 
-      <div className="flex items-center justify-end gap-2">
-        <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
-          <ChevronLeft className="h-4 w-4 mr-1" /> Précédent
-        </Button>
-        <span className="text-sm text-muted-foreground">Page {page + 1}</span>
-        <Button variant="outline" size="sm" disabled={!hasNextPage} onClick={() => setPage((p) => p + 1)}>
-          Suivant <ChevronRight className="h-4 w-4 ml-1" />
-        </Button>
-      </div>
+  const chips: ActiveFilterChip[] = [
+    ...(typeFilter !== "all"
+      ? [{ key: "type", label: `Type : ${SOCLE_CONTACT_TYPE_LABELS[typeFilter]}`, onRemove: () => { setTypeFilter("all"); setPage(0); } }]
+      : []),
+    ...(statusFilter !== "active"
+      ? [{
+          key: "status",
+          label: statusFilter === "archived" ? "Statut : archivés" : "Archivés inclus",
+          onRemove: () => { setStatusFilter("active"); setPage(0); },
+        }]
+      : []),
+  ];
+
+  const firstShown = page * PAGE_SIZE + 1;
+
+  return (
+    <ListPage>
+      <ListToolbar
+        icon={<Users className="text-primary" />}
+        title="Contacts"
+        search={
+          <ListSearch
+            value={search}
+            onChange={(v) => { setSearch(v); setPage(0); }}
+            placeholder="Rechercher par nom…"
+          />
+        }
+        primary={
+          <ToolbarTooltip label="Nouveau contact" hideFromXl>
+            <ToolbarButton
+              primary
+              icon={<Plus />}
+              label="Nouveau contact"
+              text="Nouveau"
+              showLabel
+              onClick={() => setCreateOpen(true)}
+            />
+          </ToolbarTooltip>
+        }
+      >
+        <ListFilterButton title="Filtrer les contacts" activeCount={chips.length} onReset={resetFilters}>
+          <FilterSection label="Type">
+            <FilterChips
+              options={Object.entries(SOCLE_CONTACT_TYPE_LABELS).map(([value, label]) => ({ value, label }))}
+              selected={typeFilter === "all" ? [] : [typeFilter]}
+              onToggle={(v) => {
+                setTypeFilter((cur) => (cur === v ? "all" : (v as SocleContactType)));
+                setPage(0);
+              }}
+            />
+          </FilterSection>
+          <FilterSection label="Statut">
+            <FilterChips
+              options={[
+                { value: "active", label: "Actifs" },
+                { value: "archived", label: "Archivés" },
+                { value: "all", label: "Tous" },
+              ]}
+              selected={[statusFilter]}
+              onToggle={(v) => {
+                setStatusFilter(v as "active" | "archived" | "all");
+                setPage(0);
+              }}
+            />
+          </FilterSection>
+        </ListFilterButton>
+        <ListDensityToggle />
+        {tableInstance && <DataTableColumnToggle table={tableInstance} />}
+        <ListExportButton onClick={handleExportCsv} busy={exporting} />
+      </ListToolbar>
+      <ListActiveFilters chips={chips} onReset={resetFilters} />
+
+      {contactsQuery.isError ? (
+        <ListMessage className="text-destructive">
+          {contactsQuery.error instanceof Error ? contactsQuery.error.message : "Erreur de chargement des contacts"}
+        </ListMessage>
+      ) : (
+        <DataTable
+          columns={columns}
+          data={contacts}
+          getRowId={(c) => c.id}
+          isLoading={contactsQuery.isLoading}
+          onRowClick={(c) => navigate(`/contacts/${c.id}`)}
+          onTableInstanceChange={onTableInstanceChange}
+          emptyMessage="Aucun contact."
+          itemLabel="contact"
+          // L'API du Socle ne trie pas : un tri local ne porterait que sur la page.
+          sortable={false}
+          resetScrollKey={page}
+          footer={
+            // L'API du Socle ne renvoie pas de total : on pagine « à l'aveugle »,
+            // précédent / suivant, sans numéros de page.
+            <ListFooter>
+              <p aria-live="polite">
+                {contactsQuery.isFetching
+                  ? "Chargement…"
+                  : contacts.length
+                    ? `Contacts ${firstShown.toLocaleString("fr-FR")}–${(firstShown + contacts.length - 1).toLocaleString("fr-FR")} · page ${page + 1}`
+                    : `Page ${page + 1}`}
+              </p>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1 rounded-md px-2 text-xs shadow-none"
+                  disabled={page === 0}
+                  onClick={() => setPage((p) => p - 1)}
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" /> Précédent
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1 rounded-md px-2 text-xs shadow-none"
+                  disabled={!hasNextPage}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  Suivant <ChevronRight className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </ListFooter>
+          }
+        />
+      )}
 
       <ContactFormDialog
         organizationId={organizationId!}
@@ -1152,7 +1244,7 @@ function ContactsList() {
           navigate(`/contacts/${existing.id}`);
         }}
       />
-    </div>
+    </ListPage>
   );
 }
 

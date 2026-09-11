@@ -1,44 +1,55 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import type { ColumnDef, Table as TanstackTable } from "@tanstack/react-table";
-import { Download, Send, Plus, Search } from "lucide-react";
+import type { ColumnDef } from "@tanstack/react-table";
+import { Send, Plus } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { DataTable } from "@/components/data-table/data-table";
-import { DataTableColumnHeader } from "@/components/data-table/data-table-column-header";
 import { DataTableColumnToggle } from "@/components/data-table/data-table-column-toggle";
-import { DataTableGroupingSelect } from "@/components/data-table/data-table-grouping-select";
-import { buildCsv, downloadCsv, type CsvColumn } from "@/components/data-table/csv-export";
-import { createCourier } from "@/services/courierService";
+import { DataTableGroupingMenu } from "@/components/data-table/data-table-grouping-menu";
+import { useDataTableInstance } from "@/components/data-table/use-data-table-instance";
+import { ListActiveFilters, ListFilterButton } from "@/components/list/ListFilters";
 import {
-  fetchAllCouriersForExport,
-  type CourierListFilters,
-  type CourierListRow,
-} from "@/services/courierListService";
-import type { CourierChannel } from "@/types/courier";
+  ListDensityToggle,
+  ListExportButton,
+  ListMessage,
+  ListPage,
+  ListSearch,
+  ListToolbar,
+  ToolbarButton,
+  ToolbarTooltip,
+} from "@/components/list/ListPage";
+import { CourierFacetFields } from "@/components/courier/CourierFacetFields";
+import {
+  channelColumn,
+  chronoColumn,
+  dateColumn,
+  organisationColumn,
+  subjectColumn,
+} from "@/components/courier/courierListColumns";
+import { createCourier } from "@/services/courierService";
+import { listOrgsWithConfig } from "@/services/socleOrgConfigService";
+import type { CourierListFilters, CourierListRow } from "@/services/courierListService";
 import { useUserServiceFilter } from "@/hooks/useUserServiceFilter";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useCourierList } from "@/hooks/useCourierList";
+import { useCourierFacets } from "@/hooks/useCourierFacets";
+import { useCourierCsvExport } from "@/hooks/useCourierCsvExport";
 
 const schema = z.object({
   subject: z.string().min(1, "L'objet est obligatoire").max(500),
   channel: z.enum(["paper", "email", "portal"] as const, { required_error: "Le canal est obligatoire" }),
   sent_at: z.string().min(1, "La date d'envoi est obligatoire"),
 });
-
-const channelLabels: Record<CourierChannel, string> = { paper: "Papier", email: "Email", portal: "Portail" };
 
 export default function CourriersSortants() {
   const { organizationId } = useOrganization();
@@ -52,6 +63,15 @@ export default function CourriersSortants() {
     defaultValues: { subject: "", channel: undefined, sent_at: new Date().toISOString().slice(0, 16) },
   });
 
+  const { data: services } = useQuery({
+    queryKey: ["socle-orgs-config", organizationId],
+    queryFn: () => listOrgsWithConfig(organizationId!),
+    enabled: !!organizationId,
+  });
+
+  // Seul filtre que le RPC sait appliquer aux sortants : la période porte sur la
+  // date de RÉCEPTION, que ces courriers n'ont pas.
+  const facets = useCourierFacets({ services });
   const userServiceFilter = useUserServiceFilter();
 
   const debouncedSearch = useDebouncedValue(search, 300);
@@ -61,11 +81,12 @@ export default function CourriersSortants() {
     return {
       organizationId,
       direction: "outbound",
+      socleOrganizationId: facets.serviceId,
       keywords: debouncedSearch || null,
       prefixMatch: true,
       visibleSocleOrganizationIds: userServiceFilter,
     };
-  }, [organizationId, debouncedSearch, userServiceFilter]);
+  }, [organizationId, facets.serviceId, debouncedSearch, userServiceFilter]);
 
   // created_at et non sent_at : un courrier en préparation n'a pas encore de
   // date d'envoi, trier dessus le renverrait en fin de liste alors que c'est
@@ -75,83 +96,26 @@ export default function CourriersSortants() {
     defaultSort: { key: "created_at", dir: "desc" },
   });
 
-  const [tableInstance, setTableInstance] = useState<TanstackTable<CourierListRow> | null>(null);
-  const [isExporting, setIsExporting] = useState(false);
+  const [tableInstance, onTableInstanceChange] = useDataTableInstance<CourierListRow>();
+  const { exportCsv, isExporting } = useCourierCsvExport(list.filters, tableInstance, "courriers-sortants");
 
-  // Le tri est SERVEUR (cf. useCourierList) : les en-têtes triables portent donc
-  // sur tout le jeu filtré. L'`id` de colonne EST la clé serveur — le renommer
-  // casse le tri. `enableSorting: false` marque ce que le RPC ne sait pas trier.
   const columns = useMemo<ColumnDef<CourierListRow>[]>(
     () => [
-      {
-        accessorKey: "chrono",
-        header: ({ column }) => <DataTableColumnHeader column={column} title="Chrono" />,
-        cell: ({ row }) => <span className="font-mono text-xs">{row.original.chrono ?? "—"}</span>,
-        meta: { exportLabel: "Chrono" },
-      },
-      {
-        accessorKey: "subject",
-        header: ({ column }) => <DataTableColumnHeader column={column} title="Objet" />,
-        cell: ({ row }) => (
-          <span className="font-medium max-w-[300px] truncate block">{row.original.subject ?? "Sans objet"}</span>
-        ),
-        meta: { exportLabel: "Objet" },
-      },
-      {
-        id: "channel",
-        accessorFn: (c) => channelLabels[c.channel as CourierChannel] ?? c.channel,
-        // Le RPC trierait sur l'énumération SQL, dont l'ordre n'est ni
-        // alphabétique ni celui des libellés affichés.
-        enableSorting: false,
-        header: "Canal",
-        cell: ({ row }) => (
-          <Badge variant="outline">{channelLabels[row.original.channel as CourierChannel] ?? row.original.channel}</Badge>
-        ),
-        meta: { exportLabel: "Canal" },
-      },
-      {
-        accessorKey: "assigned_service",
-        header: ({ column }) => <DataTableColumnHeader column={column} title="Organisation" />,
-        cell: ({ row }) => <span className="text-sm">{row.original.assigned_service ?? "—"}</span>,
-        meta: { exportLabel: "Organisation" },
-      },
-      {
+      chronoColumn(),
+      subjectColumn("recipient"),
+      organisationColumn(),
+      channelColumn(),
+      dateColumn({
         id: "sent_at",
-        accessorFn: (c) => (c.sent_at ? new Date(c.sent_at).toLocaleDateString("fr-FR") : ""),
-        sortDescFirst: true,
-        header: ({ column }) => <DataTableColumnHeader column={column} title="Envoyé le" />,
-        cell: ({ row }) => (
-          <span className="text-sm">{row.original.sent_at ? new Date(row.original.sent_at).toLocaleDateString("fr-FR") : "—"}</span>
-        ),
-        meta: { exportLabel: "Envoyé le" },
-      },
+        title: "Envoyé le",
+        exportLabel: "Envoyé le",
+        groupLabel: "Mois d'envoi",
+        value: (c) => c.sent_at,
+        sortable: true,
+      }),
     ],
     [],
   );
-
-  async function handleExportCsv() {
-    if (!list.filters || !tableInstance) return;
-    setIsExporting(true);
-    try {
-      // list.filters et non `filters` : ceux-là portent le tri courant, le CSV
-      // sort donc dans l'ordre affiché à l'écran.
-      const { rows, truncated } = await fetchAllCouriersForExport(list.filters);
-      const csvColumns: CsvColumn<CourierListRow>[] = tableInstance
-        .getVisibleLeafColumns()
-        .map((col) => ({
-          header: (col.columnDef.meta as { exportLabel?: string } | undefined)?.exportLabel ?? col.id,
-          accessor: (row) => (col.accessorFn as ((row: CourierListRow) => unknown) | undefined)?.(row) ?? "",
-        }));
-      const csv = buildCsv(rows, csvColumns);
-      downloadCsv(csv, `courriers-sortants-${new Date().toISOString().slice(0, 10)}.csv`);
-      if (truncated) toast.warning("Export limité aux 20 000 premiers courriers.");
-    } catch (e) {
-      console.error(e);
-      toast.error("Erreur lors de l'export du fichier.");
-    } finally {
-      setIsExporting(false);
-    }
-  }
 
   const createMutation = useMutation({
     mutationFn: async (values: z.infer<typeof schema>) => {
@@ -174,93 +138,85 @@ export default function CourriersSortants() {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const newCourier = (
+    <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <ToolbarTooltip label="Nouveau courrier" hideFromXl>
+        <DialogTrigger asChild>
+          <ToolbarButton primary icon={<Plus />} label="Nouveau courrier" text="Nouveau" showLabel />
+        </DialogTrigger>
+      </ToolbarTooltip>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Créer un courrier sortant</DialogTitle></DialogHeader>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit((v) => createMutation.mutate(v))} className="space-y-4">
+            <FormField control={form.control} name="subject" render={({ field }) => (
+              <FormItem><FormLabel>Objet</FormLabel><FormControl><Input placeholder="Objet du courrier" {...field} /></FormControl><FormMessage /></FormItem>
+            )} />
+            <FormField control={form.control} name="channel" render={({ field }) => (
+              <FormItem><FormLabel>Canal</FormLabel>
+                <Select onValueChange={field.onChange} value={field.value}>
+                  <FormControl><SelectTrigger><SelectValue placeholder="Sélectionner un canal" /></SelectTrigger></FormControl>
+                  <SelectContent>
+                    <SelectItem value="paper">Papier</SelectItem>
+                    <SelectItem value="email">Email</SelectItem>
+                    <SelectItem value="portal">Portail</SelectItem>
+                  </SelectContent>
+                </Select><FormMessage />
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="sent_at" render={({ field }) => (
+              <FormItem><FormLabel>Date d'envoi</FormLabel><FormControl><Input type="datetime-local" {...field} /></FormControl><FormMessage /></FormItem>
+            )} />
+            <Button type="submit" className="w-full" disabled={createMutation.isPending}>
+              {createMutation.isPending ? "Création..." : "Créer le courrier"}
+            </Button>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Send className="h-6 w-6 text-warning" />
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Courriers sortants</h1>
-            <p className="text-muted-foreground">Gestion et suivi des courriers envoyés</p>
-          </div>
-        </div>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="gap-1.5"><Plus className="h-4 w-4" /> Nouveau courrier</Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader><DialogTitle>Créer un courrier sortant</DialogTitle></DialogHeader>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit((v) => createMutation.mutate(v))} className="space-y-4">
-                <FormField control={form.control} name="subject" render={({ field }) => (
-                  <FormItem><FormLabel>Objet</FormLabel><FormControl><Input placeholder="Objet du courrier" {...field} /></FormControl><FormMessage /></FormItem>
-                )} />
-                <FormField control={form.control} name="channel" render={({ field }) => (
-                  <FormItem><FormLabel>Canal</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl><SelectTrigger><SelectValue placeholder="Sélectionner un canal" /></SelectTrigger></FormControl>
-                      <SelectContent>
-                        <SelectItem value="paper">Papier</SelectItem>
-                        <SelectItem value="email">Email</SelectItem>
-                        <SelectItem value="portal">Portail</SelectItem>
-                      </SelectContent>
-                    </Select><FormMessage />
-                  </FormItem>
-                )} />
-                <FormField control={form.control} name="sent_at" render={({ field }) => (
-                  <FormItem><FormLabel>Date d'envoi</FormLabel><FormControl><Input type="datetime-local" {...field} /></FormControl><FormMessage /></FormItem>
-                )} />
-                <Button type="submit" className="w-full" disabled={createMutation.isPending}>
-                  {createMutation.isPending ? "Création..." : "Créer le courrier"}
-                </Button>
-              </form>
-            </Form>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      {organizationId && (
-        <div className="flex items-center justify-end gap-2">
-          {tableInstance && <DataTableGroupingSelect table={tableInstance} />}
-          {tableInstance && <DataTableColumnToggle table={tableInstance} />}
-          <Button variant="outline" size="sm" onClick={handleExportCsv} disabled={isExporting || !list.totalCount}>
-            <Download className="h-4 w-4 mr-1" />
-            {isExporting ? "Export…" : "Exporter CSV"}
-          </Button>
-        </div>
-      )}
-
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex items-end gap-4 flex-wrap">
-            <div className="flex flex-col gap-1.5 flex-1 min-w-[200px] max-w-sm">
-              <Label className="text-xs text-muted-foreground">Recherche</Label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Rechercher par objet…"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="pl-9"
-                />
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+    <ListPage>
+      <ListToolbar
+        icon={<Send className="text-warning" />}
+        title="Courriers sortants"
+        count={list.filters && !list.isLoading ? list.totalCount : null}
+        countLabel="courriers"
+        search={<ListSearch value={search} onChange={setSearch} placeholder="Rechercher par objet…" />}
+        primary={newCourier}
+      >
+        {tableInstance && <DataTableGroupingMenu table={tableInstance} />}
+        <ListFilterButton
+          title="Filtrer les courriers"
+          activeCount={facets.activeCount}
+          resultLabel={list.isFetching ? "…" : `${list.totalCount} résultat${list.totalCount > 1 ? "s" : ""}`}
+          onReset={facets.reset}
+        >
+          <CourierFacetFields facets={facets} />
+        </ListFilterButton>
+        <ListDensityToggle />
+        {tableInstance && <DataTableColumnToggle table={tableInstance} />}
+        <ListExportButton onClick={exportCsv} busy={isExporting} disabled={!list.totalCount} />
+      </ListToolbar>
+      <ListActiveFilters chips={facets.chips} onReset={facets.reset} />
 
       {!organizationId ? (
-        <Card><CardContent className="py-8 text-center text-muted-foreground">Veuillez sélectionner une organisation.</CardContent></Card>
+        <ListMessage>Veuillez sélectionner une organisation.</ListMessage>
       ) : (
         <DataTable
           columns={columns}
           data={list.rows}
           isLoading={list.isLoading}
           onRowClick={(c) => navigate(`/courrier/${c.id}`)}
-          onTableInstanceChange={setTableInstance}
+          onTableInstanceChange={onTableInstanceChange}
           sorting={list.sorting}
           onSortingChange={list.onSortingChange}
-          emptyMessage="Aucun courrier sortant."
+          emptyMessage={
+            facets.activeCount || debouncedSearch
+              ? "Aucun courrier sortant ne correspond à ces critères."
+              : "Aucun courrier sortant."
+          }
           pagination={{
             page: list.page,
             pageCount: list.pageCount,
@@ -272,6 +228,6 @@ export default function CourriersSortants() {
           }}
         />
       )}
-    </div>
+    </ListPage>
   );
 }

@@ -1,9 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,17 +11,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  ArrowDown,
-  ArrowRightLeft,
-  ArrowUp,
-  ChevronRight,
-  Plus,
-  Search,
-  Sparkles,
-  Upload,
-  Weight,
-} from "lucide-react";
+import { ArrowRightLeft, ChevronRight, Plus, Sparkles, Upload, Weight } from "lucide-react";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { canEditCouriers } from "@/lib/permissions";
@@ -40,7 +27,20 @@ import { useUserServiceFilter } from "@/hooks/useUserServiceFilter";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useCourierList } from "@/hooks/useCourierList";
 import { DataTablePagination } from "@/components/data-table/data-table-pagination";
-import { type SortDirection } from "@/components/data-table/data-table-column-header";
+import { SortableHeader, type SortDirection } from "@/components/data-table/data-table-column-header";
+import { LIST_HEADER_SURFACE, ListCellDate, ListCellText, ListCellTitle } from "@/components/list/ListCells";
+import {
+  ListDensityToggle,
+  ListMessage,
+  ListPage,
+  ListSearch,
+  ListSegmented,
+  ListToolbar,
+  ToolbarButton,
+  ToolbarTooltip,
+} from "@/components/list/ListPage";
+import { ListScrollArea } from "@/components/list/ListScrollArea";
+import { courierSenderName } from "@/components/courier/courierListColumns";
 import { toast } from "@/hooks/use-toast";
 import MailboxSidePanel from "@/components/courier/MailboxSidePanel";
 import NewCourierDialog from "@/components/courier/NewCourierDialog";
@@ -63,7 +63,7 @@ export function recordLogin() {
  * l'objet, en ligne de contexte.
  */
 const ROW_GRID =
-  "grid grid-cols-[minmax(0,1fr)_28px] items-center gap-3 md:grid-cols-[92px_minmax(0,1fr)_130px_28px]";
+  "grid grid-cols-[minmax(0,1fr)_28px] items-center gap-3 md:grid-cols-[104px_minmax(0,1fr)_160px_28px]";
 
 export default function BoiteAuxLettres() {
   const { organizationId } = useOrganization();
@@ -169,24 +169,12 @@ export default function BoiteAuxLettres() {
 
   /** En-tête de colonne triable de la liste. */
   function SortButton({ label, sortKey, descFirst }: { label: string; sortKey: CourierSortKey; descFirst: boolean }) {
-    const dir = sortDirection(sortKey);
     return (
-      <button
-        type="button"
-        onClick={() => toggleSort(sortKey, descFirst)}
-        aria-label={`Trier par ${label.toLowerCase()}`}
-        className={cn(
-          "inline-flex items-center gap-1 transition-colors hover:text-foreground",
-          dir && "text-foreground",
-        )}
-      >
-        {label}
-        {dir === "asc" ? (
-          <ArrowUp className="h-3 w-3" />
-        ) : dir === "desc" ? (
-          <ArrowDown className="h-3 w-3" />
-        ) : null}
-      </button>
+      <SortableHeader
+        title={label}
+        direction={sortDirection(sortKey)}
+        onToggle={() => toggleSort(sortKey, descFirst)}
+      />
     );
   }
 
@@ -257,7 +245,16 @@ export default function BoiteAuxLettres() {
     const isNewCourier = isNew(c);
     const isJustArrived = isNewThisSession(c);
     const selected = selectedCourier?.id === c.id;
-    const senderName = c.sender_name ?? [c.sender_last_name, c.sender_first_name].filter(Boolean).join(" ");
+    const senderName = courierSenderName(c);
+    const newMark = isNewCourier && (
+      <Sparkles
+        className={cn(
+          "h-3.5 w-3.5 shrink-0",
+          isJustArrived ? "animate-pulse text-secondary" : "text-secondary/70",
+        )}
+        aria-label={isJustArrived ? "Arrivé à l'instant" : "Nouveau depuis votre dernière visite"}
+      />
+    );
     return (
       <button
         key={c.id}
@@ -266,214 +263,165 @@ export default function BoiteAuxLettres() {
         aria-current={selected}
         className={cn(
           ROW_GRID,
-          "w-full border-b border-l-[3px] border-border px-4 py-3.5 text-left transition-colors last:border-b-0",
+          "min-h-12 w-full border-b border-l-[3px] border-b-border/70 px-4 py-1.5 text-left transition-colors group-data-[density=compact]/list:min-h-9 group-data-[density=compact]/list:py-1",
           selected
             ? "border-l-primary bg-primary/[0.06]"
-            : "border-l-transparent hover:bg-muted/50",
+            : "border-l-transparent hover:bg-muted/55",
         )}
       >
-        <span className="hidden items-center gap-1.5 text-sm tabular-nums text-muted-foreground md:flex">
-          {isNewCourier && (
-            <Sparkles
-              className={cn(
-                "h-3.5 w-3.5 shrink-0",
-                isJustArrived ? "animate-pulse text-secondary" : "text-secondary/70",
+        <span className="hidden items-center gap-1.5 md:flex">
+          {newMark}
+          <ListCellDate value={c.received_at} />
+        </span>
+
+        <ListCellTitle
+          title={c.subject ?? "Sans titre"}
+          leading={
+            <>
+              <span className="md:hidden">{newMark}</span>
+              {/* Remplace l'encadré « Courriers transférés » : l'information reste
+                  visible ligne par ligne, y compris dans l'onglet « Tous ». */}
+              {c.is_transferred && (
+                <ArrowRightLeft
+                  className="h-3.5 w-3.5 shrink-0 text-secondary"
+                  aria-label="Courrier transféré"
+                />
               )}
-              aria-label={isJustArrived ? "Arrivé à l'instant" : "Nouveau depuis votre dernière visite"}
-            />
-          )}
-          {c.received_at ? new Date(c.received_at).toLocaleDateString("fr-FR") : "—"}
-        </span>
+              {/* Ces courriers étaient auparavant rejetés à l'ingestion (limite
+                  2 Mo). Ils entrent désormais, mais restent signalés : ce sont le
+                  plus souvent des numérisations, longues à ouvrir et à analyser. */}
+              {c.is_large_email && (
+                <Weight
+                  className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                  aria-label="Courrier volumineux"
+                />
+              )}
+            </>
+          }
+          meta={
+            <>
+              {/* Sous `md`, date et expéditeur n'ont pas de colonne : ils
+                  passent dans la ligne de contexte. */}
+              <span className="md:hidden">
+                {[c.received_at ? new Date(c.received_at).toLocaleDateString("fr-FR") : null, senderName]
+                  .filter(Boolean)
+                  .join(" · ") || "—"}
+              </span>
+              <span className="hidden md:inline">{c.assigned_service ?? "Non assigné"}</span>
+            </>
+          }
+        />
 
-        <span className="min-w-0">
-          {c.assigned_service && (
-            <span className="mb-0.5 block truncate text-xs font-bold text-primary">
-              {c.assigned_service}
-            </span>
-          )}
-          <span className="flex min-w-0 items-center gap-1.5">
-            {isNewCourier && (
-              <Sparkles
-                className={cn(
-                  "h-3.5 w-3.5 shrink-0 md:hidden",
-                  isJustArrived ? "animate-pulse text-secondary" : "text-secondary/70",
-                )}
-                aria-label={isJustArrived ? "Arrivé à l'instant" : "Nouveau depuis votre dernière visite"}
-              />
-            )}
-            {/* Remplace l'encadré « Courriers transférés » : l'information reste
-                visible ligne par ligne, y compris dans l'onglet « Tous ». */}
-            {c.is_transferred && (
-              <ArrowRightLeft
-                className="h-3.5 w-3.5 shrink-0 text-secondary"
-                aria-label="Courrier transféré"
-              />
-            )}
-            {/* Ces courriers étaient auparavant rejetés à l'ingestion (limite
-                2 Mo). Ils entrent désormais, mais restent signalés : ce sont le
-                plus souvent des numérisations, longues à ouvrir et à analyser. */}
-            {c.is_large_email && (
-              <Weight
-                className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
-                aria-label="Courrier volumineux"
-              />
-            )}
-            <span className="truncate text-sm font-semibold">{c.subject ?? "Sans titre"}</span>
-          </span>
-          <span className="mt-0.5 block truncate text-xs text-muted-foreground md:hidden">
-            {[c.received_at ? new Date(c.received_at).toLocaleDateString("fr-FR") : null, senderName]
-              .filter(Boolean)
-              .join(" · ") || "—"}
-          </span>
-        </span>
-
-        <span className="hidden truncate text-sm md:block">{senderName || "—"}</span>
+        <ListCellText className="hidden text-foreground md:block">{senderName || "—"}</ListCellText>
 
         <ChevronRight
-          className={cn("h-4 w-4 justify-self-center", selected ? "text-primary" : "text-border")}
+          className={cn("h-4 w-4 justify-self-center", selected ? "text-primary" : "text-muted-foreground/60")}
         />
       </button>
     );
   }
 
   return (
-    <div className="flex w-full flex-col lg:h-full">
-      {/* Header */}
-      <div className="mb-4 flex flex-wrap items-end gap-4 lg:shrink-0">
-        <div className="flex min-w-0 flex-1 basis-[320px] items-center gap-3">
-          <img
-            src={mailboxIcon}
-            alt=""
-            className="h-6 w-6 text-primary"
-            style={{ filter: "var(--icon-primary-filter, none)" }}
-          />
-          <div className="min-w-0">
-            <h1 className="text-2xl font-bold tracking-tight">Boîte aux lettres</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Retrouvez ici les courriers reçus en attente de prise en charge.
-            </p>
-          </div>
-        </div>
-        {organizationId && canEdit && (
-          <div className="flex items-center gap-2.5">
-            <Button variant="outline" className="h-10 gap-2" onClick={() => navigate("/import-en-masse")}>
-              <Upload className="h-4 w-4" />
-              Importer en masse
-            </Button>
-            <Button className="h-10 gap-2 font-bold" onClick={() => setNewDialogOpen(true)}>
-              <Plus className="h-4 w-4" />
-              Nouveau courrier
-            </Button>
-          </div>
-        )}
-      </div>
+    <ListPage fill="lg">
+      <ListToolbar
+        icon={<img src={mailboxIcon} alt="" style={{ filter: "var(--icon-primary-filter, none)" }} />}
+        title="Boîte aux lettres"
+        count={list.filters && !list.isLoading ? list.totalCount : null}
+        countLabel="courriers en attente"
+        search={<ListSearch value={search} onChange={setSearch} placeholder="Rechercher par objet…" />}
+        primary={
+          organizationId && canEdit ? (
+            <>
+              <ToolbarTooltip label="Importer en masse" hideFromXl>
+                <ToolbarButton
+                  icon={<Upload />}
+                  label="Importer en masse"
+                  text="Importer"
+                  showLabel
+                  onClick={() => navigate("/import-en-masse")}
+                />
+              </ToolbarTooltip>
+              <ToolbarTooltip label="Nouveau courrier" hideFromXl>
+                <ToolbarButton
+                  primary
+                  icon={<Plus />}
+                  label="Nouveau courrier"
+                  text="Nouveau"
+                  showLabel
+                  onClick={() => setNewDialogOpen(true)}
+                />
+              </ToolbarTooltip>
+            </>
+          ) : undefined
+        }
+      >
+        {/* Les transférés étaient auparavant un second tableau, alimenté par
+            un partage client de la liste. Devenu un filtre serveur : paginé,
+            un partage n'aurait montré que les transférés de la page courante. */}
+        <ListSegmented<"all" | "transferred">
+          value={tab}
+          onChange={setTab}
+          ariaLabel="Filtre"
+          options={[
+            { value: "all", label: "Tous" },
+            { value: "transferred", label: "Transférés", icon: <ArrowRightLeft /> },
+          ]}
+        />
+        <ListDensityToggle />
+      </ListToolbar>
 
       {!organizationId ? (
-        <Card>
-          <CardContent className="py-8 text-center text-muted-foreground">
-            Veuillez sélectionner une organisation pour voir les courriers.
-          </CardContent>
-        </Card>
+        <ListMessage>Veuillez sélectionner une organisation pour voir les courriers.</ListMessage>
       ) : (
-        <div className="flex flex-wrap items-start gap-5 lg:min-h-0 lg:flex-1 lg:flex-nowrap lg:items-stretch">
-          <section className="flex min-w-0 flex-1 basis-[620px] flex-col gap-3.5 lg:min-h-0">
-            <div className="flex flex-wrap items-center gap-3 lg:shrink-0">
-              <div className="relative min-w-0 max-w-[360px] flex-1 basis-[260px]">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Rechercher par objet…"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="h-11 pl-9"
-                />
-              </div>
-              {/* Les transférés étaient auparavant un second tableau, alimenté par
-                  un partage client de la liste. Devenu un filtre serveur : paginé,
-                  un partage n'aurait montré que les transférés de la page courante. */}
-              <div className="flex rounded-full bg-muted p-1" role="tablist" aria-label="Filtre">
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={tab === "all"}
-                  onClick={() => setTab("all")}
-                  className={cn(
-                    "h-[34px] rounded-full px-4 text-sm font-bold transition-colors",
-                    tab === "all"
-                      ? "bg-card shadow-airbnb-sm"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  Tous
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={tab === "transferred"}
-                  onClick={() => setTab("transferred")}
-                  className={cn(
-                    "inline-flex h-[34px] items-center gap-1.5 rounded-full px-4 text-sm font-semibold transition-colors",
-                    tab === "transferred"
-                      ? "bg-card font-bold shadow-airbnb-sm"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  <ArrowRightLeft className="h-3.5 w-3.5" />
-                  Transférés
-                </button>
-              </div>
-              <div className="flex-1" />
-              <span className="text-sm text-muted-foreground">
-                {list.totalCount} courrier{list.totalCount > 1 ? "s" : ""} en attente
-              </span>
-            </div>
-
-            {/* Sur grand écran le cadre occupe la hauteur disponible : seules les
-                lignes défilent, entre un en-tête et une pagination qui restent en
-                place. */}
-            <Card className="flex flex-col overflow-hidden p-0 shadow-airbnb-sm lg:min-h-0 lg:flex-1">
-              {!list.isLoading && list.rows.length > 0 && (
-                /* Le tri par colonne est une affordance de bureau : sous `md`
-                   la liste garde son ordre par défaut (plus récents d'abord). */
-                <div
-                  className={cn(
-                    ROW_GRID,
-                    "hidden shrink-0 border-b border-l-[3px] border-l-transparent bg-muted/50 px-4 py-3 text-xs font-bold text-muted-foreground md:grid",
-                  )}
-                >
-                  <SortButton label="Réception" sortKey="received_at" descFirst />
-                  <SortButton label="Objet" sortKey="subject" descFirst={false} />
-                  {/* Expéditeur n'est pas triable : le RPC le tire de
-                      courier_participants APRÈS le découpage, sur la seule
-                      page retenue. */}
-                  <span>Expéditeur</span>
-                  <span />
-                </div>
-              )}
-              <div className="min-h-0 flex-1 lg:overflow-y-auto">
-                {list.isLoading ? (
-                  <div className="py-8 text-center text-sm text-muted-foreground">Chargement…</div>
-                ) : !list.rows.length ? (
-                  <div className="py-8 text-center text-sm text-muted-foreground">
-                    {tab === "transferred"
-                      ? "Aucun courrier transféré."
-                      : "Aucun courrier en attente dans la boîte aux lettres."}
-                  </div>
-                ) : (
-                  list.rows.map((c) => renderRow(c))
+        <div className="flex flex-col lg:min-h-0 lg:flex-1 lg:flex-row">
+          {/* Sur grand écran la liste occupe la hauteur disponible : seules les
+              lignes défilent, entre un en-tête et une pagination qui restent en
+              place. */}
+          <section aria-label="Courriers en attente" className="flex min-w-0 flex-col lg:min-h-0 lg:flex-1">
+            {!list.isLoading && list.rows.length > 0 && (
+              /* Le tri par colonne est une affordance de bureau : sous `md`
+                 la liste garde son ordre par défaut (plus récents d'abord). */
+              <div
+                className={cn(
+                  ROW_GRID,
+                  LIST_HEADER_SURFACE,
+                  "hidden h-[38px] shrink-0 border-b border-l-[3px] border-l-transparent px-4 text-xs font-semibold text-muted-foreground md:grid",
                 )}
+              >
+                <SortButton label="Réception" sortKey="received_at" descFirst />
+                <SortButton label="Objet" sortKey="subject" descFirst={false} />
+                {/* Expéditeur n'est pas triable : le RPC le tire de
+                    courier_participants APRÈS le découpage, sur la seule
+                    page retenue. */}
+                <span>Expéditeur</span>
+                <span />
               </div>
-              <div className="shrink-0">
-                <DataTablePagination
-                  page={list.page}
-                  pageCount={list.pageCount}
-                  pageSize={list.pageSize}
-                  totalCount={list.totalCount}
-                  onPageChange={list.setPage}
-                  onPageSizeChange={list.setPageSize}
-                  isLoading={list.isFetching}
-                />
-              </div>
-            </Card>
+            )}
+            <ListScrollArea
+              resetKey={`${list.page}:${list.pageSize}`}
+              className="overflow-visible lg:overflow-y-auto"
+            >
+              {list.isLoading ? (
+                <ListMessage>Chargement…</ListMessage>
+              ) : !list.rows.length ? (
+                <ListMessage>
+                  {tab === "transferred"
+                    ? "Aucun courrier transféré."
+                    : "Aucun courrier en attente dans la boîte aux lettres."}
+                </ListMessage>
+              ) : (
+                list.rows.map((c) => renderRow(c))
+              )}
+            </ListScrollArea>
+            <DataTablePagination
+              page={list.page}
+              pageCount={list.pageCount}
+              pageSize={list.pageSize}
+              totalCount={list.totalCount}
+              onPageChange={list.setPage}
+              onPageSizeChange={list.setPageSize}
+              isLoading={list.isFetching}
+            />
           </section>
 
           {/* La hauteur vient du conteneur, pas de `100dvh` : ce gabarit retranchait
@@ -484,7 +432,7 @@ export default function BoiteAuxLettres() {
               colonne au lieu de faire défiler le panneau — sa fin restait alors
               inatteignable, quel que soit le défilement. */}
           <aside
-            className="w-full min-w-0 flex-1 basis-[420px] lg:min-h-0 lg:max-w-[520px] lg:overflow-y-auto lg:pb-2"
+            className="w-full min-w-0 border-t bg-background p-4 lg:w-[440px] lg:shrink-0 lg:overflow-y-auto lg:border-l lg:border-t-0 xl:w-[520px]"
             aria-label="Courrier sélectionné"
           >
             <MailboxSidePanel
@@ -533,6 +481,6 @@ export default function BoiteAuxLettres() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </ListPage>
   );
 }

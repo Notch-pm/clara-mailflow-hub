@@ -1,4 +1,3 @@
-import { useRef } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
   Pagination,
@@ -8,6 +7,7 @@ import {
   PaginationLink,
 } from "@/components/ui/pagination";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ListFooter } from "@/components/list/ListPage";
 import { cn } from "@/lib/utils";
 
 // PaginationPrevious / PaginationNext ne sont pas utilisés : ces primitives
@@ -64,25 +64,8 @@ export function getPageWindow(rawPage: number, pageCount: number): number[] {
   return withGaps;
 }
 
-/**
- * Ramène en haut le conteneur de défilement qui contient la liste.
- *
- * Sans cela, changer de page conserve la position de défilement : on arrive en
- * bas de la nouvelle page, titre et filtres hors écran — et si la page d'arrivée
- * est plus courte (dernière page), le navigateur laisse la position au maximum.
- * On remonte l'arbre plutôt que de viser `main` en dur, pour que le composant
- * reste utilisable dans un autre conteneur.
- */
-function scrollListToTop(node: HTMLElement | null) {
-  for (let el = node?.parentElement ?? null; el; el = el.parentElement) {
-    const overflowY = getComputedStyle(el).overflowY;
-    if ((overflowY === "auto" || overflowY === "scroll") && el.scrollHeight > el.clientHeight) {
-      el.scrollTo({ top: 0 });
-      return;
-    }
-  }
-  globalThis.scrollTo({ top: 0 });
-}
+/** Boutons de page : 28 px, à l'échelle du pied de liste. */
+const PAGE_BUTTON = "h-7 w-auto min-w-7 rounded-md px-1.5 text-xs shadow-none";
 
 export function DataTablePagination({
   page,
@@ -94,28 +77,31 @@ export function DataTablePagination({
   isLoading,
   itemLabel = "courrier",
 }: DataTablePaginationProps) {
-  const rootRef = useRef<HTMLDivElement>(null);
   const pages = getPageWindow(page, pageCount);
   const plural = totalCount > 1 ? "s" : "";
+  const first = totalCount ? page * pageSize + 1 : 0;
+  const last = Math.min((page + 1) * pageSize, totalCount);
 
-  function goToPage(next: number) {
-    onPageChange(next);
-    scrollListToTop(rootRef.current);
-  }
-
+  // Le retour en haut de liste au changement de page est l'affaire de la zone
+  // qui défile (`ListScrollArea`, clé page + taille) : la pagination n'en fait
+  // plus partie, elle reste en bas de l'écran.
   return (
-    <div
-      ref={rootRef}
-      className="flex flex-col gap-3 border-t px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
-    >
-      <p className="text-sm text-muted-foreground" aria-live="polite">
+    <ListFooter>
+      <p aria-live="polite">
         {isLoading ? (
           "Chargement…"
+        ) : pageCount > 1 ? (
+          <>
+            <span className="tabular-nums">
+              {first.toLocaleString("fr-FR")}–{last.toLocaleString("fr-FR")}
+            </span>{" "}
+            sur <span className="tabular-nums">{totalCount.toLocaleString("fr-FR")}</span> {itemLabel}
+            {plural}
+          </>
         ) : (
           <>
-            {totalCount.toLocaleString("fr-FR")} {itemLabel}
+            <span className="tabular-nums">{totalCount.toLocaleString("fr-FR")}</span> {itemLabel}
             {plural}
-            {pageCount > 1 && ` · page ${page + 1} sur ${pageCount}`}
           </>
         )}
       </p>
@@ -123,9 +109,9 @@ export function DataTablePagination({
       <div className="flex items-center gap-4">
         {onPageSizeChange && (
           <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground whitespace-nowrap">Par page</span>
-            <Select value={String(pageSize)} onValueChange={(v) => { onPageSizeChange(Number(v)); scrollListToTop(rootRef.current); }}>
-              <SelectTrigger className="h-8 w-[72px]">
+            <span className="whitespace-nowrap max-sm:sr-only">Par page</span>
+            <Select value={String(pageSize)} onValueChange={(v) => onPageSizeChange(Number(v))}>
+              <SelectTrigger className="h-7 w-[64px] rounded-md px-2 text-xs" aria-label="Lignes par page">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -141,28 +127,26 @@ export function DataTablePagination({
 
         {pageCount > 1 && (
           <Pagination className="mx-0 w-auto">
-            <PaginationContent>
+            <PaginationContent className="gap-1">
               <PaginationItem>
                 <PaginationLink
                   href="#"
-                  size="default"
                   aria-label="Page précédente"
                   aria-disabled={page === 0}
-                  className={cn("gap-1 pl-2.5", page === 0 && "pointer-events-none opacity-50")}
+                  className={cn(PAGE_BUTTON, "border", page === 0 && "pointer-events-none opacity-50")}
                   onClick={(e) => {
                     e.preventDefault();
-                    if (page > 0) goToPage(page - 1);
+                    if (page > 0) onPageChange(page - 1);
                   }}
                 >
-                  <ChevronLeft className="h-4 w-4" />
-                  <span className="hidden sm:inline">Précédent</span>
+                  <ChevronLeft className="h-3.5 w-3.5" />
                 </PaginationLink>
               </PaginationItem>
 
               {pages.map((p, i) =>
                 p === -1 ? (
                   <PaginationItem key={`gap-${i}`}>
-                    <PaginationEllipsis />
+                    <PaginationEllipsis className="h-7 w-5" />
                   </PaginationItem>
                 ) : (
                   <PaginationItem key={p}>
@@ -170,9 +154,15 @@ export function DataTablePagination({
                       href="#"
                       isActive={p === page}
                       aria-label={`Page ${p + 1}`}
+                      className={cn(
+                        PAGE_BUTTON,
+                        "border-0 font-semibold tabular-nums",
+                        p === page &&
+                          "bg-primary font-bold text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
+                      )}
                       onClick={(e) => {
                         e.preventDefault();
-                        goToPage(p);
+                        onPageChange(p);
                       }}
                     >
                       {p + 1}
@@ -184,23 +174,21 @@ export function DataTablePagination({
               <PaginationItem>
                 <PaginationLink
                   href="#"
-                  size="default"
                   aria-label="Page suivante"
                   aria-disabled={page >= pageCount - 1}
-                  className={cn("gap-1 pr-2.5", page >= pageCount - 1 && "pointer-events-none opacity-50")}
+                  className={cn(PAGE_BUTTON, "border", page >= pageCount - 1 && "pointer-events-none opacity-50")}
                   onClick={(e) => {
                     e.preventDefault();
-                    if (page < pageCount - 1) goToPage(page + 1);
+                    if (page < pageCount - 1) onPageChange(page + 1);
                   }}
                 >
-                  <span className="hidden sm:inline">Suivant</span>
-                  <ChevronRight className="h-4 w-4" />
+                  <ChevronRight className="h-3.5 w-3.5" />
                 </PaginationLink>
               </PaginationItem>
             </PaginationContent>
           </Pagination>
         )}
       </div>
-    </div>
+    </ListFooter>
   );
 }

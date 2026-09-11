@@ -1,20 +1,8 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import type { ColumnDef, Table as TanstackTable } from "@tanstack/react-table";
-import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Download, Search, CheckCircle2 } from "lucide-react";
+import type { ColumnDef } from "@tanstack/react-table";
+import { CheckCircle2 } from "lucide-react";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { supabase } from "@/integrations/supabase/client";
 import { listTags } from "@/services/courierTagService";
@@ -22,26 +10,29 @@ import { listOrgsWithConfig } from "@/services/socleOrgConfigService";
 import { useUserServiceFilter } from "@/hooks/useUserServiceFilter";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useCourierList } from "@/hooks/useCourierList";
-import {
-  fetchAllCouriersForExport,
-  type CourierListFilters,
-  type CourierListRow,
-} from "@/services/courierListService";
-import { readableTextColor } from "@/lib/tag-color";
-import { toast } from "sonner";
+import { useCourierFacets } from "@/hooks/useCourierFacets";
+import { useCourierCsvExport } from "@/hooks/useCourierCsvExport";
+import type { CourierListFilters, CourierListRow } from "@/services/courierListService";
 import { DataTable } from "@/components/data-table/data-table";
-import { DataTableColumnHeader } from "@/components/data-table/data-table-column-header";
 import { DataTableColumnToggle } from "@/components/data-table/data-table-column-toggle";
-import { DataTableGroupingSelect } from "@/components/data-table/data-table-grouping-select";
-import { buildCsv, downloadCsv, type CsvColumn } from "@/components/data-table/csv-export";
+import { DataTableGroupingMenu } from "@/components/data-table/data-table-grouping-menu";
+import { useDataTableInstance } from "@/components/data-table/use-data-table-instance";
+import { ListActiveFilters, ListFilterButton } from "@/components/list/ListFilters";
+import { ListDensityToggle, ListExportButton, ListMessage, ListPage, ListSearch, ListToolbar } from "@/components/list/ListPage";
+import { CourierFacetFields } from "@/components/courier/CourierFacetFields";
+import {
+  dateColumn,
+  organisationColumn,
+  recipientColumn,
+  stateColumn,
+  subjectColumn,
+  tagsColumn,
+} from "@/components/courier/courierListColumns";
 
 export default function CourriersTraites() {
   const { organizationId } = useOrganization();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
-  const [serviceFilter, setServiceFilter] = useState<string>("all");
-  const [tagFilter, setTagFilter] = useState<string>("all");
-  const [stateFilter, setStateFilter] = useState<string>("all");
 
   // Processed states for the org (excludes archived)
   const { data: processedStates } = useQuery({
@@ -87,27 +78,29 @@ export default function CourriersTraites() {
     [processedStates],
   );
 
+  const facets = useCourierFacets({ services, states: processedStates, tags, withPeriod: true });
   const userServiceFilter = useUserServiceFilter();
   const debouncedSearch = useDebouncedValue(search, 300);
 
   const filters = useMemo<CourierListFilters | null>(() => {
     if (!organizationId || !stateIds.length) return null;
+    const chosenStates = facets.stateIds.filter((id) => stateIds.includes(id));
     return {
       organizationId,
       direction: "inbound",
-      workflowStateIds:
-        stateFilter !== "all" && stateIds.includes(stateFilter) ? [stateFilter] : stateIds,
-      socleOrganizationId: serviceFilter !== "all" ? serviceFilter : null,
-      tagNames: tagFilter !== "all" ? [tagFilter] : null,
+      workflowStateIds: chosenStates.length ? chosenStates : stateIds,
+      socleOrganizationId: facets.serviceId,
+      tagNames: facets.tagNames.length ? facets.tagNames : null,
+      dateFrom: facets.dateFrom,
       keywords: debouncedSearch || null,
       prefixMatch: true,
       visibleSocleOrganizationIds: userServiceFilter,
     };
-  }, [organizationId, stateIds, stateFilter, serviceFilter, tagFilter, debouncedSearch, userServiceFilter]);
+  }, [organizationId, stateIds, facets.stateIds, facets.serviceId, facets.tagNames, facets.dateFrom, debouncedSearch, userServiceFilter]);
 
   // updated_at : les traitements les plus récents d'abord. À ne pas confondre
-  // avec la colonne « Date de traitement » ci-dessous, calculée par une seconde
-  // requête sur la seule page affichée et donc intriable côté serveur.
+  // avec la colonne « Traité le » ci-dessous, calculée par une seconde requête
+  // sur la seule page affichée et donc intriable côté serveur.
   const list = useCourierList(filters, {
     queryKeyPrefix: "traites-couriers",
     defaultSort: { key: "updated_at", dir: "desc" },
@@ -141,253 +134,78 @@ export default function CourriersTraites() {
     enabled: !!organizationId && courierIds.length > 0 && stateIds.length > 0,
   });
 
-  const [tableInstance, setTableInstance] = useState<TanstackTable<CourierListRow> | null>(null);
-  const [isExporting, setIsExporting] = useState(false);
+  const [tableInstance, onTableInstanceChange] = useDataTableInstance<CourierListRow>();
+  const { exportCsv, isExporting } = useCourierCsvExport(list.filters, tableInstance, "courriers-traites");
 
-  // Le tri est SERVEUR (cf. useCourierList) : les en-têtes triables portent donc
-  // sur tout le jeu filtré. L'`id` de colonne EST la clé serveur — le renommer
-  // casse le tri.
-  //
-  // Restent `enableSorting: false` les colonnes que le RPC ne peut pas trier
-  // sans payer le prix que la pagination économise : expéditeur et destinataire
-  // viennent de jointures appliquées après le découpage, l'état demanderait une
-  // jointure de plus, et les tags sont un tableau jsonb.
   const columns = useMemo<ColumnDef<CourierListRow>[]>(
     () => [
-      {
+      subjectColumn("sender"),
+      stateColumn(stateById, "primary"),
+      organisationColumn(),
+      recipientColumn(),
+      tagsColumn(tagByName),
+      dateColumn({
         id: "received_at",
-        accessorFn: (c) => (c.received_at ? new Date(c.received_at).toLocaleDateString("fr-FR") : ""),
-        sortDescFirst: true,
-        header: ({ column }) => <DataTableColumnHeader column={column} title="Date de réception" />,
-        cell: ({ row }) => (
-          <span className="text-sm whitespace-nowrap">
-            {row.original.received_at ? new Date(row.original.received_at).toLocaleDateString("fr-FR") : "—"}
-          </span>
-        ),
-        meta: { exportLabel: "Date de réception" },
-      },
-      {
+        title: "Reçu le",
+        exportLabel: "Date de réception",
+        groupLabel: "Mois de réception",
+        value: (c) => c.received_at,
+        sortable: true,
+      }),
+      // Non triable, et le rester : cette date vient de `courier_events`,
+      // chargée par une requête à part pour les seuls courriers de la page
+      // affichée. Le RPC ne la connaît pas.
+      dateColumn({
         id: "processed_at",
-        accessorFn: (c) => {
-          const at = processedAtMap?.[c.id];
-          return at ? new Date(at).toLocaleDateString("fr-FR") : "";
-        },
-        // Non triable, et le rester : cette date vient de `courier_events`,
-        // chargée par une requête à part pour les seuls courriers de la page
-        // affichée. Le RPC ne la connaît pas.
-        enableSorting: false,
-        header: "Date de traitement",
-        cell: ({ row }) => {
-          const at = processedAtMap?.[row.original.id];
-          return <span className="text-sm whitespace-nowrap">{at ? new Date(at).toLocaleDateString("fr-FR") : "—"}</span>;
-        },
-        meta: { exportLabel: "Date de traitement" },
-      },
-      {
-        accessorKey: "subject",
-        header: ({ column }) => <DataTableColumnHeader column={column} title="Objet" />,
-        cell: ({ row }) => (
-          <span className="text-sm font-medium max-w-[260px] truncate block">{row.original.subject ?? "Sans titre"}</span>
-        ),
-        meta: { exportLabel: "Objet" },
-      },
-      {
-        id: "state",
-        accessorFn: (c) => stateById.get(c.workflow_state_id ?? "")?.name ?? "",
-        enableSorting: false,
-        header: "État",
-        cell: ({ row }) => {
-          const name = stateById.get(row.original.workflow_state_id ?? "")?.name;
-          return name ? <Badge variant="outline" className="text-xs">{name}</Badge> : null;
-        },
-        meta: { exportLabel: "État" },
-      },
-      {
-        accessorKey: "assigned_service",
-        header: ({ column }) => <DataTableColumnHeader column={column} title="Organisation" />,
-        cell: ({ row }) => <span className="text-sm">{row.original.assigned_service ?? "—"}</span>,
-        meta: { exportLabel: "Organisation" },
-      },
-      {
-        id: "sender",
-        accessorFn: (c) => c.sender_name ?? "—",
-        enableSorting: false,
-        header: "Expéditeur",
-        cell: ({ row }) => <span className="text-sm">{row.original.sender_name ?? "—"}</span>,
-        meta: { exportLabel: "Expéditeur" },
-      },
-      {
-        id: "recipient",
-        accessorFn: (c) => c.recipient_name ?? "—",
-        enableSorting: false,
-        header: "Destinataire",
-        cell: ({ row }) => <span className="text-sm">{row.original.recipient_name ?? "—"}</span>,
-        meta: { exportLabel: "Destinataire" },
-      },
-      {
-        id: "tags",
-        accessorFn: (c) => c.tags.join(", "),
-        enableSorting: false,
-        header: "Tags",
-        cell: ({ row }) => (
-          <div className="flex flex-wrap gap-1">
-            {row.original.tags.map((t) => {
-              const color = tagByName.get(t.toLowerCase())?.color ?? null;
-              return (
-                <span
-                  key={t}
-                  className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium"
-                  style={color ? { backgroundColor: color, color: readableTextColor(color) } : undefined}
-                >
-                  {t}
-                </span>
-              );
-            })}
-          </div>
-        ),
-        meta: { exportLabel: "Tags" },
-      },
+        title: "Traité le",
+        exportLabel: "Date de traitement",
+        groupLabel: "Mois de traitement",
+        value: (c) => processedAtMap?.[c.id],
+      }),
     ],
     [stateById, tagByName, processedAtMap],
   );
 
-  async function handleExportCsv() {
-    if (!list.filters || !tableInstance) return;
-    setIsExporting(true);
-    try {
-      // list.filters et non `filters` : ceux-là portent le tri courant, le CSV
-      // sort donc dans l'ordre affiché à l'écran.
-      const { rows, truncated } = await fetchAllCouriersForExport(list.filters);
-      const csvColumns: CsvColumn<CourierListRow>[] = tableInstance
-        .getVisibleLeafColumns()
-        .map((col) => ({
-          header: (col.columnDef.meta as { exportLabel?: string } | undefined)?.exportLabel ?? col.id,
-          accessor: (row) => (col.accessorFn as ((row: CourierListRow) => unknown) | undefined)?.(row) ?? "",
-        }));
-      const csv = buildCsv(rows, csvColumns);
-      downloadCsv(csv, `courriers-traites-${new Date().toISOString().slice(0, 10)}.csv`);
-      if (truncated) toast.warning("Export limité aux 20 000 premiers courriers.");
-    } catch (e) {
-      console.error(e);
-      toast.error("Erreur lors de l'export du fichier.");
-    } finally {
-      setIsExporting(false);
-    }
-  }
-
-  function handleRowClick(c: CourierListRow) {
-    navigate(`/courrier/${c.id}`);
-  }
-
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <CheckCircle2 className="h-6 w-6 text-primary" />
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Courriers traités</h1>
-          <p className="text-muted-foreground">
-            Tous les courriers dont le traitement est terminé (hors archives).
-          </p>
-        </div>
-      </div>
-
-      {organizationId && (
-        <div className="flex items-center justify-end gap-2">
-          {tableInstance && <DataTableGroupingSelect table={tableInstance} />}
-          {tableInstance && <DataTableColumnToggle table={tableInstance} />}
-          <Button variant="outline" size="sm" onClick={handleExportCsv} disabled={isExporting || !list.totalCount}>
-            <Download className="h-4 w-4 mr-1" />
-            {isExporting ? "Export…" : "Exporter CSV"}
-          </Button>
-        </div>
-      )}
-
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex items-end gap-4 flex-wrap">
-            <div className="flex flex-col gap-1.5 flex-1 min-w-[200px] max-w-sm">
-              <Label className="text-xs text-muted-foreground">Recherche</Label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Rechercher par objet…"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="pl-9"
-                />
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <Label className="text-xs text-muted-foreground whitespace-nowrap">Service</Label>
-              <Select value={serviceFilter} onValueChange={setServiceFilter}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Organisation" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Toutes les organisations</SelectItem>
-                  {(services ?? []).map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <Label className="text-xs text-muted-foreground whitespace-nowrap">État</Label>
-              <Select value={stateFilter} onValueChange={setStateFilter}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="État" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Tous les états</SelectItem>
-                  {(processedStates ?? []).map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <Label className="text-xs text-muted-foreground whitespace-nowrap">Tag</Label>
-              <Select value={tagFilter} onValueChange={setTagFilter}>
-                <SelectTrigger className="w-[160px]">
-                  <SelectValue placeholder="Tag" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Tous les tags</SelectItem>
-                  {(tags ?? []).map((t) => (
-                    <SelectItem key={t.id} value={t.name}>
-                      {t.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+    <ListPage>
+      <ListToolbar
+        icon={<CheckCircle2 className="text-primary" />}
+        title="Courriers traités"
+        count={list.filters && !list.isLoading ? list.totalCount : null}
+        countLabel="courriers"
+        search={<ListSearch value={search} onChange={setSearch} placeholder="Rechercher par objet…" />}
+      >
+        {tableInstance && <DataTableGroupingMenu table={tableInstance} />}
+        <ListFilterButton
+          title="Filtrer les courriers"
+          activeCount={facets.activeCount}
+          resultLabel={list.isFetching ? "…" : `${list.totalCount} résultat${list.totalCount > 1 ? "s" : ""}`}
+          onReset={facets.reset}
+        >
+          <CourierFacetFields facets={facets} />
+        </ListFilterButton>
+        <ListDensityToggle />
+        {tableInstance && <DataTableColumnToggle table={tableInstance} />}
+        <ListExportButton onClick={exportCsv} busy={isExporting} disabled={!list.totalCount} />
+      </ListToolbar>
+      <ListActiveFilters chips={facets.chips} onReset={facets.reset} />
 
       {!organizationId ? (
-        <Card>
-          <CardContent className="py-8 text-center text-muted-foreground">
-            Veuillez sélectionner une organisation.
-          </CardContent>
-        </Card>
+        <ListMessage>Veuillez sélectionner une organisation.</ListMessage>
       ) : (
         <DataTable
           columns={columns}
           data={list.rows}
           isLoading={list.isLoading}
-          onRowClick={handleRowClick}
-          onTableInstanceChange={setTableInstance}
+          onRowClick={(c) => navigate(`/courrier/${c.id}`)}
+          onTableInstanceChange={onTableInstanceChange}
           sorting={list.sorting}
           onSortingChange={list.onSortingChange}
-          emptyMessage="Aucun courrier traité."
+          emptyMessage={
+            facets.activeCount || debouncedSearch
+              ? "Aucun courrier traité ne correspond à ces critères."
+              : "Aucun courrier traité."
+          }
           pagination={{
             page: list.page,
             pageCount: list.pageCount,
@@ -399,6 +217,6 @@ export default function CourriersTraites() {
           }}
         />
       )}
-    </div>
+    </ListPage>
   );
 }

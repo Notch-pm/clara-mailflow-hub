@@ -1,7 +1,6 @@
 import type { HTMLAttributes } from "react";
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import type { Column } from "@tanstack/react-table";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 /** `false` = colonne non triée. Même convention que `column.getIsSorted()`. */
@@ -29,28 +28,30 @@ interface SortableHeaderProps {
  * En-tête cliquable, sans dépendance à @tanstack/react-table.
  *
  * Extrait de `DataTableColumnHeader` pour la boîte aux lettres, qui compose sa
- * propre `<Table>` (ligne « nouveau courrier », icônes de transfert) et n'a donc
- * pas d'objet `Column` à fournir. Les deux tableaux gardent ainsi le même
+ * propre liste (ligne « nouveau courrier », icônes de transfert) et n'a donc
+ * pas d'objet `Column` à fournir. Les deux listes gardent ainsi le même
  * affordance visuel.
  */
 export function SortableHeader({ title, direction, onToggle, className }: SortableHeaderProps) {
   return (
-    <Button
+    <button
       type="button"
-      variant="ghost"
-      size="sm"
-      className={cn("-ml-3 h-8 data-[state=open]:bg-accent", className)}
       onClick={onToggle}
-    >
-      <span>{title}</span>
-      {direction === "asc" ? (
-        <ArrowUp className="ml-2 h-4 w-4" />
-      ) : direction === "desc" ? (
-        <ArrowDown className="ml-2 h-4 w-4" />
-      ) : (
-        <ArrowUpDown className="ml-2 h-4 w-4 text-muted-foreground" />
+      className={cn(
+        "group/sort -ml-1.5 inline-flex h-7 max-w-full items-center gap-1 rounded-md px-1.5 text-xs font-semibold transition-colors hover:bg-muted hover:text-foreground",
+        direction && "text-foreground",
+        className,
       )}
-    </Button>
+    >
+      <span className="truncate">{title}</span>
+      {direction === "asc" ? (
+        <ArrowUp className="h-3.5 w-3.5 shrink-0" />
+      ) : direction === "desc" ? (
+        <ArrowDown className="h-3.5 w-3.5 shrink-0" />
+      ) : (
+        <ArrowUpDown className="h-3.5 w-3.5 shrink-0 opacity-40 group-hover/sort:opacity-100" />
+      )}
+    </button>
   );
 }
 
@@ -66,7 +67,7 @@ export function DataTableColumnHeader<TData, TValue>({
   className,
 }: DataTableColumnHeaderProps<TData, TValue>) {
   if (!column.getCanSort()) {
-    return <div className={cn(className)}>{title}</div>;
+    return <div className={cn("truncate", className)}>{title}</div>;
   }
 
   const sorted = column.getIsSorted();
