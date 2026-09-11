@@ -161,7 +161,10 @@ export default function Workflows() {
                 <CardHeader className="flex flex-row items-start justify-between pb-2">
                   <div className="space-y-2 flex-1 min-w-0">
                     <CardTitle className="text-base">{wf.name}</CardTitle>
-                    <div onClick={(e) => e.stopPropagation()}>
+                    {/* Ne retenir le clic que SUR le sélecteur : un bloc pleine
+                        largeur barrait le milieu de la carte, là où l'on clique
+                        pour ouvrir le workflow. */}
+                    <div className="w-fit" onClick={(e) => e.stopPropagation()}>
                       <Select
                         value={wf.type ?? "inbound"}
                         onValueChange={(v) => updateTypeMutation.mutate({ id: wf.id, type: v as WorkflowType })}
