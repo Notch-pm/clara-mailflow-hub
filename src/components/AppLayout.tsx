@@ -69,12 +69,10 @@ export function AppLayout() {
               laissent défiler que leurs lignes. `main` retire alors sa
               gouttière — sauf la réserve basse sous `md` — et cesse de
               défiler, sans quoi page et tableau défileraient l'un dans
-              l'autre. La boîte aux lettres (`fill-lg`) ne tient dans l'écran
-              qu'à partir de `lg` : en dessous, liste et panneau s'empilent et
-              `main` défile comme ailleurs. */}
+              l'autre. */}
           <main
             ref={mainRef}
-            className="flex-1 overflow-auto p-4 pb-20 has-[>[data-list-page]]:px-0 has-[>[data-list-page]]:pt-0 has-[>[data-list-page=fill]]:overflow-hidden md:p-6 md:pb-6 md:has-[>[data-list-page]]:pb-0 lg:has-[>[data-list-page=fill-lg]]:overflow-hidden"
+            className="flex-1 overflow-auto p-4 pb-20 has-[>[data-list-page]]:overflow-hidden has-[>[data-list-page]]:px-0 has-[>[data-list-page]]:pt-0 md:p-6 md:pb-6 md:has-[>[data-list-page]]:pb-0"
           >
             <Outlet />
           </main>

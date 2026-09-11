@@ -347,7 +347,7 @@ export default function BoiteAuxLettres() {
   }
 
   return (
-    <ListPage fill="lg">
+    <ListPage>
       <ListToolbar
         icon={<img src={mailboxIcon} alt="" style={{ filter: "var(--icon-primary-filter, none)" }} />}
         title="Boîte aux lettres"
@@ -405,11 +405,11 @@ export default function BoiteAuxLettres() {
       {!organizationId ? (
         <ListMessage>Veuillez sélectionner une organisation pour voir les courriers.</ListMessage>
       ) : (
-        <div className="flex flex-col lg:min-h-0 lg:flex-1 lg:flex-row">
+        <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
           {/* Sur grand écran la liste occupe la hauteur disponible : seules les
               lignes défilent, entre un en-tête et une pagination qui restent en
               place. */}
-          <section aria-label="Courriers en attente" className="flex min-w-0 flex-col lg:min-h-0 lg:flex-1">
+          <section aria-label="Courriers en attente" className="flex min-h-0 min-w-0 flex-1 flex-col">
             {/* Au-dessus de la liste seule : la recherche ne touche pas au panneau. */}
             <ListActiveFilters chips={facets.chips} onReset={facets.reset} />
             {!list.isLoading && list.rows.length > 0 && (
@@ -431,10 +431,7 @@ export default function BoiteAuxLettres() {
                 <span />
               </div>
             )}
-            <ListScrollArea
-              resetKey={`${list.page}:${list.pageSize}`}
-              className="overflow-visible lg:overflow-y-auto"
-            >
+            <ListScrollArea resetKey={`${list.page}:${list.pageSize}`}>
               {list.isLoading ? (
                 <ListMessage>Chargement…</ListMessage>
               ) : !list.rows.length ? (

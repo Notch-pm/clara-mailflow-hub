@@ -56,9 +56,10 @@ partagent un gabarit, `src/components/list/` (refonte du 2026-09-11) :
 
 - **`ListPage`** occupe toute la zone de contenu, bord à bord : `AppLayout` la reconnaît à
   `data-list-page`, retire sa gouttière et **cesse de défiler**. Seules les lignes défilent
-  (`ListScrollArea`) — c'est ce qui supprime le double défilement page + tableau. La boîte aux
-  lettres (`fill="lg"`) ne tient dans l'écran qu'à partir de `lg` ; en dessous, liste et panneau
-  s'empilent et la page défile.
+  (`ListScrollArea`) — c'est ce qui supprime le double défilement page + tableau. Vrai à toutes
+  les tailles : barre d'outils et pagination restent en place, et la barre de navigation mobile
+  ne recouvre jamais la liste. La boîte aux lettres n'y fait plus exception — sous `lg`, son
+  panneau n'est plus empilé sous la liste mais remplacé par la page dédiée du courrier.
 - **`ListToolbar`** : une seule barre de 56 px — titre + compteur, `ListSearch` (contacts et page
   Recherche seulement), actions rondes (`ToolbarButton` + `ToolbarTooltip`, libellé visible à partir
   de `xl`), action principale à droite. Sous `md`, la recherche passe à la ligne ; sans recherche, les

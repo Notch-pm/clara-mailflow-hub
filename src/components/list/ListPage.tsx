@@ -23,27 +23,17 @@ import { cn } from "@/lib/utils";
 
 interface ListPageProps {
   children: ReactNode;
-  /**
-   * `always` : la page tient dans l'écran à toutes les tailles.
-   * `lg` : seulement à partir de `lg` — en dessous, le contenu s'empile et la
-   * page défile normalement (boîte aux lettres : liste PUIS panneau).
-   */
-  fill?: "always" | "lg";
   className?: string;
 }
 
-export function ListPage({ children, fill = "always", className }: ListPageProps) {
+export function ListPage({ children, className }: ListPageProps) {
   const density = usePersistedListDensity();
   return (
     <ListDensityContext.Provider value={density}>
       <div
-        data-list-page={fill === "lg" ? "fill-lg" : "fill"}
+        data-list-page="fill"
         data-density={density.density}
-        className={cn(
-          "group/list flex min-h-0 flex-col bg-card",
-          fill === "lg" ? "lg:h-full" : "h-full",
-          className,
-        )}
+        className={cn("group/list flex h-full min-h-0 flex-col bg-card", className)}
       >
         {children}
       </div>
