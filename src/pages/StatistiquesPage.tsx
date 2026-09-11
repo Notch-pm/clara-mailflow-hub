@@ -162,7 +162,7 @@ export default function StatistiquesPage() {
   if (!allowed) return <Navigate to="/" replace />;
 
   return (
-    <div className="space-y-6 p-1">
+    <div className="space-y-6">
       <div className="flex items-center gap-3">
         <BarChart3 className="h-6 w-6 text-primary" />
         <h1 className="text-xl font-bold text-foreground">Statistiques</h1>

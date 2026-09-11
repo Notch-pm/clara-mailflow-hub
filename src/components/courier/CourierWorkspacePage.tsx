@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
@@ -7,7 +7,6 @@ import {
   Check,
   ChevronDown,
   ExternalLink,
-  Send,
   Tag as TagIcon,
   X,
 } from "lucide-react";
@@ -244,6 +243,14 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
     linkSenderContact,
   } = ws;
 
+  // Le défilement vit désormais DANS la colonne de travail : sans ce recalage,
+  // l'onglet ouvert hériterait de la hauteur où l'on avait laissé le précédent
+  // et s'afficherait en plein milieu de son contenu.
+  const panelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (panelRef.current) panelRef.current.scrollTop = 0;
+  }, [activeTab]);
+
   // Frise d'avancement : la chaîne nominale du workflow de l'organisation gestionnaire.
   const { data: stateChain = [] } = useQuery({
     queryKey: ["workflow-state-chain", currentService?.workflow_id],
@@ -316,11 +323,14 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
       on ? "bg-card text-foreground shadow-airbnb-sm" : "text-muted-foreground hover:text-foreground",
     );
 
+  // La hauteur vient du conteneur, pas de `100dvh` : l'en-tête et les onglets
+  // restent en place, et seules les deux colonnes défilent, chacune pour son
+  // compte.
   return (
-    <div className="w-full px-4 py-5 pb-12 md:px-6">
+    <div className="flex w-full flex-col lg:h-full">
       <nav
         aria-label="Fil d'Ariane"
-        className="mb-2.5 flex flex-wrap items-center gap-2 text-sm text-muted-foreground"
+        className="mb-2.5 flex flex-wrap items-center gap-2 text-sm text-muted-foreground lg:shrink-0"
       >
         <Button
           size="icon"
@@ -341,7 +351,7 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
         <span className="font-mono text-xs text-foreground">{courier.chrono ?? "sans référence"}</span>
       </nav>
 
-      <div className="mb-4 flex flex-wrap items-start gap-4">
+      <div className="mb-4 flex flex-wrap items-start gap-4 lg:shrink-0">
         <div className="min-w-0 flex-1 basis-[420px]">
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="min-w-0 max-w-full">
@@ -424,16 +434,22 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <ResponsiveTabsList
-          activeValue={activeTab}
+      <div className="flex flex-wrap items-start gap-5 lg:min-h-0 lg:flex-1 lg:flex-nowrap lg:items-stretch">
+        {/* Les onglets ne coiffent que la colonne de travail : la colonne de
+            contexte, à droite, leur est étrangère et défile pour son compte. */}
+        <Tabs
+          value={activeTab}
           onValueChange={setActiveTab}
-          tabs={tabItems}
-          className="mb-5"
-        />
+          className="flex min-w-0 flex-1 basis-[560px] flex-col lg:min-h-0"
+        >
+          <ResponsiveTabsList
+            activeValue={activeTab}
+            onValueChange={setActiveTab}
+            tabs={tabItems}
+            className="mb-5 shrink-0"
+          />
 
-        <div className="flex flex-wrap items-start gap-5">
-          <div className="min-w-0 flex-1 basis-[560px]">
+          <div ref={panelRef} className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pb-2">
             <TabsContent value="detail" className="mt-0 flex flex-col gap-5 focus-visible:outline-none">
               {!isOutbound && isInitialState && (
                 <LinkedCouriersSection
@@ -632,377 +648,370 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
               </Card>
             </TabsContent>
           </div>
+        </Tabs>
 
-          <aside
-            className="flex w-full min-w-0 flex-1 basis-[340px] flex-col gap-4 lg:sticky lg:top-0 lg:max-h-[calc(100dvh-3.5rem)] lg:max-w-[400px] lg:self-start lg:overflow-y-auto lg:pb-2"
-            aria-label="Contexte du courrier"
-          >
-            <div className="flex rounded-full bg-muted p-1" role="tablist" aria-label="Contexte affiché">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={rail === "courrier"}
-                className={segmentClass(rail === "courrier")}
-                onClick={() => setRail("courrier")}
+        {/* La borne de hauteur vient du conteneur, pas de `100dvh` : ce gabarit
+            retranchait l'en-tête mais pas le pied de page, et le bas de la
+            colonne tombait hors d'atteinte du défilement. */}
+        <aside
+          className="flex w-full min-w-0 flex-1 basis-[340px] flex-col gap-4 lg:min-h-0 lg:max-w-[400px] lg:overflow-y-auto lg:pb-2"
+          aria-label="Contexte du courrier"
+        >
+          <div className="flex rounded-full bg-muted p-1" role="tablist" aria-label="Contexte affiché">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={rail === "courrier"}
+              className={segmentClass(rail === "courrier")}
+              onClick={() => setRail("courrier")}
+            >
+              Courrier
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={rail === "workflow"}
+              className={segmentClass(rail === "workflow")}
+              onClick={() => setRail("workflow")}
+            >
+              Workflow
+            </button>
+          </div>
+
+          {rail === "courrier" ? (
+            <>
+              <RailCard
+                title="Expéditeur"
+                action={
+                  sender?.socle_contact_id ? (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Link
+                          to={`/contacts/${sender.socle_contact_id}`}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-md border text-muted-foreground transition-colors hover:bg-muted hover:text-primary"
+                          aria-label="Voir la fiche contact et ses courriers"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </Link>
+                      </TooltipTrigger>
+                      <TooltipContent>Voir la fiche contact et ses courriers</TooltipContent>
+                    </Tooltip>
+                  ) : null
+                }
               >
-                Courrier
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={rail === "workflow"}
-                className={segmentClass(rail === "workflow")}
-                onClick={() => setRail("workflow")}
-              >
-                Workflow
-              </button>
-            </div>
-
-            {rail === "courrier" ? (
-              <>
-                <RailCard
-                  title="Expéditeur"
-                  action={
-                    sender?.socle_contact_id ? (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Link
-                            to={`/contacts/${sender.socle_contact_id}`}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-md border text-muted-foreground transition-colors hover:bg-muted hover:text-primary"
-                            aria-label="Voir la fiche contact et ses courriers"
-                          >
-                            <ExternalLink className="h-3.5 w-3.5" />
-                          </Link>
-                        </TooltipTrigger>
-                        <TooltipContent>Voir la fiche contact et ses courriers</TooltipContent>
-                      </Tooltip>
-                    ) : null
-                  }
-                >
-                  {isOutbound ? (
-                    <div className="text-sm font-semibold">
-                      {parentCourier?.assigned_service ?? EMPTY}
-                    </div>
-                  ) : (
-                    <div className="space-y-1.5">
-                      {/* L'identité vient du référentiel : on choisit une fiche,
-                          on ne saisit plus le nom à la main. */}
-                      <ContactPicker
-                        organizationId={organizationId}
-                        value={senderContact ?? null}
-                        onChange={linkSenderContact}
-                        disabled={effectiveReadOnly}
-                        fallbackLabel={sender?.name ?? undefined}
-                        triggerClassName="h-9 w-full justify-between px-2.5 [&>span]:font-semibold"
-                      />
-                      {senderRelationLines.map((line) => (
-                        <div key={line.key} className="truncate text-xs text-muted-foreground">
-                          {line.text}
-                        </div>
-                      ))}
-                      {senderContact?.quartier && (
-                        <div className="pt-0.5">
-                          <QuartierBadge quartier={senderContact.quartier} />
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  <dl className="mt-3.5 space-y-2 border-t pt-3">
-                    <div className="flex items-baseline justify-between gap-3 text-sm">
-                      <dt className="text-muted-foreground">Organisation gestionnaire</dt>
-                      <dd className="min-w-0 truncate font-semibold">{localAssignedService ?? EMPTY}</dd>
-                    </div>
-                    <div className="flex items-baseline justify-between gap-3 text-sm">
-                      <dt className="text-muted-foreground">Participants</dt>
-                      <dd className="font-semibold">{participants.length}</dd>
-                    </div>
-                  </dl>
-                </RailCard>
-
-                <RailCard title="Classement">
-                  <div className="space-y-3">
-                    {TAG_GROUPS.map((group) => {
-                      const applied = appliedByGroup[group.value];
-                      const available = (orgTags ?? []).filter((t) => t.tag_group === group.value);
-                      return (
-                        <div key={group.value} className="space-y-1.5">
-                          <span className="text-xs font-semibold text-muted-foreground">{group.label}</span>
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            {applied.length === 0 && (
-                              <span className="text-xs italic text-muted-foreground">Aucun</span>
-                            )}
-                            {applied.map(({ name: tagName, tag }) => {
-                              // Orphelin : appliqué sur le courrier, retiré du référentiel depuis.
-                              const orphan = !tag;
-                              const fg = tag?.color ? readableTextColor(tag.color) : undefined;
-                              return (
-                                <Badge
-                                  key={tagName}
-                                  variant="secondary"
-                                  className={cn(
-                                    "gap-1 border-transparent pl-2 pr-1 text-xs",
-                                    orphan && "italic opacity-60",
-                                    effectiveReadOnly && "pr-2",
-                                  )}
-                                  style={tag?.color ? { backgroundColor: tag.color, color: fg } : undefined}
-                                >
-                                  {tagName}
-                                  {!effectiveReadOnly && (
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        removeTag(tagName);
-                                      }}
-                                      className="ml-0.5 rounded-full p-0.5 transition-colors hover:bg-black/20"
-                                      aria-label={`Retirer ${tagName}`}
-                                      style={fg ? { color: fg } : undefined}
-                                    >
-                                      <X className="h-3 w-3" />
-                                    </button>
-                                  )}
-                                </Badge>
-                              );
-                            })}
-                            {!effectiveReadOnly && (
-                              <Popover
-                                open={tagPopoverGroup === group.value}
-                                onOpenChange={(o) => setTagPopoverGroup(o ? group.value : null)}
-                              >
-                                <PopoverTrigger asChild>
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    className="h-6 w-6 shrink-0"
-                                    aria-label={`Gérer les tags — ${group.label}`}
-                                  >
-                                    <TagIcon className="h-3.5 w-3.5" />
-                                  </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-64 p-0" align="start">
-                                  <Command>
-                                    <CommandInput placeholder={`Rechercher — ${group.label.toLowerCase()}…`} />
-                                    <CommandList>
-                                      <CommandEmpty>
-                                        Aucun tag dans ce groupe. Allez dans Paramètres → Classification.
-                                      </CommandEmpty>
-                                      <CommandGroup>
-                                        {available.map((tag) => {
-                                          const checked = selectedTags.some(
-                                            (t) => t.toLowerCase() === tag.name.toLowerCase(),
-                                          );
-                                          return (
-                                            <CommandItem
-                                              key={tag.id}
-                                              value={tag.name}
-                                              onSelect={() => toggleTag(tag.name)}
-                                              className="gap-2"
-                                            >
-                                              <span
-                                                className="h-2.5 w-2.5 shrink-0 rounded-full"
-                                                style={{
-                                                  backgroundColor: tag.color ?? "hsl(var(--muted-foreground))",
-                                                }}
-                                              />
-                                              <span className="flex-1">{tag.name}</span>
-                                              {checked && <Check className="h-4 w-4" />}
-                                            </CommandItem>
-                                          );
-                                        })}
-                                      </CommandGroup>
-                                    </CommandList>
-                                  </Command>
-                                </PopoverContent>
-                              </Popover>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
+                {isOutbound ? (
+                  <div className="text-sm font-semibold">
+                    {parentCourier?.assigned_service ?? EMPTY}
                   </div>
-                </RailCard>
-              </>
-            ) : (
-              <>
-                <RailCard
-                  title="Avancement"
-                  action={
-                    <span className="font-mono text-xs text-muted-foreground">
-                      {courier.chrono ?? ""}
-                    </span>
-                  }
-                >
-                  {stateChain.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                      Aucun workflow n'est rattaché à l'organisation gestionnaire.
-                    </p>
-                  ) : (
-                    <ol className="flex flex-col">
-                      {chainIndex === -1 && currentStateInfo?.name && (
-                        <li className="mb-3 rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
-                          État courant «&nbsp;{currentStateInfo.name}&nbsp;» : atteint par une transition
-                          secondaire, hors de la suite nominale ci-dessous.
-                        </li>
-                      )}
-                      {stateChain.map((state, i) => {
-                        const done = chainIndex >= 0 && i < chainIndex;
-                        const current = i === chainIndex;
-                        const reached = done || current;
-                        return (
-                          <li key={state.id} className="flex gap-3">
-                            <div className="flex flex-[0_0_14px] flex-col items-center">
+                ) : (
+                  <div className="space-y-1.5">
+                    {/* L'identité vient du référentiel : on choisit une fiche,
+                        on ne saisit plus le nom à la main. */}
+                    <ContactPicker
+                      organizationId={organizationId}
+                      value={senderContact ?? null}
+                      onChange={linkSenderContact}
+                      disabled={effectiveReadOnly}
+                      fallbackLabel={sender?.name ?? undefined}
+                      triggerClassName="h-9 w-full justify-between px-2.5 [&>span]:font-semibold"
+                    />
+                    {senderRelationLines.map((line) => (
+                      <div key={line.key} className="truncate text-xs text-muted-foreground">
+                        {line.text}
+                      </div>
+                    ))}
+                    {senderContact?.quartier && (
+                      <div className="pt-0.5">
+                        <QuartierBadge quartier={senderContact.quartier} />
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <dl className="mt-3.5 space-y-2 border-t pt-3">
+                  <div className="flex items-baseline justify-between gap-3 text-sm">
+                    <dt className="text-muted-foreground">Organisation gestionnaire</dt>
+                    <dd className="min-w-0 truncate font-semibold">{localAssignedService ?? EMPTY}</dd>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-3 text-sm">
+                    <dt className="text-muted-foreground">Participants</dt>
+                    <dd className="font-semibold">{participants.length}</dd>
+                  </div>
+                </dl>
+              </RailCard>
+
+              <RailCard title="Classement">
+                <div className="space-y-3">
+                  {TAG_GROUPS.map((group) => {
+                    const applied = appliedByGroup[group.value];
+                    const available = (orgTags ?? []).filter((t) => t.tag_group === group.value);
+                    return (
+                      <div key={group.value} className="space-y-1.5">
+                        <span className="text-xs font-semibold text-muted-foreground">{group.label}</span>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {applied.length === 0 && (
+                            <span className="text-xs italic text-muted-foreground">Aucun</span>
+                          )}
+                          {applied.map(({ name: tagName, tag }) => {
+                            // Orphelin : appliqué sur le courrier, retiré du référentiel depuis.
+                            const orphan = !tag;
+                            const fg = tag?.color ? readableTextColor(tag.color) : undefined;
+                            return (
+                              <Badge
+                                key={tagName}
+                                variant="secondary"
+                                className={cn(
+                                  "gap-1 border-transparent pl-2 pr-1 text-xs",
+                                  orphan && "italic opacity-60",
+                                  effectiveReadOnly && "pr-2",
+                                )}
+                                style={tag?.color ? { backgroundColor: tag.color, color: fg } : undefined}
+                              >
+                                {tagName}
+                                {!effectiveReadOnly && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      removeTag(tagName);
+                                    }}
+                                    className="ml-0.5 rounded-full p-0.5 transition-colors hover:bg-black/20"
+                                    aria-label={`Retirer ${tagName}`}
+                                    style={fg ? { color: fg } : undefined}
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </button>
+                                )}
+                              </Badge>
+                            );
+                          })}
+                          {!effectiveReadOnly && (
+                            <Popover
+                              open={tagPopoverGroup === group.value}
+                              onOpenChange={(o) => setTagPopoverGroup(o ? group.value : null)}
+                            >
+                              <PopoverTrigger asChild>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-6 w-6 shrink-0"
+                                  aria-label={`Gérer les tags — ${group.label}`}
+                                >
+                                  <TagIcon className="h-3.5 w-3.5" />
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-64 p-0" align="start">
+                                <Command>
+                                  <CommandInput placeholder={`Rechercher — ${group.label.toLowerCase()}…`} />
+                                  <CommandList>
+                                    <CommandEmpty>
+                                      Aucun tag dans ce groupe. Allez dans Paramètres → Classification.
+                                    </CommandEmpty>
+                                    <CommandGroup>
+                                      {available.map((tag) => {
+                                        const checked = selectedTags.some(
+                                          (t) => t.toLowerCase() === tag.name.toLowerCase(),
+                                        );
+                                        return (
+                                          <CommandItem
+                                            key={tag.id}
+                                            value={tag.name}
+                                            onSelect={() => toggleTag(tag.name)}
+                                            className="gap-2"
+                                          >
+                                            <span
+                                              className="h-2.5 w-2.5 shrink-0 rounded-full"
+                                              style={{
+                                                backgroundColor: tag.color ?? "hsl(var(--muted-foreground))",
+                                              }}
+                                            />
+                                            <span className="flex-1">{tag.name}</span>
+                                            {checked && <Check className="h-4 w-4" />}
+                                          </CommandItem>
+                                        );
+                                      })}
+                                    </CommandGroup>
+                                  </CommandList>
+                                </Command>
+                              </PopoverContent>
+                            </Popover>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </RailCard>
+            </>
+          ) : (
+            <>
+              <RailCard
+                title="Avancement"
+                action={
+                  <span className="font-mono text-xs text-muted-foreground">
+                    {courier.chrono ?? ""}
+                  </span>
+                }
+              >
+                {stateChain.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Aucun workflow n'est rattaché à l'organisation gestionnaire.
+                  </p>
+                ) : (
+                  <ol className="flex flex-col">
+                    {chainIndex === -1 && currentStateInfo?.name && (
+                      <li className="mb-3 rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+                        État courant «&nbsp;{currentStateInfo.name}&nbsp;» : atteint par une transition
+                        secondaire, hors de la suite nominale ci-dessous.
+                      </li>
+                    )}
+                    {stateChain.map((state, i) => {
+                      const done = chainIndex >= 0 && i < chainIndex;
+                      const current = i === chainIndex;
+                      const reached = done || current;
+                      return (
+                        <li key={state.id} className="flex gap-3">
+                          <div className="flex flex-[0_0_14px] flex-col items-center">
+                            <span
+                              className={cn(
+                                "rounded-full",
+                                current ? "mt-[3px] h-3.5 w-3.5 ring-4 ring-primary/15" : "mt-[5px] h-2.5 w-2.5",
+                                reached ? "bg-primary" : "bg-border",
+                              )}
+                            />
+                            {i < stateChain.length - 1 && (
                               <span
                                 className={cn(
-                                  "rounded-full",
-                                  current ? "mt-[3px] h-3.5 w-3.5 ring-4 ring-primary/15" : "mt-[5px] h-2.5 w-2.5",
-                                  reached ? "bg-primary" : "bg-border",
+                                  "my-1 w-0.5 flex-1",
+                                  done ? "bg-primary/35" : "bg-border",
                                 )}
                               />
-                              {i < stateChain.length - 1 && (
-                                <span
-                                  className={cn(
-                                    "my-1 w-0.5 flex-1",
-                                    done ? "bg-primary/35" : "bg-border",
-                                  )}
-                                />
-                              )}
-                            </div>
-                            <div className="min-w-0 pb-3.5">
-                              <div
-                                className={cn(
-                                  "text-sm",
-                                  current ? "font-bold" : "font-semibold",
-                                  reached ? "text-foreground" : "text-muted-foreground",
-                                )}
-                              >
-                                {state.name}
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                {state.is_initial
-                                  ? "état initial"
-                                  : state.is_final
-                                  ? "état final"
-                                  : current
-                                  ? "étape en cours"
-                                  : done
-                                  ? "étape franchie"
-                                  : "à venir"}
-                              </div>
-                            </div>
-                          </li>
-                        );
-                      })}
-                    </ol>
-                  )}
-                </RailCard>
-
-                <RailCard title="Organisation gestionnaire">
-                  {effectiveReadOnly ? (
-                    <div className="text-sm font-semibold">{localAssignedService ?? EMPTY}</div>
-                  ) : (
-                    <Popover open={servicePopoverOpen} onOpenChange={setServicePopoverOpen}>
-                      <PopoverTrigger asChild>
-                        <button
-                          type="button"
-                          className="flex h-11 w-full items-center justify-between gap-2 rounded-md border px-3 text-left text-sm font-semibold transition-shadow hover:shadow-airbnb-sm"
-                          title={
-                            isInitialState
-                              ? "Affecter à une organisation"
-                              : "Transférer à une autre organisation"
-                          }
-                        >
-                          <span className="min-w-0 truncate">
-                            {localAssignedService ?? (
-                              <span className="font-normal italic text-muted-foreground">Non assigné</span>
                             )}
-                          </span>
-                          <ArrowRightLeft className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                        </button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-72 space-y-2 p-3" align="start">
-                        {isInitialState ? (
-                          <>
-                            <p className="text-xs text-muted-foreground">Affecter à une organisation</p>
-                            <Select
-                              value={currentService?.id ?? ""}
-                              onValueChange={(v) => {
-                                serviceMutation.mutate(v);
-                                setServicePopoverOpen(false);
-                              }}
-                              disabled={serviceMutation.isPending}
+                          </div>
+                          <div className="min-w-0 pb-3.5">
+                            <div
+                              className={cn(
+                                "text-sm",
+                                current ? "font-bold" : "font-semibold",
+                                reached ? "text-foreground" : "text-muted-foreground",
+                              )}
                             >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Sélectionner une organisation" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {availableServices.map((s) => (
-                                  <SelectItem key={s.id} value={s.id}>
-                                    {s.name}
-                                    {s.workflow?.name && (
-                                      <span className="ml-2 text-xs text-muted-foreground">
-                                        — {s.workflow.name}
-                                      </span>
-                                    )}
+                              {state.name}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {state.is_initial
+                                ? "état initial"
+                                : state.is_final
+                                ? "état final"
+                                : current
+                                ? "étape en cours"
+                                : done
+                                ? "étape franchie"
+                                : "à venir"}
+                            </div>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                )}
+              </RailCard>
+
+              <RailCard title="Organisation gestionnaire">
+                {effectiveReadOnly ? (
+                  <div className="text-sm font-semibold">{localAssignedService ?? EMPTY}</div>
+                ) : (
+                  <Popover open={servicePopoverOpen} onOpenChange={setServicePopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        className="flex h-11 w-full items-center justify-between gap-2 rounded-md border px-3 text-left text-sm font-semibold transition-shadow hover:shadow-airbnb-sm"
+                        title={
+                          isInitialState
+                            ? "Affecter à une organisation"
+                            : "Transférer à une autre organisation"
+                        }
+                      >
+                        <span className="min-w-0 truncate">
+                          {localAssignedService ?? (
+                            <span className="font-normal italic text-muted-foreground">Non assigné</span>
+                          )}
+                        </span>
+                        <ArrowRightLeft className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-72 space-y-2 p-3" align="start">
+                      {isInitialState ? (
+                        <>
+                          <p className="text-xs text-muted-foreground">Affecter à une organisation</p>
+                          <Select
+                            value={currentService?.id ?? ""}
+                            onValueChange={(v) => {
+                              serviceMutation.mutate(v);
+                              setServicePopoverOpen(false);
+                            }}
+                            disabled={serviceMutation.isPending}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Sélectionner une organisation" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availableServices.map((s) => (
+                                <SelectItem key={s.id} value={s.id}>
+                                  {s.name}
+                                  {s.workflow?.name && (
+                                    <span className="ml-2 text-xs text-muted-foreground">
+                                      — {s.workflow.name}
+                                    </span>
+                                  )}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {localAssignedService && !currentService && (
+                            <p className="text-xs italic text-muted-foreground">
+                              Organisation actuelle « {localAssignedService} » introuvable.
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-xs text-muted-foreground">
+                            Transférer à une autre organisation. Le courrier sera remis à l'état initial.
+                          </p>
+                          <Select
+                            value=""
+                            onValueChange={(serviceId) => {
+                              setTransferTargetServiceId(serviceId);
+                              setTransferConfirmOpen(true);
+                              setServicePopoverOpen(false);
+                            }}
+                            disabled={transferMutation.isPending}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Choisir une organisation…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {assignableOrgs(services ?? [])
+                                .filter((o) => o.id !== currentService?.id)
+                                .map((o) => (
+                                  <SelectItem key={o.id} value={o.id}>
+                                    {o.name}
                                   </SelectItem>
                                 ))}
-                              </SelectContent>
-                            </Select>
-                            {localAssignedService && !currentService && (
-                              <p className="text-xs italic text-muted-foreground">
-                                Organisation actuelle « {localAssignedService} » introuvable.
-                              </p>
-                            )}
-                          </>
-                        ) : (
-                          <>
-                            <p className="text-xs text-muted-foreground">
-                              Transférer à une autre organisation. Le courrier sera remis à l'état initial.
-                            </p>
-                            <Select
-                              value=""
-                              onValueChange={(serviceId) => {
-                                setTransferTargetServiceId(serviceId);
-                                setTransferConfirmOpen(true);
-                                setServicePopoverOpen(false);
-                              }}
-                              disabled={transferMutation.isPending}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Choisir une organisation…" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {assignableOrgs(services ?? [])
-                                  .filter((o) => o.id !== currentService?.id)
-                                  .map((o) => (
-                                    <SelectItem key={o.id} value={o.id}>
-                                      {o.name}
-                                    </SelectItem>
-                                  ))}
-                              </SelectContent>
-                            </Select>
-                          </>
-                        )}
-                      </PopoverContent>
-                    </Popover>
-                  )}
-                </RailCard>
-              </>
-            )}
-
-            {!isOutbound && (
-              <Button
-                className="h-11 w-full gap-2 font-bold shadow-airbnb"
-                onClick={() => setActiveTab("response")}
-              >
-                <Send className="h-4 w-4" />
-                {replyList.length > 0 ? "Voir la réponse" : "Rédiger la réponse"}
-              </Button>
-            )}
-          </aside>
-        </div>
-      </Tabs>
+                            </SelectContent>
+                          </Select>
+                        </>
+                      )}
+                    </PopoverContent>
+                  </Popover>
+                )}
+              </RailCard>
+            </>
+          )}
+        </aside>
+      </div>
 
       <AlertDialog
         open={transferConfirmOpen}

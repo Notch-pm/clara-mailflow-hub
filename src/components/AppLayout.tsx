@@ -56,7 +56,14 @@ export function AppLayout() {
         {!isMobile && <AppSidebar />}
 
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-          <main ref={mainRef} className="flex-1 overflow-auto p-4 md:p-6 pb-20 md:pb-6 px-0 py-0">
+          {/* La gouttière de TOUS les écrans se pose ici, et nulle part ailleurs :
+              une page qui remettait la sienne par-dessus se retrouvait avec le
+              double (48 px au lieu de 24). Le bas garde sa réserve sous `md` :
+              la barre de navigation mobile est fixe, le contenu passerait
+              dessous. Les classes précédentes se neutralisaient entre elles —
+              `px-0 py-0` annulait `p-4` — ce qui collait le contenu aux bords
+              sur mobile. */}
+          <main ref={mainRef} className="flex-1 overflow-auto p-4 pb-20 md:p-6 md:pb-6">
             <Outlet />
           </main>
 
