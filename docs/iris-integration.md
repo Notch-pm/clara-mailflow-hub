@@ -15,11 +15,17 @@ La frontière n'est pas une règle de Clara, elle tombe du contrat : `socle_proc
 | Action créée dans Clara | Destination |
 |---|---|
 | Sur une démarche du référentiel (`procedures.socle_id` renseigné) | **Iris** |
-| Sans démarche — « demande libre » | **reste dans Clara** |
 | Sur une démarche **Arpège** (`arpege_config_fields`) | Arpège, flux inchangé |
 
-Une action libre n'est donc pas un échec de dépôt : c'est le cas nominal de l'autre côté de la
-frontière, et le produit ne doit rien signaler à l'agent.
+**La « demande libre » n'existe plus depuis le 2026-09-11.** Le dialogue exige une démarche, et
+ne propose que celles qu'un système instruit — Iris ou partenaire (`src/lib/procedure-origin.ts`).
+Une action sans démarche était un pense-bête sans suite : ni Iris ni le partenaire ne la voyaient,
+et Clara ne savait pas la faire avancer.
+
+Le refus de `push-iris-request` sur une action sans démarche du référentiel **reste** : il couvre
+les tickets d'avant cette date, les démarches Arpège (sans `socle_id`) et les appels directs. Ce
+n'est pas un échec de dépôt, c'est le cas nominal de l'autre côté de la frontière — le produit ne
+signale rien à l'agent.
 
 ### Une démarche ne vaut que pour l'organisme qui l'assure
 
@@ -71,7 +77,7 @@ Trois règles à ne pas re-déduire :
 | `form_data` | `socle_data.form`, indexé par **clé machine** (`key`) |
 | `context` | canal, date de réception **d'origine**, permalien `APP_ORIGIN/courrier/<id>`, métadonnées |
 | `links` | un lien `courrier` (chrono à défaut id, sujet en libellé) |
-| `attachments` | **rien pour l'instant** — voir §6 |
+| `attachments` | `upload_id` des pièces DÉPOSÉES sur `/v1/uploads`, tirées de `socle_data.pieces_jointes` (pièces réclamées par le formulaire) + `form_field_key` = clé machine du champ — voir §5 bis |
 
 Logique pure et testée : `supabase/functions/_shared/iris-envelope.ts`
 (+ `src/test/iris/iris-envelope.test.ts`). Elle **refuse avant le réseau** ce qu'Iris
@@ -91,6 +97,19 @@ refuserait : pas de démarche, démarche obsolète, racine absente, aucun demand
    `GET /v1/requests?updated_since=` et met à jour statut, référence, version et URL.
    **Garde de version monotone** : une mise à jour n'est appliquée que si sa `version` dépasse
    celle connue, ce qui absorbe rejeux et arrivées en désordre.
+5. `refresh-iris-status` fait la même chose **pour un seul courrier, à la demande** :
+   l'onglet « Actions liées » l'appelle à chaque ouverture, comme il le fait déjà pour Arpège.
+   Sans lui, l'écran montrerait l'état écrit **au dépôt** jusqu'au balayage de 03:30 — une
+   demande déposée à 12:44 et résolue à 12:53 s'affichait « À traiter » pendant quinze heures
+   (incident fondateur : 2026-09-11). Il lit `GET /v1/requests/{id}` demande par demande et
+   partage le patch d'écriture avec le balayage (`irisTicketPatch`, testé), pour que l'état
+   affiché ne dépende pas de qui a lu en dernier.
+
+   Deux règles que ce chemin ne doit pas franchir : il **n'avance pas** le curseur
+   `last_sync_at` (il appartient au balayage — l'avancer ferait sauter la nuit suivante les
+   demandes des autres courriers modifiées entre-temps), et un **échec de lecture n'écrit
+   jamais** `iris_last_error`, qui ne parle que du dépôt : ce serait proposer « Renvoyer » pour
+   une demande déjà déposée.
 
 Le suivi est une **réconciliation système** (service_role) : un consultant voit un statut à
 jour sans déclencher d'écriture qui lui soit imputable.
@@ -116,12 +135,55 @@ bloqué**, le **suivi des demandes déjà déposées continue**. Un tenant **san
 Iris n'est pas en erreur : le dépôt répond `{ skipped: true, reason: "absente" }` et l'agent ne
 voit rien — cette collectivité ne dépose simplement pas ses demandes dans Iris.
 
+## 5 bis. Les pièces jointes (contrat 2.0.0)
+
+**Ce qui part : les pièces que le FORMULAIRE de la démarche réclame**, et elles seules — les
+« Statuts de l'association » et le « Relevé d'identité bancaire » d'une demande de subvention,
+cochés par l'agent dans le dialogue de demande (décision PO du 2026-09-11). Le reste des
+documents du courrier ne suit pas : Iris instruit une démarche, pas un courrier, et le courrier
+lui-même reste consultable par le permalien.
+
+**Comment** : Iris ne va JAMAIS chercher un fichier chez Clara (le mode « URL signée » du
+contrat 1.x a été retiré sans jamais servir), et un contenu inline vaut 400. Deux temps, dans
+`push-iris-request` :
+
+1. chaque fichier est déposé sur `POST /v1/uploads` (`multipart/form-data`, champ `file`, un
+   fichier par appel, 25 Mo et 60 dépôts/minute/clé) → `upload_id` valable **24 h** ;
+2. les `upload_id` entrent dans l'enveloppe : `attachments: [{ upload_id, form_field_key }]`.
+
+Trois points qui ne se redevinent pas :
+
+- **On ne dépose les fichiers qu'APRÈS avoir validé l'enveloppe** (`buildIrisEnvelope`) : un
+  refus de démarche obsolète laisserait sinon des fichiers orphelins en zone d'attente. Inverse :
+  un POST de demande qui échoue ne laisse rien traîner — un dépôt jamais référencé est purgé.
+- **`form_field_key` est la clé MACHINE du champ** (`rib`, `statuts`), quand
+  `socle_data.pieces_jointes` indexe par **id** de champ (`f-sub-13`). Le pont est le
+  `form_schema` de la démarche (`planIrisAttachments`, logique pure testée). Champ disparu
+  depuis la saisie ⇒ la pièce part quand même, « hors champ » : perdre le fichier serait pire.
+- **Refus d'un fichier ≠ panne.** 400/413/415/422 (format hors liste, extension incohérente,
+  25 Mo) sont définitifs : la demande part **sans** cette pièce et le ticket le dit
+  (`action_tickets.iris_attachments_error`, affiché sous la référence Iris). Tout le reste
+  (401, 403, 429, 5xx, réseau) est passager : **rien n'est déposé**, l'agent renvoie — amputer
+  une demande d'une pièce que la démarche exige donnerait un dossier incomplet que plus rien
+  ici ne viendrait compléter.
+
+Formats admis par Iris, vérifiés sur le **contenu réel** (signature binaire) : PDF, JPEG, PNG,
+WebP, HEIC, GIF, `.docx`, `.xlsx`, `.odt`, `.ods`. Ni SVG, ni HTML, ni archive, ni Office à
+macros. Attention : le `acceptedFormats` d'un champ du référentiel peut être plus large que
+cette liste (« statuts » accepte `doc`, qu'Iris refuse).
+
+L'empreinte d'idempotence d'Iris **inclut le contenu** des pièces (nom, type détecté, taille,
+sha256, clé de champ) et **ignore** les `upload_id` : renvoyer la même demande avec de nouveaux
+téléversements des mêmes fichiers reste un rejeu identique (200). Corollaire à ne pas oublier :
+ajouter des pièces à une demande **déjà déposée sans elles** changerait l'empreinte ⇒ **409**.
+Le chemin pour celles-là est `POST /v1/requests/{id}/attachments` — non implémenté côté Clara
+(décision PO : pas de rattrapage, les demandes concernées sont des essais).
+
 ## 6. Limites connues
 
-- **Pièces jointes : rien n'est envoyé.** Le contrat le demande explicitement — le worker de
-  copie d'Iris n'est pas actif, les pièces resteraient en `copy_status: pending`. La sélection
-  de l'agent reste dans `socle_data.pieces_jointes`, prête pour le jour où le worker tournera
-  (endpoint dédié `POST /v1/requests/{id}/attachments`, références signées uniquement).
+- **Pas de rattrapage des demandes déposées avant le 2026-09-11** : elles sont parties sans
+  aucune pièce (dont `DEM-2026-000055`, constat fondateur du brief Iris du 2026-09-19). Aucun
+  écran ne les complète ; leur `iris_attachments_error` est `null` et ne prouve donc rien.
 - **Pas d'écran de configuration** : la connexion Iris se pose en SQL par le superadmin.
   `OrgIntegrations` ne gère que les champs Arpège (Hawk) ; y ajouter une carte Iris (URL, clé,
   racine, suspension, test) est le prolongement naturel.

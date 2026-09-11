@@ -2,8 +2,10 @@
 //
 // Iris est propriétaire exclusif des demandes d'usagers : une action fondée sur
 // une DÉMARCHE du référentiel y est déposée, puis instruite là-bas ; Clara n'en
-// garde qu'un suivi. Une action sans démarche (« demande libre ») reste chez
-// Clara — ce n'est pas un échec, c'est la frontière entre les deux produits.
+// garde qu'un suivi. Une action sans démarche du référentiel reste chez Clara —
+// ce n'est pas un échec, c'est la frontière entre les deux produits. L'écran
+// n'en crée plus depuis le 2026-09-11 (la démarche y est obligatoire), mais la
+// garde tient toujours : tickets d'avant, démarches Arpège, appels directs.
 //
 // Body : { ticket_id }. Rien d'autre n'est accepté : l'enveloppe est
 // INTÉGRALEMENT relue en base côté serveur. Un client ne choisit ni la
@@ -19,12 +21,19 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { assertEditor } from "../_shared/authz.ts";
 import {
+  attachmentsRefusedNote,
   buildIrisEnvelope,
   irisErrorMessage,
   irisRequestFromBody,
+  isDefiniteUploadRefusal,
   isIrisStatus,
+  planIrisAttachments,
+  uploadRefusalMessage,
+  withIrisAttachments,
+  type DroppedAttachment,
+  type IrisAttachmentRef,
 } from "../_shared/iris-envelope.ts";
-import { postIrisRequest, resolveIrisIntegration } from "../_shared/iris.ts";
+import { postIrisRequest, resolveIrisIntegration, uploadIrisFile } from "../_shared/iris.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -118,7 +127,9 @@ Deno.serve(async (req) => {
       ticket.procedure_id
         ? supabaseAdmin
           .from("procedures")
-          .select("socle_id, name, obsoleted_at")
+          // `form_schema` : il porte la CLÉ MACHINE des champs « pièce jointe »,
+          // que `socle_data` n'indexe que par id.
+          .select("socle_id, name, obsoleted_at, form_schema")
           .eq("id", ticket.procedure_id)
           .eq("organization_id", organizationId)
           .maybeSingle()
@@ -207,7 +218,9 @@ Deno.serve(async (req) => {
         received_at: courier.received_at as string | null,
         socle_organization_socle_id: socleOrganizationSocleId,
       },
-      procedure: procedure as { socle_id?: string | null; name?: string | null; obsoleted_at?: string | null } | null,
+      procedure: procedure as
+        | { socle_id?: string | null; name?: string | null; obsoleted_at?: string | null }
+        | null,
       socleContactId,
       integration: { socle_root_org_id: integration.socle_root_org_id },
       appOrigin: Deno.env.get("APP_ORIGIN") ?? null,
@@ -223,7 +236,88 @@ Deno.serve(async (req) => {
       return json({ error: built.message }, 400);
     }
 
-    const { status, body } = await postIrisRequest(integration, built.envelope);
+    // ── Pièces jointes : déposées MAINTENANT, une fois l'enveloppe validée ──
+    //
+    // Périmètre : seules les pièces réclamées par le formulaire de la démarche
+    // (« Statuts de l'association », « RIB »…), cochées par l'agent dans le
+    // dialogue de demande. Iris ne va jamais lire un fichier chez Clara : on
+    // dépose chaque fichier, puis on référence les `upload_id` dans l'enveloppe
+    // (contrat 2.0.0). Un fichier déposé mais jamais référencé est purgé au
+    // bout de 24 h — rater le POST de la demande ne laisse donc rien traîner.
+    const attachmentRefs: IrisAttachmentRef[] = [];
+    const droppedAttachments: DroppedAttachment[] = [];
+    {
+      const { data: documents } = await supabaseAdmin
+        .from("courier_documents")
+        .select("id, storage_key, file_name, mime_type, file_size")
+        .eq("courier_id", courier.id);
+
+      const plan = planIrisAttachments({
+        socleData: ticket.socle_data,
+        formSchema: (procedure as { form_schema?: unknown } | null)?.form_schema,
+        documents: documents ?? [],
+      });
+      droppedAttachments.push(...plan.dropped);
+
+      for (const item of plan.items) {
+        const { data: file, error: downloadErr } = await supabaseAdmin.storage
+          .from("clara-documents")
+          .download(item.storageKey);
+        if (downloadErr || !file) {
+          // Le fichier manque DANS CLARA : Iris n'y peut rien, renvoyer non plus.
+          console.error(`[iris] pièce illisible (document ${item.documentId})`);
+          droppedAttachments.push({
+            fileName: item.fileName,
+            fieldLabel: item.fieldLabel,
+            reason: "fichier illisible dans Clara",
+          });
+          continue;
+        }
+
+        const { status, body } = await uploadIrisFile(integration, {
+          bytes: file,
+          fileName: item.fileName,
+          mimeType: item.mimeType,
+        });
+        const uploadId = body?.upload?.upload_id;
+        if (status === 201 && uploadId) {
+          attachmentRefs.push({
+            upload_id: uploadId,
+            ...(item.formFieldKey ? { form_field_key: item.formFieldKey } : {}),
+          });
+          continue;
+        }
+        if (isDefiniteUploadRefusal(status)) {
+          // Un format qu'Iris n'admet pas n'est pas une panne : la demande part
+          // sans cette pièce, et le ticket le dit.
+          console.warn(`[iris] pièce refusée (${status}) pour l'action ${ticket.id}`);
+          droppedAttachments.push({
+            fileName: item.fileName,
+            fieldLabel: item.fieldLabel,
+            reason: uploadRefusalMessage(status, body),
+          });
+          continue;
+        }
+
+        // Panne passagère (429, 5xx, réseau, clé refusée) : on ne dépose RIEN.
+        // Amputer d'une pièce que la démarche réclame donnerait un dossier
+        // incomplet chez Iris, que plus rien ici ne viendrait compléter.
+        const message =
+          `Iris n'a pas pu recevoir « ${item.fileName} » (${uploadRefusalMessage(status, body)}) : ` +
+          `la demande n'a pas été déposée, renvoyez-la.`;
+        console.error(`[iris] dépôt de pièce échoué (action ${ticket.id}) : ${status}`);
+        await supabaseAdmin
+          .from("action_tickets")
+          .update({ iris_last_attempt_at: new Date().toISOString(), iris_last_error: message })
+          .eq("id", ticket.id);
+        return json({ error: message }, status === 401 || status === 403 ? 400 : 502);
+      }
+    }
+
+    const { status, body } = await postIrisRequest(
+      integration,
+      withIrisAttachments(built.envelope, attachmentRefs),
+    );
 
     if (status !== 200 && status !== 201) {
       const message = irisErrorMessage(status, body);
@@ -248,6 +342,11 @@ Deno.serve(async (req) => {
       return json({ error: message }, 502);
     }
 
+    // Ce qui n'est pas parti se dit SUR LE TICKET : le toast passe, la demande
+    // reste. Null quand tout est arrivé — on n'affirme jamais l'inverse, les
+    // demandes déposées avant ce chemin n'ont simplement rien à en dire.
+    const attachmentsNote = attachmentsRefusedNote(droppedAttachments);
+
     const update = {
       iris_request_id: demande.id ?? null,
       iris_reference: demande.reference ?? null,
@@ -257,6 +356,7 @@ Deno.serve(async (req) => {
       iris_synced_at: new Date().toISOString(),
       iris_last_attempt_at: new Date().toISOString(),
       iris_last_error: null,
+      iris_attachments_error: attachmentsNote,
     };
     const { error: updErr } = await supabaseAdmin
       .from("action_tickets")
@@ -265,7 +365,8 @@ Deno.serve(async (req) => {
     if (updErr) throw updErr;
 
     console.log(
-      `[iris] demande ${demande.reference ?? demande.id} déposée pour l'action ${ticket.id} (HTTP ${status})`,
+      `[iris] demande ${demande.reference ?? demande.id} déposée pour l'action ${ticket.id} ` +
+        `(HTTP ${status}, ${attachmentRefs.length} pièce(s))`,
     );
 
     return json({
@@ -274,6 +375,8 @@ Deno.serve(async (req) => {
       reference: update.iris_reference,
       status: update.iris_status,
       url: update.iris_url,
+      attachments_registered: attachmentRefs.length,
+      attachments_refused: attachmentsNote,
     });
   } catch (error) {
     console.error("[iris] push-iris-request:", error);

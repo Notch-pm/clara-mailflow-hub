@@ -94,7 +94,7 @@ Défense en profondeur côté edge (fonctions en `service_role`, hors RLS) : gar
 - Créer un courrier, lancer l'OCR + analyse IA.
 - Ajouter notes, mentionner un utilisateur (`@`).
 - Lier des courriers entre eux, fermer en cascade.
-- Créer un ticket d'action.
+- Créer une demande liée au courrier (démarche Iris ou partenaire).
 - Rédiger une réponse, appliquer un modèle.
 - Transitions de workflow disponibles selon l'état courant.
 - Uploader des pièces jointes.

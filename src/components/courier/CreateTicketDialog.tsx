@@ -11,7 +11,6 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import {
   Command,
@@ -35,7 +34,6 @@ import {
   listProcedures,
   type ArpegeConfigField,
   type ArpegeFormComponent,
-  type Procedure,
 } from "@/services/procedureService";
 import { listSocleOrganizationTree } from "@/services/socleSyncService";
 import { buildSocleOrgTree, flattenSocleOrgTree } from "@/lib/socleOrgTree";
@@ -44,19 +42,13 @@ import {
   filterProceduresForOrganization,
   isProcedureOfferedBy,
 } from "@/lib/procedure-activation";
-import {
-  createTicket,
-  createArpegeTicket,
-  updateTicket,
-  type ActionTicketWithProcedure,
-} from "@/services/actionTicketService";
+import { isRequestableProcedure, procedureOriginLabel } from "@/lib/procedure-origin";
+import { createTicket, createArpegeTicket } from "@/services/actionTicketService";
 import { pushIrisRequest } from "@/services/irisRequestService";
 import { logEvent } from "@/services/courierEventService";
 import { getDocuments } from "@/services/courierDocumentService";
-import { getOrgMembers } from "@/services/userService";
 import { getParticipants } from "@/services/courierParticipantService";
 import { getContact, type SocleContact } from "@/services/socleContactService";
-import { UserAvatar } from "@/components/UserAvatar";
 import PiecesJointesField from "./PiecesJointesField";
 import { SocleFormFields, SocleRequesterForm } from "./SocleDemandeForm";
 import {
@@ -87,8 +79,6 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   courierId: string;
   organizationId: string;
-  initialTitle?: string;
-  initialDescription?: string;
   initialProcedureId?: string;
   initialArpegeValues?: Record<string, string>;
   /** Préremplissage Socle de l'action suggérée (audience + valeurs par clé). */
@@ -97,7 +87,6 @@ interface Props {
   initialSocleOrganizationId?: string | null;
   /** Organisation gestionnaire du courrier — destinataire par défaut de la demande. */
   courierSocleOrganizationId?: string | null;
-  ticket?: ActionTicketWithProcedure | null;
 }
 
 const CIVILITE_OPTIONS = [
@@ -112,17 +101,6 @@ const FIELD_CODES_DISPLAYED = [
 ];
 
 const DEMANDEUR_FULL_WIDTH = new Set(["PRENOMS", "EMAIL"]);
-
-// Origine affichée dans le sélecteur de démarches UNIQUEMENT : le Socle est
-// présenté sous son nom produit « Iris » ; une démarche partenaire garde le nom
-// du partenaire (les références Arpège survivent à l'adoption par le Socle).
-function procedureOriginLabel(p: Procedure): string | null {
-  if ((p.external_reference_id && p.arpege_config_fields) || p.external_source === "arpege") {
-    return "Arpège";
-  }
-  if (p.external_source === "socle") return "Iris";
-  return null;
-}
 
 // ── Section header ──────────────────────────────────────────────────────────
 
@@ -467,17 +445,13 @@ export default function CreateTicketDialog({
   onOpenChange,
   courierId,
   organizationId,
-  initialTitle = "",
-  initialDescription = "",
   initialProcedureId,
   initialArpegeValues,
   initialSoclePrefill,
   initialSocleOrganizationId,
   courierSocleOrganizationId,
-  ticket = null,
 }: Props) {
   const qc = useQueryClient();
-  const isEdit = !!ticket;
   const [procedureId, setProcedureId] = useState<string>("");
   // Organisation DESTINATAIRE de la demande (id du miroir socle_organizations) :
   // elle commande la liste des démarches proposées et l'organisme transmis à
@@ -486,11 +460,7 @@ export default function CreateTicketDialog({
   // déplace pas le courrier.
   const [socleOrgId, setSocleOrgId] = useState<string | null>(null);
   const [orgPopoverOpen, setOrgPopoverOpen] = useState(false);
-  const [title, setTitle] = useState<string>(initialTitle);
-  const [description, setDescription] = useState<string>(initialDescription);
-  const [assigneeId, setAssigneeId] = useState<string | null>(null);
   const [procedurePopoverOpen, setProcedurePopoverOpen] = useState(false);
-  const [assigneePopoverOpen, setAssigneePopoverOpen] = useState(false);
   const [arpegeValues, setArpegeValues] = useState<Record<string, string>>({});
   const [businessValues, setBusinessValues] = useState<Record<string, unknown>>({});
   const [piecesJointes, setPiecesJointes] = useState<Record<string, string[]>>({});
@@ -500,23 +470,11 @@ export default function CreateTicketDialog({
 
   useEffect(() => {
     if (open) {
-      if (isEdit && ticket) {
-        setTitle(ticket.title ?? "");
-        setDescription(ticket.description ?? "");
-        setProcedureId(ticket.procedure_id ?? "");
-        setAssigneeId(ticket.assignee_id ?? null);
-        setSocleOrgId(ticket.socle_organization_id ?? null);
-        setArpegeValues({});
-      } else {
-        setTitle(initialTitle);
-        setDescription(initialDescription);
-        setProcedureId(initialProcedureId ?? "");
-        setAssigneeId(null);
-        // Suggestion de l'analyse d'abord, organisation du courrier ensuite :
-        // l'IA a lu le courrier, le rattachement du courrier n'est qu'un défaut.
-        setSocleOrgId(initialSocleOrganizationId ?? courierSocleOrganizationId ?? null);
-        setArpegeValues(initialArpegeValues ?? {});
-      }
+      setProcedureId(initialProcedureId ?? "");
+      // Suggestion de l'analyse d'abord, organisation du courrier ensuite :
+      // l'IA a lu le courrier, le rattachement du courrier n'est qu'un défaut.
+      setSocleOrgId(initialSocleOrganizationId ?? courierSocleOrganizationId ?? null);
+      setArpegeValues(initialArpegeValues ?? {});
       setBusinessValues({});
       setPiecesJointes({});
       setSocleAudience(null);
@@ -524,8 +482,8 @@ export default function CreateTicketDialog({
       setSocleFormValues({});
     }
   }, [
-    open, initialTitle, initialDescription, initialProcedureId, initialArpegeValues,
-    initialSocleOrganizationId, courierSocleOrganizationId, isEdit, ticket,
+    open, initialProcedureId, initialArpegeValues,
+    initialSocleOrganizationId, courierSocleOrganizationId,
   ]);
 
   const { data: procedures, isLoading: loadingProcedures } = useQuery({
@@ -551,7 +509,7 @@ export default function CreateTicketDialog({
   const { data: socleOrgs, isLoading: loadingSocleOrgs } = useQuery({
     queryKey: ["socle-organizations", organizationId],
     queryFn: () => listSocleOrganizationTree(organizationId),
-    enabled: !!organizationId && open && !isEdit,
+    enabled: !!organizationId && open,
   });
   // Liste indentée par la hiérarchie (motif ImapSettings / SignaturesSettings) :
   // « Services techniques » sous « ACCM » se lit mieux qu'un ordre alphabétique.
@@ -566,35 +524,35 @@ export default function CreateTicketDialog({
   );
   const selectedOrg = selectableOrgs.find((o) => o.id === socleOrgId) ?? null;
 
-  // Les démarches obsolètes (retirées du Socle / embryons remplacés) ne sont plus proposées.
+  // Ne sont proposées que les démarches instruites quelque part — Iris ou
+  // partenaire (cf. src/lib/procedure-origin.ts) —, et parmi elles ni les
+  // obsolètes (retirées du référentiel), ni les masquées localement.
   const visibleProcedures = useMemo(
-    () => (procedures ?? []).filter((p) => p.is_displayed && !p.obsoleted_at),
+    () =>
+      (procedures ?? []).filter(
+        (p) => p.is_displayed && !p.obsoleted_at && isRequestableProcedure(p),
+      ),
     [procedures],
   );
   // …ni celles que l'organisation destinataire n'assure pas. Une démarche que
-  // le référentiel ne connaît pas (Arpège, embryon local) n'a aucune activation
-  // et reste proposée — cf. src/lib/procedure-activation.ts.
+  // le référentiel ne connaît pas (Arpège) n'a aucune activation et reste
+  // proposée — cf. src/lib/procedure-activation.ts.
   const displayedProcedures = useMemo(
-    () =>
-      isEdit
-        ? visibleProcedures
-        : filterProceduresForOrganization(visibleProcedures, activationIndex, socleOrgId),
-    [visibleProcedures, activationIndex, socleOrgId, isEdit],
+    () => filterProceduresForOrganization(visibleProcedures, activationIndex, socleOrgId),
+    [visibleProcedures, activationIndex, socleOrgId],
   );
   const selectedProcedure = displayedProcedures.find((p) => p.id === procedureId) ?? null;
 
   // Le flux Arpège dépend de la présence effective des références Arpège
   // (conservées après adoption par le Socle), pas de external_source.
   const isArpege =
-    !!selectedProcedure?.external_reference_id &&
-    !!selectedProcedure?.arpege_config_fields &&
-    !isEdit;
+    !!selectedProcedure?.external_reference_id && !!selectedProcedure?.arpege_config_fields;
   const arpegeFields = selectedProcedure?.arpege_config_fields?.ConfigInfoUsagerObligs ?? [];
   const formComponents = selectedProcedure?.arpege_config_fields?.FormComponents ?? [];
 
   // Démarche Socle « native » (sans config Arpège) : rendu du contrat Socle
-  // (requester_config + form_schema) à la création uniquement.
-  const isSocle = !isEdit && !isArpege && selectedProcedure?.external_source === "socle";
+  // (requester_config + form_schema).
+  const isSocle = !isArpege && selectedProcedure?.external_source === "socle";
   const socleConfig = useMemo(
     () =>
       isSocle && selectedProcedure?.requester_config
@@ -637,7 +595,7 @@ export default function CreateTicketDialog({
   const { data: participants, isLoading: loadingParticipants } = useQuery({
     queryKey: ["courier-participants", courierId],
     queryFn: () => getParticipants(courierId),
-    enabled: open && !isEdit && !!courierId,
+    enabled: open && !!courierId,
   });
   const senderParticipant = useMemo(
     () =>
@@ -657,7 +615,7 @@ export default function CreateTicketDialog({
         return null;
       }
     },
-    enabled: open && !isEdit && !!senderParticipant?.socle_contact_id,
+    enabled: open && !!senderParticipant?.socle_contact_id,
   });
 
   // Application du préremplissage — une seule fois par (ouverture, démarche),
@@ -669,7 +627,7 @@ export default function CreateTicketDialog({
       prefillAppliedRef.current = null;
       return;
     }
-    if (isEdit || !procedureId || !selectedProcedure) return;
+    if (!procedureId || !selectedProcedure) return;
     if (loadingParticipants) return;
     // Un contact Socle est attendu : attendre son chargement avant d'appliquer.
     if (senderParticipant?.socle_contact_id && senderContact === undefined) return;
@@ -708,25 +666,11 @@ export default function CreateTicketDialog({
       setSocleFormValues(applySocleFormPrefill(socleSchema, fromSuggestion.form));
     }
   }, [
-    open, isEdit, procedureId, selectedProcedure, isArpege, showSocleForm,
+    open, procedureId, selectedProcedure, isArpege, showSocleForm,
     socleConfig, socleAudiencesList, socleSchema, loadingParticipants,
     senderParticipant, senderContact, initialArpegeValues, initialSoclePrefill,
     initialProcedureId,
   ]);
-
-  const { data: members, isLoading: loadingMembers } = useQuery({
-    queryKey: ["org-members", organizationId],
-    queryFn: () => getOrgMembers(organizationId),
-    enabled: !!organizationId && open && !isArpege,
-  });
-
-  const activeMembers = (members ?? []).filter(
-    (m) => m.is_active !== false && m.membership_active !== false,
-  );
-  const selectedAssignee = activeMembers.find((m) => m.id === assigneeId) ?? null;
-
-  const fullName = (m: { first_name: string | null; last_name: string | null; email: string }) =>
-    [m.first_name, m.last_name].filter(Boolean).join(" ") || m.email;
 
   // Sélection (ou désélection avec "") d'une démarche : purge des formulaires
   // spécifiques et ré-application du préremplissage.
@@ -794,24 +738,13 @@ export default function CreateTicketDialog({
   // Le dépôt dans Iris se raconte dans le toast de fin : une action peut être
   // créée ici et refusée là-bas (démarche obsolète, demandeur absent…) sans que
   // rien ne soit perdu — l'onglet Actions liées propose alors le renvoi.
-  const saveMutation = useMutation<{ irisReference?: string | null; irisError?: string | null }>({
+  const saveMutation = useMutation<{
+    irisReference?: string | null;
+    irisError?: string | null;
+    /** Pièce réclamée par la démarche restée dans Clara — la demande est incomplète. */
+    attachmentsRefused?: string | null;
+  }>({
     mutationFn: async () => {
-      if (isEdit && ticket) {
-        await updateTicket(ticket.id, {
-          title,
-          description,
-          assigneeId,
-          procedureId: procedureId || null,
-        });
-        await logEvent(organizationId, courierId, "ticket_updated", {
-          ticket_id: ticket.id,
-          procedure_id: procedureId || null,
-          assignee_id: assigneeId,
-          title: title.trim() || null,
-        });
-        return {};
-      }
-
       if (isArpege) {
         const formValues = buildFormValues(formComponents, businessValues);
         const created = await createArpegeTicket({
@@ -844,20 +777,14 @@ export default function CreateTicketDialog({
       const created = await createTicket({
         organizationId,
         courierId,
-        procedureId: procedureId || null,
-        title,
-        description,
-        assigneeId,
+        procedureId,
         socleData,
         socleOrganizationId: socleOrgId,
       });
       await logEvent(organizationId, courierId, "ticket_created", {
         ticket_id: created.id,
-        procedure_id: procedureId || null,
-        assignee_id: assigneeId,
+        procedure_id: procedureId,
         socle_organization_id: socleOrgId,
-        title: title.trim() || null,
-        description: description?.slice(0, 200) || null,
       });
 
       // Démarche du référentiel ⇒ la demande appartient à Iris. Le ticket est
@@ -869,7 +796,10 @@ export default function CreateTicketDialog({
           const pushed = await pushIrisRequest(created.id);
           // Organisation qui ne dépose pas dans Iris : rien à annoncer.
           if (pushed.skipped) return {};
-          return { irisReference: pushed.reference };
+          return {
+            irisReference: pushed.reference,
+            attachmentsRefused: pushed.attachments_refused ?? null,
+          };
         } catch (e) {
           return { irisError: e instanceof Error ? e.message : String(e) };
         }
@@ -879,10 +809,16 @@ export default function CreateTicketDialog({
     onSuccess: (result) => {
       if (result.irisError) {
         toast.warning(`Action créée, non transmise à Iris : ${result.irisError}`);
+      } else if (result.irisReference && result.attachmentsRefused) {
+        // Déposée, mais sans une pièce que la démarche réclame : l'agent doit
+        // le savoir tout de suite — la ligne du ticket le redira ensuite.
+        toast.warning(
+          `Demande ${result.irisReference} déposée dans Iris — ${result.attachmentsRefused}`,
+        );
       } else if (result.irisReference) {
         toast.success(`Action créée — demande ${result.irisReference} déposée dans Iris`);
       } else {
-        toast.success(isEdit ? "Ticket modifié" : "Ticket créé");
+        toast.success("Demande créée");
       }
       qc.invalidateQueries({ queryKey: ["action-tickets", courierId] });
       qc.invalidateQueries({ queryKey: ["courier-events", courierId] });
@@ -891,13 +827,16 @@ export default function CreateTicketDialog({
     onError: (e: Error) => toast.error(e.message),
   });
 
-  // Sans démarche : titre + affectation exigés. Avec démarche : titre facultatif
-  // (le nom de la démarche fait office d'intitulé). Flux Arpège inchangé.
+  // La démarche commande tout : sans elle, il n'y a personne pour instruire la
+  // demande. Restent les champs exigés par la démarche elle-même (Arpège ou
+  // contrat Socle) — Clara n'en ajoute aucun. On exige la démarche RETENUE, pas
+  // seulement un id : une démarche absente de la liste (suggestion que
+  // l'organisation destinataire n'assure pas) serait invisible et refusée au
+  // dépôt.
   const canSubmit =
     !saveMutation.isPending &&
-    (isArpege
-      ? arpegeObligatoryMet && bizObligatoryMet
-      : !!assigneeId && (!!procedureId || title.trim().length > 0)) &&
+    !!selectedProcedure &&
+    (!isArpege || (arpegeObligatoryMet && bizObligatoryMet)) &&
     socleObligatoryMet;
 
   const hasBothForms = isArpege && arpegeFields.length > 0 && formComponents.length > 0;
@@ -913,9 +852,7 @@ export default function CreateTicketDialog({
         )}
       >
         <DialogHeader className="shrink-0 pb-2">
-          <DialogTitle>
-            {isEdit ? "Modifier le ticket d'action" : "Nouvelle demande"}
-          </DialogTitle>
+          <DialogTitle>Nouvelle demande</DialogTitle>
           {selectedProcedure && (
             <p className="text-sm text-muted-foreground">{selectedProcedure.name}</p>
           )}
@@ -924,72 +861,72 @@ export default function CreateTicketDialog({
         <div className="flex-1 overflow-y-auto min-h-0 pr-1 space-y-5 py-1">
 
           {/* Organisation destinataire — commande la liste des démarches */}
-          {!isEdit && (
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Organisation destinataire</Label>
-              <div className="flex items-center gap-1.5">
-                <Popover open={orgPopoverOpen} onOpenChange={setOrgPopoverOpen}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      role="combobox"
-                      aria-expanded={orgPopoverOpen}
-                      className="flex-1 justify-between h-9 min-w-0"
-                      disabled={loadingSocleOrgs}
-                    >
-                      <span className="flex items-center gap-2 truncate">
-                        <Building2 className="h-4 w-4 shrink-0 opacity-50" />
-                        {selectedOrg ? (
-                          <span className="truncate">{selectedOrg.name}</span>
-                        ) : loadingSocleOrgs ? "Chargement…" : (
-                          <span className="text-muted-foreground">Toutes les organisations</span>
-                        )}
-                      </span>
-                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                    <Command>
-                      <CommandInput placeholder="Rechercher une organisation…" />
-                      <CommandList>
-                        <CommandEmpty>Aucune organisation trouvée</CommandEmpty>
-                        <CommandGroup>
-                          {selectableOrgs.map((o) => (
-                            <CommandItem
-                              key={o.id}
-                              value={o.name}
-                              onSelect={() => {
-                                selectSocleOrg(o.id);
-                                setOrgPopoverOpen(false);
-                              }}
-                            >
-                              <Check className={cn("mr-2 h-4 w-4", socleOrgId === o.id ? "opacity-100" : "opacity-0")} />
-                              <span className="truncate" style={{ paddingLeft: `${(o.depth - 1) * 12}px` }}>
-                                {o.name}
-                              </span>
-                            </CommandItem>
-                          ))}
-                        </CommandGroup>
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
-                {selectedOrg && (
-                  <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0"
-                    onClick={() => selectSocleOrg(null)} title="Retirer l'organisation">
-                    <X className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
-              <p className="text-[10px] text-muted-foreground/70">
-                Les démarches proposées sont celles que cette organisation assure dans le référentiel.
-              </p>
-            </div>
-          )}
-
-          {/* Démarche (facultative) */}
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Démarche (facultative)</Label>
+            <Label className="text-xs text-muted-foreground">Organisation destinataire</Label>
+            <div className="flex items-center gap-1.5">
+              <Popover open={orgPopoverOpen} onOpenChange={setOrgPopoverOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={orgPopoverOpen}
+                    className="flex-1 justify-between h-9 min-w-0"
+                    disabled={loadingSocleOrgs}
+                  >
+                    <span className="flex items-center gap-2 truncate">
+                      <Building2 className="h-4 w-4 shrink-0 opacity-50" />
+                      {selectedOrg ? (
+                        <span className="truncate">{selectedOrg.name}</span>
+                      ) : loadingSocleOrgs ? "Chargement…" : (
+                        <span className="text-muted-foreground">Toutes les organisations</span>
+                      )}
+                    </span>
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                  <Command>
+                    <CommandInput placeholder="Rechercher une organisation…" />
+                    <CommandList>
+                      <CommandEmpty>Aucune organisation trouvée</CommandEmpty>
+                      <CommandGroup>
+                        {selectableOrgs.map((o) => (
+                          <CommandItem
+                            key={o.id}
+                            value={o.name}
+                            onSelect={() => {
+                              selectSocleOrg(o.id);
+                              setOrgPopoverOpen(false);
+                            }}
+                          >
+                            <Check className={cn("mr-2 h-4 w-4", socleOrgId === o.id ? "opacity-100" : "opacity-0")} />
+                            <span className="truncate" style={{ paddingLeft: `${(o.depth - 1) * 12}px` }}>
+                              {o.name}
+                            </span>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+              {selectedOrg && (
+                <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0"
+                  onClick={() => selectSocleOrg(null)} title="Retirer l'organisation">
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+            <p className="text-[10px] text-muted-foreground/70">
+              Les démarches proposées sont celles que cette organisation assure dans le référentiel.
+            </p>
+          </div>
+
+          {/* Démarche — sans elle, personne n'instruit la demande */}
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">
+              Démarche<span className="text-destructive ml-0.5">*</span>
+            </Label>
             <div className="flex items-center gap-1.5">
               <Popover open={procedurePopoverOpen} onOpenChange={setProcedurePopoverOpen}>
                 <PopoverTrigger asChild>
@@ -998,13 +935,13 @@ export default function CreateTicketDialog({
                     role="combobox"
                     aria-expanded={procedurePopoverOpen}
                     className="flex-1 justify-between h-9 min-w-0"
-                    disabled={loadingProcedures || isEdit}
+                    disabled={loadingProcedures}
                   >
                     <span className="truncate">
                       {selectedProcedure
                         ? selectedProcedure.name
                         : loadingProcedures ? "Chargement…" : (
-                          <span className="text-muted-foreground">Aucune démarche</span>
+                          <span className="text-muted-foreground">Sélectionner une démarche…</span>
                         )}
                     </span>
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -1044,7 +981,7 @@ export default function CreateTicketDialog({
                   </Command>
                 </PopoverContent>
               </Popover>
-              {selectedProcedure && !isEdit && (
+              {selectedProcedure && (
                 <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0"
                   onClick={() => selectProcedure("")} title="Retirer la démarche">
                   <X className="h-4 w-4" />
@@ -1143,106 +1080,6 @@ export default function CreateTicketDialog({
               />
             </div>
           )}
-
-          {/* Champs communs — masqués pour Arpège (non transmissibles) */}
-          {!isArpege && (
-            <div className="space-y-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="ticket-title" className="text-xs text-muted-foreground">
-                  Titre de l'action
-                  {!procedureId && <span className="text-destructive ml-0.5">*</span>}
-                </Label>
-                <Input
-                  id="ticket-title"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder={selectedProcedure?.name ?? "Intitulé de l'action…"}
-                  className="h-9 text-sm"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">
-                  Affecté à<span className="text-destructive ml-0.5">*</span>
-                </Label>
-                <div className="flex items-center gap-1.5">
-                  <Popover open={assigneePopoverOpen} onOpenChange={setAssigneePopoverOpen}>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        role="combobox"
-                        aria-expanded={assigneePopoverOpen}
-                        className="flex-1 justify-between h-9 min-w-0"
-                        disabled={loadingMembers}
-                      >
-                        <span className="flex items-center gap-2 truncate">
-                          {selectedAssignee ? (
-                            <>
-                              <UserAvatar
-                                firstName={selectedAssignee.first_name}
-                                lastName={selectedAssignee.last_name}
-                                email={selectedAssignee.email}
-                                avatarUrl={selectedAssignee.avatar_url}
-                                className="h-5 w-5 shrink-0"
-                              />
-                              <span className="truncate">{fullName(selectedAssignee)}</span>
-                            </>
-                          ) : loadingMembers ? "Chargement…" : (
-                            <span className="text-muted-foreground">Sélectionner un agent…</span>
-                          )}
-                        </span>
-                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-72 p-0">
-                      <Command>
-                        <CommandInput placeholder="Rechercher…" />
-                        <CommandList>
-                          <CommandEmpty>Aucun utilisateur trouvé</CommandEmpty>
-                          <CommandGroup>
-                            {activeMembers.map((m) => (
-                              <CommandItem
-                                key={m.id}
-                                value={`${fullName(m)} ${m.email}`}
-                                onSelect={() => { setAssigneeId(m.id); setAssigneePopoverOpen(false); }}
-                              >
-                                <Check className={cn("mr-2 h-4 w-4", assigneeId === m.id ? "opacity-100" : "opacity-0")} />
-                                <UserAvatar
-                                  firstName={m.first_name}
-                                  lastName={m.last_name}
-                                  email={m.email}
-                                  avatarUrl={m.avatar_url}
-                                  className="h-6 w-6 mr-2"
-                                />
-                                <span className="flex-1 truncate">{fullName(m)}</span>
-                              </CommandItem>
-                            ))}
-                          </CommandGroup>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
-                  {selectedAssignee && (
-                    <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0"
-                      onClick={() => setAssigneeId(null)} title="Retirer">
-                      <X className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Descriptif</Label>
-                <Textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Décrivez l'action à mener…"
-                  className="resize-none text-sm"
-                  rows={4}
-                />
-              </div>
-            </div>
-          )}
         </div>
 
         <DialogFooter className="shrink-0 pt-3 border-t">
@@ -1251,13 +1088,7 @@ export default function CreateTicketDialog({
           </Button>
           <Button onClick={() => saveMutation.mutate()} disabled={!canSubmit}>
             {saveMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-            {isEdit
-              ? "Enregistrer"
-              : isArpege
-                ? "Créer la demande Arpège"
-                : showSocleForm
-                  ? "Créer la demande"
-                  : "Créer le ticket"}
+            {isArpege ? "Créer la demande Arpège" : "Créer la demande"}
           </Button>
         </DialogFooter>
       </DialogContent>

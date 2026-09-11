@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Plus, Trash2, Pencil, Ticket as TicketIcon, ExternalLink } from "lucide-react";
+import { Plus, Trash2, Ticket as TicketIcon, ExternalLink, Paperclip } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -12,7 +12,7 @@ import {
   type ActionTicketWithProcedure,
 } from "@/services/actionTicketService";
 import { logEvent } from "@/services/courierEventService";
-import { pushIrisRequest } from "@/services/irisRequestService";
+import { pushIrisRequest, refreshIrisStatuses } from "@/services/irisRequestService";
 import { irisStatusLabel, irisStatusVariant } from "@/lib/iris";
 import { supabase } from "@/integrations/supabase/client";
 import CreateTicketDialog from "./CreateTicketDialog";
@@ -69,36 +69,52 @@ function IrisRequestLine({
   ticket,
   onRetry,
   retrying,
+  refreshing,
   readOnly,
 }: {
   ticket: ActionTicketWithProcedure;
   onRetry: (ticketId: string) => void;
   retrying: boolean;
+  /** Relecture de l'état chez Iris en cours (ouverture de l'onglet). */
+  refreshing: boolean;
   readOnly: boolean;
 }) {
   if (ticket.iris_request_id) {
     const label = irisStatusLabel(ticket.iris_status);
     return (
-      <p className="text-[11px] text-muted-foreground flex items-center gap-1.5 mt-0.5 flex-wrap">
-        <ExternalLink className="h-3 w-3 shrink-0" />
-        {ticket.iris_url ? (
-          <a
-            href={ticket.iris_url}
-            target="_blank"
-            rel="noreferrer"
-            className="font-mono underline underline-offset-2 hover:text-foreground"
-          >
-            {ticket.iris_reference ?? "Demande Iris"}
-          </a>
-        ) : (
-          <span className="font-mono">{ticket.iris_reference ?? "Demande Iris"}</span>
+      <>
+        <p className="text-[11px] text-muted-foreground flex items-center gap-1.5 mt-0.5 flex-wrap">
+          <ExternalLink className="h-3 w-3 shrink-0" />
+          {ticket.iris_url ? (
+            <a
+              href={ticket.iris_url}
+              target="_blank"
+              rel="noreferrer"
+              className="font-mono underline underline-offset-2 hover:text-foreground"
+            >
+              {ticket.iris_reference ?? "Demande Iris"}
+            </a>
+          ) : (
+            <span className="font-mono">{ticket.iris_reference ?? "Demande Iris"}</span>
+          )}
+          {label && (
+            <Badge variant={irisStatusVariant(ticket.iris_status)} className="text-[10px] px-1.5 py-0">
+              {label}
+            </Badge>
+          )}
+          {refreshing && (
+            <span className="text-[10px] text-muted-foreground/60 italic">màj…</span>
+          )}
+        </p>
+        {/* Demande déposée mais incomplète : la pièce manquante se dit ici,
+            sous la référence — le toast du dépôt, lui, est déjà loin. */}
+        {ticket.iris_attachments_error && (
+          <p className="text-[11px] text-destructive flex items-start gap-1.5 mt-0.5">
+            <Paperclip className="h-3 w-3 shrink-0 mt-0.5" />
+            <span>{ticket.iris_attachments_error}</span>
+          </p>
         )}
-        {label && (
-          <Badge variant={irisStatusVariant(ticket.iris_status)} className="text-[10px] px-1.5 py-0">
-            {label}
-          </Badge>
-        )}
-      </p>
+      </>
     );
   }
 
@@ -139,8 +155,8 @@ export default function LinkedActionsTab({
   const qc = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [suggestedAction, setSuggestedAction] = useState<SuggestedAction | null>(null);
-  const [editingTicket, setEditingTicket] = useState<ActionTicketWithProcedure | null>(null);
   const [refreshingStatus, setRefreshingStatus] = useState(false);
+  const [refreshingIris, setRefreshingIris] = useState(false);
 
   const { data: tickets, isLoading } = useQuery({
     queryKey: ["action-tickets", courierId],
@@ -166,15 +182,36 @@ export default function LinkedActionsTab({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tickets !== undefined]);
 
+  // Relecture de l'état des demandes Iris à chaque ouverture de l'onglet.
+  // Sans elle, l'écran montre ce que Clara a écrit AU DÉPÔT jusqu'à la
+  // réconciliation nocturne (03:30) : une demande déposée le matin et résolue
+  // dans la minute s'affichait « À traiter » toute la journée. Muet par
+  // construction — l'agent a ouvert un onglet, il n'a rien demandé.
+  useEffect(() => {
+    const hasIris = tickets?.some((t) => t.iris_request_id);
+    if (!hasIris || refreshingIris) return;
+
+    setRefreshingIris(true);
+    refreshIrisStatuses(courierId)
+      .then(() => qc.invalidateQueries({ queryKey: ["action-tickets", courierId] }))
+      .catch((e) => console.warn("Relecture Iris :", e))
+      .finally(() => setRefreshingIris(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [courierId, tickets !== undefined]);
+
   // Renvoi d'une demande restée en rade (Iris indisponible, démarche à
   // corriger…). Sûr par construction : la clé d'idempotence du ticket est
   // rejouée, un contenu identique renvoie la demande existante.
   const retryIrisMutation = useMutation({
     mutationFn: (ticketId: string) => pushIrisRequest(ticketId),
     onSuccess: (result) => {
-      toast.success(
-        result.reference ? `Demande ${result.reference} déposée dans Iris` : "Demande déposée dans Iris",
-      );
+      const label = result.reference
+        ? `Demande ${result.reference} déposée dans Iris`
+        : "Demande déposée dans Iris";
+      // Une pièce réclamée par la démarche qui n'est pas passée ne se dit pas
+      // en vert : la demande est arrivée incomplète.
+      if (result.attachments_refused) toast.warning(`${label} — ${result.attachments_refused}`);
+      else toast.success(label);
       qc.invalidateQueries({ queryKey: ["action-tickets", courierId] });
     },
     onError: (e: Error) => {
@@ -199,14 +236,7 @@ export default function LinkedActionsTab({
   });
 
   const openCreate = (action?: SuggestedAction) => {
-    setEditingTicket(null);
     setSuggestedAction(action ?? null);
-    setDialogOpen(true);
-  };
-
-  const openEdit = (t: ActionTicketWithProcedure) => {
-    setEditingTicket(t);
-    setSuggestedAction(null);
     setDialogOpen(true);
   };
 
@@ -268,7 +298,10 @@ export default function LinkedActionsTab({
                             {t.procedure.name}
                           </Badge>
                         )}
-                        {t.assignee ? (
+                        {/* Affectation : plus rien ne s'affecte dans Clara depuis
+                            que toute action est une demande instruite ailleurs —
+                            seuls les tickets d'avant en portent encore une. */}
+                        {t.assignee && (
                           <span
                             className="flex items-center gap-1.5 text-[11px] text-muted-foreground"
                             title={`Affecté à ${aName}`}
@@ -281,10 +314,6 @@ export default function LinkedActionsTab({
                               className="h-5 w-5"
                             />
                             <span>{aName}</span>
-                          </span>
-                        ) : (
-                          <span className="text-[11px] text-muted-foreground italic">
-                            Non affecté
                           </span>
                         )}
                         <span className="text-[10px] text-muted-foreground ml-auto">
@@ -308,29 +337,16 @@ export default function LinkedActionsTab({
                         ticket={t}
                         onRetry={(id) => retryIrisMutation.mutate(id)}
                         retrying={retryIrisMutation.isPending && retryIrisMutation.variables === t.id}
+                        refreshing={refreshingIris}
                         readOnly={readOnly}
                       />
-                      {t.description ? (
+                      {t.description && (
                         <p className="text-sm whitespace-pre-wrap break-words mt-1">
                           {t.description}
-                        </p>
-                      ) : (
-                        <p className="text-xs text-muted-foreground italic">
-                          Pas de descriptif
                         </p>
                       )}
                     </div>
                     <div className="flex items-center gap-0.5 shrink-0">
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                        onClick={() => openEdit(t)}
-                        disabled={readOnly}
-                        title={readOnly ? "Courrier archivé" : "Modifier"}
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
                       <Button
                         size="icon"
                         variant="ghost"
@@ -365,13 +381,11 @@ export default function LinkedActionsTab({
         onOpenChange={setDialogOpen}
         courierId={courierId}
         organizationId={organizationId}
-        initialTitle={suggestedAction?.label}
         initialProcedureId={suggestedAction?.procedure_id ?? undefined}
         initialArpegeValues={suggestedAction?.prefill}
         initialSoclePrefill={suggestedAction?.socle_prefill ?? undefined}
         initialSocleOrganizationId={suggestedAction?.socle_organization_id ?? undefined}
         courierSocleOrganizationId={courierSocleOrganizationId}
-        ticket={editingTicket}
       />
     </div>
   );

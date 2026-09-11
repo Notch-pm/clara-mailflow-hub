@@ -463,14 +463,17 @@ la table porte des secrets, l'UI ne les re-sert jamais au navigateur.
 | `is_active` | boolean | suspension : coupe le **nouveau trafic**, jamais le suivi des demandes déjà déposées |
 
 #### `action_tickets`
-Tâches dérivées d'un courrier, liées ou non à une procédure (action libre).
+Demandes dérivées d'un courrier. Depuis le 2026-09-11 elles sont **toujours** fondées sur une
+démarche — Iris ou partenaire ; les colonnes restées nullables ne le sont que pour les tickets
+d'avant (cf. `docs/features.md` § 4).
 
 | Colonne | Type | Notes |
 |---|---|---|
 | `courier_id` | uuid FK | immuable (trigger) |
-| `procedure_id` | uuid FK → procedures | nullable : action libre sans démarche |
-| `title` | text | titre de l'action — exigé côté formulaire quand `procedure_id` est null |
-| `assignee_id` | uuid FK → users | nullable en DB (tickets Arpège) ; exigé côté formulaire pour les tickets Clara |
+| `procedure_id` | uuid FK → procedures | nullable en DB pour les tickets d'avant le 2026-09-11 ; **exigé par le formulaire** — sans démarche, personne n'instruit la demande |
+| `title` | text | **plus saisi** : affiché seulement s'il est renseigné (tickets d'avant) |
+| `description` | text | idem — plus saisi, affiché s'il est renseigné |
+| `assignee_id` | uuid FK → users | **plus saisi** : l'affectation a disparu avec la demande libre ; affiché s'il est renseigné |
 | `status` | text | `'open'` par défaut |
 | `socle_data` | jsonb | démarche du référentiel : demandeur déclaré + réponses au formulaire + pièces sélectionnées (`src/lib/socle-form.ts`) |
 | `socle_organization_id` | uuid FK → socle_organizations | **organisation destinataire choisie par l'agent** — commande la liste des démarches proposées et l'organisme transmis à Iris. Nullable : à null, on retombe sur celle du courrier (tickets antérieurs au 2026-09-10). Adresser une demande à un service ne déplace pas le courrier |
@@ -487,6 +490,7 @@ Tâches dérivées d'un courrier, liées ou non à une procédure (action libre)
 | `iris_version` | integer | version monotone servie par Iris — garde d'application des mises à jour |
 | `iris_synced_at` / `iris_last_attempt_at` | timestamptz | |
 | `iris_last_error` | text | message en français du dernier échec de dépôt ; non nul ⇒ l'onglet Actions liées propose « Renvoyer ». NULL après un dépôt réussi |
+| `iris_attachments_error` | text | pièces réclamées par le formulaire de la démarche qu'Iris a refusées au dernier dépôt (format hors liste, 25 Mo, fichier introuvable) : la demande est **déposée mais incomplète**, et la ligne du ticket le dit. NULL = rien à signaler — **jamais** la preuve que tout est arrivé : les demandes d'avant le 2026-09-11 sont parties sans aucune pièce |
 
 #### `notifications`
 Notifications in-app. RLS scoped `user_id = auth.uid()`.

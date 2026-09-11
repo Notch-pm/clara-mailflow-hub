@@ -131,6 +131,31 @@ FROM action_tickets WHERE iris_request_id IS NOT NULL;
 SELECT jobname, schedule, active FROM cron.job WHERE jobname = 'iris-sync-nightly';
 ```
 
+### Lot « pièces jointes vers Iris » (2026-09-11)
+
+Constat fondateur : `DEM-2026-000055`, créée depuis un courrier qui portait une pièce, est
+arrivée **sans aucune pièce** — le connecteur (2026-08-23) est antérieur au contrat 2.0.0 d'Iris,
+qui impose le **dépôt** des fichiers (`POST /v1/uploads`). Brief Iris du 2026-09-19,
+`docs/briefs/2026-09-19-clara-pieces-jointes.md` du dépôt Iris.
+
+| # | Action | Pourquoi cet ordre | État |
+|---|---|---|---|
+| 1 | `20260911170000_iris_pieces_jointes.sql` (`action_tickets.iris_attachments_error`) | La fonction écrit cette colonne au dépôt | **Appliqué** via `apply_migration` |
+| 2 | Déployer `push-iris-request` | Dépose les fichiers puis référence les `upload_id` ; écrit la colonne créée en 1 | **À faire** — `bunx supabase functions deploy push-iris-request --project-ref aullweizxcjbvtdspjli` (pas de `--no-verify-jwt` : appelée par le navigateur) |
+| 3 | Publier le frontend | Affiche `iris_attachments_error` sous la référence Iris ; sans lui, une demande incomplète ne le dit qu'au toast | **À faire** — push sur la branche déployée (Workers Builds) |
+
+Vérification (un courrier avec une pièce cochée sur un champ du formulaire, ex. « Demande de
+subvention associative ») : la demande porte ses pièces côté Iris, et le journal `[iris]` de la
+fonction annonce le nombre déposé.
+
+```sql
+SELECT iris_reference, iris_attachments_error FROM action_tickets
+WHERE iris_request_id IS NOT NULL ORDER BY created_at DESC LIMIT 5;
+```
+
+Côté Iris (lecture) : `request_attachments` non vide pour la demande, et `integration_api_logs`
+montre **un `POST /v1/uploads` par fichier** avant le `POST /v1/requests`.
+
 ### Lot « serveur d'envoi depuis le Socle » (2026-08-23) — appliqué le 2026-08-23
 
 | # | Action | Pourquoi cet ordre | État |

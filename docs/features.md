@@ -84,17 +84,24 @@ Client unique : `supabase/functions/_shared/socleAi.ts`. Voir aussi `docs/edge-f
 
 Clara ne remplace pas les applications métier qui exécutent les demandes d'action. Elle sert de point de suivi côté courrier :
 
-- actions internes minimales : demander à un collègue de faire quelque chose, notifier, suivre un état simple ;
-- actions externes : créer ou référencer une demande dans Iris ou une application partenaire (Arpège aujourd'hui, autres connecteurs possibles), puis conserver le lien et l'état de résolution utiles à la réponse ;
+- **une action EST une demande fondée sur une démarche**, déposée chez qui l'instruit : Iris pour les démarches du référentiel, le partenaire pour les démarches Arpège. Clara conserve le lien et l'état de résolution utiles à la réponse ;
 - l'analyse IA peut recommander des actions, mais l'agent reste responsable de la décision et du circuit retenu.
+
+**Plus d'action « libre » depuis le 2026-09-11** : la démarche est obligatoire dans le dialogue, qui ne propose que les démarches Iris ou partenaire (`src/lib/procedure-origin.ts` — une démarche sans origine, embryon local, n'est plus proposée). Avec elle disparaissent les champs que Clara ajoutait de son côté — **titre de l'action, affecté à, descriptif** — et la modification d'un ticket : une demande instruite ailleurs ne s'édite pas dans Clara (elle se supprime, ou se renvoie si le dépôt a échoué). Les colonnes `title` / `description` / `assignee_id` d'`action_tickets` ne servent plus qu'à afficher les tickets antérieurs ; l'edge `send-assignment-notification` n'a donc plus d'appelant.
 
 ### Dépôt dans Iris (depuis le 2026-08-23)
 
 **Iris est propriétaire exclusif des demandes d'usagers de la gamme.** Une action fondée sur une
 **démarche du référentiel** y est déposée à sa création (`push-iris-request`), puis instruite
-là-bas ; Clara en suit l'état (référence, statut, permalien) sans le piloter. Une **demande
-libre** — action sans démarche — reste dans Clara : `socle_procedure_id` est obligatoire côté
-Iris, la frontière tombe du contrat.
+là-bas ; Clara en suit l'état (référence, statut, permalien) sans le piloter. `socle_procedure_id`
+est obligatoire côté Iris : la frontière tombe du contrat, et une action sans démarche du
+référentiel (ticket d'avant le 2026-09-11, démarche Arpège) reste dans Clara.
+
+**Les pièces réclamées par le formulaire de la démarche partent avec la demande** (depuis le
+2026-09-11) : chaque fichier coché par l'agent est déposé sur `POST /v1/uploads`, puis référencé
+par son `upload_id` — Iris ne vient jamais lire un fichier chez Clara. Un format qu'Iris n'admet
+pas ne bloque pas le dépôt : la demande part sans la pièce, et le ticket le dit
+(`iris_attachments_error`). Détail : `docs/iris-integration.md` § 5 bis.
 
 Le ticket est créé **d'abord** (son id est l'`external_id` d'Iris) : un dépôt en échec ne perd
 rien, il se rejoue depuis l'onglet « Actions liées » avec la même clé d'idempotence. Un tenant
@@ -106,8 +113,8 @@ demande » ouvre sur ce choix — suggestion de l'analyse IA, à défaut l'organ
 du courrier — et **n'offre ensuite que les démarches que cette organisation assure** dans le
 référentiel (miroir `procedure_organizations`). Adresser une demande aux services techniques ne
 déplace pas le courrier : l'organisation retenue est portée par l'action
-(`action_tickets.socle_organization_id`), pas par le courrier. Une démarche hors référentiel
-(Arpège, embryon local) n'a aucune activation et reste proposée quelle que soit l'organisation.
+(`action_tickets.socle_organization_id`), pas par le courrier. Une démarche **Arpège** n'est pas
+connue du référentiel : sans activation, elle reste proposée quelle que soit l'organisation.
 
 Détail complet — contrat, raccordement des champs, périmètre, exploitation :
 `docs/iris-integration.md`.

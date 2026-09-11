@@ -1,5 +1,6 @@
-// Client HTTP de l'API d'ingestion Iris — partagé par `push-iris-request` et
-// `sync-iris-requests`. La logique sans réseau vit dans `iris-envelope.ts`.
+// Client HTTP de l'API d'ingestion Iris — partagé par `push-iris-request`,
+// `sync-iris-requests` et `refresh-iris-status`. La logique sans réseau vit dans
+// `iris-envelope.ts`.
 //
 // La clé d'intégration est un SECRET SERVEUR : elle est lue dans
 // `organization_integrations` (table réservée superadmin + service_role) et ne
@@ -7,6 +8,17 @@
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import type { IrisEnvelope, IrisRequestDto } from "./iris-envelope.ts";
+
+/** Accusé de dépôt d'un fichier (`POST /v1/uploads`) — valable 24 h. */
+export interface IrisUploadReceipt {
+  upload_id?: string;
+  file_name?: string;
+  /** Type DÉTECTÉ par Iris (signature binaire), pas celui annoncé. */
+  mime_type?: string;
+  size_bytes?: number;
+  checksum?: string;
+  expires_at?: string;
+}
 
 export const IRIS_TIMEOUT_MS = 20_000;
 
@@ -80,13 +92,16 @@ async function callIris<T>(
 ): Promise<IrisResponse<T>> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), IRIS_TIMEOUT_MS);
+  // Un corps multipart porte sa FRONTIÈRE dans le Content-Type : c'est `fetch`
+  // qui l'écrit, et la poser à la main ferait lire un corps tronqué à Iris.
+  const isMultipart = init.body instanceof FormData;
   try {
     const response = await fetch(`${integration.api_base_url}${path}`, {
       ...init,
       headers: {
         Authorization: `Bearer ${integration.api_key}`,
         Accept: "application/json",
-        ...(init.body ? { "Content-Type": "application/json" } : {}),
+        ...(init.body && !isMultipart ? { "Content-Type": "application/json" } : {}),
         ...(init.headers ?? {}),
       },
       signal: controller.signal,
@@ -118,6 +133,28 @@ export function postIrisRequest(
 }
 
 /**
+ * Dépose UN fichier dans la zone d'attente d'Iris (24 h), qui rend un
+ * `upload_id` à référencer dans l'enveloppe. Un fichier jamais référencé y est
+ * purgé sans conséquence : rater le dépôt de la demande ne laisse aucune trace.
+ *
+ * Iris lit le CONTENU réel du fichier (signature binaire) — ce que Clara
+ * annonce comme type ne l'engage pas ; c'est pour cela qu'aucun filtre de
+ * format n'est appliqué ici : Iris a le dernier mot, et il le motive.
+ */
+export function uploadIrisFile(
+  integration: IrisIntegration,
+  file: { bytes: Blob | Uint8Array | ArrayBuffer; fileName: string; mimeType?: string | null },
+): Promise<IrisResponse<{ upload?: IrisUploadReceipt; error?: unknown }>> {
+  const blob = file.bytes instanceof Blob
+    ? file.bytes
+    : new Blob([file.bytes], { type: file.mimeType ?? "application/octet-stream" });
+  const form = new FormData();
+  // Le NOM d'origine compte : Iris vérifie que l'extension colle au contenu.
+  form.append("file", blob, file.fileName);
+  return callIris(integration, "/v1/uploads", { method: "POST", body: form });
+}
+
+/**
  * Liste les demandes de la source modifiées depuis une date (tri `updated_at`
  * croissant) — chemin de réconciliation prévu par le contrat.
  */
@@ -129,4 +166,17 @@ export function listIrisRequests(
   const params = new URLSearchParams({ limit: String(limit) });
   if (updatedSince) params.set("updated_since", updatedSince);
   return callIris(integration, `/v1/requests?${params.toString()}`, { method: "GET" });
+}
+
+/**
+ * Relit UNE demande (`GET /v1/requests/{id}`, scope `requests:read`). Chemin du
+ * rafraîchissement ciblé : quelques demandes d'un courrier, pas le tenant
+ * entier. Iris répond 404 sans jamais révéler l'existence d'une demande hors du
+ * périmètre de la clé — un 404 ne dit donc pas « supprimée ».
+ */
+export function getIrisRequest(
+  integration: IrisIntegration,
+  requestId: string,
+): Promise<IrisResponse<{ request?: IrisRequestDto; error?: unknown }>> {
+  return callIris(integration, `/v1/requests/${encodeURIComponent(requestId)}`, { method: "GET" });
 }

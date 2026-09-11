@@ -3,8 +3,10 @@ import { supabase } from "@/integrations/supabase/client";
 // Dépôt d'une action de courrier dans Iris, propriétaire exclusif des demandes
 // d'usagers de la gamme. Le client ne construit AUCUNE enveloppe : il désigne
 // un ticket, l'edge function relit tout en base et décide. Une action sans
-// démarche du référentiel (« demande libre ») reste dans Clara — l'edge la
-// refuse poliment, ce n'est pas une panne.
+// démarche du référentiel reste dans Clara — l'edge la refuse poliment, ce
+// n'est pas une panne. Depuis le 2026-09-11 l'écran n'en crée plus (toute
+// demande part d'une démarche Iris ou partenaire) : seuls les tickets d'avant
+// et les démarches Arpège passent encore par ce refus.
 
 export interface IrisPushResult {
   created?: boolean;
@@ -18,6 +20,14 @@ export interface IrisPushResult {
    */
   skipped?: boolean;
   reason?: string;
+  /** Pièces du formulaire effectivement déposées avec la demande. */
+  attachments_registered?: number;
+  /**
+   * Pièces réclamées par la démarche qui ne sont PAS parties (format qu'Iris
+   * n'admet pas, fichier introuvable…) : la demande est déposée quand même,
+   * mais incomplète — à dire à l'agent, pas à taire.
+   */
+  attachments_refused?: string | null;
 }
 
 /**
@@ -44,4 +54,29 @@ export async function pushIrisRequest(ticketId: string): Promise<IrisPushResult>
   }
 
   return res.data as IrisPushResult;
+}
+
+export interface IrisRefreshResult {
+  examinees?: number;
+  mises_a_jour?: number;
+  avertissements?: string[];
+  skipped?: boolean;
+  reason?: string;
+}
+
+/**
+ * Relit l'état des demandes Iris d'un courrier. Appelé à l'ouverture de
+ * l'onglet « Actions liées » : sans lui, l'écran montrerait l'état écrit au
+ * dépôt jusqu'à la réconciliation nocturne (03:30), alors que la demande est
+ * instruite dans Iris dans la minute.
+ *
+ * Silencieux par nature — l'agent n'a rien demandé, il a ouvert un onglet :
+ * l'échec se journalise, il ne s'affiche pas.
+ */
+export async function refreshIrisStatuses(courierId: string): Promise<IrisRefreshResult> {
+  const res = await supabase.functions.invoke("refresh-iris-status", {
+    body: { courier_id: courierId },
+  });
+  if (res.error) throw new Error(res.error.message);
+  return (res.data ?? {}) as IrisRefreshResult;
 }
