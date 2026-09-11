@@ -41,3 +41,7 @@ playwright-report/
 
 # État local de wrangler (wrangler dev)
 .wrangler/
+
+# État local de la CLI Supabase (référence du projet lié, version de la CLI) :
+# régénéré à chaque `supabase link` / exécution, et propre à la machine.
+supabase/.temp/
