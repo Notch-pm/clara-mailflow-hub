@@ -263,7 +263,11 @@ BEGIN
     RETURNING n.id, n.organization_id, n.type, n.title, n.resource_id,
               n.user_id, n.push_attempts
   )
-  SELECT c.id, c.organization_id, o.name, c.type, c.title, c.resource_id, c.push_attempts,
+  -- ⚠️ `organizations.name` est un varchar(255), pas un text : sans le cast,
+  -- RETURN QUERY refuse le lot entier (« structure of query does not match
+  -- function result type … column 3 »), et le facteur répond 500 claim_failed
+  -- à chaque minute. Constaté au déploiement du 2026-09-11.
+  SELECT c.id, c.organization_id, o.name::text, c.type, c.title, c.resource_id, c.push_attempts,
          COALESCE((SELECT jsonb_agg(jsonb_build_object(
                             'id', s.id, 'endpoint', s.endpoint, 'p256dh', s.p256dh, 'auth', s.auth))
                      FROM public.push_subscriptions s
