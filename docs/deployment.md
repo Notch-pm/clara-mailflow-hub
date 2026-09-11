@@ -63,6 +63,9 @@ FROM net._http_response ORDER BY id DESC LIMIT 3;
 
 ## Frontend : Cloudflare Workers
 
+**En production, Clara est servie sur <https://clara.edilumen.fr>** — un push sur la branche
+connectée est donc une mise en ligne devant les agents, pas un geste de dépôt.
+
 Le bundle Vite est servi comme **assets statiques d'un Worker** (`clara-mailflow-hub`), déployé par
 Workers Builds à chaque push de la branche connectée : `bun install --frozen-lockfile`, puis
 `bun run build`, puis `npx wrangler deploy`. La configuration tient dans `wrangler.jsonc` :
