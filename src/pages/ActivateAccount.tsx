@@ -8,6 +8,15 @@ import { useToast } from "@/hooks/use-toast";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Loader2, CheckCircle2, ShieldCheck } from "lucide-react";
 
+/**
+ * Fragment capture a l'evaluation du module. Les liens d'invitation et de
+ * recuperation de Supabase reviennent sur `#access_token=...&type=...`, mais
+ * `detectSessionInUrl` consomme ce fragment et nettoie l'URL avant que l'effet
+ * ci-dessous ne s'execute — il ne reste alors qu'un `#` nu. Lire la valeur ici,
+ * avant toute micro-tache, supprime cette course.
+ */
+const INITIAL_HASH = typeof window !== "undefined" ? window.location.hash : "";
+
 export default function ActivateAccount() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -29,16 +38,29 @@ export default function ActivateAccount() {
       return;
     }
 
-    const hash = window.location.hash;
-    if (
-      hash.includes("type=recovery") ||
-      hash.includes("type=invite") ||
-      hash.includes("type=signup") ||
-      hash.includes("access_token")
-    ) {
-      // Keep the session alive — updateUser() needs it. Sign out after password is set.
-      setReady(true);
+    const hashParams = new URLSearchParams(INITIAL_HASH.replace(/^#/, ""));
+    const hashType = hashParams.get("type");
+    const isActivation =
+      hashType === "recovery" ||
+      hashType === "invite" ||
+      hashType === "signup" ||
+      hashParams.has("access_token");
+    if (hashParams.has("error") || !isActivation) {
+      return;
     }
+
+    // Le lien ouvre une session : c'est elle qui autorise updateUser(). La
+    // garder ouverte jusqu'a ce que le mot de passe soit pose, et fermer apres.
+    let cancelled = false;
+    supabase.auth.getSession().then(({ data }) => {
+      if (!cancelled && data.session) {
+        setReady(true);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [searchParams]);
 
   async function handleSubmit(e: React.FormEvent) {

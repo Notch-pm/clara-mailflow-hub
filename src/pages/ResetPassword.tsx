@@ -8,6 +8,15 @@ import { useToast } from "@/hooks/use-toast";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 
+/**
+ * Fragment capturé à l'évaluation du module. Le lien de récupération de
+ * Supabase revient sur `/reset-password#access_token=…&type=recovery`, mais
+ * `detectSessionInUrl` consomme ce fragment et nettoie l'URL avant que l'effet
+ * ci-dessous ne s'exécute — il ne reste alors qu'un `#` nu. Lire la valeur ici,
+ * avant toute micro-tâche, supprime cette course.
+ */
+const INITIAL_HASH = typeof window !== "undefined" ? window.location.hash : "";
+
 export default function ResetPassword() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -27,12 +36,25 @@ export default function ResetPassword() {
       return;
     }
 
-    const hash = window.location.hash;
-    if (hash.includes("type=recovery")) {
-      supabase.auth.signOut().then(() => {
-        setReady(true);
-      });
+    const hashParams = new URLSearchParams(INITIAL_HASH.replace(/^#/, ""));
+    const isRecovery = hashParams.get("type") === "recovery" || hashParams.has("access_token");
+    if (hashParams.has("error") || !isRecovery) {
+      return;
     }
+
+    // Le lien ouvre une session de récupération : c'est elle qui autorise
+    // updateUser(). Ne jamais la fermer avant que le mot de passe soit posé —
+    // sinon la soumission échoue sur « Auth session is missing ».
+    let cancelled = false;
+    supabase.auth.getSession().then(({ data }) => {
+      if (!cancelled && data.session) {
+        setReady(true);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [searchParams]);
 
   async function handleSubmit(e: React.FormEvent) {
