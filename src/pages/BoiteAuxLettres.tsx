@@ -337,7 +337,7 @@ export default function BoiteAuxLettres() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[1600px] flex-col px-4 py-5 pb-8 md:px-6 lg:h-full lg:pb-5">
+    <div className="flex w-full flex-col px-4 py-5 pb-8 md:px-6 lg:h-full lg:pb-5">
       {/* Header */}
       <div className="mb-4 flex flex-wrap items-end gap-4 lg:shrink-0">
         <div className="flex min-w-0 flex-1 basis-[320px] items-center gap-3">

@@ -317,7 +317,7 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
     );
 
   return (
-    <div className="mx-auto w-full max-w-[1440px] px-4 py-5 pb-12 md:px-6">
+    <div className="w-full px-4 py-5 pb-12 md:px-6">
       <nav
         aria-label="Fil d'Ariane"
         className="mb-2.5 flex flex-wrap items-center gap-2 text-sm text-muted-foreground"
