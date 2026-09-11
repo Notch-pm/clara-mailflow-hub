@@ -17,7 +17,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   irisErrorMessage,
   irisRequestsFromBody,
-  isIrisStatus,
+  irisTicketPatch,
   shouldApplyIrisUpdate,
 } from "../_shared/iris-envelope.ts";
 import { listIrisRequests, resolveIrisIntegration } from "../_shared/iris.ts";
@@ -102,15 +102,7 @@ async function syncOrg(
       // de fenêtre entre le test et l'écriture.
       let query = supabaseAdmin
         .from("action_tickets")
-        .update({
-          iris_request_id: item.id ?? null,
-          iris_reference: item.reference ?? null,
-          iris_status: isIrisStatus(item.status) ? item.status : null,
-          iris_version: version,
-          iris_url: item.url ?? null,
-          iris_synced_at: new Date().toISOString(),
-          iris_last_error: null,
-        })
+        .update(irisTicketPatch(item, new Date().toISOString()))
         .eq("id", externalId)
         .eq("organization_id", org.id);
       if (version !== null) {
