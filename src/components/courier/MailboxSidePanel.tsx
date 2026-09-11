@@ -82,9 +82,17 @@ interface Props {
 }
 
 /** Cellule libellé + valeur de la grille d'identité. */
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  children,
+  className,
+}: {
+  label: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
-    <div className="min-w-0">
+    <div className={cn("min-w-0", className)}>
       <div className="mb-1 text-xs font-semibold text-muted-foreground">{label}</div>
       {children}
     </div>
@@ -425,7 +433,10 @@ export default function MailboxSidePanel({
                 l'œil), le quartier garde la sienne, couleur du référentiel. */}
             {senderContact && (
               <div className="flex min-w-0 flex-wrap items-center gap-1.5 pt-0.5">
-                <span className="truncate text-xs italic text-muted-foreground">
+                {/* `pr-0.5` : l'encre de l'italique depasse la chasse du
+                    dernier caractere (1,6 px pour « Personne »), que
+                    `truncate` — donc `overflow: hidden` — rognait. */}
+                <span className="truncate pr-0.5 text-xs italic text-muted-foreground">
                   {SOCLE_CONTACT_TYPE_LABELS[senderContact.contact_type]}
                 </span>
                 {senderContact.quartier && (
@@ -455,7 +466,10 @@ export default function MailboxSidePanel({
             />
           </Field>
 
-          <Field label="Organisation gestionnaire">
+          {/* L'organisation tient la ligne entiere : theme et sentiment se
+              rangent dessous, cote a cote, au lieu d'etre separes par le
+              retour a la ligne de la grille. */}
+          <Field label="Organisation gestionnaire" className="col-span-full">
             {effectiveReadOnly ? (
               <span className="text-sm font-semibold">{localAssignedService ?? EMPTY}</span>
             ) : (

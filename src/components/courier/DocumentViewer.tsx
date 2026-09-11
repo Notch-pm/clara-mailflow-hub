@@ -65,8 +65,11 @@ export default function DocumentViewer({ documents, currentId, onChange, organiz
 
   return (
     <div className="flex flex-col h-full min-h-[300px]">
-      {/* Viewer body */}
-      <div className="flex-1 border bg-muted/20 overflow-hidden flex items-center justify-center min-h-[300px]">
+      {/* Viewer body — pas de hauteur mini ici : la racine porte deja le
+          plancher de 300 px, et un second plancher sur le corps empechait
+          `flex-1` de rendre la place qu'il faut aux boutons, qui debordaient
+          alors du cadre pour atterrir sur le filet de la section suivante. */}
+      <div className="flex-1 border bg-muted/20 overflow-hidden flex items-center justify-center">
         {isInline ? (
           inlineHtml ? (
             <iframe
