@@ -45,6 +45,30 @@ const { data, error } = await supabase
 
 - `react-hook-form` + `@hookform/resolvers/zod` + `zod` pour la validation.
 - Composants `Form*` de shadcn (`components/ui/form.tsx`).
+- **Formulaire d'une démarche du référentiel** (`SocleDemandeForm.tsx`) : le rendu suit celui
+  d'**Iris** (`ProcedureFormFields.tsx` du dépôt `iris`) — sections en cartes titrées, grille à
+  deux colonnes, choix courts en pastilles, repère « conditionnel », aide **sous** le champ.
+  C'est la même demande, saisie ici et instruite là-bas : un agent qui passe d'un produit à
+  l'autre doit retrouver le même formulaire. Avant d'y toucher, regarder ce que fait Iris.
+
+## Adresse et carte
+
+- **Champ d'adresse assisté** : `components/address/AddressField.tsx` — une ligne unique qui
+  propose (Base Adresse Nationale), une carte de contrôle, un dépliant pour les précisions
+  d'accès. Il **propose, il ne garde pas la porte** : le texte libre est toujours conservé, et
+  « Adresse introuvable ? » ouvre la saisie manuelle. Logique pure dans `lib/adresse.ts`.
+- **Carte** : `components/map/TileLayer.tsx` + `lib/carto.ts` (projection Web Mercator, tuiles).
+  **Aucune bibliothèque de carte** : des `<img>` positionnées suffisent pour une carte de
+  contrôle, et rien ne s'ajoute au bundle. (`leaflet` / `react-leaflet` traînent encore dans
+  `package.json` sans aucun import : reliquat du module quartiers décommissionné.)
+- L'**attribution OpenStreetMap (ODbL) est obligatoire** et vit dans `TileLayer` pour suivre
+  toutes les cartes : ne pas la retirer.
+- Deux services publics, sans clé ni compte, substituables par `VITE_MAP_TILE_URL` et
+  `VITE_GEOCODE_URL`. Ce qui y transite : une adresse, jamais un nom ni une référence de
+  courrier. **Aucune coordonnée n'est stockée** — ce que la demande garde, c'est l'adresse.
+- Bloc « Lieu d'intervention » d'une démarche : reconnu par `lib/socle-intervention.ts` (mêmes
+  règles qu'Iris) et rendu en UN champ d'adresse. La reconnaissance ne décide que d'un
+  affichage : on écrit dans les champs que la démarche pose, sans jamais en inventer.
 
 ## Éditeur de texte riche
 

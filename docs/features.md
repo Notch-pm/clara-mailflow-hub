@@ -97,6 +97,15 @@ là-bas ; Clara en suit l'état (référence, statut, permalien) sans le piloter
 est obligatoire côté Iris : la frontière tombe du contrat, et une action sans démarche du
 référentiel (ticket d'avant le 2026-09-11, démarche Arpège) reste dans Clara.
 
+**Le formulaire de la démarche se saisit comme dans Iris** (depuis le 2026-09-11) : sections en
+cartes titrées, choix courts en pastilles, repère « conditionnel », et surtout le bloc **« Lieu
+d'intervention » saisi comme UNE adresse** — propositions de la Base Adresse Nationale pendant la
+frappe, et **carte de contrôle dès la saisie**, avec la réserve du géocodeur (« Numéro localisé »,
+« Voie localisée — numéro non trouvé »…). L'adresse du **demandeur** est assistée de la même
+façon. Rien n'est inventé : on écrit dans les champs que la démarche pose (`intervention_numero`,
+`intervention_voie`…), ce qu'aucun champ ne peut porter rejoint la voie, et **aucune coordonnée
+n'est stockée**. Détail : `docs/conventions.md` § Adresse et carte.
+
 **Les pièces réclamées par le formulaire de la démarche partent avec la demande** (depuis le
 2026-09-11) : chaque fichier coché par l'agent est déposé sur `POST /v1/uploads`, puis référencé
 par son `upload_id` — Iris ne vient jamais lire un fichier chez Clara. Un format qu'Iris n'admet

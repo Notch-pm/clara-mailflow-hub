@@ -1,8 +1,20 @@
+// Rendu d'une demande de démarche du référentiel — identité du demandeur
+// (`requester_config`) et formulaire (`form_schema`).
+//
+// Le rendu suit CELUI D'IRIS (dépôt `iris`, `ProcedureFormFields.tsx`), avec
+// les briques de Clara : c'est la même demande, saisie ici et instruite
+// là-bas ; un agent qui passe d'un produit à l'autre doit retrouver le même
+// formulaire. D'où les sections en cartes titrées, la grille à deux colonnes,
+// les choix courts en pastilles, le repère « conditionnel », et surtout
+// l'adresse saisie d'un seul tenant avec sa carte de contrôle.
+//
+// Ce qui reste propre à Clara : une pièce jointe se CHOISIT parmi les documents
+// du courrier (`PiecesJointesField`), elle ne se téléverse pas.
+
+import type { ReactNode } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
   SelectContent,
@@ -21,14 +33,102 @@ import {
   type FormValues,
   type RequesterConfig,
   type SocleField,
+  type SocleFieldOption,
   type SocleFormSchema,
+  type SocleSection,
 } from "@/lib/socle-form";
+import { interventionBlock } from "@/lib/socle-intervention";
+import { AddressField } from "@/components/address/AddressField";
 import PiecesJointesField from "./PiecesJointesField";
+import InterventionAddress from "./InterventionAddress";
 import type { CourierDocument } from "@/types/courier";
+
+// ── Briques communes ────────────────────────────────────────────────────────
+
+/** Repère d'un champ (ou d'une section) que les réponses font apparaître. */
+function ConditionalBadge() {
+  return (
+    <span className="rounded-full bg-muted px-1.5 py-0.5 text-[9.5px] font-bold uppercase leading-none tracking-wide text-muted-foreground">
+      conditionnel
+    </span>
+  );
+}
+
+/**
+ * Un champ : son libellé, son contrôle, et l'aide DESSOUS. L'aide sous le
+ * champ plutôt qu'au-dessus — elle se lit au moment de répondre, pas avant.
+ */
+function Field({
+  label,
+  htmlFor,
+  required,
+  conditional,
+  hint,
+  fullWidth,
+  children,
+}: {
+  label: string;
+  htmlFor?: string;
+  required?: boolean;
+  conditional?: boolean;
+  hint?: string;
+  fullWidth?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div className={cn("space-y-1.5", fullWidth && "sm:col-span-2")}>
+      <Label htmlFor={htmlFor} className="flex items-center gap-1.5 text-[13px] font-semibold">
+        <span>{label || "(champ sans libellé)"}</span>
+        {required && <span className="font-bold text-destructive">*</span>}
+        {conditional && <ConditionalBadge />}
+      </Label>
+      {children}
+      {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
+    </div>
+  );
+}
+
+/** Choix exclusif en pastilles (Oui/Non, listes courtes) — rien de présélectionné. */
+function Segmented({
+  options,
+  value,
+  onChange,
+  label,
+}: {
+  options: SocleFieldOption[];
+  value: string | null;
+  onChange: (value: string) => void;
+  label: string;
+}) {
+  return (
+    <div role="radiogroup" aria-label={label} className="flex flex-wrap gap-1.5">
+      {options.map((o) => {
+        const checked = value === o.value;
+        return (
+          <button
+            key={o.value}
+            type="button"
+            role="radio"
+            aria-checked={checked}
+            onClick={() => onChange(o.value)}
+            className={cn(
+              "h-9 rounded-full border px-3.5 text-[13px] font-semibold transition-colors",
+              checked
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-border bg-background text-muted-foreground hover:bg-muted",
+            )}
+          >
+            {o.label || o.value}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 // ── Demandeur (requester_config) ────────────────────────────────────────────
 
-const CIVILITE_OPTIONS = [
+const CIVILITE_OPTIONS: SocleFieldOption[] = [
   { value: "madame", label: "Madame" },
   { value: "monsieur", label: "Monsieur" },
 ];
@@ -52,67 +152,76 @@ export function SocleRequesterForm({
   const fields = requesterFieldsFor(config, audience);
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3.5">
       {audiences.length > 1 && (
-        <div className="space-y-1">
-          <Label htmlFor="socle-audience" className="text-xs text-muted-foreground">
-            Le demandeur est
-          </Label>
-          <Select value={audience} onValueChange={(v) => onAudienceChange(v as Audience)}>
-            <SelectTrigger id="socle-audience" className="h-8 text-sm">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {audiences.map((a) => (
-                <SelectItem key={a.key} value={a.key}>{a.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <Field label="Le demandeur est" htmlFor="socle-audience">
+          <Segmented
+            label="Le demandeur est"
+            options={audiences.map((a) => ({ value: a.key, label: a.label }))}
+            value={audience}
+            onChange={(v) => onAudienceChange(v as Audience)}
+          />
+        </Field>
       )}
 
-      <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+      <div className="grid grid-cols-1 gap-x-4 gap-y-3.5 sm:grid-cols-2">
         {fields.map((field) => {
           const val = values[field.key] ?? "";
-          const fullWidth = REQUESTER_FULL_WIDTH.has(field.key);
+          const id = `socle-req-${field.key}`;
 
-          const labelEl = (
-            <Label htmlFor={`socle-req-${field.key}`} className="text-xs text-muted-foreground">
-              {field.label}
-              {field.required && <span className="text-destructive ml-0.5">*</span>}
-            </Label>
-          );
-
-          let input: React.ReactNode;
-          if (field.key === "civilite") {
-            input = (
-              <Select value={val} onValueChange={(v) => onChange(field.key, v)}>
-                <SelectTrigger id={`socle-req-${field.key}`} className="h-8 text-sm">
-                  <SelectValue placeholder="Sélectionner…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {CIVILITE_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            );
-          } else {
-            const type =
-              field.key === "courriel" ? "email"
-              : field.key === "tel_portable" || field.key === "tel_fixe" ? "tel"
-              : "text";
-            input = (
-              <Input id={`socle-req-${field.key}`} type={type} className="h-8 text-sm"
-                value={val} onChange={(e) => onChange(field.key, e.target.value)} />
+          // L'adresse du demandeur : une seule clé dans le contrat du Socle,
+          // donc une seule ligne — assistée et située, comme dans Iris.
+          if (field.key === "adresse") {
+            return (
+              <AddressField
+                key={field.key}
+                id={id}
+                label={field.label}
+                required={field.required}
+                singleLine
+                hint="Commencez à taper : les adresses du référentiel national sont proposées."
+                value={{ line: val, postcode: "", city: "" }}
+                onChange={(next, suggestion) =>
+                  onChange(field.key, suggestion ? suggestion.label : next.line)
+                }
+              />
             );
           }
 
+          if (field.key === "civilite") {
+            return (
+              <Field key={field.key} label={field.label} htmlFor={id} required={field.required}>
+                <Segmented
+                  label={field.label}
+                  options={CIVILITE_OPTIONS}
+                  value={val || null}
+                  onChange={(v) => onChange(field.key, v)}
+                />
+              </Field>
+            );
+          }
+
+          const type =
+            field.key === "courriel"
+              ? "email"
+              : field.key === "tel_portable" || field.key === "tel_fixe"
+                ? "tel"
+                : "text";
           return (
-            <div key={field.key} className={cn("space-y-1", fullWidth && "col-span-2")}>
-              {labelEl}
-              {input}
-            </div>
+            <Field
+              key={field.key}
+              label={field.label}
+              htmlFor={id}
+              required={field.required}
+              fullWidth={REQUESTER_FULL_WIDTH.has(field.key)}
+            >
+              <Input
+                id={id}
+                type={type}
+                value={val}
+                onChange={(e) => onChange(field.key, e.target.value)}
+              />
+            </Field>
           );
         })}
       </div>
@@ -122,20 +231,12 @@ export function SocleRequesterForm({
 
 // ── Formulaire (form_schema) ────────────────────────────────────────────────
 
-const HALF_WIDTH_TYPES = new Set(["text", "number", "date", "email", "phone", "select"]);
+/** Un champ long, un choix multiple ou une pièce occupe toute la largeur. */
+function spansFullWidth(field: SocleField): boolean {
+  return field.type === "textarea" || field.type === "attachment" || field.type === "checkboxes";
+}
 
-function SocleFieldInput({
-  field,
-  values,
-  onChange,
-  attachments,
-  onToggleAttachment,
-  courierDocs,
-  orgId,
-  courierId,
-  onNewDoc,
-}: {
-  field: SocleField;
+interface FieldProps {
   values: FormValues;
   onChange: (fieldId: string, value: unknown) => void;
   attachments: Record<string, string[]>;
@@ -144,143 +245,158 @@ function SocleFieldInput({
   orgId: string;
   courierId: string;
   onNewDoc: (fieldId: string, doc: CourierDocument) => void;
-}) {
+}
+
+function SocleFieldInput({ field, ...props }: { field: SocleField } & FieldProps) {
+  const { values, onChange } = props;
   const required = isFieldRequired(field, values);
   const value = values[field.id];
-  const fullWidth = !HALF_WIDTH_TYPES.has(field.type);
   const inputId = `socle-form-${field.id}`;
-
-  const labelEl = (
-    <Label htmlFor={inputId} className="text-xs text-muted-foreground">
-      {field.label || "(champ sans libellé)"}
-      {required && <span className="text-destructive ml-0.5">*</span>}
-    </Label>
+  const conditional = Boolean(
+    field.visibleIf || (field.type === "attachment" && field.requiredIf),
   );
-  const helpEl = field.help ? (
-    <p className="text-[10px] text-muted-foreground/70 -mt-0.5">{field.help}</p>
-  ) : null;
 
   // ── Pièce jointe : sélection parmi les documents du courrier ──
   if (field.type === "attachment") {
-    const formatsHint = field.acceptedFormats.length > 0
-      ? `Formats attendus : ${field.acceptedFormats.map((f) => f.toUpperCase()).join(", ")}`
-      : null;
-    const filesHint = field.maxFiles > 1
-      ? `${field.maxFiles} documents maximum`
-      : "1 document maximum";
+    const formatsHint =
+      field.acceptedFormats.length > 0
+        ? `Formats attendus : ${field.acceptedFormats.map((f) => f.toUpperCase()).join(", ")}`
+        : null;
+    const filesHint = field.maxFiles > 1 ? `${field.maxFiles} documents maximum` : "1 document maximum";
     return (
-      <div className="col-span-2">
+      <div className="sm:col-span-2">
         <PiecesJointesField
           label={field.label}
           required={required}
           helpText={[field.help, formatsHint, filesHint].filter(Boolean).join(" · ")}
-          courierDocs={courierDocs}
-          selectedIds={attachments[field.id] ?? []}
-          onToggle={(id) => onToggleAttachment(field.id, id)}
-          orgId={orgId}
-          courierId={courierId}
-          onNewDoc={(doc) => onNewDoc(field.id, doc)}
+          courierDocs={props.courierDocs}
+          selectedIds={props.attachments[field.id] ?? []}
+          onToggle={(id) => props.onToggleAttachment(field.id, id)}
+          orgId={props.orgId}
+          courierId={props.courierId}
+          onNewDoc={(doc) => props.onNewDoc(field.id, doc)}
           maxFiles={field.maxFiles}
         />
       </div>
     );
   }
 
+  const common = {
+    label: field.label,
+    htmlFor: inputId,
+    required,
+    conditional,
+    hint: field.help,
+    fullWidth: spansFullWidth(field),
+  };
+
   if (field.type === "boolean") {
     return (
-      <div className="col-span-2 space-y-1">
-        <label className="flex items-center gap-2 text-sm cursor-pointer">
-          <Checkbox
-            id={inputId}
-            checked={value === true}
-            onCheckedChange={(checked) => onChange(field.id, checked === true)}
-          />
-          <span>
-            {field.label || "(champ sans libellé)"}
-            {required && <span className="text-destructive ml-0.5">*</span>}
-          </span>
-        </label>
-        {helpEl}
-      </div>
+      <Field {...common}>
+        <Segmented
+          label={field.label}
+          options={[
+            { value: "true", label: "Oui" },
+            { value: "false", label: "Non" },
+          ]}
+          value={value === true ? "true" : value === false ? "false" : null}
+          onChange={(v) => onChange(field.id, v === "true")}
+        />
+      </Field>
     );
   }
 
   if (field.type === "radio") {
+    // Au-delà de quatre choix, les pastilles deviennent un mur : on revient à
+    // une liste, qui se parcourt.
     return (
-      <div className="col-span-2 space-y-1.5">
-        {labelEl}
-        {helpEl}
-        <RadioGroup
-          value={typeof value === "string" ? value : ""}
-          onValueChange={(v) => onChange(field.id, v)}
-          className="gap-1.5"
-        >
-          {field.options.map((o) => (
-            <label key={o.value} className="flex items-center gap-2 text-sm cursor-pointer">
-              <RadioGroupItem value={o.value} id={`${inputId}-${o.value}`} />
-              {o.label || o.value}
-            </label>
-          ))}
-        </RadioGroup>
-      </div>
+      <Field {...common} fullWidth={field.options.length > 4}>
+        {field.options.length <= 4 ? (
+          <Segmented
+            label={field.label}
+            options={field.options}
+            value={typeof value === "string" ? value : null}
+            onChange={(v) => onChange(field.id, v)}
+          />
+        ) : (
+          <div className="flex flex-col gap-1.5" role="radiogroup" aria-label={field.label}>
+            {field.options.map((o) => (
+              <label key={o.value} className="flex cursor-pointer items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name={inputId}
+                  className="accent-primary"
+                  checked={value === o.value}
+                  onChange={() => onChange(field.id, o.value)}
+                />
+                {o.label || o.value}
+              </label>
+            ))}
+          </div>
+        )}
+      </Field>
     );
   }
 
   if (field.type === "checkboxes") {
     const selected = Array.isArray(value) ? (value as string[]) : [];
     return (
-      <div className="col-span-2 space-y-1.5">
-        {labelEl}
-        {helpEl}
-        <div className="flex flex-col gap-1.5">
-          {field.options.map((o) => (
-            <label key={o.value} className="flex items-center gap-2 text-sm cursor-pointer">
-              <Checkbox
-                checked={selected.includes(o.value)}
-                onCheckedChange={(checked) =>
+      <Field {...common}>
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label={field.label}>
+          {field.options.map((o) => {
+            const checked = selected.includes(o.value);
+            return (
+              <button
+                key={o.value}
+                type="button"
+                aria-pressed={checked}
+                onClick={() =>
                   onChange(
                     field.id,
-                    checked === true
-                      ? [...selected, o.value]
-                      : selected.filter((v) => v !== o.value),
+                    checked ? selected.filter((v) => v !== o.value) : [...selected, o.value],
                   )
                 }
-              />
-              {o.label || o.value}
-            </label>
-          ))}
+                className={cn(
+                  "h-9 rounded-full border px-3.5 text-[13px] font-semibold transition-colors",
+                  checked
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border bg-background text-muted-foreground hover:bg-muted",
+                )}
+              >
+                {o.label || o.value}
+              </button>
+            );
+          })}
         </div>
-      </div>
+      </Field>
     );
   }
 
   if (field.type === "select") {
     return (
-      <div className="space-y-1">
-        {labelEl}
-        {helpEl}
+      <Field {...common}>
         <Select
           value={typeof value === "string" ? value : ""}
           onValueChange={(v) => onChange(field.id, v)}
         >
-          <SelectTrigger id={inputId} className="h-8 text-sm">
+          <SelectTrigger id={inputId} className="h-10">
             <SelectValue placeholder={field.placeholder || "Sélectionner…"} />
           </SelectTrigger>
           <SelectContent>
             {field.options.map((o) => (
-              <SelectItem key={o.value} value={o.value}>{o.label || o.value}</SelectItem>
+              <SelectItem key={o.value} value={o.value}>
+                {o.label || o.value}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
-      </div>
+      </Field>
     );
   }
 
   if (field.type === "textarea") {
     return (
-      <div className="col-span-2 space-y-1">
-        {labelEl}
-        {helpEl}
+      <Field {...common}>
         <Textarea
           id={inputId}
           value={typeof value === "string" ? value : ""}
@@ -288,40 +404,64 @@ function SocleFieldInput({
           rows={3}
           maxLength={field.maxLength}
           placeholder={field.placeholder}
-          className="resize-none text-sm"
+          className="resize-none"
         />
-      </div>
+      </Field>
     );
   }
 
   // text / number / date / email / phone
   const htmlType =
-    field.type === "number" ? "number"
-    : field.type === "date" ? "date"
-    : field.type === "email" ? "email"
-    : field.type === "phone" ? "tel"
-    : "text";
+    field.type === "number"
+      ? "number"
+      : field.type === "date"
+        ? "date"
+        : field.type === "email"
+          ? "email"
+          : field.type === "phone"
+            ? "tel"
+            : "text";
   return (
-    <div className={cn("space-y-1", fullWidth && "col-span-2")}>
-      {labelEl}
-      {helpEl}
+    <Field {...common}>
       <Input
         id={inputId}
         type={htmlType}
-        className="h-8 text-sm"
         value={typeof value === "string" ? value : ""}
         onChange={(e) => onChange(field.id, e.target.value)}
         maxLength={field.type === "text" ? field.maxLength : undefined}
         placeholder={field.placeholder}
       />
+    </Field>
+  );
+}
+
+/** Une grille de champs — ceux que les réponses masquent ne sont pas rendus. */
+function FieldGrid({
+  fields,
+  hidden,
+  ...props
+}: { fields: SocleField[]; hidden?: Set<string> } & FieldProps) {
+  const shown = fields.filter((f) => !hidden?.has(f.id));
+  if (shown.length === 0) return null;
+  return (
+    <div className="grid grid-cols-1 gap-x-4 gap-y-3.5 sm:grid-cols-2">
+      {shown.map((field) =>
+        evaluateCondition(field.visibleIf, props.values) ? (
+          <SocleFieldInput key={field.id} field={field} {...props} />
+        ) : null,
+      )}
     </div>
   );
 }
 
 /**
- * Rendu du formulaire d'une démarche Socle : champs racine et sections dans
- * l'ordre du schéma, conditions `visibleIf` évaluées en direct sur les valeurs
- * saisies (un champ ou une section masqués par condition ne sont pas rendus).
+ * Rendu du formulaire d'une démarche : champs racine et sections dans l'ordre
+ * du schéma, conditions `visibleIf` évaluées en direct sur les valeurs saisies.
+ *
+ * Le bloc « Lieu d'intervention » est reconnu et rendu en UN champ d'adresse
+ * assisté (avec carte) plutôt qu'en sept champs séparés — exactement comme
+ * dans Iris, et sans rien changer à ce qui part : on écrit dans les champs que
+ * la démarche pose.
  */
 export function SocleFormFields({
   schema,
@@ -335,32 +475,25 @@ export function SocleFormFields({
   onNewDoc,
 }: {
   schema: SocleFormSchema;
-  values: FormValues;
-  onChange: (fieldId: string, value: unknown) => void;
-  attachments: Record<string, string[]>;
-  onToggleAttachment: (fieldId: string, docId: string) => void;
-  courierDocs: CourierDocument[];
-  orgId: string;
-  courierId: string;
-  onNewDoc: (fieldId: string, doc: CourierDocument) => void;
-}) {
+} & FieldProps) {
   if (schema.content.length === 0) return null;
 
-  const fieldProps = {
-    values, onChange, attachments, onToggleAttachment,
-    courierDocs, orgId, courierId, onNewDoc,
+  const props: FieldProps = {
+    values,
+    onChange,
+    attachments,
+    onToggleAttachment,
+    courierDocs,
+    orgId,
+    courierId,
+    onNewDoc,
   };
+  const address = interventionBlock(schema);
 
-  const renderField = (field: SocleField) =>
-    evaluateCondition(field.visibleIf, values) ? (
-      <SocleFieldInput key={field.id} field={field} {...fieldProps} />
-    ) : null;
-
-  // Blocs successifs : les champs racine consécutifs partagent une même grille,
-  // chaque section a la sienne (préserve l'ordre du schéma).
+  // Les champs racine consécutifs partagent une même grille ; chaque section
+  // forme son propre groupe titré (l'ordre du schéma est préservé).
   const blocks: Array<
-    | { kind: "fields"; key: string; fields: SocleField[] }
-    | { kind: "section"; key: string; section: Extract<typeof schema.content[number], { kind: "section" }> }
+    { kind: "fields"; key: string; fields: SocleField[] } | { kind: "section"; key: string; section: SocleSection }
   > = [];
   for (const node of schema.content) {
     if (isSection(node)) {
@@ -373,31 +506,37 @@ export function SocleFormFields({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-4">
       {blocks.map((block) => {
         if (block.kind === "fields") {
-          return (
-            <div key={block.key} className="grid grid-cols-2 gap-x-4 gap-y-3">
-              {block.fields.map(renderField)}
-            </div>
-          );
+          return <FieldGrid key={block.key} fields={block.fields} {...props} />;
         }
         const section = block.section;
         if (!evaluateCondition(section.visibleIf, values)) return null;
+        const isAddressSection = address?.section === section;
         return (
-          <div key={block.key} className="space-y-2">
-            <div className="border-b pb-1">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <fieldset
+            key={block.key}
+            className="flex flex-col gap-3.5 rounded-lg border border-border bg-card p-4"
+          >
+            <legend className="px-1 text-[13px] font-bold">
+              <span className="flex items-center gap-1.5">
                 {section.title || "Section"}
-              </p>
-              {section.description && (
-                <p className="text-[10px] text-muted-foreground/70">{section.description}</p>
-              )}
-            </div>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-              {section.fields.map(renderField)}
-            </div>
-          </div>
+                {section.visibleIf && <ConditionalBadge />}
+              </span>
+            </legend>
+            {section.description && (
+              <p className="-mt-1 text-[11px] text-muted-foreground">{section.description}</p>
+            )}
+            {isAddressSection && (
+              <InterventionAddress fields={address.fields} values={values} onChange={onChange} />
+            )}
+            <FieldGrid
+              fields={section.fields}
+              hidden={isAddressSection ? address.ids : undefined}
+              {...props}
+            />
+          </fieldset>
         );
       })}
     </div>
