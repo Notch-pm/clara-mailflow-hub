@@ -112,20 +112,35 @@ bunx supabase functions deploy <nom> --project-ref aullweizxcjbvtdspjli
 bun run build && npx wrangler deploy --dry-run
 ```
 
-### Lot « notifications push » (2026-09-11) — **à appliquer**
+### Lot « notifications push » (2026-09-11) — appliqué le 2026-09-11, **sauf la variable Cloudflare**
 
 Web Push / VAPID : la cloche ne sonne que si Clara est ouverte, le push met la même information
 sur l'écran verrouillé. Détail de la conception : `docs/features.md` §8.
 
 | # | Action | Pourquoi cet ordre | État |
 |---|---|---|---|
-| 1 | Générer la paire VAPID (`npx web-push generate-vapid-keys`) | Les secrets de l'étape 3 et la variable de build de l'étape 5 en sortent | À faire |
-| 2 | `20260911180000_notifications_push.sql` **sans sa section 5** (le cron) | Table, colonnes, trigger et RPC : la fonction de l'étape 4 les lit | À faire |
-| 3 | Poser `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` (et `APP_ORIGIN` si absente) dans les secrets d'edge functions | Sans elles la fonction répond 503 **sans réclamer** — inoffensif, mais rien ne part | À faire |
-| 4 | Déployer `notifications-push` | Lit les RPC de l'étape 2. ⚠️ `[functions.notifications-push] verify_jwt = false` est **déjà** dans `config.toml` : le vérifier après déploiement (cf. « le piège des fonctions cron ») | À faire |
-| 5 | Rejouer la **section 5** de la migration (cron) | **Hors ordre du fichier, délibérément** : planifier avant l'étape 4 ferait échouer l'appel toutes les minutes jusqu'au déploiement | À faire |
-| 6 | Poser `VITE_VAPID_PUBLIC_KEY` dans les variables de build Cloudflare, puis publier le frontend | La clé publique est **figée dans le bundle au build**. Absente, l'interrupteur affiche « non configuré » et rien ne casse — mais personne ne peut s'inscrire | À faire |
-| 7 | Régénérer `src/integrations/supabase/types.ts` | `push_subscriptions` et `register_push_subscription` n'y sont pas : `pushSubscriptionService.ts` travaille sous `as never` en attendant, et le commentaire en tête dit de les retirer | À faire |
+| 1 | Générer la paire VAPID (`npx web-push generate-vapid-keys`) | Les secrets de l'étape 3 et la variable de build de l'étape 6 en sortent | **Fait** — clé publique `BGijOnCO1vT78F4Xh_MgJfDfu5sWA3VBbN-uNa6ptMnSLmYCKmWWTfQW-WHknUadPHtjL8_TAgQc1cPUyrqNSqM` (publique par construction : elle voyage dans chaque abonnement) |
+| 2 | Poser `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` dans les secrets d'edge functions | Sans elles la fonction répond 503 **sans réclamer** — inoffensif, mais rien ne part | **Fait** — `supabase secrets set --env-file` (la clé privée n'est jamais passée en argv). `VAPID_SUBJECT = https://clara.edilumen.fr` ; `APP_ORIGIN` existait déjà |
+| 3 | Déployer `notifications-push` | Doit précéder le cron de l'étape 5 | **Fait** — `bunx supabase functions deploy notifications-push --project-ref aullweizxcjbvtdspjli` (817 ko, `web-push` embarqué). `verify_jwt = false` **vérifié après coup** : un POST sans `Authorization` répond `{"error":"Unauthorized"}` et un GET `{"error":"method_not_allowed"}` — les chaînes de la fonction, donc la plateforme laisse passer (cf. « le piège des fonctions cron ») |
+| 4 | `20260911180000_notifications_push.sql` **en entier**, cron compris | La fonction étant déjà déployée (étape 3), le découpage prévu n'avait plus lieu d'être | **Appliqué** — cf. encadré ci-dessous sur la méthode |
+| 5 | Vérifier la structure et le cron | | **Fait** — table + RLS (4 policies, **0 en INSERT**), 6 colonnes `push_*`, trigger, 4 RPC ; `EXECUTE` ouvert au seul `register_push_subscription` ; job `notifications-push-every-min` (jobid 8) actif, exécutions `succeeded` |
+| 6 | Poser `VITE_VAPID_PUBLIC_KEY` dans les variables de build Cloudflare, puis publier le frontend | La clé publique est **figée dans le bundle au build**. Sans elle l'interrupteur affiche « non configuré » et **personne ne peut inscrire d'appareil** | **À FAIRE** — seul geste restant pour ouvrir la fonctionnalité |
+| 7 | Régénérer `src/integrations/supabase/types.ts` | `push_subscriptions` et `register_push_subscription` n'y sont pas : `pushSubscriptionService.ts` travaille sous `as never` en attendant | À faire |
+
+⚠️ **`supabase db push` est inutilisable ici, constaté le 2026-09-11** : il refuse avec
+`LegacyDbPushMissingLocalError` en listant **52 versions distantes absentes du dossier local**
+(appliquées jadis par `apply_migration` ou l'éditeur SQL, qui génèrent leur propre horodatage).
+C'est la dérive décrite en tête de ce document, vue de face. La migration est donc passée par la
+**Management API** (`POST /v1/projects/{ref}/database/query`), la porte qu'utilise
+`apply_migration` du MCP officiel, puis la ligne de registre a été posée à la main :
+
+```sql
+INSERT INTO supabase_migrations.schema_migrations (version, name)
+VALUES ('20260911180000', 'notifications_push') ON CONFLICT (version) DO NOTHING;
+```
+
+Cette version-là, au moins, porte le **même horodatage que son fichier** — contrairement aux
+précédentes. Ne pas « réparer » le registre pour les 52 autres : la base live fait foi.
 
 ⚠️ **La migration est un seul fichier**, mais ses sections 1-4 et sa section 5 ne passent pas au
 même moment (étapes 2 et 5). Elle est rejouable en entier (`IF NOT EXISTS`, `CREATE OR REPLACE`,
