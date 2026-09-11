@@ -4,6 +4,22 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/png" href="/favicon.png" />
+
+    <!-- Installation « sur l'écran d'accueil ». Sans ces lignes, l'icône posée
+         depuis un iPhone rouvre un onglet Safari ordinaire : `display-mode:
+         standalone` reste faux, et comme Safari (≥ 16.4) n'expose le push QU'EN
+         application installée, l'interrupteur « Notifications sur cet appareil »
+         resterait bloqué sur « ajoutez Clara à l'écran d'accueil » — un conseil
+         sans issue. Deux pièges : iOS IGNORE le manifeste pour l'icône
+         (`apple-touch-icon` est obligatoire), et cette icône doit être OPAQUE,
+         une transparence étant remplie en NOIR. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#00D084" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Clara" />
+
     <title>Clara, Gestion de courrier</title>
     <meta name="description" content="Clara: Mail Flow manages administrative mail, linking external tickets and tracking workflows.">
     <meta name="author" content="Lovable" />
