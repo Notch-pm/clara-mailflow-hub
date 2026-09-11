@@ -1,12 +1,6 @@
 // Abonnements Web Push — accès Supabase typé (règle d'or n°3 : la logique
 // métier n'est pas dans les composants, l'accès base n'est pas dans les hooks).
 //
-// ⚠️ `push_subscriptions` et `register_push_subscription` n'existent pas encore
-// dans `src/integrations/supabase/types.ts` : ce fichier est généré, et la
-// régénération suit l'application de la migration `20260911180000`. D'où les
-// `as never` / `as unknown as` ci-dessous — même échappatoire que
-// `courierAnalysisService.ts`. À retirer à la prochaine génération des types.
-//
 // Ce fichier porte AUSSI `forgetDevicePush` (lecture de l'abonnement du
 // navigateur + retrait), et pas le hook : `AuthContext.signOut` en a besoin, et
 // le hook importe `useAuth` — les faire s'importer l'un l'autre créerait un
@@ -23,12 +17,12 @@ import type { SubscriptionRow } from "@/lib/push";
 
 /** Enregistre (ou reprend) l'abonnement de cet appareil pour le compte connecté. */
 export async function registerPushSubscription(row: SubscriptionRow): Promise<void> {
-  const { error } = await supabase.rpc("register_push_subscription" as never, {
+  const { error } = await supabase.rpc("register_push_subscription", {
     p_endpoint: row.endpoint,
     p_p256dh: row.p256dh,
     p_auth: row.auth,
     p_user_agent: row.user_agent,
-  } as never);
+  });
   if (error) throw error;
 }
 
@@ -38,24 +32,24 @@ export async function registerPushSubscription(row: SubscriptionRow): Promise<vo
  */
 export async function isMyPushSubscription(endpoint: string): Promise<boolean> {
   const { data, error } = await supabase
-    .from("push_subscriptions" as never)
+    .from("push_subscriptions")
     .select("id")
     .eq("endpoint", endpoint)
     .limit(1);
   if (error) throw error;
-  return ((data ?? []) as unknown[]).length > 0;
+  return (data ?? []).length > 0;
 }
 
 /** Retrait de l'abonnement de cet appareil (déconnexion, interrupteur coupé). */
 export async function deletePushSubscription(endpoint: string): Promise<void> {
-  await supabase.from("push_subscriptions" as never).delete().eq("endpoint", endpoint);
+  await supabase.from("push_subscriptions").delete().eq("endpoint", endpoint);
 }
 
 /** Marque l'appareil vivant — décoratif, sert à repérer les abonnements dormants. */
 export async function touchPushSubscription(endpoint: string): Promise<void> {
   await supabase
-    .from("push_subscriptions" as never)
-    .update({ last_seen_at: new Date().toISOString() } as never)
+    .from("push_subscriptions")
+    .update({ last_seen_at: new Date().toISOString() })
     .eq("endpoint", endpoint);
 }
 

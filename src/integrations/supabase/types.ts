@@ -49,6 +49,7 @@ export type Database = {
           created_by: string | null
           description: string | null
           id: string
+          iris_attachments_error: string | null
           iris_idempotency_key: string
           iris_last_attempt_at: string | null
           iris_last_error: string | null
@@ -75,6 +76,7 @@ export type Database = {
           created_by?: string | null
           description?: string | null
           id?: string
+          iris_attachments_error?: string | null
           iris_idempotency_key?: string
           iris_last_attempt_at?: string | null
           iris_last_error?: string | null
@@ -101,6 +103,7 @@ export type Database = {
           created_by?: string | null
           description?: string | null
           id?: string
+          iris_attachments_error?: string | null
           iris_idempotency_key?: string
           iris_last_attempt_at?: string | null
           iris_last_error?: string | null
@@ -908,6 +911,12 @@ export type Database = {
           created_at: string
           id: string
           organization_id: string
+          push_attempted_at: string | null
+          push_attempts: number
+          push_error: string | null
+          push_next_attempt_at: string | null
+          push_sent_at: string | null
+          push_status: string
           read: boolean
           resource_id: string | null
           title: string | null
@@ -918,6 +927,12 @@ export type Database = {
           created_at?: string
           id?: string
           organization_id: string
+          push_attempted_at?: string | null
+          push_attempts?: number
+          push_error?: string | null
+          push_next_attempt_at?: string | null
+          push_sent_at?: string | null
+          push_status?: string
           read?: boolean
           resource_id?: string | null
           title?: string | null
@@ -928,6 +943,12 @@ export type Database = {
           created_at?: string
           id?: string
           organization_id?: string
+          push_attempted_at?: string | null
+          push_attempts?: number
+          push_error?: string | null
+          push_next_attempt_at?: string | null
+          push_sent_at?: string | null
+          push_status?: string
           read?: boolean
           resource_id?: string | null
           title?: string | null
@@ -1375,6 +1396,53 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      push_subscriptions: {
+        Row: {
+          auth: string
+          created_at: string
+          disabled_at: string | null
+          disabled_reason: string | null
+          endpoint: string
+          id: string
+          last_seen_at: string
+          p256dh: string
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          auth: string
+          created_at?: string
+          disabled_at?: string | null
+          disabled_reason?: string | null
+          endpoint: string
+          id?: string
+          last_seen_at?: string
+          p256dh: string
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          auth?: string
+          created_at?: string
+          disabled_at?: string | null
+          disabled_reason?: string | null
+          endpoint?: string
+          id?: string
+          last_seen_at?: string
+          p256dh?: string
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_subscriptions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]
@@ -2174,6 +2242,19 @@ export type Database = {
           organization_id: string
         }[]
       }
+      claim_notification_pushes: {
+        Args: { p_limit?: number }
+        Returns: {
+          attempts: number
+          notification_id: string
+          organization_id: string
+          organization_name: string
+          resource_id: string
+          subscriptions: Json
+          title: string
+          type: string
+        }[]
+      }
       clara_search_tsquery: {
         Args: { p_keywords: string; p_prefix: boolean }
         Returns: unknown
@@ -2183,6 +2264,10 @@ export type Database = {
         Returns: boolean
       }
       current_user_orgs: { Args: never; Returns: string[] }
+      disable_push_subscription: {
+        Args: { p_id: string; p_reason: string }
+        Returns: undefined
+      }
       enqueue_courier_analysis: {
         Args: { p_courier_id: string; p_kind?: string }
         Returns: string
@@ -2193,6 +2278,7 @@ export type Database = {
       is_member_of: { Args: { _org: string }; Returns: boolean }
       is_superadmin: { Args: { _user_id: string }; Returns: boolean }
       is_transition_guard_bypassed: { Args: never; Returns: boolean }
+      notification_push_max_attempts: { Args: never; Returns: number }
       partner_integration_status: {
         Args: { p_organization_id: string; p_provider?: string }
         Returns: {
@@ -2201,6 +2287,15 @@ export type Database = {
         }[]
       }
       purge_expired_data: { Args: never; Returns: Json }
+      register_push_subscription: {
+        Args: {
+          p_auth: string
+          p_endpoint: string
+          p_p256dh: string
+          p_user_agent?: string
+        }
+        Returns: string
+      }
       requeue_stale_analysis_jobs: {
         Args: { p_older_than?: string }
         Returns: number
@@ -2249,6 +2344,10 @@ export type Database = {
           updated_at: string
           workflow_state_id: string
         }[]
+      }
+      settle_notification_push: {
+        Args: { p_error?: string; p_id: string; p_ok: boolean }
+        Returns: undefined
       }
       stats_by_channel: {
         Args: {
@@ -2338,6 +2437,7 @@ export type Database = {
       }
       trigger_fetch_inbound_emails: { Args: never; Returns: number }
       trigger_iris_sync: { Args: never; Returns: number }
+      trigger_notifications_push: { Args: never; Returns: number }
       trigger_process_analysis_queue: { Args: never; Returns: number }
       trigger_socle_sync: { Args: never; Returns: number }
     }
