@@ -12,6 +12,7 @@ import { getCourierById, updateCourier } from "@/services/courierService";
 import { COURIER_LIST_QUERY_PREFIXES } from "@/services/courierListService";
 import { listTags, TAG_GROUPS } from "@/services/courierTagService";
 import { splitAppliedTags } from "@/lib/courier-tags";
+import { cn } from "@/lib/utils";
 import { readableTextColor } from "@/lib/tag-color";
 import {
   getExtracts,
@@ -95,11 +96,25 @@ export default function ContentIntentsTab({ courierId, organizationId, readOnly 
     [courierData?.metadata],
   );
 
-  const isDirty = useMemo(() => {
-    const a = [...selectedIntents].sort();
-    const b = [...currentCourierTags].sort();
-    return a.length !== b.length || a.some((v, i) => v !== b[i]);
-  }, [selectedIntents, currentCourierTags]);
+  const appliedSet = useMemo(
+    () => new Set(currentCourierTags.map((t) => t.toLowerCase())),
+    [currentCourierTags],
+  );
+
+  /**
+   * Ce que l'application va AJOUTER au courrier.
+   *
+   * Les tags proposés complètent ceux déjà posés — ils ne les remplacent pas :
+   * une seconde analyse, lancée à l'étape « Contenu et intentions », effaçait
+   * sinon la qualification faite à la main (ou par le passage précédent), sans
+   * rien signaler.
+   */
+  const tagsToAdd = useMemo(
+    () => selectedIntents.filter((t) => !appliedSet.has(t.toLowerCase())),
+    [selectedIntents, appliedSet],
+  );
+
+  const isDirty = tagsToAdd.length > 0;
 
   const ocrMutation = useMutation({
     mutationFn: () => runOcr(courierId),
@@ -145,14 +160,16 @@ export default function ContentIntentsTab({ courierId, organizationId, readOnly 
 
   const applyTagsMutation = useMutation({
     mutationFn: async () => {
+      if (tagsToAdd.length === 0) return 0;
       const currentMeta = (courierData?.metadata as Record<string, unknown> | null) ?? {};
       const { error } = await updateCourier(organizationId, courierId, {
-        metadata: { ...currentMeta, tags: selectedIntents },
+        metadata: { ...currentMeta, tags: [...currentCourierTags, ...tagsToAdd] },
       });
       if (error) throw error;
+      return tagsToAdd.length;
     },
-    onSuccess: () => {
-      toast.success("Tags appliqués au courrier");
+    onSuccess: (count) => {
+      toast.success(`${count} tag(s) ajouté(s) au courrier`);
       qc.invalidateQueries({ queryKey: ["courier", organizationId, courierId] });
       // Les listes filtrent par tag côté serveur : elles doivent toutes être
       // réinterrogées après une modification des tags.
@@ -466,14 +483,14 @@ export default function ContentIntentsTab({ courierId, organizationId, readOnly 
                   ) : (
                     <Check className="h-3 w-3" />
                   )}
-                  Appliquer les tags
+                  Ajouter les tags
                 </Button>
               </div>
               {selectedIntents.length === 0 ? (
                 <p className="text-xs text-muted-foreground italic">
                   {analysis.intents.length === 0
                     ? "Aucun tag retenu par l'analyse. Vérifiez que des tags sont définis dans Paramètres > Classification."
-                    : "Tous les tags ont été retirés. Cliquez sur 'Appliquer' pour valider."}
+                    : "Tous les tags proposés ont été écartés."}
                 </p>
               ) : (
                 // Un groupe par rangée : le thème et le sentiment ne se lisent
@@ -490,24 +507,35 @@ export default function ContentIntentsTab({ courierId, organizationId, readOnly 
                         <div className="flex flex-wrap gap-1.5">
                           {applied.map(({ name: intent, tag: meta }) => {
                             const fg = meta?.color ? readableTextColor(meta.color) : undefined;
+                            const already = appliedSet.has(intent.toLowerCase());
                             return (
                               <Badge
                                 key={intent}
                                 variant="secondary"
-                                className="gap-1 pl-2 pr-1 py-0.5 text-xs border-transparent"
+                                className={cn(
+                                  "gap-1 pl-2 py-0.5 text-xs border-transparent",
+                                  already ? "pr-2" : "pr-1",
+                                )}
                                 style={meta?.color ? { backgroundColor: meta.color, color: fg } : undefined}
+                                title={already ? "Déjà appliqué au courrier" : "Sera ajouté au courrier"}
                               >
+                                {already && <Check className="h-3 w-3 shrink-0 opacity-70" />}
                                 {meta?.name ?? intent}
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setSelectedIntents((prev) => prev.filter((t) => t !== intent))
-                                  }
-                                  className="ml-0.5 rounded-full p-0.5 hover:bg-background/30 transition-colors"
-                                  aria-label={`Retirer ${intent}`}
-                                >
-                                  <X className="h-3 w-3" />
-                                </button>
+                                {/* La croix écarte une PROPOSITION ; sur un tag
+                                    déjà posé elle ferait croire à un retrait,
+                                    qui se fait dans la zone Tags du courrier. */}
+                                {!already && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setSelectedIntents((prev) => prev.filter((t) => t !== intent))
+                                    }
+                                    className="ml-0.5 rounded-full p-0.5 hover:bg-background/30 transition-colors"
+                                    aria-label={`Écarter ${intent}`}
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </button>
+                                )}
                               </Badge>
                             );
                           })}
@@ -517,9 +545,9 @@ export default function ContentIntentsTab({ courierId, organizationId, readOnly 
                   })}
                 </div>
               )}
-              {currentCourierTags.length > 0 && !isDirty && (
+              {selectedIntents.length > 0 && !isDirty && (
                 <p className="mt-2 text-[10px] text-muted-foreground/80">
-                  ✓ Ces tags sont appliqués au courrier.
+                  ✓ Ces tags sont déjà appliqués au courrier.
                 </p>
               )}
             </Card>

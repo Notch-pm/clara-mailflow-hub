@@ -233,7 +233,14 @@ export default function BulkImport() {
               recipientName: result.recipient_name || d.recipientName,
               serviceId: matchedService?.id ?? d.serviceId,
               serviceName: matchedService?.name ?? (result.suggested_service_name || d.serviceName),
-              tags: result.suggested_tag_names?.length ? result.suggested_tag_names : d.tags,
+              // Les tags proposés s'ajoutent à ceux déjà posés sur le brouillon,
+              // ils ne les remplacent pas — relancer l'analyse ne doit rien effacer.
+              tags: [
+                ...d.tags,
+                ...(result.suggested_tag_names ?? []).filter(
+                  (t) => !d.tags.some((x) => x.toLowerCase() === t.toLowerCase()),
+                ),
+              ],
               bodyText: result.extracted_text || d.bodyText,
               confidence: 0.7,
             };
