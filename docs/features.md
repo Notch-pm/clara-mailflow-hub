@@ -245,6 +245,19 @@ la même information sur l'écran verrouillé, **application fermée**.
   casse.
 - **iOS** : Safari n'expose le push qu'en application AJOUTÉE À L'ÉCRAN D'ACCUEIL (≥ 16.4) ;
   l'état `needs_install` l'explique. C'est une détection de **capacité**, pas de layout.
+  ⚠️ Ce conseil n'a d'issue que parce que Clara est **installable** (2026-09-11) :
+  `public/manifest.webmanifest` (`display: standalone`) + les métadonnées d'`index.html`.
+  Sans elles, l'icône posée depuis un iPhone rouvre un onglet Safari ordinaire,
+  `display-mode: standalone` reste faux, et l'agent relit indéfiniment le même message.
+  Deux pièges portés en commentaire dans `index.html` : iOS **ignore le manifeste pour
+  l'icône** (`apple-touch-icon` est obligatoire), et cette icône doit être **opaque**,
+  une transparence étant remplie en NOIR.
+  Les icônes sont dérivées du vectoriel `public/icons/clara-mark.svg` (le favicon 32×32
+  était trop petit pour être agrandi) en trois variantes, parce qu'elles ne subissent pas
+  le même traitement : `apple-touch-icon.png` 180 **plein et opaque** (iOS applique son
+  propre masque), `icon-192/512.png` à coins arrondis transparents comme le favicon, et
+  `icon-maskable-512.png` dont le dessin est ramené à 70 % pour survivre au masque
+  circulaire d'Android.
 - Fichiers : `src/lib/push.ts` (pur, testé — 30 cas), `src/services/pushSubscriptionService.ts`,
   `src/hooks/usePushSubscription.ts`, `src/components/PushDeviceToggle.tsx`, `public/sw.js`,
   `supabase/functions/_shared/push/{config,message,outcome,transport}.ts` (les trois premiers

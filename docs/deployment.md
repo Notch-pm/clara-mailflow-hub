@@ -112,7 +112,7 @@ bunx supabase functions deploy <nom> --project-ref aullweizxcjbvtdspjli
 bun run build && npx wrangler deploy --dry-run
 ```
 
-### Lot « notifications push » (2026-09-11) — appliqué le 2026-09-11, **sauf la variable Cloudflare**
+### Lot « notifications push » (2026-09-11) — appliqué le 2026-09-11
 
 Web Push / VAPID : la cloche ne sonne que si Clara est ouverte, le push met la même information
 sur l'écran verrouillé. Détail de la conception : `docs/features.md` §8.
@@ -124,7 +124,8 @@ sur l'écran verrouillé. Détail de la conception : `docs/features.md` §8.
 | 3 | Déployer `notifications-push` | Doit précéder le cron de l'étape 5 | **Fait** — `bunx supabase functions deploy notifications-push --project-ref aullweizxcjbvtdspjli` (817 ko, `web-push` embarqué). `verify_jwt = false` **vérifié après coup** : un POST sans `Authorization` répond `{"error":"Unauthorized"}` et un GET `{"error":"method_not_allowed"}` — les chaînes de la fonction, donc la plateforme laisse passer (cf. « le piège des fonctions cron ») |
 | 4 | `20260911180000_notifications_push.sql` **en entier**, cron compris | La fonction étant déjà déployée (étape 3), le découpage prévu n'avait plus lieu d'être | **Appliqué** — cf. encadré ci-dessous sur la méthode |
 | 5 | Vérifier la structure et le cron | | **Fait** — table + RLS (4 policies, **0 en INSERT**), 6 colonnes `push_*`, trigger, 4 RPC ; `EXECUTE` ouvert au seul `register_push_subscription` ; job `notifications-push-every-min` (jobid 8) actif, exécutions `succeeded` |
-| 6 | Poser `VITE_VAPID_PUBLIC_KEY` dans les variables de build Cloudflare, puis publier le frontend | La clé publique est **figée dans le bundle au build**. Sans elle l'interrupteur affiche « non configuré » et **personne ne peut inscrire d'appareil** | **À FAIRE** — seul geste restant pour ouvrir la fonctionnalité |
+| 6 | Poser `VITE_VAPID_PUBLIC_KEY` dans les variables de build Cloudflare, puis publier le frontend | La clé publique est **figée dans le bundle au build**. Sans elle l'interrupteur affiche « non configuré » et personne ne peut inscrire d'appareil | **Fait le 2026-09-11** — vérifié en ligne : la clé est présente dans le bundle servi |
+| 8 | Coquille d'installation (manifeste + icônes + métadonnées iOS) | Safari ≥ 16.4 n'expose le push qu'en application installée : sans elle, l'état `needs_install` envoyait les iPhone dans une impasse | **Fait le 2026-09-11** — omission du portage depuis Iris, rattrapée |
 | 7 | Régénérer `src/integrations/supabase/types.ts` | `push_subscriptions` et `register_push_subscription` n'y sont pas : `pushSubscriptionService.ts` travaille sous `as never` en attendant | À faire |
 
 ⚠️ **`supabase db push` est inutilisable ici, constaté le 2026-09-11** : il refuse avec
