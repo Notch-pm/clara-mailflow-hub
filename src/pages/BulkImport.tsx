@@ -211,6 +211,11 @@ export default function BulkImport() {
             `Courrier "${draft.title || "sans titre"}" : quota IA atteint pour ce mois, extraction partielle`,
           );
         }
+        if (result.ocr_failures?.length) {
+          toast.warning(`Courrier "${draft.title || "sans titre"}" : pièces non lues`, {
+            description: result.ocr_failures.join(" ; "),
+          });
+        }
         const senderName = [result.sender?.first_name, result.sender?.last_name].filter(Boolean).join(" ");
         const matchedService = services.find(
           (s) => result.suggested_service_name &&

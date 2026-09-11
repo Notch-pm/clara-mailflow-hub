@@ -400,6 +400,12 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
         }
       }
 
+      // Échec partiel : le lot est passé, mais pas toutes les pièces. Le taire
+      // laisserait croire que tout a été lu.
+      if (result.ocr_failures?.length) {
+        toast.warning("Pièces non lues", { description: result.ocr_failures.join(" ; ") });
+      }
+
       if (filled.length) {
         toast.success(`Analyse : ${filled.join(", ")} pré-rempli(s)`);
       } else {
@@ -408,7 +414,8 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
       setStep("review");
     },
     onError: (err: Error) => {
-      toast.error(err.message);
+      // Le message vient de l'edge function — nom du fichier et motif compris.
+      toast.error("Analyse impossible", { description: err.message });
     },
   });
 

@@ -102,6 +102,13 @@ async function verifyOrgMembership(
 }
 
 /**
+ * Pièce que l'OCR ne sait pas lire. Ce n'est pas une panne — un .docx joint à
+ * un courrier est un cas ordinaire — mais ça se dit : sans ce motif, l'agent
+ * ne voit qu'une extraction vide, sans rien à corriger.
+ */
+class UnsupportedFileError extends Error {}
+
+/**
  * Le texte d'un fichier téléversé.
  *
  * ⚠️ LES IMAGES PASSENT DÉSORMAIS PAR LE STOCKAGE, comme les PDF, et ce n'est
@@ -129,22 +136,35 @@ async function ocrFile(
 
   const isImage = mime.startsWith("image/");
   const isPdf = mime === "application/pdf" || name.endsWith(".pdf");
-  if (!isImage && !isPdf) return "";
+  if (!isImage && !isPdf) {
+    throw new UnsupportedFileError(
+      `type non pris en charge (${file.mime_type || "type inconnu"}) — seuls les PDF, les images et les fichiers texte sont lus`,
+    );
+  }
 
-  const tempKey = `${orgId}/temp/${crypto.randomUUID()}-${file.name}`;
+  // Le nom du fichier n'entre PAS tel quel dans une clé de stockage : Storage
+  // n'accepte que `\w` et une poignée de signes, si bien qu'un seul accent — le
+  // « é » de « Compétences » — faisait échouer l'envoi, donc l'OCR, donc toute
+  // l'extraction, sur un nom de fichier pourtant banal en français. Même
+  // assainissement qu'à `fetch-inbound-emails` et `portal-form`, qui écrivent
+  // depuis toujours des clés sûres.
+  const safeName = (file.name || "document").replace(/[^\w.\-]+/g, "_");
+  const tempKey = `${orgId}/temp/${crypto.randomUUID()}-${safeName}`;
   const bytes = Uint8Array.from(atob(file.content_base64), (c) => c.charCodeAt(0));
 
   const { error: upErr } = await admin.storage.from(BUCKET).upload(tempKey, bytes, {
     contentType: file.mime_type,
     upsert: false,
   });
-  if (upErr) throw new Error(`Temp upload failed: ${upErr.message}`);
+  if (upErr) throw new Error(`préparation du fichier impossible (${upErr.message})`);
 
   try {
     const { data: signed, error: signErr } = await admin.storage
       .from(BUCKET)
       .createSignedUrl(tempKey, SIGNED_URL_TTL_SECONDS);
-    if (signErr || !signed) throw new Error(`Signed URL error: ${signErr?.message}`);
+    if (signErr || !signed) {
+      throw new Error(`lien de lecture impossible à produire (${signErr?.message})`);
+    }
 
     const { text } = await socleOcr({
       ctx,
@@ -205,11 +225,16 @@ Deno.serve(async (req) => {
 
     // OCR each file (up to first 5 to cap cost)
     const texts: string[] = [];
+    // Le traitement reste best-effort — un fichier illisible parmi cinq ne doit
+    // pas emporter le lot —, mais chaque échec garde son motif et son nom de
+    // fichier : c'est tout ce que l'agent a pour comprendre quoi refaire.
+    const ocrFailures: string[] = [];
     let quotaExceeded = false;
     for (const file of (files ?? []).slice(0, 5)) {
       try {
         const text = await ocrFile(admin, orgId, file, aiContext);
         if (text.trim()) texts.push(text.trim());
+        else ocrFailures.push(`« ${file.name} » : aucun texte lisible dans ce document`);
       } catch (e) {
         if (e instanceof AiQuotaExceededError) {
           // Contrairement aux autres erreurs OCR par fichier (avalées en
@@ -219,7 +244,9 @@ Deno.serve(async (req) => {
           quotaExceeded = true;
           break;
         }
-        console.error(`OCR failed for ${file.name}:`, (e as Error).message);
+        const reason = e instanceof Error ? e.message : String(e);
+        ocrFailures.push(`« ${file.name} » : ${reason}`);
+        console.error(`OCR failed for ${file.name}:`, reason);
       }
     }
 
@@ -233,7 +260,17 @@ Deno.serve(async (req) => {
       texts.push(pasted_text.trim().slice(0, 50_000));
     }
 
-    if (!texts.length) return jsonResponse({ error: "Aucun texte extrait des documents" }, 400);
+    if (!texts.length) {
+      return jsonResponse(
+        {
+          error: ocrFailures.length
+            ? `Aucun texte n'a pu être extrait — ${ocrFailures.join(" ; ")}`
+            : "Aucun texte n'a pu être extrait des documents fournis.",
+          ocr_failures: ocrFailures,
+        },
+        400,
+      );
+    }
 
     const extractedText = texts.join("\n\n===\n\n");
     const combinedText = extractedText.slice(0, 30_000);
@@ -375,6 +412,9 @@ ${combinedText}`;
       // true si certains fichiers du lot n'ont pas pu être OCRisés faute de quota
       // (mais l'extraction a quand même pu se faire sur les fichiers déjà traités).
       quota_exceeded: quotaExceeded,
+      // Échecs partiels : l'extraction a abouti, mais pas sur tout le lot. Le
+      // détail remonte à l'écran plutôt que de rester dans le journal.
+      ocr_failures: ocrFailures,
     });
   } catch (err) {
     // Les refus du guichet arrivent déjà traduits, avec leur statut : plafond

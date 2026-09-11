@@ -84,6 +84,41 @@ export interface ExtractCourierInfoResult {
   matched_contact: SocleContact | null;
   extracted_text: string | null;
   quota_exceeded?: boolean;
+  /** Pièces du lot restées illisibles, avec leur motif — l'extraction a abouti
+   *  sur les autres. */
+  ocr_failures?: string[];
+}
+
+/**
+ * Le motif réel d'un échec d'edge function.
+ *
+ * `functions.invoke` ne rend qu'un « Edge Function returned a non-2xx status
+ * code » : le message que la fonction a pris soin de rédiger — plafond IA
+ * atteint, pièce illisible, organisation non rattachée au Socle — dort dans le
+ * corps de la réponse, que seul `error.context` donne encore à lire. Sans cette
+ * lecture, l'agent voit la même phrase opaque quelle que soit la panne.
+ */
+async function edgeError(error: unknown, fallback: string) {
+  const ctx = (error as { context?: Response }).context;
+  const err = new Error(fallback) as Error & {
+    status?: number;
+    code?: string;
+    details?: string[];
+  };
+  const generic = (error as { message?: string }).message;
+  if (generic && !generic.includes("non-2xx")) err.message = generic;
+  if (ctx?.status) err.status = ctx.status;
+  try {
+    // `clone()` : le corps ne se lit qu'une fois, et l'appelant peut vouloir le
+    // relire.
+    const body = await ctx?.clone().json();
+    if (body?.error) err.message = String(body.error);
+    if (body?.code) err.code = String(body.code);
+    if (Array.isArray(body?.ocr_failures)) err.details = body.ocr_failures.map(String);
+  } catch {
+    // Corps vide ou illisible : le message générique fera l'affaire.
+  }
+  return err;
 }
 
 /** Normalize suggested_actions: handles both legacy string[] and new SuggestedAction[] */
@@ -124,18 +159,16 @@ export async function runOcr(courierId: string) {
     body: { courier_id: courierId },
   });
   if (error) {
-    // Cas légitime : courrier sans pièce jointe (email texte pur) → l'edge function
-    // renvoie 400 "Aucun document à extraire". On ne traite pas ça comme une erreur.
-    const ctx: any = (error as any).context;
-    const msg = String((error as any).message || "");
-    if (
-      ctx?.status === 400 ||
-      msg.includes("Aucun document") ||
-      msg.includes("non-2xx")
-    ) {
+    const err = await edgeError(error, "Extraction OCR impossible");
+    // Cas légitime : courrier sans pièce jointe (email texte pur) → l'edge
+    // function renvoie 400 « Aucun document à extraire ». Le test portait aussi
+    // sur « non-2xx », c'est-à-dire sur TOUTES les erreurs : le plafond IA
+    // atteint comme une panne du guichet passaient pour une absence de pièce
+    // jointe, et l'écran n'affichait rien du tout.
+    if (err.status === 400) {
       return { results: [] as Array<{ document_id: string; ok: boolean; error?: string }> };
     }
-    throw error;
+    throw err;
   }
   return data as { results: Array<{ document_id: string; ok: boolean; error?: string }> };
 }
@@ -145,7 +178,7 @@ export async function runAnalysis(courierId: string) {
   const { data, error } = await supabase.functions.invoke("analyze-courier?action=analyze", {
     body: { courier_id: courierId },
   });
-  if (error) throw error;
+  if (error) throw await edgeError(error, "Analyse impossible");
   return data as CourierAnalysis;
 }
 
@@ -189,12 +222,7 @@ export async function extractCourierInfo(args: {
       ...(pastedText ? { pasted_text: pastedText } : {}),
     },
   });
-  if (error) {
-    const status = (error as { context?: { status?: number } }).context?.status;
-    const err = new Error((error as { message?: string }).message ?? "Analyse échouée") as Error & { status?: number };
-    if (status) err.status = status;
-    throw err;
-  }
+  if (error) throw await edgeError(error, "Analyse impossible");
   if (data?.error) throw new Error(data.error);
   return data as ExtractCourierInfoResult;
 }
