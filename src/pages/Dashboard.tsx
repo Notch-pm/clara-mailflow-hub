@@ -5,6 +5,7 @@ import { MailOpen, Clock, FileText, FileCheck, PenLine } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { GlobalSearch } from "@/components/search/GlobalSearch";
 import { supabase } from "@/integrations/supabase/client";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -30,22 +31,31 @@ function KpiCard({
   loading: boolean;
 }) {
   const inner = (
-    <Card className={href ? "hover:shadow-airbnb transition-shadow cursor-pointer h-full" : "h-full"}>
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{label}</CardTitle>
-        <Icon className={`h-5 w-5 shrink-0 ${iconColor}`} />
+    // `flex flex-col` + `mt-auto` sur le contenu : deux cartes voisines dont le
+    // libellé tient sur un nombre de lignes différent gardent malgré tout leurs
+    // valeurs sur la même ligne de fond.
+    <Card
+      className={`flex h-full flex-col ${href ? "hover:shadow-airbnb transition-shadow cursor-pointer" : ""}`}
+    >
+      {/* `space-y-0` neutralise l'espacement vertical de `CardHeader`, qui
+          décalerait l'icône vers le bas une fois la rangée passée en `flex-row`. */}
+      <CardHeader className="flex flex-row items-start justify-between gap-2 space-y-0 p-4 pb-2 md:p-6 md:pb-2">
+        <CardTitle className="min-w-0 text-[13px] font-medium leading-snug text-muted-foreground md:text-sm">
+          {label}
+        </CardTitle>
+        <Icon className={`h-4 w-4 shrink-0 md:h-5 md:w-5 ${iconColor}`} />
       </CardHeader>
-      <CardContent>
+      <CardContent className="mt-auto p-4 pt-0 md:p-6 md:pt-0">
         {loading ? (
-          <Skeleton className="h-9 w-16" />
+          <Skeleton className="h-8 w-14 md:h-9 md:w-16" />
         ) : (
-          <div className="text-3xl font-bold">{value}</div>
+          <div className="text-2xl font-bold md:text-3xl">{value}</div>
         )}
-        {sub && <p className="text-xs text-muted-foreground mt-1 capitalize">{sub}</p>}
+        {sub && <p className="mt-1 truncate text-xs capitalize text-muted-foreground">{sub}</p>}
       </CardContent>
     </Card>
   );
-  return href ? <Link to={href} className="block">{inner}</Link> : inner;
+  return href ? <Link to={href} className="block h-full">{inner}</Link> : inner;
 }
 
 // ─── Dashboard ───────────────────────────────────────────────────────────────
@@ -198,13 +208,22 @@ export default function Dashboard() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Tableau de bord</h1>
-        <p className="text-muted-foreground">Vue d'ensemble de votre gestion du courrier</p>
+    <div className="space-y-6 md:space-y-8">
+      {/* La recherche ne se range à côté du titre qu'à partir de lg : sur une
+          tablette, ses 560 px ne laissaient au sous-titre qu'une colonne de
+          130 px, qui se cassait en deux lignes contre le champ. */}
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold tracking-tight">Tableau de bord</h1>
+          <p className="text-muted-foreground">Vue d'ensemble de votre gestion du courrier</p>
+        </div>
+        {/* Panneau flottant : il doit passer AU-DESSUS des cartes de KPI. */}
+        <div className="relative z-30 w-full lg:max-w-[560px]">
+          <GlobalSearch />
+        </div>
       </div>
 
-      <div className="grid gap-4 grid-cols-2 md:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
         <KpiCard label="Courriers reçus"          value={recusMoisEnCours}    sub={currentMonthLabel} Icon={MailOpen}   iconColor="text-primary"         href="/boite-aux-lettres"        loading={loading} />
         <KpiCard label="Courriers reçus (M−1)"    value={recusMoisPrecedent}  sub={prevMonthLabel}    Icon={MailOpen}   iconColor="text-muted-foreground"                                  loading={loading} />
         <KpiCard label="En attente d'instruction" value={enAttente}                                   Icon={Clock}      iconColor="text-warning"          href="/boite-aux-lettres"        loading={loading} />
@@ -215,19 +234,21 @@ export default function Dashboard() {
 
       {/* Listes côte à côte — chacune prend toute la largeur si l'autre est absente */}
       {(courriersEnAttente.length > 0 || (userSignatory && (pendingSignature?.length ?? 0) > 0)) && (
-        <div className={`grid gap-6 items-start ${courriersEnAttente.length > 0 && userSignatory && (pendingSignature?.length ?? 0) > 0 ? "lg:grid-cols-2" : ""}`}>
+        <div className={`grid grid-cols-1 items-start gap-4 md:gap-6 ${courriersEnAttente.length > 0 && userSignatory && (pendingSignature?.length ?? 0) > 0 ? "lg:grid-cols-2" : ""}`}>
 
           {/* En attente de prise en charge */}
           {courriersEnAttente.length > 0 && (
             <section className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-muted-foreground" />
-                  <h2 className="text-base font-semibold">En attente de prise en charge</h2>
-                  <Badge variant="secondary">{courriersEnAttente.length}</Badge>
+              {/* `flex-wrap` + `min-w-0` : sur un téléphone, « Voir tous »
+                  descend d'une ligne au lieu d'élargir la page. */}
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                <div className="flex min-w-0 items-center gap-2">
+                  <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <h2 className="min-w-0 text-base font-semibold">En attente de prise en charge</h2>
+                  <Badge variant="secondary" className="shrink-0">{courriersEnAttente.length}</Badge>
                 </div>
                 {courriersEnAttente.length > 20 && (
-                  <Link to="/boite-aux-lettres" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                  <Link to="/boite-aux-lettres" className="ml-auto shrink-0 text-xs text-muted-foreground transition-colors hover:text-foreground">
                     Voir tous →
                   </Link>
                 )}
@@ -238,18 +259,18 @@ export default function Dashboard() {
                     <Link
                       key={c.id}
                       to={`/courrier/${c.id}`}
-                      className="flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors"
+                      className="flex items-center justify-between gap-3 px-3 py-3 transition-colors hover:bg-muted/50 md:px-4"
                     >
                       <div className="min-w-0">
-                        <p className="text-sm font-medium truncate">{c.subject ?? "(sans objet)"}</p>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="truncate text-sm font-medium">{c.subject ?? "(sans objet)"}</p>
+                        <p className="truncate text-xs text-muted-foreground">
                           {new Date(c.received_at ?? c.created_at).toLocaleDateString("fr-FR")}
                           {c.assigned_service && (
                             <span className="ml-2 text-muted-foreground/70">— {c.assigned_service}</span>
                           )}
                         </p>
                       </div>
-                      <span className="text-muted-foreground ml-4 shrink-0">→</span>
+                      <span className="shrink-0 text-muted-foreground">→</span>
                     </Link>
                   ))}
                 </div>
@@ -260,10 +281,10 @@ export default function Dashboard() {
           {/* En attente de signature */}
           {userSignatory && (pendingSignature?.length ?? 0) > 0 && (
             <section className="space-y-3">
-              <div className="flex items-center gap-2">
-                <PenLine className="h-4 w-4 text-muted-foreground" />
-                <h2 className="text-base font-semibold">En attente de votre signature</h2>
-                <Badge variant="secondary">{pendingSignature!.length}</Badge>
+              <div className="flex min-w-0 items-center gap-2">
+                <PenLine className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <h2 className="min-w-0 text-base font-semibold">En attente de votre signature</h2>
+                <Badge variant="secondary" className="shrink-0">{pendingSignature!.length}</Badge>
               </div>
               <Card>
                 <div className="divide-y">
@@ -275,15 +296,15 @@ export default function Dashboard() {
                           ? `/courrier/${c.parent_courier_id}?tab=response&replyId=${c.id}&edit=1`
                           : `/courrier/${c.id}`
                       }
-                      className="flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors"
+                      className="flex items-center justify-between gap-3 px-3 py-3 transition-colors hover:bg-muted/50 md:px-4"
                     >
                       <div className="min-w-0">
-                        <p className="text-sm font-medium truncate">{c.subject ?? "(sans objet)"}</p>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="truncate text-sm font-medium">{c.subject ?? "(sans objet)"}</p>
+                        <p className="truncate text-xs text-muted-foreground">
                           {new Date(c.created_at).toLocaleDateString("fr-FR")}
                         </p>
                       </div>
-                      <span className="text-muted-foreground ml-4 shrink-0">→</span>
+                      <span className="shrink-0 text-muted-foreground">→</span>
                     </Link>
                   ))}
                 </div>
