@@ -26,6 +26,7 @@ import type {
 import { useUserServiceFilter } from "@/hooks/useUserServiceFilter";
 import { useCourierList } from "@/hooks/useCourierList";
 import { useCourierFacets } from "@/hooks/useCourierFacets";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { DataTablePagination } from "@/components/data-table/data-table-pagination";
 import { SortableHeader, type SortDirection } from "@/components/data-table/data-table-column-header";
 import { LIST_HEADER_SURFACE, ListCellDate, ListCellText, ListCellTitle } from "@/components/list/ListCells";
@@ -66,6 +67,15 @@ export function recordLogin() {
 const ROW_GRID =
   "grid grid-cols-[minmax(0,1fr)_28px] items-center gap-3 md:grid-cols-[104px_minmax(0,1fr)_160px_28px]";
 
+/**
+ * `lg:` de Tailwind — la largeur à partir de laquelle la liste et le panneau
+ * tiennent côte à côte. En dessous, le panneau n'est pas rendu du tout : un
+ * courrier n'y serait lisible qu'au prix d'un long défilement sous la liste.
+ * La boîte se réduit alors à sa liste, et un courrier s'ouvre dans sa page
+ * dédiée — le geste des autres listes de courriers.
+ */
+const SPLIT_VIEW_QUERY = "(min-width: 1024px)";
+
 export default function BoiteAuxLettres() {
   const { organizationId } = useOrganization();
   const { profile, membership } = useAuth();
@@ -75,6 +85,7 @@ export default function BoiteAuxLettres() {
   const [courierToDelete, setCourierToDelete] = useState<CourierListRow | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [tab, setTab] = useState<"all" | "transferred">("all");
+  const splitView = useMediaQuery(SPLIT_VIEW_QUERY);
 
   async function handleConfirmDelete() {
     if (!organizationId || !courierToDelete) return;
@@ -195,6 +206,15 @@ export default function BoiteAuxLettres() {
   useEffect(() => {
     if (!pendingOpenId || !organizationId) return;
 
+    // Sans panneau, le courrier s'ouvre dans sa page dédiée. La règle est ici
+    // plutôt que sur le clic pour valoir aussi pour les deux autres chemins
+    // d'ouverture : le lien `?open=` d'une notification et la création.
+    if (!splitView) {
+      setPendingOpenId(null);
+      navigate(`/courrier/${pendingOpenId}`);
+      return;
+    }
+
     let cancelled = false;
     supabase
       .from("couriers")
@@ -208,20 +228,22 @@ export default function BoiteAuxLettres() {
         setPendingOpenId(null);
       });
     return () => { cancelled = true; };
-  }, [pendingOpenId, organizationId]);
+  }, [pendingOpenId, organizationId, splitView, navigate]);
 
   // Premier courrier sélectionné d'office : le panneau de droite n'a de sens
   // que rempli, et le tri met en tête celui qu'on veut traiter. Le ref retient
   // la tentative : sans lui, un courrier que la requête par identifiant ne
   // rend pas (droits, suppression concurrente) serait redemandé sans fin.
+  // Sous `lg`, pas de sélection d'office : elle ouvrirait la page du premier
+  // courrier avant même que l'utilisateur ait lu la liste.
   const autoSelectedRef = useRef<string | null>(null);
   useEffect(() => {
-    if (selectedCourier || pendingOpenId || !list.rows.length) return;
+    if (!splitView || selectedCourier || pendingOpenId || !list.rows.length) return;
     const first = list.rows[0].id;
     if (autoSelectedRef.current === first) return;
     autoSelectedRef.current = first;
     setPendingOpenId(first);
-  }, [list.rows, selectedCourier, pendingOpenId]);
+  }, [splitView, list.rows, selectedCourier, pendingOpenId]);
 
   function isNew(courier: CourierListRow): boolean {
     if (!lastLogin) return false;
@@ -238,7 +260,8 @@ export default function BoiteAuxLettres() {
   // Le panneau attend un CourierWithRelations complet, que le RPC ne produit
   // pas. On réutilise le chemin `pendingOpenId` déjà présent, qui recharge le
   // courrier par identifiant : un aller-retour de plus au clic, et le panneau
-  // reçoit un enregistrement plus riche (documents, événements).
+  // reçoit un enregistrement plus riche (documents, événements). Sans panneau,
+  // ce même chemin redirige vers la page dédiée du courrier.
   function handleRowClick(courier: CourierListRow) {
     setPendingOpenId(courier.id);
   }
@@ -437,24 +460,29 @@ export default function BoiteAuxLettres() {
             />
           </section>
 
-          {/* La hauteur vient du conteneur, pas de `100dvh` : ce gabarit retranchait
+          {/* Le panneau n'existe qu'à partir de `lg`, et sa media query fait foi :
+              caché en CSS, il resterait monté — il chargerait le courrier et son
+              aperçu pour un écran qui ne les montre pas.
+              La hauteur vient du conteneur, pas de `100dvh` : ce gabarit retranchait
               l'en-tête mais pas le pied de page, et les derniers pixels du panneau
               tombaient sous la ligne de flottaison, hors d'atteinte du défilement.
               Le panneau n'est plus posé dans une colonne flex non plus : la carte,
               qui rogne son propre débordement, se laissait comprimer par la
               colonne au lieu de faire défiler le panneau — sa fin restait alors
               inatteignable, quel que soit le défilement. */}
-          <aside
-            className="w-full min-w-0 border-t bg-background p-4 lg:w-[440px] lg:shrink-0 lg:overflow-y-auto lg:border-l lg:border-t-0 xl:w-[520px]"
-            aria-label="Courrier sélectionné"
-          >
-            <MailboxSidePanel
-              courier={selectedCourier}
-              organizationId={organizationId}
-              onClose={() => setSelectedCourier(null)}
-              onDelete={(c) => setCourierToDelete(c as unknown as CourierListRow)}
-            />
-          </aside>
+          {splitView && (
+            <aside
+              className="w-[440px] min-w-0 shrink-0 overflow-y-auto border-l bg-background p-4 xl:w-[520px]"
+              aria-label="Courrier sélectionné"
+            >
+              <MailboxSidePanel
+                courier={selectedCourier}
+                organizationId={organizationId}
+                onClose={() => setSelectedCourier(null)}
+                onDelete={(c) => setCourierToDelete(c as unknown as CourierListRow)}
+              />
+            </aside>
+          )}
         </div>
       )}
 
