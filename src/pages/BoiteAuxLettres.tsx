@@ -337,9 +337,9 @@ export default function BoiteAuxLettres() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1600px] px-4 py-5 pb-8 md:px-6">
+    <div className="mx-auto flex w-full max-w-[1600px] flex-col px-4 py-5 pb-8 md:px-6 lg:h-full lg:pb-5">
       {/* Header */}
-      <div className="mb-4 flex flex-wrap items-end gap-4">
+      <div className="mb-4 flex flex-wrap items-end gap-4 lg:shrink-0">
         <div className="flex min-w-0 flex-1 basis-[320px] items-center gap-3">
           <img
             src={mailboxIcon}
@@ -375,9 +375,9 @@ export default function BoiteAuxLettres() {
           </CardContent>
         </Card>
       ) : (
-        <div className="flex flex-wrap items-start gap-5">
-          <section className="flex min-w-0 flex-1 basis-[620px] flex-col gap-3.5">
-            <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-start gap-5 lg:min-h-0 lg:flex-1 lg:flex-nowrap lg:items-stretch">
+          <section className="flex min-w-0 flex-1 basis-[620px] flex-col gap-3.5 lg:min-h-0">
+            <div className="flex flex-wrap items-center gap-3 lg:shrink-0">
               <div className="relative min-w-0 max-w-[360px] flex-1 basis-[260px]">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -427,50 +427,64 @@ export default function BoiteAuxLettres() {
               </span>
             </div>
 
-            <Card className="overflow-hidden p-0 shadow-airbnb-sm">
-              {list.isLoading ? (
-                <div className="py-8 text-center text-sm text-muted-foreground">Chargement…</div>
-              ) : !list.rows.length ? (
-                <div className="py-8 text-center text-sm text-muted-foreground">
-                  {tab === "transferred"
-                    ? "Aucun courrier transféré."
-                    : "Aucun courrier en attente dans la boîte aux lettres."}
+            {/* Sur grand écran le cadre occupe la hauteur disponible : seules les
+                lignes défilent, entre un en-tête et une pagination qui restent en
+                place. */}
+            <Card className="flex flex-col overflow-hidden p-0 shadow-airbnb-sm lg:min-h-0 lg:flex-1">
+              {!list.isLoading && list.rows.length > 0 && (
+                /* Le tri par colonne est une affordance de bureau : sous `md`
+                   la liste garde son ordre par défaut (plus récents d'abord). */
+                <div
+                  className={cn(
+                    ROW_GRID,
+                    "hidden shrink-0 border-b border-l-[3px] border-l-transparent bg-muted/50 px-4 py-3 text-xs font-bold text-muted-foreground md:grid",
+                  )}
+                >
+                  <SortButton label="Réception" sortKey="received_at" descFirst />
+                  <SortButton label="Objet" sortKey="subject" descFirst={false} />
+                  {/* Expéditeur n'est pas triable : le RPC le tire de
+                      courier_participants APRÈS le découpage, sur la seule
+                      page retenue. */}
+                  <span>Expéditeur</span>
+                  <span />
                 </div>
-              ) : (
-                <>
-                  {/* Le tri par colonne est une affordance de bureau : sous `md`
-                      la liste garde son ordre par défaut (plus récents d'abord). */}
-                  <div
-                    className={cn(
-                      ROW_GRID,
-                      "hidden border-b border-l-[3px] border-l-transparent bg-muted/50 px-4 py-3 text-xs font-bold text-muted-foreground md:grid",
-                    )}
-                  >
-                    <SortButton label="Réception" sortKey="received_at" descFirst />
-                    <SortButton label="Objet" sortKey="subject" descFirst={false} />
-                    {/* Expéditeur n'est pas triable : le RPC le tire de
-                        courier_participants APRÈS le découpage, sur la seule
-                        page retenue. */}
-                    <span>Expéditeur</span>
-                    <span />
-                  </div>
-                  {list.rows.map((c) => renderRow(c))}
-                </>
               )}
-              <DataTablePagination
-                page={list.page}
-                pageCount={list.pageCount}
-                pageSize={list.pageSize}
-                totalCount={list.totalCount}
-                onPageChange={list.setPage}
-                onPageSizeChange={list.setPageSize}
-                isLoading={list.isFetching}
-              />
+              <div className="min-h-0 flex-1 lg:overflow-y-auto">
+                {list.isLoading ? (
+                  <div className="py-8 text-center text-sm text-muted-foreground">Chargement…</div>
+                ) : !list.rows.length ? (
+                  <div className="py-8 text-center text-sm text-muted-foreground">
+                    {tab === "transferred"
+                      ? "Aucun courrier transféré."
+                      : "Aucun courrier en attente dans la boîte aux lettres."}
+                  </div>
+                ) : (
+                  list.rows.map((c) => renderRow(c))
+                )}
+              </div>
+              <div className="shrink-0">
+                <DataTablePagination
+                  page={list.page}
+                  pageCount={list.pageCount}
+                  pageSize={list.pageSize}
+                  totalCount={list.totalCount}
+                  onPageChange={list.setPage}
+                  onPageSizeChange={list.setPageSize}
+                  isLoading={list.isFetching}
+                />
+              </div>
             </Card>
           </section>
 
+          {/* La hauteur vient du conteneur, pas de `100dvh` : ce gabarit retranchait
+              l'en-tête mais pas le pied de page, et les derniers pixels du panneau
+              tombaient sous la ligne de flottaison, hors d'atteinte du défilement.
+              Le panneau n'est plus posé dans une colonne flex non plus : la carte,
+              qui rogne son propre débordement, se laissait comprimer par la
+              colonne au lieu de faire défiler le panneau — sa fin restait alors
+              inatteignable, quel que soit le défilement. */}
           <aside
-            className="flex w-full min-w-0 flex-1 basis-[420px] flex-col gap-3.5 lg:sticky lg:top-0 lg:max-h-[calc(100dvh-3.5rem)] lg:max-w-[520px] lg:self-start lg:overflow-y-auto lg:pb-2"
+            className="w-full min-w-0 flex-1 basis-[420px] lg:min-h-0 lg:max-w-[520px] lg:overflow-y-auto lg:pb-2"
             aria-label="Courrier sélectionné"
           >
             <MailboxSidePanel
