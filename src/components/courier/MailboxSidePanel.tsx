@@ -54,6 +54,7 @@ import { assignableOrgs } from "@/services/socleOrgConfigService";
 import { cn } from "@/lib/utils";
 import { readableTextColor } from "@/lib/tag-color";
 import { categoryTone } from "@/lib/workflow-category";
+import { SOCLE_CONTACT_TYPE_LABELS } from "@/services/socleContactService";
 import { QuartierBadge } from "@/components/contacts/QuartierBadge";
 import ContactPicker from "./ContactPicker";
 import CourierNotes from "./CourierNotes";
@@ -400,6 +401,7 @@ export default function MailboxSidePanel({
                   disabled={effectiveReadOnly}
                   fallbackLabel={sender?.name ?? undefined}
                   triggerClassName="-ml-2 h-7 border-0 bg-transparent px-2 shadow-none hover:bg-muted hover:shadow-none [&>span]:font-semibold"
+                  showTypeBadge={false}
                 />
               </div>
               {sender?.socle_contact_id && (
@@ -417,16 +419,28 @@ export default function MailboxSidePanel({
                 </Tooltip>
               )}
             </div>
+            {/* Le nom tient la première ligne ; le type et le quartier, qui ne
+                servent qu'à situer l'expéditeur, se rangent dessous. Le type
+                reste du texte (deux cartouches côte à côte se disputeraient
+                l'œil), le quartier garde la sienne, couleur du référentiel. */}
+            {senderContact && (
+              <div className="flex min-w-0 flex-wrap items-center gap-1.5 pt-0.5">
+                <span className="truncate text-xs italic text-muted-foreground">
+                  {SOCLE_CONTACT_TYPE_LABELS[senderContact.contact_type]}
+                </span>
+                {senderContact.quartier && (
+                  <>
+                    <span className="text-xs text-muted-foreground">-</span>
+                    <QuartierBadge quartier={senderContact.quartier} />
+                  </>
+                )}
+              </div>
+            )}
             {senderRelationLines.map((line) => (
               <div key={line.key} className="truncate text-xs text-muted-foreground">
                 {line.text}
               </div>
             ))}
-            {senderContact?.quartier && (
-              <div className="pt-1">
-                <QuartierBadge quartier={senderContact.quartier} />
-              </div>
-            )}
           </Field>
 
           <Field label="Destinataire">

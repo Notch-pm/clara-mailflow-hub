@@ -43,6 +43,12 @@ interface Props {
   fallbackLabel?: string;
   /** Classes du bouton déclencheur (ex. hauteur réduite en colonne latérale). */
   triggerClassName?: string;
+  /**
+   * Cartouche du type de contact dans le déclencheur. À couper quand l'appelant
+   * rend lui-même le type sous le nom (boîte aux lettres) : sinon le type
+   * apparaît deux fois, et la cartouche mange la largeur du nom.
+   */
+  showTypeBadge?: boolean;
 }
 
 /**
@@ -58,6 +64,7 @@ export default function ContactPicker({
   disabled,
   fallbackLabel,
   triggerClassName,
+  showTypeBadge = true,
 }: Props) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -152,9 +159,11 @@ export default function ContactPicker({
           >
             {value ? (
               <span className="flex items-center gap-2 truncate">
-                <Badge variant="secondary" className="shrink-0">
-                  {SOCLE_CONTACT_TYPE_LABELS[value.contact_type]}
-                </Badge>
+                {showTypeBadge && (
+                  <Badge variant="secondary" className="shrink-0">
+                    {SOCLE_CONTACT_TYPE_LABELS[value.contact_type]}
+                  </Badge>
+                )}
                 <span className="truncate">{contactDisplay(value)}</span>
               </span>
             ) : fallbackLabel ? (
