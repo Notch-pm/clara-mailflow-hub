@@ -79,6 +79,7 @@ Client unique : `supabase/functions/_shared/socleAi.ts`. Voir aussi `docs/edge-f
 - Deux types (`kind`) : workflow principal des courriers, et workflow des réponses.
 - Chaque `workflow_state` a une `category` : `draft`, `in_progress`, `processed`, `archived` — détermine l'onglet d'affichage (`CourriersEnInstruction`, `CourriersTraites`, `CourriersArchives`).
 - Transitions définies par `workflow_transitions`. La validité des transitions est vérifiée côté client (et idéalement par trigger DB pour les cas critiques).
+- **Changer d'organisation gestionnaire** (carte « Organisation gestionnaire », colonne de contexte de `/courrier/:id` et panneau de la boîte aux lettres) : à l'état initial c'est une simple affectation ; ensuite c'est un **transfert**, confirmé par un dialogue, qui **remet le courrier à l'état initial du workflow de l'organisation cible** (chaque organisation a son workflow), journalise `service_transferred` et notifie les membres de la cible. Le panneau de tri se referme après le transfert (le courrier quitte la pile à trier) ; l'écran d'instruction, lui, reste ouvert sur le courrier — sauf transfert vers une organisation hors du périmètre de l'agent, qui n'aurait plus rien à afficher.
 
 ## 4. Actions issues d'un courrier
 

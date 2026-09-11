@@ -730,16 +730,106 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
                   </div>
                 )}
 
+                {/* L'organisation gestionnaire a sa propre carte juste dessous,
+                    d'où on la change : la répéter ici en lecture seule ferait
+                    deux fois la même ligne. */}
                 <dl className="mt-3.5 space-y-2 border-t pt-3">
-                  <div className="flex items-baseline justify-between gap-3 text-sm">
-                    <dt className="text-muted-foreground">Organisation gestionnaire</dt>
-                    <dd className="min-w-0 truncate font-semibold">{localAssignedService ?? EMPTY}</dd>
-                  </div>
                   <div className="flex items-baseline justify-between gap-3 text-sm">
                     <dt className="text-muted-foreground">Participants</dt>
                     <dd className="font-semibold">{participants.length}</dd>
                   </div>
                 </dl>
+              </RailCard>
+
+              <RailCard title="Organisation gestionnaire">
+                {effectiveReadOnly ? (
+                  <div className="text-sm font-semibold">{localAssignedService ?? EMPTY}</div>
+                ) : (
+                  <Popover open={servicePopoverOpen} onOpenChange={setServicePopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        className="flex h-11 w-full items-center justify-between gap-2 rounded-md border px-3 text-left text-sm font-semibold transition-shadow hover:shadow-airbnb-sm"
+                        title={
+                          isInitialState
+                            ? "Affecter à une organisation"
+                            : "Transférer à une autre organisation"
+                        }
+                      >
+                        <span className="min-w-0 truncate">
+                          {localAssignedService ?? (
+                            <span className="font-normal italic text-muted-foreground">Non assigné</span>
+                          )}
+                        </span>
+                        <ArrowRightLeft className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-72 space-y-2 p-3" align="start">
+                      {isInitialState ? (
+                        <>
+                          <p className="text-xs text-muted-foreground">Affecter à une organisation</p>
+                          <Select
+                            value={currentService?.id ?? ""}
+                            onValueChange={(v) => {
+                              serviceMutation.mutate(v);
+                              setServicePopoverOpen(false);
+                            }}
+                            disabled={serviceMutation.isPending}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Sélectionner une organisation" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availableServices.map((s) => (
+                                <SelectItem key={s.id} value={s.id}>
+                                  {s.name}
+                                  {s.workflow?.name && (
+                                    <span className="ml-2 text-xs text-muted-foreground">
+                                      — {s.workflow.name}
+                                    </span>
+                                  )}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {localAssignedService && !currentService && (
+                            <p className="text-xs italic text-muted-foreground">
+                              Organisation actuelle « {localAssignedService} » introuvable.
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-xs text-muted-foreground">
+                            Transférer à une autre organisation. Le courrier sera remis à l'état initial.
+                          </p>
+                          <Select
+                            value=""
+                            onValueChange={(serviceId) => {
+                              setTransferTargetServiceId(serviceId);
+                              setTransferConfirmOpen(true);
+                              setServicePopoverOpen(false);
+                            }}
+                            disabled={transferMutation.isPending}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Choisir une organisation…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {assignableOrgs(services ?? [])
+                                .filter((o) => o.id !== currentService?.id)
+                                .map((o) => (
+                                  <SelectItem key={o.id} value={o.id}>
+                                    {o.name}
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                        </>
+                      )}
+                    </PopoverContent>
+                  </Popover>
+                )}
               </RailCard>
 
               <RailCard title="Classement">
@@ -917,97 +1007,6 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
                       );
                     })}
                   </ol>
-                )}
-              </RailCard>
-
-              <RailCard title="Organisation gestionnaire">
-                {effectiveReadOnly ? (
-                  <div className="text-sm font-semibold">{localAssignedService ?? EMPTY}</div>
-                ) : (
-                  <Popover open={servicePopoverOpen} onOpenChange={setServicePopoverOpen}>
-                    <PopoverTrigger asChild>
-                      <button
-                        type="button"
-                        className="flex h-11 w-full items-center justify-between gap-2 rounded-md border px-3 text-left text-sm font-semibold transition-shadow hover:shadow-airbnb-sm"
-                        title={
-                          isInitialState
-                            ? "Affecter à une organisation"
-                            : "Transférer à une autre organisation"
-                        }
-                      >
-                        <span className="min-w-0 truncate">
-                          {localAssignedService ?? (
-                            <span className="font-normal italic text-muted-foreground">Non assigné</span>
-                          )}
-                        </span>
-                        <ArrowRightLeft className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                      </button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-72 space-y-2 p-3" align="start">
-                      {isInitialState ? (
-                        <>
-                          <p className="text-xs text-muted-foreground">Affecter à une organisation</p>
-                          <Select
-                            value={currentService?.id ?? ""}
-                            onValueChange={(v) => {
-                              serviceMutation.mutate(v);
-                              setServicePopoverOpen(false);
-                            }}
-                            disabled={serviceMutation.isPending}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Sélectionner une organisation" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {availableServices.map((s) => (
-                                <SelectItem key={s.id} value={s.id}>
-                                  {s.name}
-                                  {s.workflow?.name && (
-                                    <span className="ml-2 text-xs text-muted-foreground">
-                                      — {s.workflow.name}
-                                    </span>
-                                  )}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          {localAssignedService && !currentService && (
-                            <p className="text-xs italic text-muted-foreground">
-                              Organisation actuelle « {localAssignedService} » introuvable.
-                            </p>
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          <p className="text-xs text-muted-foreground">
-                            Transférer à une autre organisation. Le courrier sera remis à l'état initial.
-                          </p>
-                          <Select
-                            value=""
-                            onValueChange={(serviceId) => {
-                              setTransferTargetServiceId(serviceId);
-                              setTransferConfirmOpen(true);
-                              setServicePopoverOpen(false);
-                            }}
-                            disabled={transferMutation.isPending}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Choisir une organisation…" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {assignableOrgs(services ?? [])
-                                .filter((o) => o.id !== currentService?.id)
-                                .map((o) => (
-                                  <SelectItem key={o.id} value={o.id}>
-                                    {o.name}
-                                  </SelectItem>
-                                ))}
-                            </SelectContent>
-                          </Select>
-                        </>
-                      )}
-                    </PopoverContent>
-                  </Popover>
                 )}
               </RailCard>
             </>

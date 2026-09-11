@@ -368,7 +368,7 @@ export function useCourierWorkspace({
         if (notifError) console.error("Notifications de transfert non créées :", notifError);
       }
 
-      return { name: targetOrg.name, initialStateId: initial?.id ?? null, loseAccess };
+      return { id: targetOrg.id, name: targetOrg.name, initialStateId: initial?.id ?? null, loseAccess };
     },
     onSuccess: (result) => {
       setTransferConfirmOpen(false);
@@ -376,8 +376,19 @@ export function useCourierWorkspace({
       queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
       queryClient.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
       queryClient.invalidateQueries({ queryKey: ["instruction-couriers"] });
+      queryClient.invalidateQueries({ queryKey: ["courier", courier?.id] });
       toast.success("Courrier transféré");
-      onOpenChange(false);
+      // Plein écran : on reste sur le courrier, comme pour une transition — le
+      // panneau de tri, lui, se referme (le courrier quitte la pile à trier).
+      // Exception : le transfert qui nous retire l'accès, où la page n'aurait
+      // plus rien à afficher.
+      if (!fullScreen || result?.loseAccess) {
+        onOpenChange(false);
+        return;
+      }
+      if (result?.name) setLocalAssignedService(result.name);
+      if (result?.id) setLocalSocleOrgId(result.id);
+      setLocalWorkflowStateId(result?.initialStateId ?? null);
     },
     onError: (err: Error) => toast.error(err.message),
   });
