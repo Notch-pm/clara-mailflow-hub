@@ -470,7 +470,7 @@ export default function BoiteAuxLettres() {
           </section>
 
           <aside
-            className="flex w-full min-w-0 flex-1 basis-[420px] flex-col gap-3.5 lg:sticky lg:top-0 lg:max-w-[520px] lg:self-start"
+            className="flex w-full min-w-0 flex-1 basis-[420px] flex-col gap-3.5 lg:sticky lg:top-0 lg:max-h-[calc(100dvh-3.5rem)] lg:max-w-[520px] lg:self-start lg:overflow-y-auto lg:pb-2"
             aria-label="Courrier sélectionné"
           >
             <MailboxSidePanel

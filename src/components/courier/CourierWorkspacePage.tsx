@@ -634,7 +634,7 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
           </div>
 
           <aside
-            className="flex w-full min-w-0 flex-1 basis-[340px] flex-col gap-4 lg:sticky lg:top-0 lg:max-w-[400px] lg:self-start"
+            className="flex w-full min-w-0 flex-1 basis-[340px] flex-col gap-4 lg:sticky lg:top-0 lg:max-h-[calc(100dvh-3.5rem)] lg:max-w-[400px] lg:self-start lg:overflow-y-auto lg:pb-2"
             aria-label="Contexte du courrier"
           >
             <div className="flex rounded-full bg-muted p-1" role="tablist" aria-label="Contexte affiché">
