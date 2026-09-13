@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAsDataUrl } from "@/lib/reply-signature";
 
 export interface Signatory {
   id: string;
@@ -229,4 +230,16 @@ export async function setServiceSignatories(
       .in("signatory_id", toRemove);
     if (error) throw error;
   }
+}
+
+/**
+ * Image de signature en `data:`, prête à être posée dans un courriel.
+ *
+ * L'URL signée du bucket expire au bout d'une heure : un courrier parti avec le
+ * lien plutôt qu'avec l'image afficherait un cadre vide chez l'usager.
+ */
+export async function getSignatureDataUrl(storageKey: string): Promise<string> {
+  const url = await getSignatureUrl(storageKey);
+  if (!url) throw new Error("Impossible de charger l'image de signature.");
+  return fetchAsDataUrl(url);
 }

@@ -1,6 +1,6 @@
 # Matrice des droits d'accès
 
-> Dernière vérification : 2026-07-22.
+> Dernière vérification : 2026-09-13.
 >
 > **État au 2026-07-22.** La lecture seule du `consultant` est **appliquée côté serveur**
 > (RLS `is_editor_of` en base + garde `assertEditor` dans les edge functions) **et côté UI**.
@@ -33,6 +33,8 @@
 2. Le gestionnaire est **volontairement** exclu des statistiques (`canAccessStats`, `src/lib/permissions.ts`) — décision produit assumée au 2026-07-22 (comportement conservé tel quel).
 
 ➕ **Attribut transverse — Signataire** (`is_signataire`) : **indépendant du rôle**. Seul un utilisateur marqué signataire peut **signer** une réponse ; l'attribut se cumule avec n'importe quel rôle et n'est pas un profil à part entière.
+
+➕ **Espace élu sur téléphone** (2026-09-13) : le rôle `elu` reçoit une interface dédiée et simplifiée quand il ouvre Clara sur un écran de moins de 768 px — voir `docs/routes.md` § « Espace élu ». **Ce n'est pas un niveau de droits** : l'élu garde exactement les mêmes autorisations qu'un gestionnaire (`canEditCouriers`), seuls les écrans changent. Le mode se coupe par appareil (« Affichage complet », menu de l'avatar ou `Mon profil`). Prédicat : `isElu()` dans `src/lib/permissions.ts` ; arbitrage : `src/lib/elu-mode.ts`.
 
 ### État d'application
 

@@ -14,6 +14,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { UserAvatar } from "@/components/UserAvatar";
 import { uploadUserAvatar, removeUserAvatar } from "@/services/avatarService";
 import { PushDeviceToggle } from "@/components/PushDeviceToggle";
+import { EluFullDisplayCard } from "@/components/elu/EluFullDisplayCard";
 import { supabase } from "@/integrations/supabase/client";
 
 const profileSchema = z.object({
@@ -222,6 +223,9 @@ export default function MonProfil() {
           <PushDeviceToggle footnote />
         </CardContent>
       </Card>
+
+      {/* Ne se montre qu'à un élu sur téléphone : ailleurs, le réglage n'a pas d'effet. */}
+      <EluFullDisplayCard />
     </div>
   );
 }

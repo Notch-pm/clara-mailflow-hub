@@ -3,7 +3,7 @@ import type { ApexOptions } from "apexcharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { StatMonthPoint } from "@/services/statsService";
-import { CHART_COLORS, baseChart, baseGrid, baseXAxis, baseYAxis, baseTooltip } from "../chartConfig";
+import { CHART_COLORS, useChartBase, baseGrid, baseXAxis, baseYAxis, baseTooltip } from "../chartConfig";
 import { format, parse } from "date-fns";
 import { fr } from "date-fns/locale";
 
@@ -13,13 +13,14 @@ interface Props {
 }
 
 export function InboundVolumeChart({ data, loading }: Props) {
+  const chartBase = useChartBase();
   const categories = (data ?? []).map((d) =>
     format(parse(d.month, "yyyy-MM", new Date()), "MMM yy", { locale: fr }),
   );
   const series = [{ name: "Courriers entrants", data: (data ?? []).map((d) => d.count) }];
 
   const options: ApexOptions = {
-    chart: { ...baseChart, type: "bar", id: "inbound-volume" },
+    chart: { ...chartBase, type: "bar", id: "inbound-volume" },
     plotOptions: { bar: { borderRadius: 4, columnWidth: "60%" } },
     colors: [CHART_COLORS[0]],
     xaxis: { ...baseXAxis, categories },

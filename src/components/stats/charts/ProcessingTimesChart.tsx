@@ -2,8 +2,10 @@ import ReactApexChart from "react-apexcharts";
 import type { ApexOptions } from "apexcharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { PHONE_QUERY } from "@/lib/breakpoints";
 import type { StatProcessingPoint } from "@/services/statsService";
-import { CHART_COLORS, baseChart, baseGrid, baseTooltip } from "../chartConfig";
+import { CHART_COLORS, useChartBase, baseGrid, baseTooltip, boundedBarHeight, horizontalBarYAxis } from "../chartConfig";
 
 interface Props {
   data: StatProcessingPoint[] | undefined;
@@ -11,6 +13,8 @@ interface Props {
 }
 
 export function ProcessingTimesChart({ data, loading }: Props) {
+  const chartBase = useChartBase();
+  const isPhone = useMediaQuery(PHONE_QUERY);
   const categories = (data ?? []).map((d) => d.service_name);
   const series = [
     {
@@ -24,7 +28,7 @@ export function ProcessingTimesChart({ data, loading }: Props) {
   ];
 
   const options: ApexOptions = {
-    chart: { ...baseChart, type: "bar", id: "processing-times" },
+    chart: { ...chartBase, type: "bar", id: "processing-times" },
     plotOptions: { bar: { horizontal: true, borderRadius: 4, barHeight: "70%" } },
     colors: [CHART_COLORS[2], CHART_COLORS[0]],
     xaxis: {
@@ -35,7 +39,7 @@ export function ProcessingTimesChart({ data, loading }: Props) {
       },
       axisBorder: { show: false },
     },
-    yaxis: { labels: { style: { fontFamily: "'Nunito Sans', sans-serif", fontSize: "11px" } } },
+    yaxis: horizontalBarYAxis(isPhone),
     grid: baseGrid,
     tooltip: {
       ...baseTooltip,
@@ -64,7 +68,7 @@ export function ProcessingTimesChart({ data, loading }: Props) {
             options={options}
             series={series}
             type="bar"
-            height={Math.max(200, categories.length * 60)}
+            height={boundedBarHeight(categories.length, 60)}
           />
         )}
       </CardContent>

@@ -10,6 +10,15 @@ import { isSuperAdmin } from "@/lib/permissions";
 import { AppLayout } from "@/components/AppLayout";
 import { lazyRoute } from "@/lib/lazy-route";
 import { SuperAdminLayout } from "@/components/SuperAdminLayout";
+import { EluModeGate } from "@/components/elu/EluModeGate";
+import { EluLayout } from "@/components/elu/EluLayout";
+const EluAccueil = lazyRoute(() => import("@/pages/EluAccueil"));
+const EluASigner = lazyRoute(() => import("@/pages/EluASigner"));
+const EluReponse = lazyRoute(() => import("@/pages/EluReponse"));
+const EluRecherche = lazyRoute(() => import("@/pages/EluRecherche"));
+const EluUsager = lazyRoute(() => import("@/pages/EluUsager"));
+const EluCourrier = lazyRoute(() => import("@/pages/EluCourrier"));
+const EluIndicateurs = lazyRoute(() => import("@/pages/EluIndicateurs"));
 import Dashboard from "@/pages/Dashboard";
 import BoiteAuxLettres, { recordLogin } from "@/pages/BoiteAuxLettres";
 import CourriersEnInstruction from "@/pages/CourriersEnInstruction";
@@ -184,22 +193,39 @@ const App = () => (
 
               {/* Regular user routes */}
               <Route element={<ProtectedRoutes />}>
-                <Route element={<AppLayout />}>
-                  <Route path="/" element={<Dashboard />} />
-                  <Route path="/boite-aux-lettres" element={<BoiteAuxLettres />} />
-                  <Route path="/courriers-en-instruction" element={<CourriersEnInstruction />} />
-                  <Route path="/courriers-traites" element={<CourriersTraites />} />
-                  <Route path="/courriers-archives" element={<CourriersArchives />} />
-                  <Route path="/courriers-sortants" element={<CourriersSortants />} />
-                  <Route path="/courrier/:id" element={<CourierDetail />} />
-                  <Route path="/workflows/:id" element={<Suspense fallback={<LoadingScreen />}><WorkflowDetail /></Suspense>} />
-                  <Route path="/parametres" element={<SettingsPage />} />
-                  <Route path="/mon-profil" element={<MonProfil />} />
-                  <Route path="/contacts" element={<Contacts />} />
-                  <Route path="/contacts/:id" element={<Contacts />} />
-                  <Route path="/recherche" element={<RechercheCourrierPage />} />
-                  <Route path="/import-en-masse" element={<BulkImport />} />
-                  <Route path="/statistiques" element={<Suspense fallback={<LoadingScreen />}><StatistiquesPage /></Suspense>} />
+                <Route element={<EluModeGate />}>
+                  <Route element={<AppLayout />}>
+                    <Route path="/" element={<Dashboard />} />
+                    <Route path="/boite-aux-lettres" element={<BoiteAuxLettres />} />
+                    <Route path="/courriers-en-instruction" element={<CourriersEnInstruction />} />
+                    <Route path="/courriers-traites" element={<CourriersTraites />} />
+                    <Route path="/courriers-archives" element={<CourriersArchives />} />
+                    <Route path="/courriers-sortants" element={<CourriersSortants />} />
+                    <Route path="/courrier/:id" element={<CourierDetail />} />
+                    <Route path="/workflows/:id" element={<Suspense fallback={<LoadingScreen />}><WorkflowDetail /></Suspense>} />
+                    <Route path="/parametres" element={<SettingsPage />} />
+                    <Route path="/mon-profil" element={<MonProfil />} />
+                    <Route path="/contacts" element={<Contacts />} />
+                    <Route path="/contacts/:id" element={<Contacts />} />
+                    <Route path="/recherche" element={<RechercheCourrierPage />} />
+                    <Route path="/import-en-masse" element={<BulkImport />} />
+                    <Route path="/statistiques" element={<Suspense fallback={<LoadingScreen />}><StatistiquesPage /></Suspense>} />
+                  </Route>
+
+                  {/* Espace élu : servi au rôle `elu` sur téléphone. `EluModeGate`
+                      y renvoie depuis `/`, et en ramène dès que l'une des trois
+                      conditions tombe (rôle, largeur, affichage complet demandé). */}
+                  <Route path="/elu" element={<EluLayout />}>
+                    <Route index element={<Suspense fallback={<LoadingScreen />}><EluAccueil /></Suspense>} />
+                    <Route path="a-signer" element={<Suspense fallback={<LoadingScreen />}><EluASigner /></Suspense>} />
+                    <Route path="reponse/:replyId" element={<Suspense fallback={<LoadingScreen />}><EluReponse /></Suspense>} />
+                    <Route path="recherche" element={<Suspense fallback={<LoadingScreen />}><EluRecherche /></Suspense>} />
+                    <Route path="usager/:contactId" element={<Suspense fallback={<LoadingScreen />}><EluUsager /></Suspense>} />
+                    <Route path="courrier/:courierId" element={<Suspense fallback={<LoadingScreen />}><EluCourrier /></Suspense>} />
+                    {/* Les statistiques conviennent telles quelles à un élu :
+                        la page est MONTÉE ici, jamais dupliquée. */}
+                    <Route path="indicateurs" element={<Suspense fallback={<LoadingScreen />}><EluIndicateurs /></Suspense>} />
+                  </Route>
                 </Route>
               </Route>
               <Route path="*" element={<NotFound />} />

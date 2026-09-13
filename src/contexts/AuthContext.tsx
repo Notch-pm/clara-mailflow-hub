@@ -18,6 +18,10 @@ interface OrgMembership {
   organization_id: string;
   role: string;
   is_active: boolean | null;
+  /** Droit de signer une réponse — transverse, indépendant du rôle. */
+  is_signataire: boolean | null;
+  /** Qualité affichée sous la signature (« Vice-président »). */
+  signataire_title: string | null;
   organization_name: string;
   organization_logo_url: string | null;
 }
@@ -92,7 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const membershipData = await withRetry(() =>
       supabase
         .from("organization_users")
-        .select("organization_id, role, is_active, organizations(name, logo_url)")
+        .select("organization_id, role, is_active, is_signataire, signataire_title, organizations(name, logo_url)")
         .eq("user_id", userId)
         .limit(1)
         .maybeSingle(),
@@ -108,6 +112,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         organization_id: membershipData.organization_id,
         role: membershipData.role,
         is_active: membershipData.is_active,
+        is_signataire: membershipData.is_signataire ?? null,
+        signataire_title: membershipData.signataire_title ?? null,
         organization_name: org?.name ?? "",
         organization_logo_url: org?.logo_url ?? null,
       };

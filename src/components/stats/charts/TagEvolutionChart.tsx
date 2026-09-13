@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { StatTagPoint } from "@/services/statsService";
 import type { TagGroup } from "@/services/courierTagService";
-import { CHART_COLORS, baseChart, baseGrid, baseXAxis, baseYAxis, baseTooltip } from "../chartConfig";
+import { CHART_COLORS, useChartBase, baseGrid, baseXAxis, baseYAxis, baseTooltip } from "../chartConfig";
 import { format, parse } from "date-fns";
 import { fr } from "date-fns/locale";
 
@@ -34,6 +34,7 @@ const TITLES: Record<TagGroup, { title: string; empty: string }> = {
 };
 
 export function TagEvolutionChart({ data, loading, group, colorByName }: Props) {
+  const chartBase = useChartBase();
   const { series, categories, colors } = useMemo(() => {
     const rows = (data ?? []).filter((d) => (d.tag_group ?? "theme") === group);
     if (!rows.length) return { series: [], categories: [], colors: CHART_COLORS };
@@ -58,7 +59,7 @@ export function TagEvolutionChart({ data, loading, group, colorByName }: Props) 
   }, [data, group, colorByName]);
 
   const options: ApexOptions = {
-    chart: { ...baseChart, type: "line", id: `tag-evolution-${group}` },
+    chart: { ...chartBase, type: "line", id: `tag-evolution-${group}` },
     stroke: { curve: "smooth", width: 2 },
     colors,
     xaxis: { ...baseXAxis, categories },

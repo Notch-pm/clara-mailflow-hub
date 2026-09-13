@@ -46,3 +46,15 @@ export function canAccessStats(profile: Profile, membership: Membership): boolea
   if (isSuperAdmin(profile)) return true;
   return membership?.role !== "gestionnaire";
 }
+
+/**
+ * Élu : rôle de dirigeant (maire, adjoint, vice-président). Il a les mêmes
+ * droits d'écriture qu'un gestionnaire — c'est `canEditCouriers` qui en décide —
+ * mais il reçoit un espace dédié sur téléphone (voir `src/lib/elu-mode.ts`).
+ *
+ * Égalité stricte : contrairement à `administrateur`, qui traîne un alias
+ * historique `admin`, `elu` n'a jamais été écrit autrement.
+ */
+export function isElu(membership: Membership): boolean {
+  return membership?.role === "elu";
+}

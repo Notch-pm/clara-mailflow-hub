@@ -1,6 +1,6 @@
 # Routes
 
-> Dernière vérification : 2026-07-21, alignée sur `src/App.tsx`.
+> Dernière vérification : 2026-09-13, alignée sur `src/App.tsx`.
 
 Définies dans `src/App.tsx`. Trois zones : publique, super-admin, utilisateur authentifié.
 Toute nouvelle route doit être ajoutée ici dans la même PR que son ajout dans `App.tsx`.
@@ -42,6 +42,29 @@ Toute nouvelle route doit être ajoutée ici dans la même PR que son ajout dans
 | `/recherche` | `RechercheCourrierPage` | Recherche transverse des courriers. |
 | `/import-en-masse` | `BulkImport` | Assistant d'import de courriers en lot. |
 | `/statistiques` | `StatistiquesPage` | Statistiques lazy-loaded. |
+
+
+## Espace élu (`ProtectedRoutes` + `EluModeGate` + `EluLayout`)
+
+Servi au rôle `elu` **sur téléphone** (moins de 768 px), sauf s'il a demandé l'affichage
+complet. `EluModeGate` (`src/components/elu/EluModeGate.tsx`) arbitre : il renvoie `/` vers
+`/elu` quand les trois conditions tiennent, et ramène `/elu/*` vers `/` dès que l'une tombe
+— changement de rôle, écran élargi, affichage complet demandé. Les autres rôles ne voient
+jamais ces routes. Réglage retenu par appareil : `clara.elu-affichage:<userId>` en
+`localStorage` (`src/lib/elu-mode.ts`).
+
+Un lien profond vers un écran classique (`/courrier/:id` depuis une notification) reste servi
+par `AppLayout`, qui pose alors un retour « ‹ Espace élu » (`EluReturnBanner`).
+
+| Path | Page | Description |
+|---|---|---|
+| `/elu` | `EluAccueil` | Ce qui attend l'élu : courriers à signer, compteurs du mois, accès à la recherche. |
+| `/elu/a-signer` | `EluASigner` | File des réponses en attente de sa signature, avec leur ancienneté. Visible même s'il n'est pas signataire (état vide). |
+| `/elu/reponse/:replyId` | `EluReponse` | Lecture d'une réponse et actions du workflow (signer, transitions secondaires). |
+| `/elu/courrier/:courierId` | `EluCourrier` | Le courrier reçu, en lecture seule : expéditeur, résumé de l'analyse, intentions, pièces jointes. Atteint depuis la file à signer, le détail d'une réponse et la recherche. |
+| `/elu/recherche` | `EluRecherche` | Derniers courriers reçus tant que rien n'est saisi, puis recherche courriers + usagers (`useGlobalSearch`, partagée avec la recherche globale). |
+| `/elu/usager/:contactId` | `EluUsager` | Fiche d'un usager : coordonnées cliquables et ses courriers. |
+| `/elu/indicateurs` | `EluIndicateurs` | Enveloppe qui monte **la page de statistiques existante** — jamais dupliquée ; elle lui pose seulement la gouttière que `main` lui donne ailleurs. Masquée si `canAccessStats` est faux. |
 
 ## Sous-pages paramètres
 

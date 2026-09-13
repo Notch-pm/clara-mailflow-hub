@@ -2,8 +2,10 @@ import ReactApexChart from "react-apexcharts";
 import type { ApexOptions } from "apexcharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { PHONE_QUERY } from "@/lib/breakpoints";
 import type { StatServicePoint } from "@/services/statsService";
-import { CHART_COLORS, baseChart, baseGrid, baseTooltip } from "../chartConfig";
+import { CHART_COLORS, useChartBase, baseGrid, baseTooltip, boundedBarHeight, horizontalBarYAxis } from "../chartConfig";
 
 interface Props {
   data: StatServicePoint[] | undefined;
@@ -12,6 +14,8 @@ interface Props {
 }
 
 export function ByServiceChart({ data, loading, direction }: Props) {
+  const chartBase = useChartBase();
+  const isPhone = useMediaQuery(PHONE_QUERY);
   const title =
     direction === "inbound"
       ? "Courriers entrants par service"
@@ -24,7 +28,7 @@ export function ByServiceChart({ data, loading, direction }: Props) {
     const series = (data ?? []).map((d) => d.count);
 
     const options: ApexOptions = {
-      chart: { ...baseChart, type: "donut", id: "by-service-outbound" },
+      chart: { ...chartBase, type: "donut", id: "by-service-outbound" },
       labels,
       colors: CHART_COLORS,
       plotOptions: {
@@ -66,7 +70,7 @@ export function ByServiceChart({ data, loading, direction }: Props) {
   const barSeries = [{ name: "Entrants", data: (data ?? []).map((d) => d.count) }];
 
   const options: ApexOptions = {
-    chart: { ...baseChart, type: "bar", id: "by-service-inbound" },
+    chart: { ...chartBase, type: "bar", id: "by-service-inbound" },
     plotOptions: { bar: { horizontal: true, borderRadius: 4, barHeight: "60%" } },
     colors: [CHART_COLORS[0]],
     xaxis: {
@@ -82,7 +86,7 @@ export function ByServiceChart({ data, loading, direction }: Props) {
       axisBorder: { show: false },
       axisTicks: { show: false },
     },
-    yaxis: { labels: { style: { fontFamily: "'Nunito Sans', sans-serif", fontSize: "11px" } } },
+    yaxis: horizontalBarYAxis(isPhone),
     grid: baseGrid,
     tooltip: { ...baseTooltip, y: { formatter: (v) => `${v} courrier(s)` } },
     dataLabels: { enabled: false },
@@ -105,7 +109,7 @@ export function ByServiceChart({ data, loading, direction }: Props) {
             options={options}
             series={barSeries}
             type="bar"
-            height={Math.max(200, categories.length * 44)}
+            height={boundedBarHeight(categories.length, 44)}
           />
         )}
       </CardContent>

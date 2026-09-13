@@ -4,7 +4,7 @@ import type { ApexOptions } from "apexcharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { StatDayPoint } from "@/services/statsService";
-import { CHART_COLORS, baseChart, baseGrid, baseXAxis, baseTooltip } from "../chartConfig";
+import { CHART_COLORS, useChartBase, baseGrid, baseXAxis, baseTooltip } from "../chartConfig";
 import { format, subDays, startOfDay } from "date-fns";
 import { fr } from "date-fns/locale";
 
@@ -28,6 +28,7 @@ function buildFullRange(data: StatDayPoint[]): { categories: string[]; counts: n
 }
 
 export function InboundDailyChart({ data, loading }: Props) {
+  const chartBase = useChartBase();
   const { categories, counts } = useMemo(
     () => buildFullRange(data ?? []),
     [data],
@@ -36,7 +37,7 @@ export function InboundDailyChart({ data, loading }: Props) {
   const series = [{ name: "Courriers entrants", data: counts }];
 
   const options: ApexOptions = {
-    chart: { ...baseChart, type: "area", id: "inbound-daily" },
+    chart: { ...chartBase, type: "area", id: "inbound-daily" },
     stroke: { curve: "smooth", width: 2 },
     fill: { type: "gradient", gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0.05 } },
     colors: [CHART_COLORS[0]],

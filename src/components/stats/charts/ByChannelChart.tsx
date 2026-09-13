@@ -3,7 +3,7 @@ import type { ApexOptions } from "apexcharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { StatChannelPoint } from "@/services/statsService";
-import { CHART_COLORS, baseChart, baseTooltip } from "../chartConfig";
+import { CHART_COLORS, useChartBase, baseTooltip } from "../chartConfig";
 
 const CHANNEL_LABELS: Record<string, string> = {
   email: "Email",
@@ -19,11 +19,12 @@ interface Props {
 }
 
 export function ByChannelChart({ data, loading }: Props) {
+  const chartBase = useChartBase();
   const labels = (data ?? []).map((d) => CHANNEL_LABELS[d.channel] ?? d.channel);
   const series = (data ?? []).map((d) => d.count);
 
   const options: ApexOptions = {
-    chart: { ...baseChart, type: "donut", id: "by-channel" },
+    chart: { ...chartBase, type: "donut", id: "by-channel" },
     labels,
     colors: CHART_COLORS,
     plotOptions: { pie: { donut: { size: "60%", labels: { show: true, total: { show: true, label: "Total", fontSize: "13px" } } } } },

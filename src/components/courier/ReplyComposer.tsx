@@ -50,7 +50,8 @@ import {
   splitSignatureBlock,
   type ReplyRecord,
 } from "@/services/courierReplyService";
-import { getSignatureUrl } from "@/services/signatoryService";
+import { getSignatureDataUrl } from "@/services/signatoryService";
+import { appendSignature, buildSignatureBlock } from "@/lib/reply-signature";
 import { useAuth } from "@/contexts/AuthContext";
 import { printReply, buildContactBlock } from "@/utils/printReply";
 import { getOrgHtmlTemplate } from "@/services/templateService";
@@ -383,18 +384,12 @@ export default function ReplyComposer({
       throw new Error("Aucune signature manuscrite enregistrée pour ce signataire.");
     if (!currentUserId || selectedSignatory.user_id !== currentUserId)
       throw new Error("Vous n'êtes pas le signataire désigné.");
-    const url = await getSignatureUrl(selectedSignatory.signature_storage_key);
-    if (!url) throw new Error("Impossible de charger l'image de signature.");
-    const dataUrl = await fetchAsDataUrl(url);
+    const signatureDataUrl = await getSignatureDataUrl(selectedSignatory.signature_storage_key);
     const fullName = `${selectedSignatory.first_name} ${selectedSignatory.last_name}`.trim();
-    const titleP = selectedSignatory.title ? `<p><em>${escapeHtml(selectedSignatory.title)}</em></p>` : "";
-    const signatureBlock = [
-      `<p>&nbsp;</p>`, `<hr>`,
-      `<p><strong>${escapeHtml(fullName)}</strong></p>`,
-      titleP,
-      `<p><img src="${dataUrl}" alt="signature-clara" style="max-width:200px;max-height:80px;" /></p>`,
-    ].join("");
-    return `${stripSignatureBlock(body)}${signatureBlock}`;
+    return appendSignature(
+      body,
+      buildSignatureBlock({ fullName, title: selectedSignatory.title, signatureDataUrl }),
+    );
   }
 
   // ─── Mutations ──────────────────────────────────────────────────────
@@ -1180,19 +1175,4 @@ export default function ReplyComposer({
   );
 }
 
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-}
 
-async function fetchAsDataUrl(url: string): Promise<string> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error("Téléchargement de la signature échoué.");
-  const blob = await res.blob();
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(new Error("Lecture de la signature échouée."));
-    reader.readAsDataURL(blob);
-  });
-}
