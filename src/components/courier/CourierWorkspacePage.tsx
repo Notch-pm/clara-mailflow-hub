@@ -55,6 +55,8 @@ import { cn } from "@/lib/utils";
 import { readableTextColor } from "@/lib/tag-color";
 import { categoryTone } from "@/lib/workflow-category";
 import { QuartierBadge } from "@/components/contacts/QuartierBadge";
+import AdvanceBlockedButton from "./AdvanceBlockedButton";
+import { advanceBlockedReason } from "./advance-blocked-reason";
 import ContactPicker from "./ContactPicker";
 import ContentIntentsTab from "./ContentIntentsTab";
 import CourierHistoryTab from "./CourierHistoryTab";
@@ -422,6 +424,28 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
                 {nextTransition.name ?? nextTransition.to_state?.name ?? "Suivant"}
               </span>
             </Button>
+          )}
+          {/* Sans transition nominale, cet écran n'affichait RIEN : l'agent
+              n'avait aucun moyen de savoir s'il manquait un droit, un état, ou
+              une transition dans le workflow. Un bouton grisé qui dit pourquoi
+              vaut mieux qu'un silence — c'est aussi ce que fait la boîte aux
+              lettres, les deux écrans ne doivent pas raconter deux histoires. */}
+          {!effectiveReadOnly && !nextTransition && (
+            <AdvanceBlockedButton
+              reason={advanceBlockedReason({
+                hasOrganization: !!currentService,
+                hasWorkflow: !!currentService?.workflow_id,
+                hasState: !!localWorkflowStateId,
+                isFinalState,
+                transitionCount: transitions?.length ?? 0,
+                stateName: currentStateInfo?.name ?? null,
+              })}
+              wrapperClassName="w-full min-w-0 sm:w-auto"
+              className="h-10 w-full min-w-0 gap-2 font-bold sm:w-auto"
+            >
+              <span className="h-2 w-2 shrink-0 rounded-full bg-muted-foreground" />
+              <span className="truncate">Suivant</span>
+            </AdvanceBlockedButton>
           )}
           {!effectiveReadOnly && otherTransitions.length > 0 && (
             <DropdownMenu>

@@ -70,6 +70,7 @@ import {
 } from "@/hooks/useCourierWorkspace";
 import type { CourierChannel } from "@/types/courier";
 import { advanceBlockedReason } from "./advance-blocked-reason";
+import AdvanceBlockedButton from "./AdvanceBlockedButton";
 
 interface Props {
   courier: WorkspaceCourier | null;
@@ -296,10 +297,8 @@ export default function MailboxSidePanel({
                   {nextTransition.name ?? nextTransition.to_state?.name ?? "Instruire"}
                 </Button>
               ) : (
-                <Button
-                  className="h-10 flex-1 gap-2 font-bold"
-                  disabled
-                  title={advanceBlockedReason({
+                <AdvanceBlockedButton
+                  reason={advanceBlockedReason({
                     hasOrganization: !!currentService,
                     hasWorkflow: !!currentService?.workflow_id,
                     hasState: !!localWorkflowStateId,
@@ -307,10 +306,12 @@ export default function MailboxSidePanel({
                     transitionCount: transitions?.length ?? 0,
                     stateName: currentStateInfo?.name ?? null,
                   })}
+                  wrapperClassName="flex-1"
+                  className="h-10 w-full gap-2 font-bold"
                 >
                   <FileText className="h-4 w-4" />
                   Instruire
-                </Button>
+                </AdvanceBlockedButton>
               )}
               {otherTransitions.length > 0 && (
                 <DropdownMenu>
