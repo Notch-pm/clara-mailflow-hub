@@ -222,6 +222,38 @@ WHERE iris_request_id IS NOT NULL ORDER BY created_at DESC LIMIT 5;
 Côté Iris (lecture) : `request_attachments` non vide pour la demande, et `integration_api_logs`
 montre **un `POST /v1/uploads` par fichier** avant le `POST /v1/requests`.
 
+### Lot « référence du registre (chrono) » (2026-09-13) — appliqué le 2026-09-13
+
+`couriers.chrono` était lue par six écrans et n'avait jamais été écrite : 0 référence sur
+5 080 courriers depuis 2024. Conception : `docs/data-model.md` §`couriers`.
+
+| # | Action | Pourquoi cet ordre | État |
+|---|---|---|---|
+| 1 | Éprouver le trigger **en base, en transaction annulée** | Un BEFORE INSERT fautif sur `couriers` casse les six portes d'entrée d'un coup, l'ingestion IMAP comprise. Rien ne devait être posé avant d'avoir vu le comportement réel | **Fait** — 11 scénarios verts : suites par sens et par organisation, valeur explicite respectée, référence définitive, `NULL → valeur` ouvert, doublon rejeté, même référence légitime dans deux organisations, **pas de trou après annulation**. Vérifié après coup : 0 ligne laissée |
+| 2 | `20260913090832_courier_chrono.sql` | Fonction + 2 triggers + index unique partiel + fermeture de `courier_sequences` aux clients | **Appliqué** via `apply_migration` — registre `20260913090832` (fichier renommé pour coller) |
+| 3 | Test de fumée sur le trigger **live**, toujours en transaction annulée | Confirmer que ce qui tourne en prod est bien ce qui a été éprouvé | **Fait** — `2026-E-00001` côté SNA, `2026-S-00001` côté ACCM, 0 ligne laissée |
+| 4 | Supprimer `src/services/courierSequenceService.ts` | Unique lecteur de la table, sans appelant, et **il lisait le compteur sans l'incrémenter** : le garder aurait invité à s'en servir | **Fait** |
+| 5 | Publier le frontend | Aucun changement de code nécessaire (le trigger fait tout, et `createCourier` relit la ligne insérée) — le push ne porte que docs et suppression | **Fait** — push sur `main` |
+
+⚠️ **Aucune reprise de l'existant.** Les 5 080 courriers antérieurs restent à `NULL` et
+s'affichent « sans référence ». Le trigger laisse la porte ouverte (`NULL → valeur` est le seul
+changement autorisé sur une référence) ; la décision de numéroter rétroactivement, et selon quel
+ordre, n'est pas prise.
+
+Vérification :
+
+```sql
+-- Le registre avance, une suite par organisation x annee x sens :
+SELECT o.name, s.year, s.direction, s.last_value
+  FROM courier_sequences s JOIN organizations o ON o.id = s.organization_id
+ ORDER BY o.name, s.year, s.direction;
+
+-- Et plus aucun client ne peut le rembobiner :
+SELECT count(*) FROM information_schema.table_privileges
+ WHERE table_schema='public' AND table_name='courier_sequences'
+   AND grantee IN ('anon','authenticated');  -- doit rendre 0
+```
+
 ### Lot « charte graphique depuis le Socle » (2026-09-13) — appliqué le 2026-09-13
 
 Logo, couleur principale et couleur secondaire ne se saisissent plus dans Clara : ils sont

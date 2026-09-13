@@ -120,7 +120,7 @@ Table centrale. Tags stockés dans `metadata->'tags'` (tableau JSON de strings).
 |---|---|---|
 | `id` | uuid PK | |
 | `organization_id` | uuid FK | |
-| `chrono` | varchar | numéro séquentiel annuel |
+| `chrono` | varchar | Référence du registre, `AAAA-E\|S\|I-NNNNN` (ex. `2026-E-00042`). Posée par le trigger `assign_courier_chrono()` **à l'insertion, quelle que soit la porte d'entrée** ; définitive ensuite. Voir ci-dessous. |
 | `direction` | enum `courier_direction` | `inbound` \| `outbound` \| `internal` |
 | `channel` | enum `courier_channel` | `email` \| `paper` \| `portal` |
 | `subject` | text | |
@@ -132,6 +132,32 @@ Table centrale. Tags stockés dans `metadata->'tags'` (tableau JSON de strings).
 | `socle_organization_id` | uuid FK → socle_organizations | organisation gestionnaire — **clé de toute la logique** : RPC `stats_*` (`p_socle_organization_id`), `search_couriers`, filtres de droits (`useUserServiceFilter` → UUIDs via `socle_organization_members`), résolutions dans le panneau courrier/composer |
 | `metadata` | jsonb | `tags: string[]`, `body_text`, etc. — voir clés d'ingestion ci-dessous |
 | `fts_subject` / `fts_body` | tsvector | index full-text français |
+
+**Référence du registre (`chrono`) — implémentée le 2026-09-13.** Format `AAAA-E|S|I-NNNNN`,
+compteurs dans `courier_sequences` (une suite par organisation × année × sens).
+
+- **Un trigger, pas une RPC** : `assign_courier_chrono()` (BEFORE INSERT) couvre les six portes
+  d'entrée d'un courrier — IMAP, numérisation, portail, saisie, import en masse, réponse — d'un
+  coup. Une RPC qu'il faut penser à appeler, c'est une porte qu'on oublie, et un registre à trous.
+- **Année d'enregistrement, pas du courrier** : `now()`, jamais `received_at`. Un registre ne se
+  remplit que par la fin ; importer en 2026 une lettre de 2024 ne doit pas insérer un numéro au
+  milieu d'une année close.
+- **La lettre de sens n'est pas cosmétique** : les compteurs sont par sens, sans elle un entrant
+  nº 42 et un sortant nº 42 porteraient la même référence.
+- **Pas de trous** : l'incrément vit dans la même transaction que l'insertion — une transaction
+  annulée rend son numéro (vérifié en base). Le verrou de ligne sérialise les insertions
+  concurrentes d'une même organisation, ce qui est exactement ce qui garantit l'unicité.
+- **Définitive** : `trg_couriers_chrono_immutable` refuse toute modification d'une référence posée.
+  Seul le passage de `NULL` à une valeur reste ouvert — c'est la voie d'une reprise.
+- **Unicité** : index partiel `couriers_organization_chrono_uniq` (`WHERE chrono IS NOT NULL`),
+  par organisation : deux collectivités tiennent deux registres, la même référence des deux côtés
+  est légitime.
+- ⚠️ **Les 5 080 courriers antérieurs au 2026-09-13 restent à `NULL`** et s'affichent
+  « sans référence ». Une reprise passerait par le chemin `NULL → valeur` — décision non prise.
+- ⚠️ **Une réponse consomme son numéro dès le premier enregistrement de brouillon**
+  (`ensureReply` dans `ReplyComposer` → `createReply`, sur « Enregistrer le brouillon », la
+  signature ou l'envoi — pas à l'ouverture du composeur). Un brouillon enregistré puis supprimé
+  laisse donc un trou dans la suite `S`. À arbitrer si la continuité du registre sortant compte.
 
 Clés `metadata` posées par l'ingestion IMAP (`fetch-inbound-emails`) :
 
@@ -236,13 +262,20 @@ Notes internes libres sur un courrier.
 Relations entre courriers et systèmes externes (`external_type`, `external_id`, `sync_status`).
 
 #### `courier_sequences`
-Compteurs annuels par direction pour la numérotation `chrono`.
+Compteurs du registre : **un par organisation × année × sens** (UNIQUE). Alimente
+`couriers.chrono` depuis le 2026-09-13 — avant cette date la table était vide et la
+référence n'était jamais attribuée.
 
 | Colonne | Type |
 |---|---|
-| `year` | integer |
+| `organization_id` | uuid FK → organizations |
+| `year` | integer — année d'**enregistrement**, pas celle du courrier |
 | `direction` | enum `courier_direction` |
-| `last_value` | integer |
+| `last_value` | integer — dernier rang attribué. **Ne jamais diminuer** : les références déjà posées seraient resservies. |
+
+- **Écriture réservée** : plus aucune policy ni `GRANT` pour `anon`/`authenticated`
+  (migration `20260913090832_courier_chrono.sql`). Seuls le `service_role` et le trigger
+  `assign_courier_chrono()` (SECURITY DEFINER) y touchent.
 
 ---
 
