@@ -9,6 +9,11 @@
 // sync_smtp_settings_from_socle / clear_smtp_settings_from_socle). Voir smtp.ts
 // pour la logique pure.
 //
+// Et de la CHARTE GRAPHIQUE depuis le 2026-09-13 : les couleurs principale et
+// secondaire ne se saisissent plus dans Clara, elles sont recopiées de
+// `GET /v1/organizations/{tenant}/branding` (héritage déjà résolu côté Socle).
+// Voir branding.ts pour la logique pure.
+//
 // Auth (3 voies, comme sync-arpege-services) :
 //   - x-cron-secret (pg_cron via trigger_socle_sync) → privilégié
 //   - Bearer SERVICE_ROLE_KEY → privilégié
@@ -54,6 +59,12 @@ import {
   type SmtpTenantRef,
   type SocleSmtpDto,
 } from "./smtp.ts";
+import {
+  brandingWarning,
+  planBrandingUpdate,
+  type BrandingColors,
+  type SocleBrandingDto,
+} from "./branding.ts";
 
 type AdminClient = ReturnType<typeof createClient>;
 
@@ -217,6 +228,46 @@ async function fetchSocleSmtp(
   }
 }
 
+/**
+ * Charte graphique applicable à une organisation — mêmes règles que
+ * `fetchSocleSmtp` : pas de retry, un statut d'erreur n'est pas une exception
+ * (le miroir reste en l'état, un avertissement le dit), seul le 401 est fatal.
+ *
+ * L'organisation interrogée est celle du TENANT, pas sa racine : la route
+ * résout l'héritage, une sous-organisation qui porte sa propre charte garde
+ * la sienne.
+ */
+async function fetchSocleBranding(
+  socleOrgId: string,
+): Promise<{ status: number; dto: SocleBrandingDto | null }> {
+  const apiKey = Deno.env.get("SOCLE_API_KEY")?.trim();
+  if (!apiKey) throw new Error("Secret SOCLE_API_KEY manquant — configurez-le dans les secrets de la fonction");
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SOCLE_TIMEOUT_MS);
+  try {
+    const response = await fetch(
+      `${socleBaseUrl()}/v1/organizations/${encodeURIComponent(socleOrgId)}/branding`,
+      {
+        headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
+        signal: controller.signal,
+      },
+    );
+    if (response.status === 401) {
+      await response.body?.cancel();
+      throw new SocleAuthError(
+        "Clé API Socle invalide ou révoquée (401) — synchronisation interrompue",
+      );
+    }
+    if (!response.ok) {
+      await response.body?.cancel();
+      return { status: response.status, dto: null };
+    }
+    return { status: 200, dto: (await response.json()) as SocleBrandingDto };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // ── Auth (calqué sur sync-arpege-services) ──
 
 type AuthContext = { authorized: boolean; isPrivileged: boolean; userId?: string };
@@ -311,7 +362,7 @@ Deno.serve(async (req) => {
     // Organisations Clara mappées au Socle.
     let query = supabaseAdmin
       .from("organizations")
-      .select("id, name, slug, logo_url, socle_org_id")
+      .select("id, name, slug, logo_url, primary_color, secondary_color, socle_org_id")
       .not("socle_org_id", "is", null);
     if (filterOrgId) query = query.eq("id", filterOrgId);
     const { data: orgs, error: orgsError } = await query;
@@ -355,7 +406,7 @@ Deno.serve(async (req) => {
 
 // ── Synchronisation ──
 
-interface ClaraOrg {
+interface ClaraOrg extends Partial<BrandingColors> {
   id: string;
   name: string;
   slug: string | null;
@@ -378,6 +429,8 @@ interface OrgSyncResult {
     smtp_synchronises: number;
     /** Miroirs effacés faute de relais déclaré côté Socle (0 ou 1). */
     smtp_retires: number;
+    /** Charte graphique relue et appliquée (0 ou 1) — 0 = miroir laissé en l'état. */
+    charte_synchronisee: number;
   };
   warnings?: string[];
   error?: string;
@@ -477,17 +530,25 @@ async function syncOrg(
   );
 
   // 0bis) Identité du tenant : l'org racine du Socle fixe nom, slug et logo
-  // de l'organisation Clara (seules les couleurs restent gérées côté Clara).
+  // de l'organisation Clara.
   const root = subtree.find((o) => o.id === org.socle_org_id);
   const identity = root ? planTenantIdentityUpdate(org, root) : null;
-  if (identity && !dryRun) {
+
+  // 0ter) Charte graphique : les couleurs viennent du référentiel depuis le
+  // 2026-09-13 — plus aucune saisie dans Clara. Écrite dans la MÊME mise à jour
+  // que l'identité : c'est la même ligne, et les deux décrivent qui est la
+  // collectivité.
+  const branding = await syncBranding(org);
+
+  const tenantUpdate = { ...(identity ?? {}), ...(branding.fields ?? {}) };
+  if (Object.keys(tenantUpdate).length > 0 && !dryRun) {
     const { error: identityError } = await supabaseAdmin
       .from("organizations")
-      .update(identity)
+      .update(tenantUpdate)
       .eq("id", org.id);
     if (identityError) throw new Error(`identité organisation: ${identityError.message}`);
     console.log(
-      `[sync-socle] org ${org.name}: identité mise à jour depuis la racine Socle (${Object.keys(identity).join(", ")})`,
+      `[sync-socle] org ${org.name}: identité/charte mises à jour depuis le Socle (${Object.keys(tenantUpdate).join(", ")})`,
     );
   }
 
@@ -626,7 +687,7 @@ async function syncOrg(
     ? { created: 0, updated: 0, adopted: 0, obsoleted: 0, unchanged: 0 }
     : await syncActivations(supabaseAdmin, org, activations, muteOrgs, syncedAt);
 
-  const warnings = [...smtp.warnings, ...plan.warnings];
+  const warnings = [...smtp.warnings, ...branding.warnings, ...plan.warnings];
   if (muteOrgs.length > 0) {
     warnings.push(
       `Démarches illisibles pour ${muteOrgs.length} organisation(s) (${muteOrgs.join(", ")}) — leur miroir est inchangé.`,
@@ -642,9 +703,44 @@ async function syncOrg(
       activations: activationsCounters,
       smtp_synchronises: smtp.synchronises,
       smtp_retires: smtp.retires,
+      charte_synchronisee: branding.synchronisee,
     },
     warnings,
   };
+}
+
+// ── Charte graphique (miroir du Socle) ──
+
+/**
+ * Relit la charte applicable au tenant et rend les couleurs à réécrire, ou
+ * `null` si le miroir est déjà aligné. N'ÉCRIT RIEN : l'appelant fusionne ces
+ * champs avec l'identité pour ne faire qu'une mise à jour de `organizations`.
+ *
+ * Un échec ne fait échouer ni les autres tenants ni la synchronisation : les
+ * couleurs restent celles du dernier passage réussi, et un avertissement dit
+ * pourquoi. Contrairement au relais SMTP, une charte manquante n'empêche rien —
+ * les gabarits de mails ont leurs couleurs de repli.
+ */
+async function syncBranding(
+  org: ClaraOrg,
+): Promise<{ fields: Partial<BrandingColors> | null; synchronisee: number; warnings: string[] }> {
+  try {
+    const { status, dto } = await fetchSocleBranding(org.socle_org_id);
+    if (status !== 200) {
+      return { fields: null, synchronisee: 0, warnings: [brandingWarning(org.name, status)] };
+    }
+    return { fields: planBrandingUpdate(org, dto), synchronisee: 1, warnings: [] };
+  } catch (e) {
+    // Clé morte : la synchronisation entière s'arrête, comme partout ailleurs.
+    if (e instanceof SocleAuthError) throw e;
+    const message = e instanceof Error ? e.message : String(e);
+    console.error(`[sync-socle] org ${org.name}: charte graphique: ${message}`);
+    return {
+      fields: null,
+      synchronisee: 0,
+      warnings: [`charte graphique (${org.name}) : ${message} — miroir inchangé.`],
+    };
+  }
 }
 
 // ── Miroir d'activation des démarches par organisation ──

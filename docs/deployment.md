@@ -222,6 +222,40 @@ WHERE iris_request_id IS NOT NULL ORDER BY created_at DESC LIMIT 5;
 Côté Iris (lecture) : `request_attachments` non vide pour la demande, et `integration_api_logs`
 montre **un `POST /v1/uploads` par fichier** avant le `POST /v1/requests`.
 
+### Lot « charte graphique depuis le Socle » (2026-09-13) — appliqué le 2026-09-13
+
+Les couleurs principale et secondaire ne se saisissent plus dans Clara : elles sont recopiées du
+référentiel, comme le nom, le logo et le serveur d'envoi. Conception : `docs/data-model.md`
+§`organizations`.
+
+| # | Action | Pourquoi cet ordre | État |
+|---|---|---|---|
+| 1 | Rien à faire côté Socle | La route `/v1/organizations/{id}/branding` est **déjà déployée** (vérifié le 2026-09-13 dans la fonction `public-api` live) et demande le scope `read`, que la clé plateforme de Clara porte déjà | Sans objet |
+| 2 | `20260913081355_organizations_charte_du_socle.sql` | Normalise l'existant, pose le CHECK `#rrggbb`, retire aux clients l'écriture des deux colonnes | **Appliqué** via `apply_migration` — registre : `20260913081355` (le fichier a été **renommé** pour porter cet horodatage, plutôt que d'ajouter une ligne de dérive de plus). Vérifié : 22 colonnes updatables pour `anon`/`authenticated`, 24 pour `service_role` |
+| 3 | Déployer `sync-socle-referentiel` | Écrit le miroir ; la migration (2) doit précéder, sinon une couleur mal formée du référentiel ferait échouer la sync sans CHECK pour l'expliquer | **Fait** — `bunx supabase functions deploy sync-socle-referentiel --project-ref aullweizxcjbvtdspjli` (`branding.ts` bien poussé dans le lot) |
+| 4 | Synchronisation réelle de chaque tenant mappé | Remplace les couleurs saisies à la main par celles du référentiel | **Fait** — dry-run puis passage réel sur les 5 tenants mappés, `charte_synchronisee: 1` partout, aucun avertissement. ⚠️ ACCM a échoué au premier passage réel sur `miroir démarches: Gateway Timeout` — **incident de catalogue, sans rapport avec la charte** (l'étape 0ter précède les démarches) ; rejoué avec succès |
+| 5 | Publier le frontend | L'écran de saisie disparaît ; le faire avant (4) laisserait des couleurs Clara sans moyen de les corriger | **Fait** — push sur `main` |
+
+⚠️ **Changement visible sur les mails**, constaté le 2026-09-13 : les couleurs du référentiel
+n'étaient pas celles qui avaient été saisies dans Clara. ACCM est passée de `#00d084`/`#ffcd57` à
+`#e52322`/`#f2c02c` ; « Marie d'Arles », qui hérite d'ACCM, de `#052a55`/`#a7291f` aux mêmes ;
+Seine Normandie Agglomération, qui n'avait rien, a reçu `#3b7788`/`#accd76`. `[TEST]` et
+« Test 2 » restent sans couleurs — le référentiel n'en déclare pas, les gabarits de mails prennent
+alors leurs couleurs de repli. C'était l'objet du lot.
+
+Vérification :
+
+```sql
+-- Les couleurs Clara doivent être celles que resolve_branding rend côté Socle.
+SELECT name, primary_color, secondary_color FROM organizations WHERE socle_org_id IS NOT NULL;
+-- Et plus aucun client ne peut les écrire :
+SELECT grantee, string_agg(column_name, ', ' ORDER BY column_name)
+  FROM information_schema.column_privileges
+ WHERE table_schema='public' AND table_name='organizations' AND privilege_type='UPDATE'
+   AND grantee IN ('anon','authenticated') AND column_name LIKE '%_color'
+ GROUP BY grantee;  -- doit rendre 0 ligne
+```
+
 ### Lot « serveur d'envoi depuis le Socle » (2026-08-23) — appliqué le 2026-08-23
 
 | # | Action | Pourquoi cet ordre | État |

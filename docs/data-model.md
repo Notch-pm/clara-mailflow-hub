@@ -53,12 +53,31 @@ Tenants racine. RLS sur `id` (pas sur `organization_id`).
 | `slug` | varchar UNIQUE | lowercase, contrainte CHECK |
 | `metadata` | jsonb | `{}` par défaut |
 | `status` | varchar | `'active'` par défaut |
-| `logo_url` | text | |
-| `primary_color` / `secondary_color` | text | |
+| `logo_url` | text | fixé par l'organisation Socle mappée (sync) |
+| `primary_color` / `secondary_color` | text | **Charte graphique — MIROIR du Socle depuis le 2026-09-13, aucune saisie dans Clara.** `#rrggbb` minuscule (CHECK `organizations_branding_colors_hex`). Voir ci-dessous. |
 | `multiple_imap` | boolean | multi-boîtes IMAP |
 | `reply_template_html` / `_design` / `_data` / `_storage_key` | text/jsonb | template courrier Unlayer |
 | `address_*` / `phone` / `website` / `contact_email` | text | coordonnées org |
 | `socle_org_id` | uuid | mapping vers l'org Socle (renseigné par le superadmin) ; NULL = pas de sync Socle |
+
+**Charte graphique (couleurs) — miroir du Socle depuis le 2026-09-13.** La charte d'une
+collectivité est définie une seule fois pour toute la gamme, dans le Socle, avec héritage le
+long de la hiérarchie (`branding_inherit_parent`). `sync-socle-referentiel` recopie les deux
+couleurs à chaque passage, depuis `GET /v1/organizations/{tenant}/branding` (scope API `read`).
+
+- **L'appel porte sur le `socle_org_id` du tenant**, pas sur sa racine (contrairement au relais
+  SMTP) : la route résout l'héritage elle-même, et une sous-organisation peut porter sa propre
+  charte. « Marie d'Arles » reçoit donc celle d'ACCM tant qu'elle n'en déclare pas.
+- **Miroir strict, l'absence comprise** : une couleur retirée du référentiel est retirée ici.
+  Sans conséquence — les gabarits de mails ont leurs couleurs de repli (`#0acf83`, `#18181b`).
+- **Écriture réservée au service role** : le `GRANT UPDATE` de table a été retiré à
+  `anon`/`authenticated` et reposé **colonne par colonne, les deux couleurs exclues**
+  (migration `20260913081355_organizations_charte_du_socle.sql`). La policy `org_admin_update`
+  laissait sinon un admin d'org réécrire le miroir par PostgREST. Le reste de la ligne
+  (coordonnées, gabarit de réponse, rétention, `socle_org_id`) s'édite comme avant.
+- Le **logo** (`logo_url`), lui, continue d'arriver par `planTenantIdentityUpdate` — colonne
+  brute de l'organisation mappée, sans résolution d'héritage. À unifier avec la charte le jour
+  où l'on voudra le logo blanc ou le favicon.
 
 #### `users`
 Profils étendus (miroir `auth.users`). Trigger `prevent_superadmin_escalation` bloque l'auto-promotion.
