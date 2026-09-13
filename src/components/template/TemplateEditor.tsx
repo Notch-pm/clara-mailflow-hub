@@ -19,7 +19,18 @@ const MERGE_TAGS = {
     value: "{{signature}}",
     sample: "<p><strong>Jean Dupont</strong></p><p><em>Maire</em></p><p>[signature]</p>",
   },
-  expediteur: { name: "Expéditeur", value: "{{expediteur}}", sample: "Jean Dupont" },
+  // « Usager » a remplacé « Expéditeur », jugé confus (2026-09-13). La variable
+  // `{{expediteur}}` reste servie à l'impression pour les modèles déjà
+  // enregistrés, mais elle n'est plus proposée ici : deux noms pour la même
+  // chose, c'est la garantie que les modèles divergeront.
+  usager: { name: "Usager", value: "{{usager}}", sample: "Jean Dupont" },
+  usager_prenom: { name: "Prénom usager", value: "{{usager_prenom}}", sample: "Jean" },
+  usager_nom: { name: "Nom usager", value: "{{usager_nom}}", sample: "Dupont" },
+  usager_complete: {
+    name: "Usager (avec adresse)",
+    value: "{{{usager_complete}}}",
+    sample: "<strong>Jean Dupont</strong><br>12 rue des Lilas<br>75011 Paris<br>Email : jean.dupont@example.fr",
+  },
   organisation: { name: "Organisation (nom)", value: "{{organisation}}", sample: "Mairie de Paris" },
   organisation_complete: {
     name: "Organisation (avec adresse)",
@@ -70,7 +81,8 @@ export default function TemplateEditor({ initialDesign, onSave, onClose, isSavin
       <div className="flex items-center justify-between px-4 py-2 border-b bg-background shrink-0" style={{ height: TOOLBAR_HEIGHT }}>
         <div className="text-sm font-medium">
           Éditeur de modèle — utilisez le menu « Variables » de l'éditeur pour insérer :
-          date, objet, contenu, signature, expéditeur, organisation (nom / avec adresse), service (nom / avec adresse).
+          date, objet, contenu, signature, usager (nom / prénom / nom de famille / avec adresse),
+          organisation (nom / avec adresse), service (nom / avec adresse).
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={onClose} disabled={isSaving}>

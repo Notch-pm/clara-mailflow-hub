@@ -144,16 +144,23 @@ export default function ReplyComposer({
   });
 
   // ─── Organization (for merge tags) ──────────────────────────────────
+  // Les coordonnées propres de Clara sont souvent vides : depuis la bascule vers
+  // le référentiel, l'adresse d'une collectivité y est saisie une fois pour
+  // toute la gamme (`socle_organizations.address`, en texte libre). On relit
+  // donc la ligne du référentiel correspondant au tenant et on s'en sert EN
+  // REPLI — les colonnes de Clara, si elles sont remplies, restent prioritaires.
+  // Sans ce repli, « Organisation (avec adresse) » n'imprimait que le nom pour
+  // toute collectivité n'ayant jamais ressaisi son adresse dans Clara.
   const { data: organization } = useQuery({
     queryKey: ["org-coordinates", organizationId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("organizations")
-        .select("name, address_street, address_complement, address_postal_code, address_city, phone, website, contact_email")
+        .select("name, address_street, address_complement, address_postal_code, address_city, phone, website, contact_email, socle_org_id")
         .eq("id", organizationId)
         .single();
       if (error) throw error;
-      return data as {
+      const org = data as {
         name: string;
         address_street: string | null;
         address_complement: string | null;
@@ -162,6 +169,22 @@ export default function ReplyComposer({
         phone: string | null;
         website: string | null;
         contact_email: string | null;
+        socle_org_id: string | null;
+      };
+      if (!org.socle_org_id) return org;
+
+      const { data: ref } = await supabase
+        .from("socle_organizations")
+        .select("address, phone, email")
+        .eq("organization_id", organizationId)
+        .eq("socle_id", org.socle_org_id)
+        .maybeSingle();
+      const referentiel = ref as { address: string | null; phone: string | null; email: string | null } | null;
+      return {
+        ...org,
+        address: referentiel?.address ?? null,
+        phone: org.phone ?? referentiel?.phone ?? null,
+        contact_email: org.contact_email ?? referentiel?.email ?? null,
       };
     },
     enabled: !!organizationId,
@@ -702,6 +725,21 @@ export default function ReplyComposer({
     subject: reply?.subject ?? parentSubject,
     senderName: sender
       ? `${sender.first_name ?? ""} ${sender.last_name ?? ""}`.trim() || sender.name || null
+      : null,
+    senderFirstName: sender?.first_name ?? null,
+    senderLastName: sender?.last_name ?? null,
+    // L'usager du courrier : son adresse est en texte libre sur le participant,
+    // pas décomposée comme celle d'une organisation.
+    senderCompleteHtml: sender
+      ? buildContactBlock(
+          `${sender.first_name ?? ""} ${sender.last_name ?? ""}`.trim() || sender.name || null,
+          {
+            organization: sender.organization,
+            address: sender.address,
+            phone: sender.phone,
+            email: senderEmail,
+          },
+        )
       : null,
     date: reply?.created_at ?? new Date().toISOString(),
     organizationName: organization?.name ?? null,

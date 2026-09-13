@@ -163,8 +163,39 @@ Les angles morts de l'ancienne détection côté client (doublon au **téléphon
 ### Signataires (`SignaturesSettings.tsx`)
 - Table `signatories` + bucket `signatures`. Chaque signataire a une image PNG transparente utilisée dans les réponses.
 
-### Modèles (`ModeleSettings.tsx`)
-- Templates Handlebars stockés dans `templates`. Variables disponibles : `{{usager.nom}}`, `{{courier.sujet}}`, etc. Éditeur Tiptap.
+### Modèle de document (`ModeleSettings.tsx`)
+Maquette **Unlayer** (`TemplateEditor.tsx`) enregistrée dans `organizations.reply_template_html` /
+`_design`, fusionnée en **Handlebars** à l'export PDF d'une réponse (`src/utils/printReply.ts`).
+Sans modèle, Clara retombe sur une mise en page standard intégrée.
+
+Variables (à insérer par le menu « Variables » de l'éditeur) :
+
+| Variable | Contenu |
+|---|---|
+| `{{date}}` `{{objet}}` `{{contenu}}` `{{signature}}` | le courrier et son bloc signataire |
+| `{{usager}}` `{{usager_prenom}}` `{{usager_nom}}` | l'usager, nom complet ou séparé |
+| `{{{usager_complete}}}` | usager + organisme + adresse + téléphone + courriel |
+| `{{organisation}}` `{{{organisation_complete}}}` | la collectivité |
+| `{{service}}` `{{{service_complete}}}` | l'organisation gestionnaire du courrier |
+
+- **Triples accolades** pour les blocs `_complete` : ils contiennent du HTML (`<br>`).
+- « **Usager** » a remplacé « expéditeur » le 2026-09-13, jugé confus. ⚠️ **`{{expediteur}}` reste
+  servi** — les modèles déjà enregistrés en contiennent, et le retirer du contexte n'aurait levé
+  aucune erreur : il aurait imprimé un blanc à la place du nom. Il n'est simplement plus proposé
+  à l'insertion.
+- **Trois formes d'adresse, un seul bloc** (`buildContactBlock`) : colonnes décomposées de
+  `organizations`, texte libre du référentiel (`socle_organizations.address`, champ `email`),
+  texte libre d'un participant. C'est l'oubli de ce détail qui vidait `{{{service_complete}}}`,
+  nourri d'une ligne du référentiel dont aucun champ ne portait le nom attendu. Une adresse en
+  texte libre est découpée aux virgules pour reformer un bloc postal.
+- **Repli sur le référentiel** pour `{{{organisation_complete}}}` : les colonnes de Clara priment,
+  l'adresse du référentiel comble les vides. Sans ça, toute collectivité n'ayant jamais ressaisi
+  son adresse dans Clara n'imprimait que son nom.
+- **Taille de la signature** : `SIGNATURE_PRINT_CSS`, un seul endroit pour les deux mises en page.
+  ⚠️ Le `!important` est indispensable — l'image porte un `style=` en ligne posé par
+  `buildSignedBody`, qui l'emporte sinon (la règle de la mise en page standard n'a donc jamais
+  rien contraint). La feuille est désormais injectée **aussi** dans les modèles d'organisation,
+  où la signature arrivait à sa taille brute.
 
 ### Organisations Socle et anciens services
 - La hiérarchie d'assignation active est celle des **organisations Socle**, exposée dans `SocleOrganizationTree` et configurée depuis les sections « Organisations » de `SettingsPage` / `OrgSettings`.

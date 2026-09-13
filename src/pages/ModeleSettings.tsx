@@ -70,11 +70,19 @@ export default function ModeleSettings({ orgId }: Props) {
           <code className="text-xs">{"{{date}}"}</code>,{" "}
           <code className="text-xs">{"{{objet}}"}</code>,{" "}
           <code className="text-xs">{"{{contenu}}"}</code>,{" "}
-          <code className="text-xs">{"{{expediteur}}"}</code>,{" "}
+          <code className="text-xs">{"{{usager}}"}</code>,{" "}
+          <code className="text-xs">{"{{usager_prenom}}"}</code>,{" "}
+          <code className="text-xs">{"{{usager_nom}}"}</code>,{" "}
+          <code className="text-xs">{"{{{usager_complete}}}"}</code>,{" "}
           <code className="text-xs">{"{{organisation}}"}</code>,{" "}
           <code className="text-xs">{"{{{organisation_complete}}}"}</code>,{" "}
           <code className="text-xs">{"{{service}}"}</code>,{" "}
           <code className="text-xs">{"{{{service_complete}}}"}</code>.
+        </p>
+        <p className="text-xs text-muted-foreground mt-1">
+          « Usager » remplace « expéditeur », jugé confus. Les modèles déjà enregistrés qui
+          contiennent <code>{"{{expediteur}}"}</code> continuent de fonctionner — la variable est
+          toujours servie, elle n'est simplement plus proposée à l'insertion.
         </p>
       </div>
 
