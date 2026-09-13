@@ -8,7 +8,12 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2.45.0";
 import { simpleParser } from "npm:mailparser@3.7.1";
-import { isInboundSenderAccepted } from "./logic.ts";
+import {
+  isInboundSenderAccepted,
+  describeRejectedScanSenders,
+  scanInboxAcceptsNothing,
+  SCAN_ALLOWLIST_EMPTY_MESSAGE,
+} from "./logic.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -48,11 +53,19 @@ const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
 // pièce jointe inhabituelle) même s'il est désormais importé normalement.
 const LARGE_EMAIL_BYTES = 2 * 1024 * 1024;
 
-// Garde-fou mémoire : la limite par email ne suffit plus, car 10 × 15 Mo
-// dépasseraient le quota de l'edge function. On borne le CUMUL traité par
-// exécution ; le reste sera repris au passage suivant du cron (la déduplication
-// par Message-ID rend l'opération sûre).
-const MAX_RUN_BYTES = 45 * 1024 * 1024;
+// Garde-fou du CUMUL traité par exécution ; le reste est repris au passage
+// suivant du cron (la déduplication par Message-ID rend l'opération sûre).
+//
+// Calibré sur le CPU, pas sur la mémoire : c'est le parsing MIME qui coûte, et
+// il coûte proportionnellement à la taille. Mesure du 2026-09-13 (boîte
+// « Scanner Mairie » de SNA) : un scan de 4,45 Mo — 6 pages JPEG — prend ~65 s
+// et passe ; DEUX dans la même exécution font tuer la relève en « CPU Time
+// exceeded » avant la fin, donc sans mise à jour de last_fetch_at ni sortie
+// propre. Les 45 Mo d'origine (hérités d'un raisonnement mémoire) laissaient
+// entrer une dizaine de gros scans d'affilée : la relève mourait à tous les
+// coups. 6 Mo laissent passer un gros scan et les petits courriers qui
+// l'accompagnent, puis coupent proprement.
+const MAX_RUN_BYTES = 6 * 1024 * 1024;
 
 interface ImapSettings {
   id: string;
@@ -78,7 +91,14 @@ class ImapClient {
   private conn: Deno.TlsConn | Deno.Conn | null = null;
   private reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
   private writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
-  private buffer = new Uint8Array(0);
+  // File des paquets TCP reçus, NON concaténée. L'ancien tampon unique
+  // recopiait tout le déjà-reçu à chaque paquet : coût O(n²) en octets copiés,
+  // soit ~3 Go de memcpy pour un email de 10 Mo — de quoi faire tuer la relève
+  // en « CPU Time exceeded » sur un simple scan couleur (incident 2026-09-13).
+  // Ici on empile en O(1) et on ne copie qu'une fois, à la consommation.
+  private chunks: Uint8Array[] = [];
+  private head = 0; // offset de lecture dans chunks[0]
+  private buffered = 0; // octets disponibles, tous paquets confondus
   private tag = 0;
   private decoder = new TextDecoder("utf-8");
   private encoder = new TextEncoder();
@@ -107,19 +127,53 @@ class ImapClient {
     if (!this.reader) return false;
     const { value, done } = await this.reader.read();
     if (done || !value) return false;
-    const merged = new Uint8Array(this.buffer.length + value.length);
-    merged.set(this.buffer, 0);
-    merged.set(value, this.buffer.length);
-    this.buffer = merged;
+    // Un paquet vide n'apporte rien et bloquerait consume() (aucun octet à
+    // prendre dans chunks[0]) : on le jette et on relit.
+    if (value.length === 0) return await this.readChunk();
+    this.chunks.push(value);
+    this.buffered += value.length;
     return true;
+  }
+
+  /** Position du premier octet `byte` dans la file, ou -1. */
+  private indexOfBuffered(byte: number): number {
+    let seen = 0;
+    for (let i = 0; i < this.chunks.length; i++) {
+      const chunk = this.chunks[i];
+      const from = i === 0 ? this.head : 0;
+      const idx = chunk.indexOf(byte, from);
+      if (idx >= 0) return seen + (idx - from);
+      seen += chunk.length - from;
+    }
+    return -1;
+  }
+
+  /** Retire et retourne les `n` premiers octets. Une seule copie, O(n). */
+  private consume(n: number): Uint8Array {
+    const out = new Uint8Array(n);
+    let written = 0;
+    while (written < n) {
+      const chunk = this.chunks[0];
+      const available = chunk.length - this.head;
+      const take = Math.min(available, n - written);
+      out.set(chunk.subarray(this.head, this.head + take), written);
+      written += take;
+      this.head += take;
+      if (this.head >= chunk.length) {
+        this.chunks.shift();
+        this.head = 0;
+      }
+    }
+    this.buffered -= n;
+    return out;
   }
 
   private async readLine(): Promise<string> {
     while (true) {
-      const idx = this.buffer.indexOf(0x0a); // \n
+      const idx = this.indexOfBuffered(0x0a); // \n
       if (idx >= 0) {
-        const lineBytes = this.buffer.slice(0, idx);
-        this.buffer = this.buffer.slice(idx + 1);
+        const lineBytes = this.consume(idx);
+        this.consume(1); // le \n lui-même
         let line = this.decoder.decode(lineBytes);
         if (line.endsWith("\r")) line = line.slice(0, -1);
         return line;
@@ -130,13 +184,11 @@ class ImapClient {
   }
 
   private async readBytes(n: number): Promise<Uint8Array> {
-    while (this.buffer.length < n) {
+    while (this.buffered < n) {
       const more = await this.readChunk();
       if (!more) throw new Error("IMAP: connexion fermée pendant lecture littéral");
     }
-    const out = this.buffer.slice(0, n);
-    this.buffer = this.buffer.slice(n);
-    return out;
+    return this.consume(n);
   }
 
   private async write(s: string): Promise<void> {
@@ -236,23 +288,29 @@ async function processOrganization(
   admin: ReturnType<typeof createClient>,
   s: ImapSettings,
   opts: { onlyTest?: boolean } = {},
-): Promise<{ ok: boolean; processed: number; error?: string }> {
+): Promise<{ ok: boolean; processed: number; rejected?: number; warning?: string; error?: string }> {
   const client = new ImapClient(s.host, s.port, s.use_tls);
   let processed = 0;
+  const rejectedSenders: string[] = [];
   try {
     await client.connect();
     await client.login(s.username, s.password);
 
     if (opts.onlyTest) {
       await client.logout();
-      // Reset last_error on successful test
+      // Le LOGIN ne dit rien du filtre : une boîte de numérisation sans
+      // expéditeur autorisé se teste « OK » puis rejette tout. On le signale ici,
+      // c'est le seul moment où l'agent regarde.
+      const misconfig = scanInboxAcceptsNothing(s.is_scan_inbox === true, s.scan_allowed_senders)
+        ? SCAN_ALLOWLIST_EMPTY_MESSAGE
+        : null;
       try {
         await admin
           .from("imap_settings")
-          .update({ last_error: null })
+          .update({ last_error: misconfig })
           .eq("id", s.id);
       } catch (_) {}
-      return { ok: true, processed: 0 };
+      return { ok: true, processed: 0, warning: misconfig ?? undefined };
     }
 
     await client.selectFolder(s.folder || "INBOX");
@@ -333,13 +391,22 @@ async function processOrganization(
     const sinceStr = `${sinceDate.getUTCDate().toString().padStart(2,"0")}-${months[sinceDate.getUTCMonth()]}-${sinceDate.getUTCFullYear()}`;
 
     const allUids = await client.search(`SINCE ${sinceStr}`);
-    // On limite à MAX_EMAILS_PER_RUN en prenant les plus récents (UIDs les plus grands)
-    const uids = allUids.slice(-MAX_EMAILS_PER_RUN);
+    // On limite à MAX_EMAILS_PER_RUN en prenant les PLUS ANCIENS (UIDs les plus
+    // petits). Prendre les plus récents affamait la file : si un copieur dépose
+    // 30 scans d'un coup, chaque passage reprend les 10 mêmes (déjà importés,
+    // donc dédoublonnés) et les 20 premiers n'entrent JAMAIS. En FIFO la file se
+    // vide, et c'est aussi l'ordre d'arrivée attendu dans un registre de courrier.
+    const uids = allUids.slice(0, MAX_EMAILS_PER_RUN);
     let runBytes = 0;
     for (const uid of uids) {
       try {
         // 1) Récupère taille + Message-ID en un seul aller-retour IMAP
         const { size, messageId: earlyMessageId } = await client.fetchSizeAndMessageId(uid);
+
+        // Tracé systématiquement : quand la relève se fait tuer (« CPU Time
+        // exceeded »), c'est la dernière ligne écrite qui désigne le message
+        // coupable — sans elle on ne sait même pas sur lequel elle est morte.
+        console.log(`uid=${uid} taille=${size} bytes`);
 
         // 2) Email hors gabarit : seul cas encore ignoré (15 Mo, surchargeable
         //    par boîte pour un copieur réglé en haute résolution).
@@ -352,7 +419,9 @@ async function processOrganization(
         // 2 bis) Budget mémoire de l'exécution épuisé : on s'arrête proprement,
         // le cron reprendra où il en est.
         if (runBytes + size > MAX_RUN_BYTES) {
-          console.log(`Budget mémoire atteint (${runBytes} bytes) — reprise au prochain passage`);
+          console.log(
+            `Budget d'exécution atteint (${runBytes} bytes traités, uid=${uid} fait ${size}) — reprise au prochain passage`,
+          );
           break;
         }
 
@@ -398,6 +467,10 @@ async function processOrganization(
           console.error(
             `Scan uid=${uid} rejeté : expéditeur non autorisé (${senderEmail?.toLowerCase() || "inconnu"})`,
           );
+          // Mémorisé pour remonter le refus jusqu'à l'écran (last_error) : un
+          // `continue` silencieux laissait la boîte verte alors qu'elle
+          // n'acceptait plus rien.
+          rejectedSenders.push(senderEmail?.toLowerCase() || "");
           continue;
         }
 
@@ -575,12 +648,17 @@ async function processOrganization(
 
     await client.logout();
 
+    // Une relève « réussie » qui a tout rejeté n'est pas une relève propre :
+    // elle doit laisser une trace visible, sinon l'écran affiche une boîte
+    // saine et l'agent attend des courriers qui n'arriveront jamais.
+    const warning = describeRejectedScanSenders(rejectedSenders);
+
     await admin
       .from("imap_settings")
-      .update({ last_fetch_at: new Date().toISOString(), last_error: null })
+      .update({ last_fetch_at: new Date().toISOString(), last_error: warning })
       .eq("id", s.id);
 
-    return { ok: true, processed };
+    return { ok: true, processed, rejected: rejectedSenders.length, warning: warning ?? undefined };
   } catch (e: any) {
     const msg = e?.message || String(e);
     console.error("IMAP error", s.organization_id, msg);

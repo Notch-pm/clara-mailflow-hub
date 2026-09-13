@@ -73,8 +73,9 @@ function parseAllowedSenders(raw: string): string[] | null {
     .split(/[\s,;]+/)
     .map((a) => a.trim().toLowerCase())
     .filter(Boolean);
-  // NULL et non [] : un tableau vide signifierait « aucun expéditeur autorisé »,
-  // ce qui bloquerait toute la boîte.
+  // NULL et non [] par convention de colonne : côté ingestion les deux se valent
+  // (fail-closed — ni l'un ni l'autre ne laisse passer quoi que ce soit), d'où
+  // le garde-fou à l'enregistrement plutôt qu'ici.
   return list.length ? list : null;
 }
 
@@ -95,6 +96,10 @@ export default function ImapSettings({ orgId }: { orgId: string }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingRow, setEditingRow] = useState<ImapSettingsRow | null>(null);
   const [form, setForm] = useState<ImapForm>(defaultForm);
+  // Saisie brute du champ « Expéditeurs autorisés » : on ne peut pas la dériver
+  // de form.scan_allowed_senders, sinon taper la virgule séparatrice efface ce
+  // qui vient d'être frappé.
+  const [allowedSendersRaw, setAllowedSendersRaw] = useState("");
   const [actionLoading, setActionLoading] = useState<Record<string, "test" | "fetch" | null>>({});
 
   const { data: settings = [], isLoading } = useQuery({
@@ -141,6 +146,7 @@ export default function ImapSettings({ orgId }: { orgId: string }) {
   function openAdd() {
     setEditingRow(null);
     setForm(defaultForm);
+    setAllowedSendersRaw("");
     setDialogOpen(true);
   }
 
@@ -159,11 +165,21 @@ export default function ImapSettings({ orgId }: { orgId: string }) {
       is_scan_inbox: row.is_scan_inbox ?? false,
       scan_allowed_senders: row.scan_allowed_senders ?? null,
     });
+    setAllowedSendersRaw((row.scan_allowed_senders ?? []).join(", "));
     setDialogOpen(true);
   }
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      // Garde-fou : le filtre d'expéditeur d'une boîte de numérisation est
+      // fail-closed côté edge function (fetch-inbound-emails/logic.ts). Une
+      // liste vide enregistrée sans bruit donne une boîte qui se teste « OK »
+      // et rejette chaque courrier en silence.
+      if (form.is_scan_inbox && !(form.scan_allowed_senders ?? []).length) {
+        throw new Error(
+          "Renseignez au moins un expéditeur autorisé : sans lui, la boîte de numérisation refusera tous les courriers.",
+        );
+      }
       if (editingRow) {
         const { error } = await supabase
           .from("imap_settings")
@@ -215,8 +231,11 @@ export default function ImapSettings({ orgId }: { orgId: string }) {
   const handleTest = async (row: ImapSettingsRow) => {
     setActionLoading((l) => ({ ...l, [row.id]: "test" }));
     try {
-      await callFunction(row.id, true);
-      toast.success("Connexion IMAP réussie ✓");
+      const data = await callFunction(row.id, true);
+      // Le test ne valide que le LOGIN : s'il passe mais que la boîte ne peut
+      // rien accepter, le dire ici plutôt que d'afficher un ✓ trompeur.
+      if (data?.warning) toast.warning(data.warning, { duration: 12000 });
+      else toast.success("Connexion IMAP réussie ✓");
       queryClient.invalidateQueries({ queryKey: ["imap-settings", orgId] });
     } catch (e: unknown) {
       toast.error("Échec : " + (e instanceof Error ? e.message : ""));
@@ -229,7 +248,11 @@ export default function ImapSettings({ orgId }: { orgId: string }) {
     setActionLoading((l) => ({ ...l, [row.id]: "fetch" }));
     try {
       const data = await callFunction(row.id, false);
-      toast.success(`Récupération terminée : ${data?.processed ?? 0} email(s) importé(s)`);
+      if (data?.warning) {
+        toast.warning(data.warning, { duration: 12000 });
+      } else {
+        toast.success(`Récupération terminée : ${data?.processed ?? 0} email(s) importé(s)`);
+      }
       queryClient.invalidateQueries({ queryKey: ["imap-settings", orgId] });
     } catch (e: unknown) {
       toast.error("Échec : " + (e instanceof Error ? e.message : ""));
@@ -457,19 +480,27 @@ export default function ImapSettings({ orgId }: { orgId: string }) {
                 {form.is_scan_inbox && (
                   <>
                     <div className="space-y-1.5">
-                      <Label className="text-sm">Expéditeurs autorisés</Label>
+                      <Label className="text-sm">
+                        Expéditeurs autorisés <span className="text-destructive">*</span>
+                      </Label>
                       <Textarea
                         rows={2}
                         placeholder="copieur-accueil@ville.fr, copieur-etage2@ville.fr"
-                        defaultValue={form.scan_allowed_senders?.join(", ") ?? ""}
-                        onBlur={(e) =>
-                          setForm({ ...form, scan_allowed_senders: parseAllowedSenders(e.target.value) })
-                        }
+                        value={allowedSendersRaw}
+                        onChange={(e) => {
+                          setAllowedSendersRaw(e.target.value);
+                          setForm((f) => ({
+                            ...f,
+                            scan_allowed_senders: parseAllowedSenders(e.target.value),
+                          }));
+                        }}
                       />
                       <p className="text-xs text-muted-foreground">
-                        Adresses des copieurs, séparées par des virgules. Laisser vide accepte
-                        n'importe quel expéditeur : toute personne connaissant l'adresse de la
-                        boîte pourrait alors créer des courriers.
+                        Adresses des copieurs, séparées par des virgules.{" "}
+                        <strong className="font-medium text-foreground">Obligatoire</strong> : une
+                        boîte de numérisation n'accepte QUE les expéditeurs listés ici. Tant que la
+                        liste est vide, elle refuse tous les messages — c'est ce qui empêche
+                        quiconque connaît son adresse d'injecter des courriers.
                       </p>
                     </div>
 
