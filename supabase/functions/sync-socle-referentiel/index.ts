@@ -9,10 +9,11 @@
 // sync_smtp_settings_from_socle / clear_smtp_settings_from_socle). Voir smtp.ts
 // pour la logique pure.
 //
-// Et de la CHARTE GRAPHIQUE depuis le 2026-09-13 : les couleurs principale et
-// secondaire ne se saisissent plus dans Clara, elles sont recopiées de
+// Et de la CHARTE GRAPHIQUE depuis le 2026-09-13 : logo et couleurs principale
+// et secondaire ne se saisissent plus dans Clara, ils sont recopiés de
 // `GET /v1/organizations/{tenant}/branding` (héritage déjà résolu côté Socle).
-// Voir branding.ts pour la logique pure.
+// Voir branding.ts pour la logique pure. L'identité (`planTenantIdentityUpdate`)
+// ne fixe plus que le nom et le slug.
 //
 // Auth (3 voies, comme sync-arpege-services) :
 //   - x-cron-secret (pg_cron via trigger_socle_sync) → privilégié
@@ -62,7 +63,7 @@ import {
 import {
   brandingWarning,
   planBrandingUpdate,
-  type BrandingColors,
+  type BrandingMirror,
   type SocleBrandingDto,
 } from "./branding.ts";
 
@@ -406,11 +407,10 @@ Deno.serve(async (req) => {
 
 // ── Synchronisation ──
 
-interface ClaraOrg extends Partial<BrandingColors> {
+interface ClaraOrg extends Partial<BrandingMirror> {
   id: string;
   name: string;
   slug: string | null;
-  logo_url: string | null;
   socle_org_id: string;
 }
 
@@ -429,7 +429,7 @@ interface OrgSyncResult {
     smtp_synchronises: number;
     /** Miroirs effacés faute de relais déclaré côté Socle (0 ou 1). */
     smtp_retires: number;
-    /** Charte graphique relue et appliquée (0 ou 1) — 0 = miroir laissé en l'état. */
+    /** Charte graphique (logo + couleurs) relue et appliquée (0 ou 1) — 0 = miroir laissé en l'état. */
     charte_synchronisee: number;
   };
   warnings?: string[];
@@ -529,12 +529,12 @@ async function syncOrg(
     syncedAt,
   );
 
-  // 0bis) Identité du tenant : l'org racine du Socle fixe nom, slug et logo
-  // de l'organisation Clara.
+  // 0bis) Identité du tenant : l'org Socle mappée fixe nom et slug de
+  // l'organisation Clara. Le logo, lui, appartient à la charte (0ter).
   const root = subtree.find((o) => o.id === org.socle_org_id);
   const identity = root ? planTenantIdentityUpdate(org, root) : null;
 
-  // 0ter) Charte graphique : les couleurs viennent du référentiel depuis le
+  // 0ter) Charte graphique : logo et couleurs viennent du référentiel depuis le
   // 2026-09-13 — plus aucune saisie dans Clara. Écrite dans la MÊME mise à jour
   // que l'identité : c'est la même ligne, et les deux décrivent qui est la
   // collectivité.
@@ -716,14 +716,15 @@ async function syncOrg(
  * `null` si le miroir est déjà aligné. N'ÉCRIT RIEN : l'appelant fusionne ces
  * champs avec l'identité pour ne faire qu'une mise à jour de `organizations`.
  *
- * Un échec ne fait échouer ni les autres tenants ni la synchronisation : les
- * couleurs restent celles du dernier passage réussi, et un avertissement dit
+ * Un échec ne fait échouer ni les autres tenants ni la synchronisation : la
+ * charte reste celle du dernier passage réussi, et un avertissement dit
  * pourquoi. Contrairement au relais SMTP, une charte manquante n'empêche rien —
- * les gabarits de mails ont leurs couleurs de repli.
+ * les gabarits de mails ont leurs couleurs de repli, et un mail sans logo part
+ * quand même.
  */
 async function syncBranding(
   org: ClaraOrg,
-): Promise<{ fields: Partial<BrandingColors> | null; synchronisee: number; warnings: string[] }> {
+): Promise<{ fields: Partial<BrandingMirror> | null; synchronisee: number; warnings: string[] }> {
   try {
     const { status, dto } = await fetchSocleBranding(org.socle_org_id);
     if (status !== 200) {

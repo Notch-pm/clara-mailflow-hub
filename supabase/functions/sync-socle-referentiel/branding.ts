@@ -3,11 +3,18 @@
 // aucune dépendance Deno.
 //
 // Le Socle est la source de vérité (`GET /v1/organizations/{id}/branding`,
-// scope `read`). Depuis le 2026-09-13, Clara ne SAISIT plus les couleurs de la
-// collectivité : elle les recopie, comme elle recopie déjà le nom, le slug, le
-// logo et le serveur d'envoi. Une couleur n'a plus qu'un seul endroit où être
-// écrite — deux chartes divergentes pour une même collectivité, c'est un mail
-// qui ne ressemble pas à son expéditeur.
+// scope `read`). Depuis le 2026-09-13, Clara ne SAISIT plus la charte de la
+// collectivité : elle la recopie, comme elle recopie déjà le nom, le slug et le
+// serveur d'envoi. Une charte n'a plus qu'un seul endroit où être écrite — deux
+// chartes divergentes pour une même collectivité, c'est un mail qui ne
+// ressemble pas à son expéditeur.
+//
+// Le LOGO passe par ici depuis le 2026-09-13 lui aussi. Il arrivait jusque-là
+// par `planTenantIdentityUpdate`, qui lit la colonne BRUTE de l'organisation
+// mappée : une sous-organisation sans logo propre affichait donc du vide au
+// lieu du logo de sa collectivité (« Marie d'Arles » n'en avait aucun). C'est
+// exactement ce que la route /branding existe pour éviter. L'identité ne fixe
+// plus que le nom et le slug.
 //
 // ⚠️ L'appel porte sur le `socle_org_id` DU TENANT, pas sur sa racine
 // (contrairement au relais SMTP, dont la route n'existe que sur une racine) :
@@ -34,8 +41,18 @@ export interface SocleBrandingDto {
   secondary_color?: string | null;
 }
 
-/** Les deux seules couleurs mirrorées par Clara (cf. `organizations`). */
-export interface BrandingColors {
+/**
+ * Ce que Clara mirrore de la charte, dans `organizations`.
+ *
+ * Le Socle en porte CINQ éléments — logo couleur, logo blanc, favicon, deux
+ * couleurs. Clara n'en reprend que trois : elle n'a ni fond sombre à habiller
+ * ni onglet de navigateur à marquer (le favicon de Clara est celui de Clara,
+ * pas celui de la collectivité). Le jour où l'un des deux autres sert, il
+ * s'ajoute ici et dans la table — pas avant : une colonne sans lecteur est une
+ * colonne qui se périme.
+ */
+export interface BrandingMirror {
+  logo_url: string | null;
   primary_color: string | null;
   secondary_color: string | null;
 }
@@ -56,9 +73,23 @@ export function hexColor(value: unknown): string | null {
   return /^#[0-9a-f]{6}$/i.test(raw) ? raw.toLowerCase() : null;
 }
 
-/** Couleurs applicables déclarées par le Socle, normalisées. */
-export function brandingColors(dto: SocleBrandingDto | null | undefined): BrandingColors {
+/**
+ * URL de logo servie par le Socle, ou `null`.
+ *
+ * Chaîne vide ⇒ `null`, comme le sérialiseur du Socle : une colonne vide et une
+ * colonne absente disent la même chose (« pas de logo »), les distinguer ferait
+ * afficher une image cassée. Aucune validation au-delà — le Socle publie une
+ * URL libre, il n'héberge pas le fichier.
+ */
+export function logoUrl(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  return value.trim() || null;
+}
+
+/** Charte applicable déclarée par le Socle, normalisée. */
+export function brandingMirror(dto: SocleBrandingDto | null | undefined): BrandingMirror {
   return {
+    logo_url: logoUrl(dto?.logo_url),
     primary_color: hexColor(dto?.primary_color),
     secondary_color: hexColor(dto?.secondary_color),
   };
@@ -72,11 +103,14 @@ export function brandingColors(dto: SocleBrandingDto | null | undefined): Brandi
  * et le miroir doit se vider avec elle.
  */
 export function planBrandingUpdate(
-  current: Partial<BrandingColors>,
+  current: Partial<BrandingMirror>,
   dto: SocleBrandingDto | null | undefined,
-): Partial<BrandingColors> | null {
-  const wanted = brandingColors(dto);
-  const fields: Partial<BrandingColors> = {};
+): Partial<BrandingMirror> | null {
+  const wanted = brandingMirror(dto);
+  const fields: Partial<BrandingMirror> = {};
+  if ((current.logo_url ?? null) !== wanted.logo_url) {
+    fields.logo_url = wanted.logo_url;
+  }
   if ((current.primary_color ?? null) !== wanted.primary_color) {
     fields.primary_color = wanted.primary_color;
   }

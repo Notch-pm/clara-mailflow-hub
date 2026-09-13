@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
-  brandingColors,
+  brandingMirror,
   brandingWarning,
   hexColor,
+  logoUrl,
   planBrandingUpdate,
   type SocleBrandingDto,
 } from "../../../supabase/functions/sync-socle-referentiel/branding";
@@ -21,6 +22,15 @@ function dto(overrides: Partial<SocleBrandingDto> = {}): SocleBrandingDto {
     ...overrides,
   };
 }
+
+/** Charte du référentiel, telle que Clara doit la refléter. */
+const ALIGNE = {
+  logo_url: "https://socle.example/accm.png",
+  primary_color: "#e52322",
+  secondary_color: "#f2c02c",
+};
+
+const VIDE = { logo_url: null, primary_color: null, secondary_color: null };
 
 describe("hexColor", () => {
   it("normalise en minuscules", () => {
@@ -42,50 +52,73 @@ describe("hexColor", () => {
   });
 });
 
-describe("brandingColors", () => {
-  it("ne retient que les deux couleurs, normalisées", () => {
-    expect(brandingColors(dto({ primary_color: "#E52322" }))).toEqual({
-      primary_color: "#e52322",
-      secondary_color: "#f2c02c",
-    });
+describe("logoUrl", () => {
+  it("garde l'URL servie, élaguée", () => {
+    expect(logoUrl(" https://socle.example/accm.png ")).toBe("https://socle.example/accm.png");
   });
 
-  it("charte absente ou vide ⇒ deux nulls", () => {
-    expect(brandingColors(null)).toEqual({ primary_color: null, secondary_color: null });
-    expect(brandingColors(undefined)).toEqual({ primary_color: null, secondary_color: null });
-    expect(brandingColors(dto({ configured: false, primary_color: null, secondary_color: null })))
-      .toEqual({ primary_color: null, secondary_color: null });
+  it("chaîne vide ⇒ null (une image cassée est pire que pas d'image)", () => {
+    expect(logoUrl("")).toBeNull();
+    expect(logoUrl("   ")).toBeNull();
+    expect(logoUrl(null)).toBeNull();
+    expect(logoUrl(undefined)).toBeNull();
+    expect(logoUrl(42)).toBeNull();
+  });
+});
+
+describe("brandingMirror", () => {
+  it("retient logo et couleurs, normalisés", () => {
+    expect(brandingMirror(dto({ primary_color: "#E52322" }))).toEqual(ALIGNE);
+  });
+
+  it("ne retient NI le logo blanc NI le favicon (Clara n'a pas de colonne pour eux)", () => {
+    const complet = dto({
+      logo_white_url: "https://socle.example/accm-blanc.png",
+      favicon_url: "https://socle.example/favicon.png",
+    });
+    expect(Object.keys(brandingMirror(complet)).sort()).toEqual([
+      "logo_url",
+      "primary_color",
+      "secondary_color",
+    ]);
+  });
+
+  it("charte absente ou vide ⇒ tout à null", () => {
+    expect(brandingMirror(null)).toEqual(VIDE);
+    expect(brandingMirror(undefined)).toEqual(VIDE);
+    expect(brandingMirror(dto({ configured: false, ...VIDE }))).toEqual(VIDE);
   });
 });
 
 describe("planBrandingUpdate", () => {
   it("retourne null quand le miroir est déjà aligné", () => {
-    const current = { primary_color: "#e52322", secondary_color: "#f2c02c" };
-    expect(planBrandingUpdate(current, dto())).toBeNull();
+    expect(planBrandingUpdate(ALIGNE, dto())).toBeNull();
   });
 
-  it("recopie les couleurs du référentiel", () => {
-    const current = { primary_color: "#00d084", secondary_color: "#ffcd57" };
-    expect(planBrandingUpdate(current, dto())).toEqual({
-      primary_color: "#e52322",
-      secondary_color: "#f2c02c",
-    });
+  it("recopie logo et couleurs du référentiel", () => {
+    const current = { logo_url: null, primary_color: "#00d084", secondary_color: "#ffcd57" };
+    expect(planBrandingUpdate(current, dto())).toEqual(ALIGNE);
   });
 
   it("ne retourne que les champs qui changent", () => {
-    const current = { primary_color: "#e52322", secondary_color: null };
+    const current = { ...ALIGNE, secondary_color: null };
     expect(planBrandingUpdate(current, dto())).toEqual({ secondary_color: "#f2c02c" });
   });
 
-  it("efface le miroir quand le référentiel ne déclare plus de couleur", () => {
-    const current = { primary_color: "#e52322", secondary_color: "#f2c02c" };
-    expect(planBrandingUpdate(current, dto({ configured: false, primary_color: null, secondary_color: null })))
-      .toEqual({ primary_color: null, secondary_color: null });
+  it("efface le miroir quand le référentiel ne déclare plus rien", () => {
+    expect(planBrandingUpdate(ALIGNE, dto({ configured: false, ...VIDE }))).toEqual(VIDE);
+  });
+
+  it("sous-organisation sans charte propre : elle reçoit celle de sa collectivité", () => {
+    // Le cas « Marie d'Arles » : /branding résout l'héritage, là où la colonne
+    // brute de l'organisation mappée rendait un logo null.
+    expect(planBrandingUpdate(VIDE, dto({ inherited: true, source_organization_id: "accm" })))
+      .toEqual(ALIGNE);
   });
 
   it("réécrit une casse héritée de l'ancienne saisie Clara", () => {
-    // Les valeurs saisies dans Clara avant le 2026-09-13 étaient en majuscules.
-    const current = { primary_color: "#E52322", secondary_color: "#F2C02C" };
+    // Les couleurs saisies dans Clara avant le 2026-09-13 étaient en majuscules.
+    const current = { ...ALIGNE, primary_color: "#E52322", secondary_color: "#F2C02C" };
     expect(planBrandingUpdate(current, dto())).toEqual({
       primary_color: "#e52322",
       secondary_color: "#f2c02c",
@@ -93,26 +126,16 @@ describe("planBrandingUpdate", () => {
   });
 
   it("traite une colonne absente comme nulle", () => {
-    expect(planBrandingUpdate({}, dto())).toEqual({
-      primary_color: "#e52322",
-      secondary_color: "#f2c02c",
-    });
-    expect(planBrandingUpdate({}, dto({ primary_color: null, secondary_color: null }))).toBeNull();
+    expect(planBrandingUpdate({}, dto())).toEqual(ALIGNE);
+    expect(planBrandingUpdate({}, dto(VIDE))).toBeNull();
   });
 
   it("ignore une couleur mal formée plutôt que de la recopier", () => {
     // La contrainte organizations_branding_colors_hex ferait échouer la
     // synchronisation entière au milieu d'un tenant.
-    const current = { primary_color: "#e52322", secondary_color: null };
+    const current = { ...ALIGNE, secondary_color: null };
     expect(planBrandingUpdate(current, dto({ primary_color: "bleu roi", secondary_color: null })))
       .toEqual({ primary_color: null });
-  });
-
-  it("charte héritée d'un ancêtre : rien de particulier à faire côté Clara", () => {
-    // Le Socle a déjà résolu l'héritage — `inherited` est informatif.
-    const current = { primary_color: null, secondary_color: null };
-    expect(planBrandingUpdate(current, dto({ inherited: true, source_organization_id: "accm" })))
-      .toEqual({ primary_color: "#e52322", secondary_color: "#f2c02c" });
   });
 });
 

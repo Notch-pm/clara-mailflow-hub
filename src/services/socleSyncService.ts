@@ -47,8 +47,8 @@ export interface SocleSyncCounters {
   /** Serveur d'envoi effacé, le référentiel n'en déclarant plus (0 ou 1). */
   smtp_retires?: number;
   /**
-   * Charte graphique (couleurs) relue et appliquée (0 ou 1). Absente des runs
-   * antérieurs au 2026-09-13 ; 0 = charte illisible, miroir laissé en l'état.
+   * Charte graphique (logo + couleurs) relue et appliquée (0 ou 1). Absente des
+   * runs antérieurs au 2026-09-13 ; 0 = charte illisible, miroir laissé en l'état.
    */
   charte_synchronisee?: number;
   /**

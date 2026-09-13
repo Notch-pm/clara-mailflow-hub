@@ -49,8 +49,8 @@ function syncSummary(result: SocleSyncResult): string {
   // chercher pourquoi les mails partent (ou ne partent plus).
   if (counters.smtp_synchronises) parts.push("Serveur d'envoi : à jour");
   else if (counters.smtp_retires) parts.push("Serveur d'envoi : retiré (aucun dans le référentiel)");
-  // Idem pour la charte graphique : les couleurs viennent du référentiel, un
-  // écran qui ne le dit pas laisse chercher où on les modifie.
+  // Idem pour la charte graphique : logo et couleurs viennent du référentiel,
+  // un écran qui ne le dit pas laisse chercher où on les modifie.
   if (counters.charte_synchronisee) parts.push("Charte graphique : à jour");
   const resume = `Éléments modifiés — ${parts.join(", ")}.`;
   return counters.warnings?.length ? `${resume} ⚠️ ${counters.warnings.join(" ")}` : resume;
@@ -69,7 +69,7 @@ const SOCLE_QUERY_KEYS = [
 
 // Une organisation Clara naît uniquement par IMPORT d'une organisation
 // principale du référentiel (plus de création locale), et **rien** ne s'y édite :
-// nom, slug, logo et charte graphique (couleurs) sont fixés par le référentiel
+// nom, slug et charte graphique (logo + couleurs) sont fixés par le référentiel
 // et recopiés à chaque synchronisation. Cet écran importe, synchronise,
 // paramètre le métier — il ne saisit plus d'identité visuelle.
 export default function OrganizationsAdmin() {

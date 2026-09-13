@@ -558,31 +558,33 @@ export function mapSocleOrganization(org: SocleOrgApi, syncedAt: string) {
 }
 
 // ── Identité du tenant ──
-// L'organisation racine du Socle fixe le nom, le slug et le logo de
-// l'organisation Clara : plus d'édition côté Clara (seules les couleurs restent).
+// L'organisation Socle mappée fixe le nom et le slug de l'organisation Clara :
+// plus aucune édition côté Clara.
+//
+// ⚠️ Le LOGO n'est plus ici depuis le 2026-09-13 : il fait partie de la charte
+// graphique et arrive par `branding.ts` (route /branding, héritage résolu).
+// `SocleOrgApi.logo_url` est la colonne BRUTE de l'organisation — une
+// sous-organisation sans logo propre y lit `null` alors que la charte de sa
+// collectivité en résout un. Ne pas le remettre ici.
 
 export interface TenantIdentityFields {
   name?: string;
   slug?: string;
-  logo_url?: string | null;
 }
 
 /**
- * Champs d'identité à recopier de l'org racine Socle vers `organizations`.
+ * Champs d'identité à recopier de l'org Socle mappée vers `organizations`.
  * Retourne null si rien ne change. Le slug n'est écrasé que si le Socle en
  * fournit un (unicité + lowercase imposés côté Clara — normalisé ici).
  */
 export function planTenantIdentityUpdate(
-  current: { name: string; slug: string | null; logo_url: string | null },
+  current: { name: string; slug: string | null },
   root: SocleOrgApi,
 ): TenantIdentityFields | null {
   const fields: TenantIdentityFields = {};
   if (current.name !== root.name) fields.name = root.name;
   const rootSlug = root.slug?.trim().toLowerCase() || null;
   if (rootSlug && (current.slug ?? null) !== rootSlug) fields.slug = rootSlug;
-  if ((current.logo_url ?? null) !== (root.logo_url ?? null)) {
-    fields.logo_url = root.logo_url ?? null;
-  }
   return Object.keys(fields).length > 0 ? fields : null;
 }
 

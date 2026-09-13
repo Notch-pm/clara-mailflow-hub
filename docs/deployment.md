@@ -224,9 +224,12 @@ montre **un `POST /v1/uploads` par fichier** avant le `POST /v1/requests`.
 
 ### Lot « charte graphique depuis le Socle » (2026-09-13) — appliqué le 2026-09-13
 
-Les couleurs principale et secondaire ne se saisissent plus dans Clara : elles sont recopiées du
-référentiel, comme le nom, le logo et le serveur d'envoi. Conception : `docs/data-model.md`
-§`organizations`.
+Logo, couleur principale et couleur secondaire ne se saisissent plus dans Clara : ils sont
+recopiés du référentiel, comme le nom, le slug et le serveur d'envoi. Conception :
+`docs/data-model.md` §`organizations`.
+
+Appliqué en **deux temps le même jour** : les couleurs d'abord (étapes 2-4), puis le logo
+(étapes 6-8) quand le PO a confirmé qu'il devait suivre le même chemin.
 
 | # | Action | Pourquoi cet ordre | État |
 |---|---|---|---|
@@ -235,6 +238,9 @@ référentiel, comme le nom, le logo et le serveur d'envoi. Conception : `docs/d
 | 3 | Déployer `sync-socle-referentiel` | Écrit le miroir ; la migration (2) doit précéder, sinon une couleur mal formée du référentiel ferait échouer la sync sans CHECK pour l'expliquer | **Fait** — `bunx supabase functions deploy sync-socle-referentiel --project-ref aullweizxcjbvtdspjli` (`branding.ts` bien poussé dans le lot) |
 | 4 | Synchronisation réelle de chaque tenant mappé | Remplace les couleurs saisies à la main par celles du référentiel | **Fait** — dry-run puis passage réel sur les 5 tenants mappés, `charte_synchronisee: 1` partout, aucun avertissement. ⚠️ ACCM a échoué au premier passage réel sur `miroir démarches: Gateway Timeout` — **incident de catalogue, sans rapport avec la charte** (l'étape 0ter précède les démarches) ; rejoué avec succès |
 | 5 | Publier le frontend | L'écran de saisie disparaît ; le faire avant (4) laisserait des couleurs Clara sans moyen de les corriger | **Fait** — push sur `main` |
+| 6 | `20260913082647_organizations_logo_du_socle.sql` | Retire `logo_url` du GRANT client, le logo devenant lui aussi un miroir | **Appliqué** via `apply_migration` — registre : `20260913082647` (fichier renommé pour coller). Vérifié : 21 colonnes updatables côté client, aucune des trois de charte |
+| 7 | Redéployer `sync-socle-referentiel` | `planTenantIdentityUpdate` ne fixe plus que `name`/`slug` ; le logo passe par `/branding` | **Fait** |
+| 8 | Synchronisation réelle | Pose le logo hérité là où la colonne brute rendait `null` | **Fait** — 5 tenants, `charte_synchronisee: 1`, aucun avertissement. **« Marie d'Arles » affiche désormais le logo d'ACCM**, qu'elle n'avait pas |
 
 ⚠️ **Changement visible sur les mails**, constaté le 2026-09-13 : les couleurs du référentiel
 n'étaient pas celles qui avaient été saisies dans Clara. ACCM est passée de `#00d084`/`#ffcd57` à
@@ -243,16 +249,21 @@ Seine Normandie Agglomération, qui n'avait rien, a reçu `#3b7788`/`#accd76`. `
 « Test 2 » restent sans couleurs — le référentiel n'en déclare pas, les gabarits de mails prennent
 alors leurs couleurs de repli. C'était l'objet du lot.
 
+Côté logo, le changement va dans l'autre sens : « Marie d'Arles » n'en affichait **aucun** et porte
+désormais celui d'ACCM, parce que la charte se résout le long de la hiérarchie là où la colonne
+brute de l'organisation mappée rendait `null`. ACCM et SNA gardent le leur.
+
 Vérification :
 
 ```sql
--- Les couleurs Clara doivent être celles que resolve_branding rend côté Socle.
-SELECT name, primary_color, secondary_color FROM organizations WHERE socle_org_id IS NOT NULL;
--- Et plus aucun client ne peut les écrire :
+-- La charte Clara doit être celle que resolve_branding rend côté Socle.
+SELECT name, logo_url, primary_color, secondary_color FROM organizations WHERE socle_org_id IS NOT NULL;
+-- Et plus aucun client ne peut l'écrire :
 SELECT grantee, string_agg(column_name, ', ' ORDER BY column_name)
   FROM information_schema.column_privileges
  WHERE table_schema='public' AND table_name='organizations' AND privilege_type='UPDATE'
-   AND grantee IN ('anon','authenticated') AND column_name LIKE '%_color'
+   AND grantee IN ('anon','authenticated')
+   AND column_name IN ('logo_url','primary_color','secondary_color')
  GROUP BY grantee;  -- doit rendre 0 ligne
 ```
 

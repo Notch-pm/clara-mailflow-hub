@@ -23,34 +23,24 @@ function makeRoot(overrides: Partial<SocleOrgApi> = {}): SocleOrgApi {
 const CURRENT = {
   name: "ACCM",
   slug: "accm",
-  logo_url: "https://socle.example/accm.png",
 };
 
 describe("planTenantIdentityUpdate", () => {
-  it("retourne null quand nom, slug et logo sont déjà alignés", () => {
+  it("retourne null quand nom et slug sont déjà alignés", () => {
     expect(planTenantIdentityUpdate(CURRENT, makeRoot())).toBeNull();
   });
 
-  it("recopie nom, slug et logo depuis la racine Socle", () => {
-    const current = { name: "Laurentville", slug: "laurentville", logo_url: "https://old.example/logo.png" };
+  it("recopie nom et slug depuis l'organisation Socle mappée", () => {
+    const current = { name: "Laurentville", slug: "laurentville" };
     expect(planTenantIdentityUpdate(current, makeRoot())).toEqual({
       name: "ACCM",
       slug: "accm",
-      logo_url: "https://socle.example/accm.png",
     });
   });
 
   it("ne retourne que les champs qui changent", () => {
-    const current = { ...CURRENT, logo_url: "https://old.example/logo.png" };
-    expect(planTenantIdentityUpdate(current, makeRoot())).toEqual({
-      logo_url: "https://socle.example/accm.png",
-    });
-  });
-
-  it("efface le logo Clara si la racine Socle n'en a pas", () => {
-    expect(planTenantIdentityUpdate(CURRENT, makeRoot({ logo_url: null }))).toEqual({
-      logo_url: null,
-    });
+    const current = { ...CURRENT, name: "Laurentville" };
+    expect(planTenantIdentityUpdate(current, makeRoot())).toEqual({ name: "ACCM" });
   });
 
   it("conserve le slug Clara si le Socle n'en fournit pas (contrainte NOT NULL/unicité)", () => {
@@ -66,10 +56,12 @@ describe("planTenantIdentityUpdate", () => {
     });
   });
 
-  it("gère un logo Clara null face à un logo Socle défini", () => {
-    const current = { ...CURRENT, logo_url: null };
-    expect(planTenantIdentityUpdate(current, makeRoot())).toEqual({
-      logo_url: "https://socle.example/accm.png",
-    });
+  it("ne touche PAS au logo : il appartient à la charte graphique (branding.ts)", () => {
+    // `SocleOrgApi.logo_url` est la colonne brute de l'organisation. La reprendre
+    // ici écraserait le logo hérité que /branding résout pour une
+    // sous-organisation qui n'en porte pas.
+    expect(planTenantIdentityUpdate(CURRENT, makeRoot({ logo_url: null }))).toBeNull();
+    expect(planTenantIdentityUpdate(CURRENT, makeRoot({ logo_url: "https://autre.example/x.png" })))
+      .toBeNull();
   });
 });
