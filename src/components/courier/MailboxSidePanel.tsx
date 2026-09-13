@@ -69,6 +69,7 @@ import {
   type WorkspaceCourier,
 } from "@/hooks/useCourierWorkspace";
 import type { CourierChannel } from "@/types/courier";
+import { advanceBlockedReason } from "./advance-blocked-reason";
 
 interface Props {
   courier: WorkspaceCourier | null;
@@ -186,6 +187,7 @@ export default function MailboxSidePanel({
     setTransferConfirmOpen,
     transitions,
     currentStateInfo,
+    localWorkflowStateId,
     isFinalState,
     isInitialState,
     transitionMutation,
@@ -297,7 +299,14 @@ export default function MailboxSidePanel({
                 <Button
                   className="h-10 flex-1 gap-2 font-bold"
                   disabled
-                  title="Affectez d'abord une organisation gestionnaire"
+                  title={advanceBlockedReason({
+                    hasOrganization: !!currentService,
+                    hasWorkflow: !!currentService?.workflow_id,
+                    hasState: !!localWorkflowStateId,
+                    isFinalState,
+                    transitionCount: transitions?.length ?? 0,
+                    stateName: currentStateInfo?.name ?? null,
+                  })}
                 >
                   <FileText className="h-4 w-4" />
                   Instruire
