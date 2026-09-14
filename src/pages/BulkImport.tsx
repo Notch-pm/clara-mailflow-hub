@@ -222,6 +222,17 @@ export default function BulkImport() {
             s.name.toLowerCase() === result.suggested_service_name.toLowerCase()
         );
 
+        // Proportion des champs clés que CETTE analyse a effectivement trouvés —
+        // pas une constante : un courrier qui ne nomme aucun service doit se voir
+        // moins bien noté que celui qui aura fourni titre, expéditeur, service et tags.
+        const signals = [
+          !!result.suggested_subject?.trim(),
+          !!senderName,
+          !!matchedService,
+          (result.suggested_tag_names?.length ?? 0) > 0,
+        ];
+        const confidence = signals.filter(Boolean).length / signals.length;
+
         setDrafts((prev) =>
           prev.map((d) => {
             if (d.id !== draft.id) return d;
@@ -242,7 +253,7 @@ export default function BulkImport() {
                 ),
               ],
               bodyText: result.extracted_text || d.bodyText,
-              confidence: 0.7,
+              confidence,
             };
             const flags: Array<"missing-service" | "duplicate"> = [];
             if (!updated.serviceName) flags.push("missing-service");
