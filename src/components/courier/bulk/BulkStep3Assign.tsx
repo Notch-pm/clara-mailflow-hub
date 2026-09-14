@@ -21,7 +21,7 @@ function fileTypeBadge(file: File): string {
 }
 
 function FileThumbnail({ bf, size = "sm" }: { bf: BulkFile; size?: "sm" | "md" }) {
-  const h = size === "md" ? "h-48" : "h-32";
+  const h = size === "md" ? "h-64" : "h-44";
   return (
     <div className={cn("rounded overflow-hidden flex items-center justify-center bg-muted/40 w-full", h)}>
       {bf.file.type.startsWith("image/") ? (
@@ -147,7 +147,7 @@ export default function BulkStep3Assign({ files, onChange, onPreview, onSplit }:
             Tous les documents sont associés à un courrier.
           </p>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             {unassigned.map((bf) => {
               const selected = selectedIds.has(bf.id);
               return (
