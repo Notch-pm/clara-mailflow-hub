@@ -21,11 +21,11 @@ function fileTypeBadge(file: File): string {
 }
 
 function FileThumbnail({ bf, size = "sm" }: { bf: BulkFile; size?: "sm" | "md" }) {
-  const h = size === "md" ? "h-24" : "h-16";
+  const h = size === "md" ? "h-48" : "h-32";
   return (
     <div className={cn("rounded overflow-hidden flex items-center justify-center bg-muted/40 w-full", h)}>
       {bf.file.type.startsWith("image/") ? (
-        <img src={bf.previewUrl} alt={bf.file.name} className="h-full w-full object-cover" />
+        <img src={bf.previewUrl} alt={bf.file.name} className="h-full w-full object-cover object-top" />
       ) : (
         <FileText className="h-6 w-6 text-muted-foreground/50" />
       )}

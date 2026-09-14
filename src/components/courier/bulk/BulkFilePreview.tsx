@@ -181,7 +181,7 @@ export default function BulkFilePreview({ fileId, files, onClose }: Props) {
             </Button>
           </div>
 
-          <div className="flex-1 overflow-auto flex items-center justify-center p-4 bg-muted/30">
+          <div className="flex-1 overflow-auto flex items-start justify-center p-4 bg-muted/30">
             {!activeFile ? (
               <div className="text-muted-foreground text-sm">Aucun fichier sélectionné</div>
             ) : activeFile.file.type.startsWith("image/") ? (
@@ -190,7 +190,7 @@ export default function BulkFilePreview({ fileId, files, onClose }: Props) {
                 alt={activeFile.file.name}
                 style={{
                   transform: `scale(${zoom}) rotate(${rotation}deg)`,
-                  transformOrigin: "center center",
+                  transformOrigin: "top center",
                   transition: "transform 0.2s ease",
                   maxWidth: "none",
                 }}
