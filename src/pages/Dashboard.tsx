@@ -74,16 +74,33 @@ export default function Dashboard() {
     .toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
 
   // ── Inbound couriers (lightweight) ────────────────────────────────────────
+  // PostgREST plafonne toute requête sans .range() au "Max Rows" du projet
+  // (1000 par défaut) : au-delà, la page se pagine explicitement pour ne pas
+  // tronquer silencieusement les KPI sur les organisations à fort volume.
   const { data: rawInbound, isLoading: loadingCouriers } = useQuery({
     queryKey: ["dashboard-inbound", organizationId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("couriers")
-        .select("id, subject, received_at, created_at, updated_at, workflow_state_id, assigned_service, socle_organization_id")
-        .eq("organization_id", organizationId!)
-        .eq("direction", "inbound");
-      if (error) throw error;
-      return data ?? [];
+      const fetchPage = (from: number, to: number) =>
+        supabase
+          .from("couriers")
+          .select("id, subject, received_at, created_at, updated_at, workflow_state_id, assigned_service, socle_organization_id")
+          .eq("organization_id", organizationId!)
+          .eq("direction", "inbound")
+          .order("id")
+          .range(from, to);
+
+      const pageSize = 1000;
+      const rows: NonNullable<Awaited<ReturnType<typeof fetchPage>>["data"]> = [];
+      let offset = 0;
+      let hasMore = true;
+      while (hasMore) {
+        const { data, error } = await fetchPage(offset, offset + pageSize - 1);
+        if (error) throw error;
+        rows.push(...(data ?? []));
+        hasMore = (data?.length ?? 0) === pageSize;
+        offset += pageSize;
+      }
+      return rows;
     },
     enabled: !!organizationId,
   });
