@@ -116,7 +116,7 @@ export default function BulkStep2Upload({ files, onChange, onPreview, maxFileSiz
       </div>
 
       {files.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           {files.map((bf) => (
             <div
               key={bf.id}
@@ -129,12 +129,12 @@ export default function BulkStep2Upload({ files, onChange, onPreview, maxFileSiz
                 type="button"
                 onClick={() => !bf.rejected && onPreview(bf.id)}
                 className={cn(
-                  "h-20 rounded overflow-hidden flex items-center justify-center bg-muted/40",
+                  "h-64 rounded overflow-hidden flex items-center justify-center bg-muted/40",
                   !bf.rejected && "cursor-pointer hover:bg-muted/60 transition-colors"
                 )}
               >
                 {bf.file.type.startsWith("image/") ? (
-                  <img src={bf.previewUrl} alt={bf.file.name} className="h-full w-full object-cover" />
+                  <img src={bf.previewUrl} alt={bf.file.name} className="h-full w-full object-cover object-top" />
                 ) : (
                   <FileText className={cn("h-8 w-8", bf.rejected ? "text-destructive/50" : "text-muted-foreground/50")} />
                 )}
