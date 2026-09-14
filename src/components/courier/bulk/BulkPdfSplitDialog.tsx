@@ -31,7 +31,7 @@ const GROUP_BORDER = [
   "border-split-6",
 ];
 
-const THUMB_WIDTH = 180;
+const THUMB_WIDTH = 360;
 
 type Status = "loading" | "ready" | "single-page";
 
@@ -261,7 +261,7 @@ export default function BulkPdfSplitDialog({ file, maxFileSize, onClose, onConfi
                 </Button>
               </div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {Array.from({ length: pageCount }, (_, idx) => {
                   const pageNo = idx + 1;
                   const gi = pageToGroup.get(pageNo);
