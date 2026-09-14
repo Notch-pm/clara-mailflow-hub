@@ -53,7 +53,7 @@ export default function ContentIntentsTab({ courierId, organizationId, readOnly 
   });
 
   const { data: courierData } = useQuery({
-    queryKey: ["courier", organizationId, courierId],
+    queryKey: ["courier", courierId, organizationId],
     queryFn: async () => {
       const { data, error } = await getCourierById(organizationId, courierId);
       if (error) throw error;
@@ -170,7 +170,12 @@ export default function ContentIntentsTab({ courierId, organizationId, readOnly 
     },
     onSuccess: (count) => {
       toast.success(`${count} tag(s) ajouté(s) au courrier`);
-      qc.invalidateQueries({ queryKey: ["courier", organizationId, courierId] });
+      // Clé courte (préfixe) plutôt que la clé complète de la requête locale
+      // ci-dessus : `CourierDetail` interroge sous `["courier", courierId,
+      // organizationId]`, dans cet ordre précis — une invalidation avec les
+      // deux derniers segments inversés ne le retrouve pas, et la page pleine
+      // écran (le classement, entre autres) reste figée jusqu'au rechargement.
+      qc.invalidateQueries({ queryKey: ["courier", courierId] });
       // Les listes filtrent par tag côté serveur : elles doivent toutes être
       // réinterrogées après une modification des tags.
       COURIER_LIST_QUERY_PREFIXES.forEach((prefix) =>
@@ -220,7 +225,7 @@ export default function ContentIntentsTab({ courierId, organizationId, readOnly 
     },
     onSuccess: () => {
       toast.success("Titre appliqué au courrier");
-      qc.invalidateQueries({ queryKey: ["courier", organizationId, courierId] });
+      qc.invalidateQueries({ queryKey: ["courier", courierId] });
       COURIER_LIST_QUERY_PREFIXES.forEach((prefix) =>
         qc.invalidateQueries({ queryKey: [prefix] }),
       );
