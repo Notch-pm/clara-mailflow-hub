@@ -154,13 +154,22 @@ const MentionTextarea = forwardRef<HTMLTextAreaElement, Props>(function MentionT
                 e.preventDefault();
                 insertMention(u);
               }}
+              // `bg-accent` est un vert saturé : sans le `accent-foreground` qui
+              // va avec, le libellé restait écrit en foncé sur foncé dès le
+              // survol. L'e-mail, en `muted-foreground`, doit suivre le même
+              // sort — même idiome que la liste de contacts (ContactPicker).
+              data-selected={idx === activeIdx}
               className={cn(
-                "w-full text-left px-3 py-1.5 text-sm hover:bg-accent",
-                idx === activeIdx && "bg-accent",
+                "group w-full text-left px-3 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground",
+                idx === activeIdx && "bg-accent text-accent-foreground",
               )}
             >
               <span className="font-medium">{u.label}</span>
-              {u.email && <span className="text-xs text-muted-foreground ml-2">{u.email}</span>}
+              {u.email && (
+                <span className="ml-2 text-xs text-muted-foreground group-hover:text-accent-foreground/80 group-data-[selected=true]:text-accent-foreground/80">
+                  {u.email}
+                </span>
+              )}
             </button>
           ))}
         </div>

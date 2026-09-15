@@ -171,7 +171,7 @@ export default function NotesInlineSidebar({ courierId, organizationId, notes, r
 
       {/* RGPD notice */}
       <div className="px-3 py-2 border-b bg-amber-50/60 shrink-0">
-        <p className="text-[10px] text-amber-800/70 leading-snug">
+        <p className="text-[10px] font-medium text-amber-900 leading-snug">
           Le contenu des notes doit respecter les préconisations du RGPD et ne pas contenir d'informations sensibles.
         </p>
       </div>

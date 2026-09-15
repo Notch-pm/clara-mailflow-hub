@@ -17,12 +17,16 @@ export default function FloatingNotesPanel({ courierId, organizationId, notes, r
 
   return (
     <>
-      {/* Languette d'ouverture */}
+      {/* Languette d'ouverture. Calée à mi-hauteur, pas sous l'en-tête : en haut
+          de page elle recouvrait la rangée d'actions du workflow (« Suivant »,
+          « Autres actions »), qui borde le même côté droit. La fermeture, dans
+          le panneau, vise la même ligne (le panneau commence à 56px, d'où le
+          `calc`) pour que la languette ne saute pas à l'ouverture. */}
       {!open && (
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="fixed right-0 top-24 z-20 flex flex-col items-center gap-2 rounded-l-lg bg-amber-200 hover:bg-amber-300 text-amber-900 border border-r-0 border-amber-300 shadow-md px-1.5 py-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+          className="fixed right-0 top-1/2 -translate-y-1/2 z-20 flex flex-col items-center gap-2 rounded-l-lg bg-amber-200 hover:bg-amber-300 text-amber-900 border border-r-0 border-amber-300 shadow-md px-1.5 py-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
           aria-label={`Ouvrir les notes internes (${count})`}
           title="Notes internes"
         >
@@ -49,7 +53,7 @@ export default function FloatingNotesPanel({ courierId, organizationId, notes, r
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="absolute -left-7 top-20 z-10 flex items-center justify-center h-12 w-7 rounded-l-md bg-amber-200 hover:bg-amber-300 text-amber-900 border border-r-0 border-amber-300 shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+              className="absolute -left-7 top-[calc(50%-28px)] -translate-y-1/2 z-10 flex items-center justify-center h-12 w-7 rounded-l-md bg-amber-200 hover:bg-amber-300 text-amber-900 border border-r-0 border-amber-300 shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
               aria-label="Fermer les notes internes"
               title="Fermer"
             >
