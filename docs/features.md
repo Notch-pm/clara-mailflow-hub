@@ -55,6 +55,24 @@ Les suggestions (`suggested_subject`, `suggested_sender`, `suggested_service_nam
 ### Rédaction de réponse IA
 - Edge function `draft-reply` : prend `courier_id`, `response_type`, instructions additionnelles → renvoie du HTML prêt à coller dans l'éditeur Tiptap.
 - UI : `ReplyComposer.tsx`.
+- **Ce que le prompt contient** (assemblé par `draft-reply/logic.ts`, testé dans
+  `src/test/socle/draft-reply-logic.test.ts`) : type de réponse et instructions de l'agent, nom de
+  la collectivité et organisation en charge, référence au registre (`chrono`), expéditeur /
+  destinataire / date / objet, **corps du courrier** (jusqu'à 20 000 caractères), **texte extrait
+  des pièces jointes** (`courier_document_extracts`), résumé et thèmes de l'analyse
+  (`courier_analyses`), actions liées avec la description de la démarche et la **référence Iris**,
+  et les **réponses déjà apportées** (5 dernières, chacune étiquetée envoyée / signée / brouillon).
+- ⚠️ **Pourquoi tout cela, et pas moins.** Jusqu'au 2026-09-15 le prompt ne portait que l'objet,
+  l'expéditeur, le corps du courriel coupé à 4 000 caractères et le nom des actions. Or `body_text`
+  est NULL par construction pour la **boîte de numérisation** (`fetch-inbound-emails`) : sur un
+  courrier papier, le modèle recevait « Contenu : Non disponible » et l'ordre de rédiger une
+  lettre — il inventait le dossier, les délais et les références, sans qu'aucun appel échoue. D'où
+  l'impression d'hallucinations « intermittentes » : elles ne frappaient que le papier. Le prompt
+  système interdit désormais explicitement d'inventer un fait, un délai ou une référence, et impose
+  `[à compléter]` là où l'information manque.
+- Budget : chaque bloc annexe est borné pour que le contenu garde sa part, et l'assemblage se
+  calcule sur le message réellement produit — la consigne finale ne peut pas être perdue par la
+  troncature du transport (`fitMessage` coupe par la fin).
 
 ### Consommation IA — d'où vient le crédit
 Depuis le **2026-08-29**, Clara n'appelle plus de fournisseur LLM : elle compose ses prompts et les

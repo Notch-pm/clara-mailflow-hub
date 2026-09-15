@@ -10,6 +10,15 @@ import {
   socleOrgIdFor,
 } from "../_shared/socleAi.ts";
 import { assertEditor } from "../_shared/authz.ts";
+import {
+  buildDraftUserPrompt,
+  type DraftAttachment,
+  DRAFT_SYSTEM_PROMPT,
+  type DraftPreviousReply,
+  type DraftTicket,
+  formatDateFr,
+  stripHtml,
+} from "./logic.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -54,8 +63,64 @@ async function verifyAuth(req: Request) {
   return data.user;
 }
 
-function stripHtml(html: string): string {
-  return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+/**
+ * Formes des lignes lues plus bas. Le client d'administration n'est pas typé
+ * par `Database` (il vit côté Deno, hors du type généré) : ces interfaces sont
+ * ce qui reste pour que le compilateur voie quelque chose, et pour que le
+ * lecteur sache ce que la requête rapporte sans aller la relire.
+ */
+interface ParticipantRow {
+  role: string | null;
+  name: string | null;
+  email: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  organization: string | null;
+}
+
+interface CourierRow {
+  subject: string | null;
+  chrono: string | null;
+  metadata: Record<string, unknown> | null;
+  received_at: string | null;
+  /** Organisation Socle en charge, jointe par `couriers_socle_organization_id_fkey`. */
+  assigned_org: { name: string | null } | null;
+  courier_participants: ParticipantRow[] | null;
+}
+
+interface DocumentRow {
+  id: string;
+  file_name: string | null;
+}
+
+interface ExtractRow {
+  document_id: string;
+  text: string | null;
+}
+
+interface TicketRow {
+  title: string | null;
+  description: string | null;
+  status: string | null;
+  iris_reference: string | null;
+  procedure: { name: string | null; description: string | null } | null;
+}
+
+interface ReplyRow {
+  metadata: Record<string, unknown> | null;
+}
+
+/** Le corps d'un courrier, que l'expéditeur l'ait écrit en texte ou en HTML. */
+function bodyTextOf(metadata: unknown): string {
+  const meta = (metadata ?? {}) as Record<string, unknown>;
+  const text = typeof meta.body_text === "string" ? meta.body_text.trim() : "";
+  if (text) return text;
+  const html = typeof meta.body_html === "string"
+    ? meta.body_html
+    : typeof meta.body === "string"
+    ? meta.body
+    : "";
+  return html ? stripHtml(html) : "";
 }
 
 Deno.serve(async (req) => {
@@ -106,18 +171,23 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Fetch courier + participants
+    // Fetch courier + participants + service en charge
     const { data: courier, error: cErr } = await admin
       .from("couriers")
-      .select("subject, metadata, received_at, courier_participants(role, name, email, first_name, last_name, organization)")
+      .select(
+        "subject, chrono, metadata, received_at, " +
+          "assigned_org:socle_organizations(name), " +
+          "courier_participants(role, name, email, first_name, last_name, organization)",
+      )
       .eq("id", courierId)
       .eq("organization_id", orgId)
       .single();
     if (cErr || !courier) return jsonResponse({ error: "Courrier introuvable" }, 404);
 
-    const participants = (courier.courier_participants ?? []) as any[];
-    const sender = participants.find((p: any) => p.role === "sender");
-    const recipient = participants.find((p: any) => p.role === "recipient");
+    const courierRow = courier as unknown as CourierRow;
+    const participants = courierRow.courier_participants ?? [];
+    const sender = participants.find((p) => p.role === "sender");
+    const recipient = participants.find((p) => p.role === "recipient");
 
     const senderFirstName = sender?.first_name ?? "";
     const senderLastName = sender?.last_name ?? "";
@@ -129,62 +199,130 @@ Deno.serve(async (req) => {
       ? [recipient.first_name, recipient.last_name].filter(Boolean).join(" ").trim() || recipient.name || recipient.email || ""
       : "";
 
-    const receivedAt = courier.received_at
-      ? new Date(courier.received_at).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" })
-      : null;
+    // ⚠️ TOUT CE QUI FONDE LA LETTRE EST LU EN UNE FOIS. Six allers-retours
+    // séquentiels sur une edge function qui attend déjà le guichet (jusqu'à
+    // 75 s), c'est une seconde offerte à personne.
+    const [orgRes, analysisRes, extractRes, docRes, ticketRes, threadRes] = await Promise.all([
+      admin.from("organizations").select("name").eq("id", orgId).maybeSingle(),
+      admin.from("courier_analyses")
+        .select("summary, intents")
+        .eq("courier_id", courierId)
+        .eq("organization_id", orgId)
+        .maybeSingle(),
+      // Le texte des pièces jointes : pour un courrier scanné, c'est LE
+      // courrier. `analyze-courier` le lisait déjà ; la rédaction l'ignorait.
+      admin.from("courier_document_extracts")
+        .select("document_id, text")
+        .eq("courier_id", courierId)
+        .eq("organization_id", orgId),
+      admin.from("courier_documents")
+        .select("id, file_name, created_at")
+        .eq("courier_id", courierId)
+        .eq("organization_id", orgId)
+        .order("created_at", { ascending: true }),
+      admin.from("action_tickets")
+        .select("title, description, status, iris_reference, procedure:procedures(name, description)")
+        .eq("courier_id", courierId)
+        .eq("organization_id", orgId),
+      // Les réponses déjà faites : un « Suivi » rédigé sans elles promet une
+      // seconde fois ce qui a déjà été promis, ou le contredit.
+      admin.from("couriers")
+        .select("metadata, created_at")
+        .eq("parent_courier_id", courierId)
+        .eq("organization_id", orgId)
+        .eq("direction", "outbound")
+        .order("created_at", { ascending: true }),
+    ]);
 
-    const meta = (courier.metadata ?? {}) as Record<string, any>;
-    const bodyHtml = meta.body_html ?? meta.body ?? "";
-    const bodyText = meta.body_text ?? (bodyHtml ? stripHtml(bodyHtml) : "");
+    const orgName = (orgRes.data as { name?: string } | null)?.name ?? "";
+    const assignedOrgName = courierRow.assigned_org?.name ?? "";
 
-    // Fetch linked action tickets with procedure name
-    const { data: tickets } = await admin
-      .from("action_tickets")
-      .select("description, status, procedure:procedures(name)")
-      .eq("courier_id", courierId);
+    const analysis = analysisRes.data as { summary?: string | null; intents?: unknown } | null;
+    const analysisIntents = Array.isArray(analysis?.intents)
+      ? (analysis!.intents as unknown[]).filter((t): t is string => typeof t === "string")
+      : [];
 
-    const ticketsText = (tickets ?? []).length > 0
-      ? (tickets ?? []).map((t: any) => {
-          const name = t.procedure?.name ?? "Action";
-          return `- ${name}${t.description ? ` : ${t.description}` : ""} [${t.status ?? ""}]`;
-        }).join("\n")
-      : "Aucune action liée.";
+    // Le nom de fichier n'est pas décoratif : « facture_2026.pdf » et
+    // « courrier_signe.pdf » ne pèsent pas pareil dans une réponse, et le
+    // modèle n'a aucun autre moyen de les distinguer.
+    const fileNames = new Map<string, string>();
+    const documentOrder = new Map<string, number>();
+    ((docRes.data ?? []) as DocumentRow[]).forEach((d, i) => {
+      if (!d?.id) return;
+      fileNames.set(d.id, (d.file_name ?? "").trim());
+      documentOrder.set(d.id, i);
+    });
+    const attachments: DraftAttachment[] = ((extractRes.data ?? []) as ExtractRow[])
+      .map((e) => ({
+        name: fileNames.get(e.document_id) || "pièce jointe",
+        text: (e.text ?? "").trim(),
+        order: documentOrder.get(e.document_id) ?? Number.MAX_SAFE_INTEGER,
+      }))
+      .filter((a) => a.text.length > 0)
+      .sort((a, b) => a.order - b.order)
+      .map(({ name, text }) => ({ name, text }));
 
-    // ⚠️ LE PROMPT SYSTÈME EST DÉSORMAIS AUTOSUFFISANT, et le changement n'est
-    // pas cosmétique. Clara envoyait autrefois les seules contraintes de sortie
-    // quand l'agent de rédaction était configuré, son ton venant de la console
-    // du fournisseur. Clara ne sait plus si l'alias `redaction-reponse` résout
-    // chez le Socle : un alias inconnu retombe sur le modèle par défaut, sans
-    // refus et sans avertissement. Un prompt qui compterait sur l'agent
-    // produirait alors du texte sans ton ni cadre — silencieusement. On écrit
-    // donc tout ; si l'agent existe, le rappel est redondant, jamais nuisible.
-    const systemPrompt = `Tu es un assistant expert en rédaction de courrier administratif pour une collectivité française.
-Contexte : rédaction de la réponse à un courrier entrant.
-Ta réponse doit être professionnelle, claire, et adaptée au type de réponse demandé.
-Retourne UNIQUEMENT le corps de la lettre en HTML, avec des balises <p>, <strong>, <em>, <ul>, <li> uniquement.
-N'inclus pas les coordonnées, la date, l'objet, la formule d'appel ni la formule de politesse finale.`;
+    const tickets: DraftTicket[] = ((ticketRes.data ?? []) as TicketRow[]).map((t) => ({
+      procedureName: t.procedure?.name ?? null,
+      procedureDescription: t.procedure?.description ?? null,
+      title: t.title ?? null,
+      description: t.description ?? null,
+      status: t.status ?? null,
+      irisReference: t.iris_reference ?? null,
+    }));
 
-    const userPrompt = `Type de réponse : ${responseType}
-${additionalInstructions ? `Instructions complémentaires : ${additionalInstructions}` : ""}
+    const previousReplies: DraftPreviousReply[] = ((threadRes.data ?? []) as ReplyRow[])
+      .map((r) => {
+        const meta = (r.metadata ?? {}) as Record<string, unknown>;
+        // Envoyée, signée, ou encore en brouillon : le modèle ne doit pas
+        // présenter comme acquis ce qui n'est jamais parti.
+        //
+        // ⚠️ NI `is_draft` NI `sent_at` NE DISENT LA VÉRITÉ ICI. `is_draft`
+        // reste à `true` après l'envoi (personne ne le retourne), et `sent_at`
+        // est renseigné DÈS LA CRÉATION pour satisfaire la contrainte
+        // `check_dates` des courriers sortants. Seuls `sent_email_at` (posé par
+        // `send-courier-reply`) et `signed_at` racontent quelque chose. Une
+        // réponse papier signée puis postée n'a aucun marqueur d'expédition :
+        // on dit donc « signée le… » sans rien affirmer de son départ.
+        const sentAt = formatDateFr(
+          typeof meta.sent_email_at === "string" ? meta.sent_email_at : null,
+        );
+        const signedAt = formatDateFr(
+          typeof meta.signed_at === "string" ? meta.signed_at : null,
+        );
+        const statusLabel = sentAt
+          ? `envoyée par courriel le ${sentAt}`
+          : signedAt
+          ? `signée le ${signedAt}`
+          : "brouillon non finalisé";
+        return { statusLabel, text: bodyTextOf(r.metadata) };
+      })
+      .filter((r) => r.text.length > 0);
 
-Informations sur le courrier initial :
-- Expéditeur : ${senderFullName}${senderOrg ? ` (${senderOrg})` : ""}
-- Prénom de l'expéditeur : ${senderFirstName || "non renseigné"}
-- Nom de l'expéditeur : ${senderLastName || "non renseigné"}
-- Destinataire : ${recipientName || "non renseigné"}
-- Date de réception : ${receivedAt ?? "non renseignée"}
-- Sujet : ${courier.subject ?? "non renseigné"}
-- Contenu du courrier :
-${bodyText ? bodyText.slice(0, 4000) : "Non disponible"}
-
-Actions liées au dossier :
-${ticketsText}
-
-Rédige maintenant le corps de la lettre de réponse.`;
+    const userPrompt = buildDraftUserPrompt({
+      responseType,
+      additionalInstructions,
+      orgName,
+      assignedOrgName,
+      chrono: courierRow.chrono,
+      senderFullName,
+      senderFirstName,
+      senderLastName,
+      senderOrg,
+      recipientName,
+      receivedAtLabel: formatDateFr(courierRow.received_at),
+      subject: courierRow.subject,
+      bodyText: bodyTextOf(courierRow.metadata),
+      attachments,
+      analysisSummary: analysis?.summary ?? null,
+      analysisIntents,
+      tickets,
+      previousReplies,
+    });
 
     // Le guichet réserve, appelle et solde : Clara ne compte plus rien.
     const answer = await socleCompletion({
-      system: systemPrompt,
+      system: DRAFT_SYSTEM_PROMPT,
       messages: [{ role: "user", content: fitMessage(userPrompt) }],
       agent: AGENT_REDACTION,
       maxOutputTokens: DRAFT_OUTPUT_TOKENS,
