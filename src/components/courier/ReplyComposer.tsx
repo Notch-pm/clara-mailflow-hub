@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Send, Save, Lock, PenLine, X, Plus, Pencil, Eye, Trash2, ArrowLeft, Printer, ChevronDown, Sparkles } from "lucide-react";
 import { toast } from "sonner";
+import { edgeError } from "@/lib/edge-error";
 import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
@@ -476,7 +477,7 @@ export default function ReplyComposer({
       const { data, error } = await supabase.functions.invoke("send-courier-reply", {
         body: { reply_id: reply.id, organization_id: organizationId },
       });
-      if (error) throw new Error(error.message);
+      if (error) throw await edgeError(error, "Envoi du courriel impossible");
       const result = data as SendEmailResult | null;
       if (result?.error) throw new Error(result.error);
       return result;
@@ -526,7 +527,7 @@ export default function ReplyComposer({
       const { data, error } = await supabase.functions.invoke("send-courier-reply", {
         body: { reply_id: reply.id, organization_id: organizationId },
       });
-      if (error) throw new Error(error.message);
+      if (error) throw await edgeError(error, "Envoi du courriel impossible");
       const result = data as SendEmailResult | null;
       if (result?.error) throw new Error(result.error);
       await transitionReplyState(

@@ -1,7 +1,7 @@
 // Edge function: notifications-push
 //
 // Draine la boîte d'envoi PUSH des notifications et expédie les Web Push
-// (VAPID) vers les appareils inscrits. Appelée par pg_cron toutes les minutes
+// (VAPID) vers les appareils inscrits. Appelée par pg_cron toutes les 3 minutes
 // (`trigger_notifications_push()`), qui n'envoie aucun en-tête Authorization :
 // d'où `verify_jwt = false` dans supabase/config.toml et l'authentification par
 // `x-cron-secret` comparé à `get_cron_secret()`, motif de process-analysis-queue.

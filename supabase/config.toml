@@ -35,3 +35,14 @@ verify_jwt = false
 # la fonction (x-cron-secret comparé à get_cron_secret()).
 [functions.notifications-push]
 verify_jwt = false
+
+# Ces deux-là font leur propre authentification (JWT de l'appelant relu par la
+# fonction, puis rôle `administrateur` ou `is_superadmin` exigé) et tournent en
+# production avec `verify_jwt = false` depuis toujours — sans entrée ici, le
+# premier déploiement par la CLI leur réappliquait le défaut `true`, la dérive
+# décrite en tête de docs/deployment.md. L'entrée fige l'état réel.
+[functions.send-password-reset]
+verify_jwt = false
+
+[functions.invite-user]
+verify_jwt = false

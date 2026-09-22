@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { OrgMember } from "@/types/user";
+import { edgeError } from "@/lib/edge-error";
 export type { OrgMember } from "@/types/user";
 
 interface OrgMemberRow {
@@ -88,9 +89,7 @@ export async function createOrgMember(
     },
   });
 
-  if (error) {
-    throw new Error(error.message || "Erreur lors de l'invitation");
-  }
+  if (error) throw await edgeError(error, "Erreur lors de l'invitation");
 
   if (data?.error) {
     throw new Error(data.error);
@@ -190,9 +189,7 @@ export async function sendPasswordReset(userId: string) {
     body: { user_id: userId },
   });
 
-  if (error) {
-    throw new Error(error.message || "Erreur lors de l'envoi");
-  }
+  if (error) throw await edgeError(error, "Erreur lors de l'envoi");
   if (data?.error) {
     throw new Error(data.error);
   }

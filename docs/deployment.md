@@ -112,6 +112,48 @@ bunx supabase functions deploy <nom> --project-ref aullweizxcjbvtdspjli
 bun run build && npx wrangler deploy --dry-run
 ```
 
+### Lot « alerte mémoire + lien de réinitialisation » (2026-09-22) — appliqué le 2026-09-22
+
+Deux pannes sans rapport, remontées le même jour.
+
+**1. « Memory usage 408 Mo / commitment 1,44 Go » sur une instance ~1 Go.** La base tenait 155 Mo
+dont ~105 de plomberie : `net._http_response` occupait **82 Mo de tas pour 252 lignes vivantes**
+(dernier autovacuum le 5 août — l'espace libéré n'était jamais rendu à la FSM, donc chaque insertion
+ajoutait une page et le fichier ne redescendait jamais), et `cron.job_run_details` 23 Mo jamais
+purgés. Conséquence lisible dans `pg_stat_statements` : le ménage interne de pg_net
+(`DELETE … WHERE created < now() - ttl`) totalisait **8 h 09 d'exécution sur 124 973 appels**,
+235 ms de moyenne, 11,6 s au pire — pour une table de 252 lignes.
+
+| # | Action | Pourquoi cet ordre | État |
+|---|---|---|---|
+| 1 | `VACUUM FULL (ANALYZE) net._http_response` | Rend le tas ; sans lui, tout le reste ne fait que ralentir la croissance | **Fait** — 82 Mo → 768 ko |
+| 2 | Purge de `cron.job_run_details` (7 jours) + `VACUUM FULL` | 112 417 lignes ; Supabase ne purge pas cette table | **Fait** — 23 Mo → 2,9 Mo |
+| 3 | Crons `purge-cron-history` (03:15) et `vacuum-net-http-response` (03:45) | Bornent les deux tables pour de bon | **Fait** — jobid 10 et 11 |
+| 4 | `20260922190000_notifications_cadence_et_retention.sql` | Cadence push 1 min → 3 min et rétention 30 j des notifications : c'est ce qui reconstituait la plomberie | **Appliqué via `execute_sql`** (le mode auto de Claude Code refuse `apply_migration`), **ligne de registre posée à la main** pour `20260922190000` |
+| 5 | Épingler `verify_jwt = false` de `send-password-reset` et `invite-user` dans `config.toml` | Les deux tournaient en `false` sans entrée : le déploiement CLI de l'étape 7 les aurait basculées à `true` | **Fait** |
+
+Base : **155 Mo → 53 Mo**. ⚠️ `ALTER TABLE net._http_response SET (autovacuum_vacuum_threshold …)`
+est **refusé** — `must be owner of table`, le schéma `net` appartient à `supabase_admin` et le rôle du
+MCP n'a que le privilège `MAINTAIN`. D'où le `VACUUM` nocturne explicite de l'étape 3, à la place du
+réglage par table.
+
+**2. Envoi du lien de réinitialisation : « 400 Bad Request ».** Les trois comptes de démo Rosny
+(`+rosny@`, `+rosnyelu@`, `+rosnyservice@`), créés en SQL direct, avaient `confirmation_token`,
+`recovery_token`, `email_change_token_new` et `email_change` à **NULL**. GoTrue lit ces colonnes en
+`string` non-nullable : `/admin/generate_link` répond 500 `converting NULL to string is unsupported`,
+`send-password-reset` traduit ce `linkError` en 400, et le navigateur n'affiche qu'un « Bad Request ».
+Rien à voir avec le SMTP, contrairement à la première hypothèse.
+
+| # | Action | Pourquoi | État |
+|---|---|---|---|
+| 6 | `UPDATE auth.users SET … = coalesce(…, '')` sur les 8 colonnes de jetons | `''` est la valeur qu'attend GoTrue ; aucun mot de passe ni session touchés | **Fait** — 3 lignes, 0 NULL restant sur 23 comptes |
+| 7 | Déployer `send-password-reset` | `console.error` sur la branche `linkError`, muette jusque-là : l'échec ne laissait aucune trace côté fonction | **Fait** — v74. Le déployé était **en retard sur le dépôt** (il portait encore « Configuration SMTP introuvable », d'avant le lot « serveur d'envoi depuis le Socle ») |
+| 8 | `src/lib/edge-error.ts` | `functions.invoke` n'expose que « non-2xx » : le vrai motif dort dans `error.context`. Helper extrait de `courierAnalysisService`, posé sur les deux envois de `ReplyComposer`, l'invitation et la réinitialisation | **Fait** |
+
+⚠️ **Le script de seed de démo va refaire le coup.** Il insère dans `auth.users` sans ces colonnes :
+tout nouveau tenant de démo (Nora) doit y écrire `''` et non NULL, sinon les comptes créés sont
+inutilisables par l'API admin de GoTrue — réinitialisation, invitation, changement d'email.
+
 ### Lot « consentements RGPD » (2026-09-22) — appliqué le 2026-09-22
 
 Reprise dans Clara du modèle de consentement livré par le Socle (`contacts-api` 1.2.0,
@@ -216,7 +258,7 @@ SELECT n.type, u.email AS destinataire, n.push_status, n.push_attempts, n.push_e
 SELECT status_code, left(content::text, 120), created FROM net._http_response
  WHERE created > now() - interval '10 minutes' ORDER BY created DESC;
 
-SELECT jobname, schedule, active FROM cron.job WHERE jobname = 'notifications-push-every-min';
+SELECT jobname, schedule, active FROM cron.job WHERE jobname = 'notifications-push-every-3min';
 ```
 
 Côté navigateur, le texte sous l'interrupteur nomme l'état : « non configuré » = clé publique

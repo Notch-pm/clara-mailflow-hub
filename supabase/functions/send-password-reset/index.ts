@@ -183,6 +183,10 @@ Deno.serve(async (req) => {
     });
 
     if (linkError) {
+      // Le motif vient de GoTrue (compte introuvable, colonne de jeton à NULL
+      // sur un compte créé en SQL direct…) : sans cette trace, la branche est
+      // muette et le navigateur ne montre qu'un « 400 Bad Request ».
+      console.error("send-password-reset: generateLink a échoué:", linkError.message);
       return new Response(JSON.stringify({ error: linkError.message }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

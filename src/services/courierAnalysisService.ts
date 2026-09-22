@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { SocleContact } from "@/services/socleContactService";
+import { edgeError } from "@/lib/edge-error";
 
 export interface CourierDocumentExtract {
   id: string;
@@ -87,38 +88,6 @@ export interface ExtractCourierInfoResult {
   /** Pièces du lot restées illisibles, avec leur motif — l'extraction a abouti
    *  sur les autres. */
   ocr_failures?: string[];
-}
-
-/**
- * Le motif réel d'un échec d'edge function.
- *
- * `functions.invoke` ne rend qu'un « Edge Function returned a non-2xx status
- * code » : le message que la fonction a pris soin de rédiger — plafond IA
- * atteint, pièce illisible, organisation non rattachée au Socle — dort dans le
- * corps de la réponse, que seul `error.context` donne encore à lire. Sans cette
- * lecture, l'agent voit la même phrase opaque quelle que soit la panne.
- */
-async function edgeError(error: unknown, fallback: string) {
-  const ctx = (error as { context?: Response }).context;
-  const err = new Error(fallback) as Error & {
-    status?: number;
-    code?: string;
-    details?: string[];
-  };
-  const generic = (error as { message?: string }).message;
-  if (generic && !generic.includes("non-2xx")) err.message = generic;
-  if (ctx?.status) err.status = ctx.status;
-  try {
-    // `clone()` : le corps ne se lit qu'une fois, et l'appelant peut vouloir le
-    // relire.
-    const body = await ctx?.clone().json();
-    if (body?.error) err.message = String(body.error);
-    if (body?.code) err.code = String(body.code);
-    if (Array.isArray(body?.ocr_failures)) err.details = body.ocr_failures.map(String);
-  } catch {
-    // Corps vide ou illisible : le message générique fera l'affaire.
-  }
-  return err;
 }
 
 /** Normalize suggested_actions: handles both legacy string[] and new SuggestedAction[] */
