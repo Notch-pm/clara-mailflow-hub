@@ -124,6 +124,33 @@ describe("buildIrisEnvelope — enveloppe conforme au contrat", () => {
     expect(envelopeOf(BASE).form_data).toEqual({ urgence: "haute", localisation: "rue des Lilas" });
   });
 
+  it("transmet les consentements du dépôt portail — kind et granted SEULEMENT", () => {
+    const e = envelopeOf({
+      ...BASE,
+      courier: {
+        ...BASE.courier,
+        consents: [
+          { kind: "partage", granted: false, statement: "Phrase lue.", collected_at: "2026-08-18T08:00:00Z" },
+          { kind: "traitement", granted: true, statement: "Phrase lue.", collected_at: "2026-08-18T08:00:00Z" },
+        ],
+      },
+    });
+    // Ordre du catalogue, aucune phrase : Iris compose la sienne (contrat 2.2.0).
+    expect(e.consents).toEqual([
+      { kind: "traitement", granted: true },
+      { kind: "partage", granted: false },
+    ]);
+  });
+
+  it("omet les consentements sans trace, ou sans le traitement accordé (Iris pose une anomalie, pas un 400)", () => {
+    expect(envelopeOf(BASE)).not.toHaveProperty("consents");
+    expect(envelopeOf({ ...BASE, courier: { ...BASE.courier, consents: [] } })).not.toHaveProperty("consents");
+    expect(envelopeOf({
+      ...BASE,
+      courier: { ...BASE.courier, consents: [{ kind: "partage", granted: true, statement: "x" }] },
+    })).not.toHaveProperty("consents");
+  });
+
   it("situe la demande : canal, date de réception D'ORIGINE, permalien, lien courrier", () => {
     const e = envelopeOf(BASE);
     expect(e.context?.channel).toBe("courrier");

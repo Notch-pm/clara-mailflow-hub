@@ -37,6 +37,23 @@ Multi-tenant strict : toute donnée est scopée par `organization_id`. Repo (pri
    total par collectivité redeviendrait faux, sans que rien n'échoue visiblement. Clara ne stocke
    plus ni plafond, ni compteur, ni nombre de jetons (tables `ai_usage_*` supprimées le
    2026-08-29). Un test de non-régression scanne `supabase/functions/` (`src/test/socle/socle-ai.test.ts`).
+8. **Consentements RGPD : deux finalités, une phrase composée par le serveur, jamais l'inverse.**
+   Le catalogue est FERMÉ (`supabase/functions/_shared/consents/catalog.ts`, repris d'Iris, partagé
+   écran ↔ edge functions par chemin relatif via `src/lib/consents.ts`) : `traitement` (obligatoire
+   au dépôt) et `partage` (facultatif, proposé coché). Il remplace « accepte les mails / SMS »
+   (`consent_email`/`consent_sms`, obsolètes au Socle, retirés de Clara le 2026-09-22 — ne plus
+   les écrire ni les lire). Le navigateur n'envoie que `kind` et `granted` ; la phrase consignée
+   est composée côté serveur depuis `organizations.name` — un `statement` client est refusé.
+   **Deux écritures, toutes deux nécessaires** : le Socle est propriétaire du consentement d'une
+   PERSONNE (`POST /v1/contacts/{id}/consents`, via le proxy `socle-contacts`, actions
+   `consents_record` / `consents_from_courier`) ; `couriers.consents` garde celui de CE DÉPÔT
+   portail, **immuable** (trigger), parce qu'un dépôt arrive sans fiche rapprochée et qu'un
+   retrait ultérieur ne réécrit pas ce qui a été accepté ce jour-là. Un Socle muet ne refuse
+   jamais un dépôt ni ne défait un rattachement : avertissement, pas erreur. À l'écran, **TROIS
+   états** (accordé / refusé / jamais demandé) — c'est la date `consent_*_at` qui tranche, jamais
+   le booléen seul. Le retrait est un recueil `granted: false` plus récent ; l'obligation de
+   `traitement` ne vaut qu'au dépôt portail (`normalizeConsents`), jamais à la consignation
+   manuelle par un agent (sinon aucun retrait ne serait consignable).
 
 ## Carte du projet
 

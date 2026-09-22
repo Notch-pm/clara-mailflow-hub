@@ -121,7 +121,7 @@ Deno.serve(async (req) => {
     const [{ data: courier }, { data: procedure }] = await Promise.all([
       supabaseAdmin
         .from("couriers")
-        .select("id, chrono, subject, channel, received_at, socle_organization_id")
+        .select("id, chrono, subject, channel, received_at, socle_organization_id, consents")
         .eq("id", ticket.courier_id)
         .maybeSingle(),
       ticket.procedure_id
@@ -217,6 +217,7 @@ Deno.serve(async (req) => {
         channel: courier.channel as string | null,
         received_at: courier.received_at as string | null,
         socle_organization_socle_id: socleOrganizationSocleId,
+        consents: courier.consents,
       },
       procedure: procedure as
         | { socle_id?: string | null; name?: string | null; obsoleted_at?: string | null }

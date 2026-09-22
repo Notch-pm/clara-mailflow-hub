@@ -134,6 +134,18 @@ describe("buildSocleRequest", () => {
     }
   });
 
+  it("consents_record / consents_from_courier → POST /v1/contacts/{id}/consents, corps composé par le serveur", () => {
+    const body = { source_app: "clara", source_reference: null, collected_at: "2026-09-22T10:00:00.000Z", consents: [] };
+    for (const action of ["consents_record", "consents_from_courier"] as const) {
+      expect(buildSocleRequest(action, { id: CONTACT_ID, payload: body })).toEqual({
+        ok: true,
+        request: { method: "POST", path: `/v1/contacts/${CONTACT_ID}/consents`, body, idempotent: false },
+      });
+      expect(buildSocleRequest(action, { payload: body }).ok).toBe(false);
+      expect(buildSocleRequest(action, { id: CONTACT_ID }).ok).toBe(false);
+    }
+  });
+
   it("action inconnue refusée", () => {
     expect(buildSocleRequest("delete", { id: CONTACT_ID }).ok).toBe(false);
     expect(buildSocleRequest(undefined).ok).toBe(false);

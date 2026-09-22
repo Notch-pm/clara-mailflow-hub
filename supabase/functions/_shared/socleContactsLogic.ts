@@ -20,7 +20,11 @@ export type SocleContactsAction =
   | "update"
   | "archive"
   | "restore"
-  | "roles";
+  | "roles"
+  /** Consignation manuelle d'un recueil de consentement RGPD par un agent. */
+  | "consents_record"
+  /** Report au référentiel de la trace de consentement d'un courrier déposé au portail. */
+  | "consents_from_courier";
 
 export interface SocleContactsRequest {
   method: "GET" | "POST" | "PATCH";
@@ -164,11 +168,28 @@ export function buildSocleRequest(action: unknown, params: BuildParams = {}): Bu
         request: { method: "POST", path: `/v1/contacts/${id}/${action}`, idempotent: false },
       };
     }
+    case "consents_record":
+    case "consents_from_courier": {
+      // Une seule route Socle pour les deux gestes : `POST /v1/contacts/{id}/consents`.
+      // Le corps arrive DÉJÀ composé par le serveur (`consentsLogic.ts`) — jamais
+      // relayé tel quel depuis le navigateur, contrairement à create/update :
+      // c'est le serveur qui écrit la phrase consignée. Idempotent côté Socle
+      // par (source_app, source_reference), mais une écriture ne se rejoue pas.
+      const id = requireContactId(params.id);
+      if (!id) return { ok: false, message: "id de contact invalide (uuid attendu)." };
+      const payload = requirePayload(params.payload);
+      if (!payload) return { ok: false, message: "corps de consentement manquant ou invalide." };
+      return {
+        ok: true,
+        request: { method: "POST", path: `/v1/contacts/${id}/consents`, body: payload, idempotent: false },
+      };
+    }
     default:
       return {
         ok: false,
         message:
-          "action inconnue (attendu : list, get, match, create, update, archive, restore, roles).",
+          "action inconnue (attendu : list, get, match, create, update, archive, restore, roles, "
+          + "consents_record, consents_from_courier).",
       };
   }
 }

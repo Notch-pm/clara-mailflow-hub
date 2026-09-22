@@ -79,6 +79,21 @@ Clara relève automatiquement une ou plusieurs boîtes IMAP.
 - Une boîte peut être rattachée à une organisation Socle ; dans ce cas, le courrier peut être affecté d'office à cette organisation pour traitement.
 - Le courrier créé conserve les informations utiles du mail : expéditeur, destinataires, sujet, corps, pièces jointes et métadonnées techniques.
 
+#### 1.5 Dépôt par le formulaire portail public
+
+Un usager dépose lui-même sa demande sur un formulaire public de la collectivité (lien ou iframe
+à jeton). C'est le seul chemin d'entrée où l'usager est **présent** : c'est là que Clara lui pose
+les deux questions de consentement RGPD de la gamme — l'utilisation de ses informations pour
+traiter sa demande (obligatoire, sans quoi l'envoi est refusé) et leur partage aux services de la
+collectivité (facultatif, proposé coché). La phrase affichée est celle qui est consignée, mot
+pour mot, avec le nom de la collectivité.
+
+Résultat attendu : un courrier `portal` avec un expéditeur brut (non rapproché) et la trace
+immuable de ses consentements. Quand l'agent rattache l'expéditeur à une fiche du référentiel,
+la trace est reportée au Socle ; la fiche contact affiche alors trois états possibles par
+consentement — accordé, refusé, jamais demandé — et un agent éditeur peut consigner un recueil
+reçu autrement (formulaire papier, retrait par courrier).
+
 #### 1.4 Import IMAP depuis un scanner
 
 Un copieur/scanner envoie les documents numérisés vers une boîte IMAP dédiée.

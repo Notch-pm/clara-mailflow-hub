@@ -19,9 +19,11 @@ import {
   contactRelationLines,
   findContactByEmail,
   getContact,
+  recordCourierConsents,
   type SocleContact,
 } from "@/services/socleContactService";
 import { formatContactAddressInline } from "@/lib/prefill-mapping";
+import { parseConsentRecords } from "@/lib/consents";
 import { useAuth } from "@/contexts/AuthContext";
 import { canEditCouriers } from "@/lib/permissions";
 import { contactDisplay } from "@/components/courier/ContactPicker";
@@ -447,6 +449,11 @@ export function useCourierWorkspace({
             const matched = await findContactByEmail(organizationId, senderParticipant.email);
             if (matched) {
               await updateParticipant(senderParticipant.id, { socle_contact_id: matched.id });
+              // Dépôt portail : la trace de consentement rejoint la fiche.
+              // Silencieux ici — le passage en instruction ne s'arrête pas pour ça.
+              await reportCourierConsents(matched.id).catch((e) =>
+                console.warn("Consentements du dépôt non transmis au référentiel :", e),
+              );
             }
           } catch (e) {
             console.warn("Rapprochement contact Socle impossible :", e);
@@ -630,6 +637,28 @@ export function useCourierWorkspace({
       },
       "Expéditeur associé au référentiel",
     );
+    // Le rattachement est FAIT : un Socle muet ne le défait pas. Avertir, sans plus.
+    try {
+      await reportCourierConsents(contact.id);
+    } catch (e) {
+      toast.warning(
+        "Expéditeur associé, mais le consentement du dépôt n'a pas pu être consigné au référentiel : "
+          + (e instanceof Error ? e.message : "référentiel injoignable"),
+      );
+    }
+  }
+
+  /**
+   * Report au Socle de la trace de consentement d'un dépôt portail
+   * (`couriers.consents`), sur la fiche que l'agent vient de rattacher.
+   * Idempotent côté Socle (référence = id du courrier) : re-rattacher ne
+   * duplique rien. Rien à faire pour un courrier sans trace (saisie agent,
+   * IMAP) — pas d'appel du tout.
+   */
+  async function reportCourierConsents(contactId: string) {
+    if (!courier || parseConsentRecords(courier.consents).length === 0) return;
+    await recordCourierConsents(organizationId, contactId, courier.id);
+    queryClient.invalidateQueries({ queryKey: ["socle-contact", organizationId, contactId] });
   }
 
   return {

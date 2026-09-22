@@ -131,6 +131,7 @@ Table centrale. Tags stockés dans `metadata->'tags'` (tableau JSON de strings).
 | `assigned_service` | varchar | nom de l'organisation gestionnaire — **pure dénormalisation d'affichage** (toujours écrite en double, mais plus aucune logique ne compare ce texte) |
 | `socle_organization_id` | uuid FK → socle_organizations | organisation gestionnaire — **clé de toute la logique** : RPC `stats_*` (`p_socle_organization_id`), `search_couriers`, filtres de droits (`useUserServiceFilter` → UUIDs via `socle_organization_members`), résolutions dans le panneau courrier/composer |
 | `metadata` | jsonb | `tags: string[]`, `body_text`, etc. — voir clés d'ingestion ci-dessous |
+| `consents` | jsonb NOT NULL défaut `[]` | Consentements RGPD recueillis **au dépôt portail** : `[{kind, granted, statement, collected_at}]`. Écrit par `portal-form` seul, **immuable** ensuite. Voir ci-dessous. |
 | `fts_subject` / `fts_body` | tsvector | index full-text français |
 
 **Référence du registre (`chrono`) — implémentée le 2026-09-13.** Format `AAAA-E|S|I-NNNNN`,
@@ -158,6 +159,42 @@ compteurs dans `courier_sequences` (une suite par organisation × année × sens
   (`ensureReply` dans `ReplyComposer` → `createReply`, sur « Enregistrer le brouillon », la
   signature ou l'envoi — pas à l'ouverture du composeur). Un brouillon enregistré puis supprimé
   laisse donc un trou dans la suite `S`. À arbitrer si la continuité du registre sortant compte.
+
+**Consentements RGPD au dépôt (`consents`) — implémentés le 2026-09-22** (migration
+`courier_consents`, doctrine reprise d'Iris `requests.consents`).
+
+Le référentiel Socle est propriétaire du consentement d'une **personne** (`contact_consents` +
+état dérivé `consent_traitement` / `consent_partage` sur `contacts`, via
+`POST /v1/contacts/{id}/consents`). Mais un dépôt portail arrive **sans fiche rapprochée** :
+l'expéditeur n'est associé à un contact que plus tard, par un geste d'agent. Entre les deux, la
+preuve doit exister quelque part — et rester celle de ce dépôt.
+
+| | Socle `contact_consents` | Clara `couriers.consents` |
+|---|---|---|
+| Objet | Le consentement d'une **personne**, état courant compris | Le consentement de **ce dépôt** |
+| Dépôt non rapproché | Rien à écrire — aucune fiche | La **seule** trace qui existe |
+| Rattachement de l'expéditeur | Report par `socle-contacts` (`consents_from_courier`), `source_app = clara`, `source_reference = courier.id`, `collected_at` = date du dépôt | Ne change pas |
+| Retrait ultérieur | Nouveau recueil `granted: false`, met l'état à jour | **Ne réécrit rien** |
+| Mutabilité | Historique + état dérivé | **Immuable** (`trg_couriers_consents_immutable`, service_role compris) |
+
+- **Forme** : `[{ kind: 'traitement'|'partage', granted, statement, collected_at }]` — la phrase
+  EXACTE lue par l'usager, composée par le serveur (catalogue fermé
+  `_shared/consents/catalog.ts` + `organizations.name`). CHECK `couriers_consents_array`
+  (`coalesce(jsonb_typeof(consents), '') = 'array'` : un CHECK NULL passe, d'où le `coalesce`).
+  La base enregistre un fait, elle n'arbitre pas le catalogue.
+- **Garde anti-forge à l'INSERT** (`trg_couriers_consents_insert_guard`) : hors contexte de
+  service (`is_transition_guard_bypassed()`, claim JWT `service_role`), `consents` doit valoir
+  `[]`. La policy `auth_insert` laisse tout éditeur poster `couriers` par PostgREST : sans cette
+  garde, un agent pourrait forger un consentement que l'immuabilité figerait ensuite (leçon S1
+  du backlog sécurité d'Iris).
+- **Immuable, service_role compris** : vider = effacer une preuve ; remplir après coup = un
+  consentement rétroactif, qui n'existe pas. Pas de chemin `NULL → valeur` comme pour `chrono`.
+- **Pas exposé par `search_couriers`** : les listes n'affichent pas la trace ; elle n'est lue qu'au
+  rattachement, sur un courrier ouvert (`select("*")`), et transmise à Iris dans l'enveloppe
+  (`kind` + `granted` seulement).
+- Test : `supabase/tests/courier_consents.test.sql` (8 scénarios, transaction annulée).
+- ⚠️ Les courriers antérieurs au 2026-09-22, saisis par un agent ou reçus par IMAP portent `[]` :
+  aucun consentement n'a été demandé, ce n'est pas un refus.
 
 Clés `metadata` posées par l'ingestion IMAP (`fetch-inbound-emails`) :
 

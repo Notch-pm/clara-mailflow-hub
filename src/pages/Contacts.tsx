@@ -24,6 +24,7 @@ import {
 import { useOrganization } from "@/contexts/OrganizationContext";
 import DuplicateContactsAlert from "@/components/contacts/DuplicateContactsAlert";
 import { QuartierBadge } from "@/components/contacts/QuartierBadge";
+import ConsentementsCard from "@/components/contacts/ConsentementsCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,7 +34,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -132,8 +132,6 @@ const formSchema = z
     postal_code: z.string().trim().max(20).optional(),
     city: z.string().trim().max(200).optional(),
     preferred_channel: z.enum(["email", "telephone", "courrier"]).optional().nullable(),
-    consent_email: z.boolean().optional(),
-    consent_sms: z.boolean().optional(),
     internal_notes: z.string().trim().max(5000).optional(),
   })
   .superRefine((values, ctx) => {
@@ -169,8 +167,6 @@ function contactToFormValues(contact: SocleContact | null): FormValues {
     postal_code: contact?.postal_code ?? "",
     city: contact?.city ?? "",
     preferred_channel: contact?.preferred_channel ?? null,
-    consent_email: contact?.consent_email ?? false,
-    consent_sms: contact?.consent_sms ?? false,
     internal_notes: contact?.internal_notes ?? "",
   };
 }
@@ -194,8 +190,6 @@ function formValuesToPayload(values: FormValues): SocleContactInput {
     postal_code: values.postal_code?.trim() || null,
     city: values.city?.trim() || null,
     preferred_channel: values.preferred_channel ?? null,
-    consent_email: values.consent_email ?? false,
-    consent_sms: values.consent_sms ?? false,
     internal_notes: values.internal_notes?.trim() || null,
   };
 }
@@ -487,33 +481,6 @@ function ContactFormDialog({ organizationId, contact, open, onOpenChange, onSave
                     <FormLabel>Ville</FormLabel>
                     <FormControl><Input {...field} /></FormControl>
                     <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <FormField
-                control={form.control}
-                name="consent_email"
-                render={({ field }) => (
-                  <FormItem className="flex items-center justify-between rounded-md border p-3">
-                    <FormLabel className="font-normal">Accepte les mails</FormLabel>
-                    <FormControl>
-                      <Switch checked={field.value ?? false} onCheckedChange={field.onChange} />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="consent_sms"
-                render={({ field }) => (
-                  <FormItem className="flex items-center justify-between rounded-md border p-3">
-                    <FormLabel className="font-normal">Accepte les SMS</FormLabel>
-                    <FormControl>
-                      <Switch checked={field.value ?? false} onCheckedChange={field.onChange} />
-                    </FormControl>
                   </FormItem>
                 )}
               />
@@ -862,15 +829,6 @@ function ContactDetail({ contactId }: { contactId: string }) {
                   <div className="text-sm mt-0.5"><QuartierBadge quartier={contact.quartier} /></div>
                 </div>
               </div>
-              <Separator />
-              <div className="flex items-center gap-6 text-sm flex-wrap">
-                <span className={cn(contact.consent_email ? "" : "text-muted-foreground")}>
-                  Accepte les mails : {contact.consent_email ? "oui" : "non"}
-                </span>
-                <span className={cn(contact.consent_sms ? "" : "text-muted-foreground")}>
-                  Accepte les SMS : {contact.consent_sms ? "oui" : "non"}
-                </span>
-              </div>
               {contact.roles.length > 0 && (
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-xs text-muted-foreground">Rôles :</span>
@@ -895,6 +853,8 @@ function ContactDetail({ contactId }: { contactId: string }) {
               )}
             </CardContent>
           </Card>
+
+          <ConsentementsCard organizationId={organizationId!} contact={contact} />
 
           <ContactRelationsCard
             organizationId={organizationId!}

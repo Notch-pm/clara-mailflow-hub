@@ -112,6 +112,51 @@ bunx supabase functions deploy <nom> --project-ref aullweizxcjbvtdspjli
 bun run build && npx wrangler deploy --dry-run
 ```
 
+### Lot « consentements RGPD » (2026-09-22) — en attente d'application
+
+Reprise dans Clara du modèle de consentement livré par le Socle (`contacts-api` 1.2.0,
+2026-09-13) et par Iris : catalogue fermé partagé, carte à trois états sur la fiche contact,
+recueil au formulaire portail, trace immuable `couriers.consents`, report au Socle au
+rattachement, consignation manuelle par un agent, `consents` dans l'enveloppe Iris, fin des
+anciens `consent_email` / `consent_sms` (Clara était le dernier à les écrire — le Socle peut
+maintenant préparer sa rupture 2.0.0).
+
+Pré-vol :
+
+```sql
+SELECT
+  to_regprocedure('public.is_transition_guard_bypassed()') IS NOT NULL AS helper_present,
+  EXISTS (SELECT 1 FROM information_schema.columns
+           WHERE table_schema='public' AND table_name='couriers' AND column_name='consents') AS column_present;
+-- attendu avant le lot : true / false
+```
+
+| # | Action | Pourquoi cet ordre | État |
+|---|---|---|---|
+| 1 | `20260922100000_courier_consents.sql` — colonne `consents`, CHECK, `couriers_guard_consents()` + deux triggers, `REVOKE EXECUTE` | Les fonctions de l'étape 3 lisent la colonne ; sans elle, `push-iris-request` tomberait en erreur PostgREST | **À appliquer** via `apply_migration` (renommer ensuite le fichier à l'horodatage du registre). ⚠️ Le classificateur du mode auto de Claude Code refuse `apply_migration` : geste humain. |
+| 2 | Jouer `supabase/tests/courier_consents.test.sql` (transaction annulée) | Un BEFORE INSERT fautif sur `couriers` casse les six portes d'entrée | À faire — le verdict est le message de l'exception (« OK — les 8 scénarios… ») |
+| 3 | Déployer `socle-contacts`, `push-iris-request` | Compatibles avec l'ancien front : actions nouvelles inutilisées, aucune trace tant que `portal-form` n'écrit pas | À faire (`bunx supabase functions deploy socle-contacts push-iris-request`) |
+| 4 | Publier le frontend (merge de `feat/consentements-rgpd`, build Cloudflare) | La page portail affiche les cases **avant** que la fonction ne les exige ; l'ancienne `portal-form` ignore les champs multipart inconnus | À faire |
+| 5 | Déployer `portal-form` (`config.toml` porte déjà `verify_jwt = false`) | Rend `traitement` obligatoire : une page déjà ouverte avec l'ancien bundle recevrait un 400 sans case à cocher, d'où l'ordre 4 → 5 | À faire — vérifier ensuite qu'un `GET ?token=` répond avec `consents[]` |
+
+Vérification :
+
+```sql
+-- La colonne, ses gardes, et aucun droit client sur la fonction trigger.
+SELECT column_name, column_default FROM information_schema.columns
+ WHERE table_name='couriers' AND column_name='consents';
+SELECT tgname FROM pg_trigger WHERE tgrelid='public.couriers'::regclass AND tgname LIKE 'trg_couriers_consents%';
+SELECT has_function_privilege('authenticated','public.couriers_guard_consents()','EXECUTE'); -- false
+-- Après un premier dépôt portail :
+SELECT id, received_at, jsonb_array_length(consents) FROM couriers WHERE consents <> '[]' ORDER BY created_at DESC LIMIT 5;
+```
+
+Côté Socle (projet `qhrokbkyxgcvkbpmbmna`), après un premier rattachement :
+
+```sql
+SELECT source_app, count(*) FROM contact_consents GROUP BY 1;  -- `clara` doit apparaître
+```
+
 ### Lot « notifications push » (2026-09-11) — appliqué le 2026-09-11
 
 Web Push / VAPID : la cloche ne sonne que si Clara est ouverte, le push met la même information

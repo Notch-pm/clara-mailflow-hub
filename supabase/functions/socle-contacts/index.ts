@@ -8,11 +8,23 @@
  *
  * Auth : JWT utilisateur, membre actif de l'organisation demandée (ou superadmin).
  *
- * Body : { action: "list"|"get"|"match"|"create"|"update"|"archive"|"restore"|"roles",
+ * Body : { action: "list"|"get"|"match"|"create"|"update"|"archive"|"restore"|"roles"
+ *                  |"consents_record"|"consents_from_courier",
  *          organization_id: uuid, id?: uuid, payload?: object, filters?: object }
  *
  * `match` (rapprochement d'identités pour la détection de doublons) est en
  * lecture seule malgré son POST : aucune fiche créée ni modifiée.
+ *
+ * Consentements RGPD (`POST /v1/contacts/{id}/consents` côté Socle) — deux
+ * gestes, et pour les deux le corps est COMPOSÉ ICI, jamais relayé depuis le
+ * navigateur (la phrase consignée fait la preuve, elle ne vient pas d'un client) :
+ *  - `consents_record` : consignation manuelle par un agent éditeur,
+ *    payload `{ answers: [{kind, granted}], collected_at?, reference? }` ;
+ *    le libellé est composé depuis le catalogue et `organizations.name`.
+ *  - `consents_from_courier` : report de la trace d'un courrier déposé au
+ *    portail (`couriers.consents`), payload `{ courier_id }` ; les libellés
+ *    sont ceux du dépôt, repris tels quels. Le courrier doit appartenir à
+ *    l'organisation et son expéditeur être rattaché à ce contact.
  *
  * Réponse : relaie le statut et le corps du Socle (erreurs au format
  * `{ error: { code, message } }`). Particularités :
@@ -23,6 +35,10 @@
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { buildSocleRequest, isUuid } from "../_shared/socleContactsLogic.ts";
+import {
+  buildConsentsFromCourierBody,
+  buildConsentsRecordBody,
+} from "../_shared/consentsLogic.ts";
 import {
   contactsApiKeyForOrg,
   fetchContactsApi,
@@ -37,7 +53,14 @@ import { assertEditor } from "../_shared/authz.ts";
  * une lecture seule (rapprochement d'identités, aucune fiche créée/modifiée) ;
  * `list`, `get`, `roles` sont également des lectures. Cf. `buildSocleRequest`.
  */
-const CONTACT_MUTATION_ACTIONS = new Set(["create", "update", "archive", "restore"]);
+const CONTACT_MUTATION_ACTIONS = new Set([
+  "create",
+  "update",
+  "archive",
+  "restore",
+  "consents_record",
+  "consents_from_courier",
+]);
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -143,7 +166,7 @@ Deno.serve(async (req) => {
 
     const { data: org } = await admin
       .from("organizations")
-      .select("socle_org_id")
+      .select("socle_org_id, name")
       .eq("id", organization_id)
       .single();
     const apiKey = contactsApiKeyForOrg(org?.socle_org_id as string | null);
@@ -155,7 +178,66 @@ Deno.serve(async (req) => {
       );
     }
 
-    const built = buildSocleRequest(action, { id, payload, filters });
+    // Consentements : le corps envoyé au Socle est composé ici, à partir d'un
+    // payload minimal. `organizations.name` est le miroir du nom de la racine
+    // Socle : c'est ce que l'écran affiche, donc la phrase consignée est celle
+    // qui a été lue.
+    let socleBody: Record<string, unknown> | undefined;
+    if (action === "consents_record") {
+      if (!isUuid(id)) return errorResponse("bad_request", "id de contact invalide (uuid attendu).", 400);
+      const built = buildConsentsRecordBody(payload, (org?.name as string | null) ?? null);
+      if (!built.ok) return errorResponse("bad_request", built.message, 400);
+      socleBody = built.body as unknown as Record<string, unknown>;
+    } else if (action === "consents_from_courier") {
+      if (!isUuid(id)) return errorResponse("bad_request", "id de contact invalide (uuid attendu).", 400);
+      const courierId = (payload as Record<string, unknown> | undefined)?.courier_id;
+      if (!isUuid(courierId)) {
+        return errorResponse("bad_request", "courier_id invalide (uuid attendu).", 400);
+      }
+      const { data: courier } = await admin
+        .from("couriers")
+        .select("id, received_at, created_at, consents")
+        .eq("id", courierId)
+        .eq("organization_id", organization_id)
+        .maybeSingle();
+      if (!courier) return errorResponse("courier_not_found", "Courrier introuvable.", 404);
+      // Le report ne vaut que pour la personne rattachée comme expéditeur de
+      // CE courrier : consigner la trace sur une autre fiche serait un faux.
+      const { data: sender } = await admin
+        .from("courier_participants")
+        .select("id")
+        .eq("courier_id", courierId)
+        .eq("role", "sender")
+        .eq("socle_contact_id", id)
+        .limit(1)
+        .maybeSingle();
+      if (!sender) {
+        return errorResponse(
+          "contact_mismatch",
+          "L'expéditeur de ce courrier n'est pas rattaché à ce contact.",
+          409,
+        );
+      }
+      const built = buildConsentsFromCourierBody(courier as {
+        id: string;
+        received_at: string | null;
+        created_at: string | null;
+        consents: unknown;
+      });
+      if (!built.ok) return errorResponse("bad_request", built.message, 400);
+      if (built.body === null) {
+        // Rien à reporter : ce n'est pas une erreur, le courrier n'a
+        // simplement pas de trace (saisie agent, IMAP, antérieur à la colonne).
+        return jsonResponse({ skipped: true, reason: "aucun_consentement" }, 200);
+      }
+      socleBody = built.body as unknown as Record<string, unknown>;
+    }
+
+    const built = buildSocleRequest(action, {
+      id,
+      payload: socleBody ?? payload,
+      filters,
+    });
     if (!built.ok) return errorResponse("bad_request", built.message, 400);
 
     const { status, body: socleBody } = await fetchContactsApi(apiKey, built.request, {

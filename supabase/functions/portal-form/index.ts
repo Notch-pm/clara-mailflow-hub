@@ -3,6 +3,8 @@
 // POST (multipart) → soumet le formulaire (anonyme) et crée un courrier inbound channel=portal
 
 import { createClient } from "npm:@supabase/supabase-js@2.45.0";
+import { normalizeConsents } from "../_shared/consents/catalog.ts";
+import { portalConsentAnswersFromForm, portalConsentsConfig } from "./logic.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -41,7 +43,7 @@ Deno.serve(async (req) => {
 
       const { data: form, error } = await admin
         .from("portal_forms")
-        .select("name, description, is_active, service_id")
+        .select("name, description, is_active, service_id, organization_id")
         .eq("token", token)
         .maybeSingle();
 
@@ -59,10 +61,20 @@ Deno.serve(async (req) => {
         serviceName = (svc as any)?.name ?? null;
       }
 
+      // Les phrases de consentement, composées ICI avec le nom de l'organisation
+      // (`organizations.name`, miroir de la racine Socle) : le POST les
+      // recompose à l'identique, donc ce qui est affiché est ce qui est consigné.
+      const { data: orgRow } = await admin
+        .from("organizations")
+        .select("name")
+        .eq("id", (form as { organization_id?: string | null }).organization_id ?? "")
+        .maybeSingle();
+
       return jsonResponse({
         name: form.name,
         description: (form as any).description ?? null,
         service_name: serviceName,
+        consents: portalConsentsConfig((orgRow as { name?: string | null } | null)?.name ?? null),
       });
     }
 
@@ -143,6 +155,22 @@ Deno.serve(async (req) => {
         return jsonResponse({ error: "Trop de soumissions. Réessayez dans quelques instants." }, 429);
       }
 
+      // 3bis. Consentements RGPD : garde serveur. Le navigateur n'envoie que
+      // kind + granted ; la phrase consignée est recomposée ici, avec le même
+      // nom que celui servi au GET. `traitement` absent ou refusé ⇒ 400 :
+      // sans lui, le dépôt n'est pas validable (même règle qu'Iris).
+      const { data: orgRow } = await admin
+        .from("organizations")
+        .select("name")
+        .eq("id", form.organization_id)
+        .maybeSingle();
+      const consentCheck = normalizeConsents(
+        portalConsentAnswersFromForm((k) => fd.get(k) as string | null),
+        (orgRow as { name?: string | null } | null)?.name ?? null,
+      );
+      if (!consentCheck.ok) return jsonResponse({ error: consentCheck.message }, 400);
+      const receivedAt = new Date().toISOString();
+
       // 4. Résoudre l'organisation (miroir Socle, prioritaire) ou le service legacy
       //    + état initial du workflow
       let serviceName: string | null = null;
@@ -213,12 +241,15 @@ Deno.serve(async (req) => {
           direction: "inbound",
           channel: "portal",
           subject: subject.trim().slice(0, 500),
-          received_at: new Date().toISOString(),
+          received_at: receivedAt,
           assigned_service: serviceName,
           socle_organization_id: socleOrganizationId,
           workflow_state_id: initialStateId,
           created_by: null,
           metadata: { body_text: messageBody.trim(), source: "portal" },
+          // La trace de CE dépôt, immuable (trigger). Date = réception du
+          // courrier : c'est elle que le report au Socle consignera.
+          consents: consentCheck.consents.map((c) => ({ ...c, collected_at: receivedAt })),
         })
         .select("id")
         .single();

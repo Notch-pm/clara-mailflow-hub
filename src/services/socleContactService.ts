@@ -1,3 +1,4 @@
+import type { ConsentKind } from "../../supabase/functions/_shared/consents/catalog";
 import { supabase } from "@/integrations/supabase/client";
 import {
   buildMatchPayload,
@@ -82,6 +83,23 @@ export interface SocleContactQuartier {
   color: string | null;
 }
 
+/**
+ * Un recueil de consentement RGPD tel que le Socle le sert (`contact_consents`).
+ * La phrase est celle que l'usager a lue, nom d'organisme déjà interpolé :
+ * c'est elle qui fait la preuve. `source_app` est un code libre (iris,
+ * portail-citoyen, clara…) que l'écran affiche tel quel.
+ */
+export interface SocleConsent {
+  id?: string;
+  kind: string;
+  granted: boolean;
+  statement: string | null;
+  source_app: string | null;
+  source_reference: string | null;
+  collected_at: string | null;
+  created_at?: string | null;
+}
+
 /** Fiche contact telle que sérialisée par l'API contacts du Socle. */
 export interface SocleContact {
   id: string;
@@ -110,8 +128,20 @@ export interface SocleContact {
    */
   quartier?: SocleContactQuartier | null;
   preferred_channel: "email" | "telephone" | "courrier" | null;
-  consent_email: boolean;
-  consent_sms: boolean;
+  /**
+   * Consentements RGPD — état DÉRIVÉ par le Socle du recueil le plus récent
+   * (`contact_consents`), jamais écrit par PATCH. `false` sans date signifie
+   * « jamais demandé », pas « refusé » : c'est la date qui tranche.
+   */
+  consent_traitement: boolean;
+  consent_traitement_at: string | null;
+  consent_partage: boolean;
+  consent_partage_at: string | null;
+  /**
+   * Historique des recueils, du plus récent au plus ancien — servi sur
+   * `get` seulement (50 au plus) ; `[]` en liste et en rapprochement.
+   */
+  consents?: SocleConsent[];
   /** Notes internes agents — ne JAMAIS retransmettre à un usager final. */
   internal_notes: string | null;
   status: SocleContactStatus;
@@ -144,8 +174,6 @@ export interface SocleContactInput {
   city?: string | null;
   country?: string | null;
   preferred_channel?: "email" | "telephone" | "courrier" | null;
-  consent_email?: boolean;
-  consent_sms?: boolean;
   internal_notes?: string | null;
   /** Remplace l'ensemble des rôles si fourni ([] = tout retirer). */
   role_ids?: string[];
@@ -231,7 +259,17 @@ export function contactRelationLines(
 }
 
 interface InvokeBody {
-  action: "list" | "get" | "match" | "create" | "update" | "archive" | "restore" | "roles";
+  action:
+    | "list"
+    | "get"
+    | "match"
+    | "create"
+    | "update"
+    | "archive"
+    | "restore"
+    | "roles"
+    | "consents_record"
+    | "consents_from_courier";
   organization_id: string;
   id?: string;
   payload?: Record<string, unknown>;
@@ -303,6 +341,52 @@ export async function updateContact(
     organization_id: organizationId,
     id,
     payload: patch as unknown as Record<string, unknown>,
+  });
+}
+
+/** Réponse du navigateur : `kind` et `granted` seulement — la phrase se compose au serveur. */
+export interface ConsentAnswer {
+  kind: ConsentKind;
+  granted: boolean;
+}
+
+/**
+ * Consignation manuelle d'un recueil de consentement RGPD (formulaire papier,
+ * retrait exprimé par courrier). Réservée aux éditeurs (garde du proxy). Le
+ * Socle enregistre le fait, y compris un refus ou un retrait de l'obligatoire ;
+ * `collected_at` (ISO, jamais futur) est la date qui fait foi, `reference`
+ * (chrono, dossier) porte l'idempotence — sans elle, chaque appel est un fait
+ * nouveau. Rend la fiche complète, historique à jour.
+ */
+export async function recordContactConsents(
+  organizationId: string,
+  contactId: string,
+  input: { answers: ConsentAnswer[]; collected_at?: string; reference?: string | null },
+): Promise<SocleContact> {
+  return invokeSocleContacts<SocleContact>({
+    action: "consents_record",
+    organization_id: organizationId,
+    id: contactId,
+    payload: input,
+  });
+}
+
+/**
+ * Report au référentiel de la trace de consentement d'un courrier déposé au
+ * portail (`couriers.consents`), au rattachement de l'expéditeur. Idempotent
+ * (référence = id du courrier). `{ skipped: true }` si le courrier n'a pas de
+ * trace — rien à reporter, ce n'est pas une erreur.
+ */
+export async function recordCourierConsents(
+  organizationId: string,
+  contactId: string,
+  courierId: string,
+): Promise<SocleContact | { skipped: true; reason: string }> {
+  return invokeSocleContacts<SocleContact | { skipped: true; reason: string }>({
+    action: "consents_from_courier",
+    organization_id: organizationId,
+    id: contactId,
+    payload: { courier_id: courierId },
   });
 }
 

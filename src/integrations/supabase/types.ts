@@ -736,6 +736,7 @@ export type Database = {
           assigned_service: string | null
           channel: Database["public"]["Enums"]["courier_channel"]
           chrono: string | null
+          consents: Json
           created_at: string
           created_by: string | null
           direction: Database["public"]["Enums"]["courier_direction"]
@@ -758,6 +759,7 @@ export type Database = {
           assigned_service?: string | null
           channel: Database["public"]["Enums"]["courier_channel"]
           chrono?: string | null
+          consents?: Json
           created_at?: string
           created_by?: string | null
           direction: Database["public"]["Enums"]["courier_direction"]
@@ -780,6 +782,7 @@ export type Database = {
           assigned_service?: string | null
           channel?: Database["public"]["Enums"]["courier_channel"]
           chrono?: string | null
+          consents?: Json
           created_at?: string
           created_by?: string | null
           direction?: Database["public"]["Enums"]["courier_direction"]

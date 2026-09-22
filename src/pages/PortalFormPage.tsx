@@ -12,6 +12,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Loader2, CheckCircle2, AlertCircle, Paperclip, X, Upload } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { CONSENTS, consentStatement, consentsSatisfied, type ConsentKind } from "@/lib/consents";
 
 type SenderCategory = "citoyen" | "entreprise" | "association";
 type SenderCivilite = "madame" | "monsieur";
@@ -22,10 +24,35 @@ const MAX_FILES = 3;
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 Mo
 const ACCEPT = ".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,.xls,.xlsx";
 
+interface PortalConsent {
+  kind: ConsentKind;
+  required: boolean;
+  default_granted: boolean;
+  /** Phrase composée par le serveur (nom de la collectivité interpolé) : affichée telle quelle. */
+  statement: string;
+}
+
 interface FormConfig {
   name: string;
   description: string | null;
   service_name: string | null;
+  /** Absent tant que la fonction n'est pas redéployée : repli sur le catalogue (sans nom). */
+  consents?: PortalConsent[];
+}
+
+/**
+ * Repli de transition : si la fonction ne sert pas encore `consents`, rendre
+ * les cases depuis le catalogue local. Le serveur, lui, posera l'obligation
+ * dès son redéploiement — la question doit donc être visible avant.
+ */
+function consentsOf(config: FormConfig | null): PortalConsent[] {
+  if (config?.consents?.length) return config.consents;
+  return CONSENTS.map((c) => ({
+    kind: c.kind,
+    required: c.required,
+    default_granted: c.defaultGranted,
+    statement: consentStatement(c.kind, null),
+  }));
 }
 
 type Status = "loading" | "ready" | "submitting" | "success" | "invalid" | "inactive" | "error";
@@ -49,6 +76,9 @@ export default function PortalFormPage() {
   const [senderEmail, setSenderEmail] = useState("");
   const [senderPhone, setSenderPhone] = useState("");
   const [files, setFiles] = useState<File[]>([]);
+  // Consentements RGPD : un acte de l'usager présent — jamais pré-rempli
+  // autrement que par le défaut du catalogue (l'obligatoire décoché).
+  const [consents, setConsents] = useState<Partial<Record<ConsentKind, boolean>>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -60,7 +90,9 @@ export default function PortalFormPage() {
         if (res.status === 404) { setStatus("invalid"); return; }
         if (res.status === 410) { setStatus("inactive"); return; }
         if (!res.ok) { setStatus("error"); return; }
-        setConfig(data as FormConfig);
+        const cfg = data as FormConfig;
+        setConfig(cfg);
+        setConsents(Object.fromEntries(consentsOf(cfg).map((c) => [c.kind, c.default_granted])));
         setStatus("ready");
       })
       .catch(() => setStatus("error"));
@@ -109,6 +141,9 @@ export default function PortalFormPage() {
     if (senderEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(senderEmail)) {
       errs.senderEmail = "Adresse email invalide.";
     }
+    if (!consentsSatisfied(consents)) {
+      errs.consents = "Le consentement au traitement de votre demande est obligatoire pour l'envoyer.";
+    }
     setErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -131,6 +166,8 @@ export default function PortalFormPage() {
       if (senderEmail.trim()) fd.append("sender_email", senderEmail.trim());
       if (senderPhone.trim()) fd.append("sender_phone", senderPhone.trim());
       for (const file of files) fd.append("files", file);
+      // kind + granted seulement : la phrase est recomposée et consignée par le serveur.
+      for (const c of consentsOf(config)) fd.append(`consent_${c.kind}`, String(consents[c.kind] === true));
 
       // Pas de Content-Type — le navigateur le définit automatiquement avec le boundary
       const res = await fetch(EDGE_URL, { method: "POST", body: fd });
@@ -330,6 +367,32 @@ export default function PortalFormPage() {
             </div>
             {errors.senderContact && <p className="text-xs text-destructive">{errors.senderContact}</p>}
           </div>
+
+          <fieldset className="space-y-2">
+            <legend className="text-sm font-medium">Vos consentements</legend>
+            {consentsOf(config).map((c) => {
+              const id = `consent-${c.kind}`;
+              return (
+                <label key={c.kind} htmlFor={id} className="flex items-start gap-3 rounded-md border p-3 cursor-pointer">
+                  <Checkbox
+                    id={id}
+                    checked={consents[c.kind] === true}
+                    onCheckedChange={(v) => setConsents((prev) => ({ ...prev, [c.kind]: v === true }))}
+                    disabled={submitting}
+                    aria-invalid={c.required && !!errors.consents}
+                    className="mt-0.5"
+                  />
+                  <span className="space-y-0.5">
+                    <span className="block text-[13px] leading-relaxed">{c.statement}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {c.required ? "Obligatoire pour envoyer votre demande." : "Facultatif : vous pouvez le refuser sans conséquence sur votre demande."}
+                    </span>
+                  </span>
+                </label>
+              );
+            })}
+            {errors.consents && <p className="text-xs text-destructive" role="alert">{errors.consents}</p>}
+          </fieldset>
 
           {errors.general && (
             <p className="text-sm text-destructive rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2">

@@ -78,10 +78,18 @@ Trois règles à ne pas re-déduire :
 | `context` | canal, date de réception **d'origine**, permalien `APP_ORIGIN/courrier/<id>`, métadonnées |
 | `links` | un lien `courrier` (chrono à défaut id, sujet en libellé) |
 | `attachments` | `upload_id` des pièces DÉPOSÉES sur `/v1/uploads`, tirées de `socle_data.pieces_jointes` (pièces réclamées par le formulaire) + `form_field_key` = clé machine du champ — voir §5 bis |
+| `consents` | `couriers.consents` (trace d'un dépôt portail), **`kind` + `granted` seulement** — Iris compose sa propre phrase (contrat 2.2.0). Omis si le courrier n'a pas de trace (saisie agent, IMAP) : Iris pose l'anomalie `consentement_absent`, jamais un refus. Omis aussi si la trace n'accorde pas `traitement` (théorique) : Iris répondrait 400 sur tout le dépôt |
 
 Logique pure et testée : `supabase/functions/_shared/iris-envelope.ts`
 (+ `src/test/iris/iris-envelope.test.ts`). Elle **refuse avant le réseau** ce qu'Iris
 refuserait : pas de démarche, démarche obsolète, racine absente, aucun demandeur.
+
+**Double écriture au Socle, assumée.** Pour un courrier portail rattaché à une fiche puis déposé
+dans Iris, le référentiel porte deux recueils `source_app = clara` : celui de Clara au
+rattachement (`source_reference = courier.id`, `collected_at` = date du dépôt) et celui d'Iris à
+l'ingestion (`source_reference = ticket.id`, `collected_at` = date d'ingestion, Iris ne transmet
+pas encore `context.received_at`). Même fait, deux traces bornées, même état dérivé. Seul défaut :
+la date d'état devient celle de l'ingestion. Correctif d'une ligne côté Iris, hors de Clara.
 
 ## 4. Le chemin, bout en bout
 

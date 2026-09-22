@@ -20,6 +20,8 @@
 //     référence par son `upload_id` (contrat 2.0.0). Iris ne vient jamais lire
 //     un fichier chez Clara, et un contenu inline vaut 400.
 
+import { parseConsentRecords, type ConsentKind } from "./consents/catalog.ts";
+
 /** Statuts Iris — liste FERMÉE du contrat. Ne jamais en inventer. */
 export const IRIS_STATUSES = [
   "a_traiter",
@@ -61,6 +63,13 @@ export interface IrisEnvelope {
   requester?: Record<string, unknown>;
   form_data?: Record<string, unknown>;
   attachments?: IrisAttachmentRef[];
+  /**
+   * Consentements RGPD recueillis AU DÉPÔT (contrat Iris 2.2.0) — `kind` et
+   * `granted` seulement : Iris compose sa propre phrase et consigne sa propre
+   * trace. Absent quand Clara n'a rien recueilli (saisie agent, IMAP) : Iris
+   * pose alors l'anomalie `consentement_absent`, jamais un refus.
+   */
+  consents?: { kind: ConsentKind; granted: boolean }[];
   context?: {
     channel?: string;
     received_at?: string;
@@ -104,6 +113,8 @@ export interface EnvelopeInput {
     received_at?: string | null;
     /** UUID SOCLE de l'organisation destinataire (pas l'id du miroir Clara). */
     socle_organization_socle_id?: string | null;
+    /** Trace `couriers.consents`, relue avec tolérance (`parseConsentRecords`). */
+    consents?: unknown;
   };
   procedure: {
     socle_id?: string | null;
@@ -438,6 +449,15 @@ export function buildIrisEnvelope(input: EnvelopeInput): EnvelopeResult {
 
   const formData = formDataFromSocleData(ticket.socle_data);
   if (formData) envelope.form_data = formData;
+
+  // Consentements du dépôt portail : kind + granted SEULEMENT. Omis si la
+  // trace n'accorde pas `traitement` (théorique : le portail l'exige) — Iris
+  // refuserait tout le dépôt en 400, alors qu'absent il ne pose qu'une
+  // anomalie. Les statements ne partent jamais : Iris compose les siens.
+  const consentTrace = parseConsentRecords(courier.consents);
+  if (consentTrace.some((c) => c.kind === "traitement" && c.granted)) {
+    envelope.consents = consentTrace.map(({ kind, granted }) => ({ kind, granted }));
+  }
 
   const context: NonNullable<IrisEnvelope["context"]> = {};
   const channel = trimmed(courier.channel);
