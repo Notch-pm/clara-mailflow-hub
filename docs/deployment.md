@@ -112,7 +112,7 @@ bunx supabase functions deploy <nom> --project-ref aullweizxcjbvtdspjli
 bun run build && npx wrangler deploy --dry-run
 ```
 
-### Lot « consentements RGPD » (2026-09-22) — en attente d'application
+### Lot « consentements RGPD » (2026-09-22) — appliqué le 2026-09-22
 
 Reprise dans Clara du modèle de consentement livré par le Socle (`contacts-api` 1.2.0,
 2026-09-13) et par Iris : catalogue fermé partagé, carte à trois états sur la fiche contact,
@@ -133,11 +133,11 @@ SELECT
 
 | # | Action | Pourquoi cet ordre | État |
 |---|---|---|---|
-| 1 | `20260922100000_courier_consents.sql` — colonne `consents`, CHECK, `couriers_guard_consents()` + deux triggers, `REVOKE EXECUTE` | Les fonctions de l'étape 3 lisent la colonne ; sans elle, `push-iris-request` tomberait en erreur PostgREST | **À appliquer** via `apply_migration` (renommer ensuite le fichier à l'horodatage du registre). ⚠️ Le classificateur du mode auto de Claude Code refuse `apply_migration` : geste humain. |
-| 2 | Jouer `supabase/tests/courier_consents.test.sql` (transaction annulée) | Un BEFORE INSERT fautif sur `couriers` casse les six portes d'entrée | À faire — le verdict est le message de l'exception (« OK — les 8 scénarios… ») |
-| 3 | Déployer `socle-contacts`, `push-iris-request` | Compatibles avec l'ancien front : actions nouvelles inutilisées, aucune trace tant que `portal-form` n'écrit pas | À faire (`bunx supabase functions deploy socle-contacts push-iris-request`) |
-| 4 | Publier le frontend (merge de `feat/consentements-rgpd`, build Cloudflare) | La page portail affiche les cases **avant** que la fonction ne les exige ; l'ancienne `portal-form` ignore les champs multipart inconnus | À faire |
-| 5 | Déployer `portal-form` (`config.toml` porte déjà `verify_jwt = false`) | Rend `traitement` obligatoire : une page déjà ouverte avec l'ancien bundle recevrait un 400 sans case à cocher, d'où l'ordre 4 → 5 | À faire — vérifier ensuite qu'un `GET ?token=` répond avec `consents[]` |
+| 1 | `20260922100000_courier_consents.sql` — colonne `consents`, CHECK, `couriers_guard_consents()` + deux triggers, `REVOKE EXECUTE` | Les fonctions de l'étape 3 lisent la colonne ; sans elle, `push-iris-request` tomberait en erreur PostgREST | **Appliqué le 2026-09-22 via `execute_sql`** (le classificateur du mode auto de Claude Code refuse `apply_migration`, l'utilisateur a tranché) — donc **absent du registre**, dérive habituelle ; le fichier garde son horodatage. |
+| 2 | Jouer `supabase/tests/courier_consents.test.sql` (transaction annulée) | Un BEFORE INSERT fautif sur `couriers` casse les six portes d'entrée | **Fait le 2026-09-22** — « OK — les 8 scénarios de couriers.consents passent », aucun résidu |
+| 3 | Déployer `socle-contacts`, `push-iris-request` | Compatibles avec l'ancien front : actions nouvelles inutilisées, aucune trace tant que `portal-form` n'écrit pas | **Fait le 2026-09-22** (`socle-contacts` v16, `push-iris-request` v14) |
+| 4 | Publier le frontend (merge de `feat/consentements-rgpd`, build Cloudflare) | La page portail affiche les cases **avant** que la fonction ne les exige ; l'ancienne `portal-form` ignore les champs multipart inconnus | **Fait le 2026-09-22** — push de `main` (`bb34aeb`), bundle vérifié en ligne avant l'étape 5 |
+| 5 | Déployer `portal-form` (`config.toml` porte déjà `verify_jwt = false`) | Rend `traitement` obligatoire : une page déjà ouverte avec l'ancien bundle recevrait un 400 sans case à cocher, d'où l'ordre 4 → 5 | **Fait le 2026-09-22** (v24) — `GET ?token=` sert `consents[]` avec le nom de la collectivité ; un POST sans `consent_traitement` répond 400 sans créer de courrier |
 
 Vérification :
 
