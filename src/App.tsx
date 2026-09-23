@@ -72,14 +72,44 @@ function NoOrganizationFallback() {
   );
 }
 
+function LoadErrorFallback() {
+  const { retryLoad, signOut } = useAuth();
+  return (
+    <div className="min-h-dvh flex flex-col items-center justify-center bg-background gap-4 px-6 text-center">
+      <h2 className="text-lg font-semibold text-foreground">Impossible de charger votre compte</h2>
+      <p className="text-sm text-muted-foreground">
+        Votre profil ou votre organisation n'a pas pu être lu. Vérifiez votre connexion puis réessayez.
+      </p>
+      <div className="mt-2 flex gap-2">
+        <button
+          onClick={retryLoad}
+          className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+        >
+          Réessayer
+        </button>
+        <button
+          onClick={() => void signOut()}
+          className="inline-flex items-center justify-center rounded-md border border-input px-4 py-2 text-sm font-medium text-foreground hover:bg-accent transition-colors"
+        >
+          Se déconnecter
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ProtectedRoutes() {
-  const { session, loading, profile, profileLoaded, membership } = useAuth();
+  const { session, loading, profile, profileLoaded, membership, loadError } = useAuth();
 
   if (loading) return <LoadingScreen />;
   if (!session) return <Navigate to="/connexion" replace />;
 
   // Wait for profile fetch to complete
   if (!profileLoaded) return <LoadingScreen />;
+
+  // Lecture en échec après plusieurs essais : ni « pas de profil » (qui
+  // déconnecterait) ni « aucune organisation »
+  if (loadError) return <LoadErrorFallback />;
 
   // If profile is null after loading, user has no record — sign out to avoid loop
   if (!profile) {
@@ -108,12 +138,13 @@ function ProtectedRoutes() {
 }
 
 function SuperAdminRoute() {
-  const { session, loading, profile, profileLoaded } = useAuth();
+  const { session, loading, profile, profileLoaded, loadError } = useAuth();
 
   if (loading) return <LoadingScreen />;
   if (!session) return <Navigate to="/connexion" replace />;
 
   if (!profileLoaded) return <LoadingScreen />;
+  if (loadError) return <LoadErrorFallback />;
   if (!profile || !isSuperAdmin(profile)) return <Navigate to="/" replace />;
 
   return <SuperAdminLayout />;
