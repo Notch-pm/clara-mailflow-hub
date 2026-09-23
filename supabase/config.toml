@@ -36,6 +36,12 @@ verify_jwt = false
 [functions.notifications-push]
 verify_jwt = false
 
+# Drain nocturne de l'outbox storage_deletions, appelé par pg_cron
+# (trigger_storage_maintenance), qui n'envoie aucun en-tête Authorization.
+# L'authentification réelle se fait dans la fonction (x-cron-secret).
+[functions.storage-maintenance]
+verify_jwt = false
+
 # Ces deux-là font leur propre authentification (JWT de l'appelant relu par la
 # fonction, puis rôle `administrateur` ou `is_superadmin` exigé) et tournent en
 # production avec `verify_jwt = false` depuis toujours — sans entrée ici, le
