@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildContactDemandes,
+  buildDemandeDetail,
   isInScope,
   lookupMap,
   type ContactDemandeLookups,
@@ -81,5 +82,34 @@ describe("buildContactDemandes", () => {
       new Set([ORG_A]),
     );
     expect(out.map((d) => d.id)).toEqual(["recente", "ancienne"]);
+  });
+});
+
+describe("buildDemandeDetail", () => {
+  const timeline = {
+    request: { ...req({ id: "req-clara" }), body: "Devant le 12 rue Carnot.", socle_contact_id: "contact-1" },
+    events: [
+      { type: "created", at: "2026-09-01T10:00:00Z", by: null, detail: {} },
+      { type: "status_changed", at: "2026-09-03T10:00:00Z", by: "Claire Agent", detail: { from: "a_traiter", to: "en_instruction" } },
+    ],
+    notes: [{ body: "Voir avec la voirie.", at: "2026-09-02T11:00:00Z", by: "Claire Agent" }],
+    interventions: [{ status: "demandee", intervenant: "Dominique", requested_at: null, requested_for: "2026-09-25", request_comment: null, completed_on: null, completion_comment: null }],
+  };
+
+  it("enrichit la demande, garde son texte et trie le fil du plus récent au plus ancien", () => {
+    const d = buildDemandeDetail(timeline, lookups, null);
+    expect(d?.demande).toMatchObject({ body: "Devant le 12 rue Carnot.", courier_id: "courier-1", procedure_label: "Signalement voirie" });
+    expect(d?.events.map((e) => e.type)).toEqual(["status_changed", "created"]);
+    expect(d?.notes).toHaveLength(1);
+    expect(d?.interventions[0].status).toBe("demandee");
+  });
+
+  it("hors périmètre : rien, pas même la demande (l'appelant répond 404)", () => {
+    expect(buildDemandeDetail(timeline, lookups, new Set([ORG_B]))).toBeNull();
+  });
+
+  it("réponse illisible : rien", () => {
+    expect(buildDemandeDetail({}, lookups, null)).toBeNull();
+    expect(buildDemandeDetail(null, lookups, null)).toBeNull();
   });
 });

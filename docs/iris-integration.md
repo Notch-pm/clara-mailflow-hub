@@ -216,6 +216,18 @@ produit. Logique pure et testée : `_shared/iris-contact-requests.ts`
 Tenant sans connexion Iris ⇒ `{ skipped: true }` et la section disparaît de l'écran. Pas de
 lien vers la fiche Iris : elle ne s'ouvre qu'avec un compte Iris.
 
+**Le détail d'une demande (contrat 2.5.0).** Chaque demande s'ouvre dans Clara
+(`/demandes/:id`, `/elu/demande/:id`) via `iris-request-detail` →
+`GET /v1/requests/{id}/timeline` : texte de la demande, réponse apportée, **demandes
+d'intervention** et leur état, **commentaires internes** des agents d'Iris, activité. Décision
+du 2026-09-23 : les commentaires internes sont utiles à l'élu, mais ne doivent **jamais**
+atteindre un tiers ni être en accès libre. D'où trois verrous : côté Iris, cette route est la
+**seule** sortie des notes internes et exige `requests:read_tenant` (un partenaire reçoit 403) ;
+côté Clara, un membre connecté du tenant, dans le périmètre de ses organisations (hors
+périmètre ⇒ 404, comme une demande inexistante) ; rien n'est stocké ni mis en cache. Tous les
+membres les lisent, comme les notes internes des courriers. Iris nomme les personnes et filtre
+le détail des événements par type — jamais d'e-mail ni d'identifiant d'agent.
+
 ## 6. Limites connues
 
 - **Pas de rattrapage des demandes déposées avant le 2026-09-11** : elles sont parties sans

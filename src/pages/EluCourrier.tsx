@@ -4,6 +4,10 @@ import { EluEmptyState } from "@/components/elu/EluEmptyState";
 import { EluScreen, EluScreenHeader } from "@/components/elu/EluScreenHeader";
 import { EluStatusPill } from "@/components/elu/EluStatusPill";
 import { useEluCourrier } from "@/hooks/useEluCourrier";
+import { useEluCourrierFil } from "@/hooks/useEluCourrierFil";
+import { EluCard } from "@/components/elu/EluCard";
+import { FilEntry, FilSection } from "@/components/fil/Fil";
+import { filMeta } from "@/lib/fil";
 
 const CHANNEL_LABELS: Record<string, string> = {
   email: "par courriel",
@@ -16,6 +20,7 @@ const CHANNEL_LABELS: Record<string, string> = {
 export default function EluCourrier() {
   const { courierId } = useParams<{ courierId: string }>();
   const detail = useEluCourrier(courierId);
+  const fil = useEluCourrierFil(courierId);
 
   if (detail.isLoading) {
     return (
@@ -116,6 +121,41 @@ export default function EluCourrier() {
             </div>
           ))}
         </div>
+      )}
+
+      {/* Le fil, en bas : ce qui a été répondu, ce que les agents en disent, ce
+          qui s'est passé. Mêmes données que les onglets du poste de travail. */}
+      {fil.isLoading ? (
+        <EluEmptyState>Chargement du suivi…</EluEmptyState>
+      ) : fil.isError || !fil.data ? (
+        <EluEmptyState>Le suivi de ce courrier est indisponible pour le moment.</EluEmptyState>
+      ) : (
+        <>
+          <FilSection title="Réponses apportées" count={fil.data.replies.length} empty="Aucune réponse pour l'instant." large>
+            {fil.data.replies.map((r) => (
+              <li key={r.id} className="list-none">
+                <EluCard
+                  to={`/elu/reponse/${r.id}`}
+                  title={r.subject ?? "Réponse"}
+                  meta={r.at ? `créée le ${new Date(r.at).toLocaleDateString("fr-FR")}` : null}
+                  badge={r.stateName ? <EluStatusPill>{r.stateName}</EluStatusPill> : null}
+                />
+              </li>
+            ))}
+          </FilSection>
+
+          <FilSection title="Commentaires internes" count={fil.data.notes.length} empty="Aucun commentaire interne." large>
+            {fil.data.notes.map((n) => (
+              <FilEntry key={n.id} large title={n.by ?? "Agent"} body={n.content} meta={filMeta(n.at)} />
+            ))}
+          </FilSection>
+
+          <FilSection title="Activité" count={fil.data.activity.length} empty="Aucune activité enregistrée." large>
+            {fil.data.activity.map((a) => (
+              <FilEntry key={a.id} large title={a.title} detail={a.detail} meta={filMeta(a.at, a.by)} />
+            ))}
+          </FilSection>
+        </>
       )}
     </EluScreen>
   );

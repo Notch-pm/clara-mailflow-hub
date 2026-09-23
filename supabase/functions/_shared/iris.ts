@@ -8,7 +8,7 @@
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import type { IrisEnvelope, IrisRequestDto } from "./iris-envelope.ts";
-import type { IrisListedRequest } from "./iris-contact-requests.ts";
+import type { IrisListedRequest, IrisTimeline } from "./iris-contact-requests.ts";
 
 /** Accusé de dépôt d'un fichier (`POST /v1/uploads`) — valable 24 h. */
 export interface IrisUploadReceipt {
@@ -182,6 +182,18 @@ export function listIrisRequestsByContact(
 ): Promise<IrisResponse<{ requests?: IrisListedRequest[]; error?: unknown }>> {
   const params = new URLSearchParams({ socle_contact_id: socleContactId, limit: String(limit) });
   return callIris(integration, `/v1/requests?${params.toString()}`, { method: "GET" });
+}
+
+/**
+ * Fil d'UNE demande (`GET /v1/requests/{id}/timeline`, contrat 2.5.0, scopes
+ * `requests:read` + `requests:read_tenant`) : texte, activité, notes internes,
+ * interventions. Toutes sources du tenant. 403 si la clé n'a pas le scope.
+ */
+export function getIrisRequestTimeline(
+  integration: IrisIntegration,
+  requestId: string,
+): Promise<IrisResponse<IrisTimeline & { error?: unknown }>> {
+  return callIris(integration, `/v1/requests/${encodeURIComponent(requestId)}/timeline`, { method: "GET" });
 }
 
 /**

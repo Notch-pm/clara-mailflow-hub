@@ -18,6 +18,8 @@ const EluReponse = lazyRoute(() => import("@/pages/EluReponse"));
 const EluRecherche = lazyRoute(() => import("@/pages/EluRecherche"));
 const EluUsager = lazyRoute(() => import("@/pages/EluUsager"));
 const EluCourrier = lazyRoute(() => import("@/pages/EluCourrier"));
+const EluDemande = lazyRoute(() => import("@/pages/EluDemande"));
+const DemandeDetail = lazyRoute(() => import("@/pages/DemandeDetail"));
 const EluIndicateurs = lazyRoute(() => import("@/pages/EluIndicateurs"));
 import Dashboard from "@/pages/Dashboard";
 import BoiteAuxLettres, { recordLogin } from "@/pages/BoiteAuxLettres";
@@ -207,6 +209,7 @@ const App = () => (
                     <Route path="/mon-profil" element={<MonProfil />} />
                     <Route path="/contacts" element={<Contacts />} />
                     <Route path="/contacts/:id" element={<Contacts />} />
+                    <Route path="/demandes/:irisRequestId" element={<Suspense fallback={<LoadingScreen />}><DemandeDetail /></Suspense>} />
                     <Route path="/recherche" element={<RechercheCourrierPage />} />
                     <Route path="/import-en-masse" element={<BulkImport />} />
                     <Route path="/statistiques" element={<Suspense fallback={<LoadingScreen />}><StatistiquesPage /></Suspense>} />
@@ -222,6 +225,7 @@ const App = () => (
                     <Route path="recherche" element={<Suspense fallback={<LoadingScreen />}><EluRecherche /></Suspense>} />
                     <Route path="usager/:contactId" element={<Suspense fallback={<LoadingScreen />}><EluUsager /></Suspense>} />
                     <Route path="courrier/:courierId" element={<Suspense fallback={<LoadingScreen />}><EluCourrier /></Suspense>} />
+                    <Route path="demande/:irisRequestId" element={<Suspense fallback={<LoadingScreen />}><EluDemande /></Suspense>} />
                     {/* Les statistiques conviennent telles quelles à un élu :
                         la page est MONTÉE ici, jamais dupliquée. */}
                     <Route path="indicateurs" element={<Suspense fallback={<LoadingScreen />}><EluIndicateurs /></Suspense>} />

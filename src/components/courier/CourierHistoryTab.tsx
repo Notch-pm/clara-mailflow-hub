@@ -23,6 +23,7 @@ import {
   TicketX,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { COURIER_EVENT_LABELS, describeCourierEvent } from "@/lib/courier-history";
 
 interface Props {
   courierId: string;
@@ -62,29 +63,6 @@ const ICONS: Record<string, JSX.Element> = {
   ticket_deleted:        <TicketX className="h-3.5 w-3.5" />,
 };
 
-const LABELS: Record<string, string> = {
-  courier_created:       "Création du courrier",
-  instruction_started:   "Début d'instruction",
-  note_added:            "Note ajoutée",
-  note_updated:          "Note modifiée",
-  note_deleted:          "Note supprimée",
-  document_added:        "Document ajouté",
-  document_updated:      "Document modifié",
-  document_deleted:      "Document supprimé",
-  service_changed:       "Changement de service",
-  service_transferred:   "Transfert de service",
-  state_changed:         "Changement d'état",
-  reply_created:         "Réponse créée",
-  reply_deleted:         "Réponse supprimée",
-  reply_state_changed:   "Changement d'état de la réponse",
-  reply_sent:            "Réponse envoyée",
-  reply_signed:          "Réponse signée",
-  reply_unsigned:        "Signature retirée",
-  reply_send_reset:      "Envoi annulé",
-  ticket_created:        "Ticket créé",
-  ticket_updated:        "Ticket mis à jour",
-  ticket_deleted:        "Ticket supprimé",
-};
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleString("fr-FR", {
@@ -169,53 +147,18 @@ export default function CourierHistoryTab({ courierId, organizationId }: Props) 
         type: "courier_created",
         at: courier.created_at,
         by: courier.created_by ?? null,
-        title: LABELS.courier_created,
+        title: COURIER_EVENT_LABELS.courier_created,
       });
     }
 
     events.forEach((e: any) => {
-      const payload = (e.payload ?? {}) as Record<string, any>;
-      let detail: string | null = null;
-      switch (e.event_type) {
-        case "service_changed":
-          detail = payload.from
-            ? `${payload.from ?? "—"} → ${payload.to ?? "—"}`
-            : payload.to
-              ? `→ ${payload.to}`
-              : null;
-          break;
-        case "service_transferred":
-          detail = payload.from && payload.to
-            ? `${payload.from} → ${payload.to}`
-            : payload.to ?? null;
-          break;
-        case "state_changed":
-          detail = payload.to_name
-            ? `${payload.from_name ?? "—"} → ${payload.to_name}`
-            : null;
-          break;
-        case "note_added":
-        case "note_updated":
-          if (payload.preview) detail = `« ${payload.preview} »`;
-          break;
-        case "document_added":
-        case "document_deleted":
-        case "document_updated":
-          detail =
-            [payload.file_name, payload.document_type]
-              .filter(Boolean)
-              .join(" · ") || null;
-          break;
-        default:
-          detail = null;
-      }
-
+      const { title, detail } = describeCourierEvent(e.event_type, e.payload);
       out.push({
         id: e.id,
         type: e.event_type,
         at: e.created_at,
         by: e.created_by ?? null,
-        title: LABELS[e.event_type] ?? e.event_type,
+        title,
         detail,
       });
     });

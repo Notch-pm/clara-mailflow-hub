@@ -177,18 +177,8 @@ export default function EluUsager() {
                 .filter(Boolean)
                 .join(" · ");
               const pill = d.status ? <EluStatusPill>{irisStatusLabel(d.status)}</EluStatusPill> : null;
-              // Née d'un courrier : ce courrier s'ouvre. Sinon, sa fiche est
-              // dans Iris — l'élu la lit ici, sans lien.
-              return d.courier_id ? (
-                <EluCard key={d.id} to={`/elu/courrier/${d.courier_id}`} title={title} meta={meta} badge={pill} />
-              ) : (
-                <div key={d.id} className="flex flex-col gap-2 rounded-xl border bg-card p-4">
-                  <span className="text-[17px] font-semibold leading-snug text-foreground [text-wrap:pretty]">
-                    {title}
-                  </span>
-                  {meta && <span className="text-[15px] text-muted-foreground">{meta}</span>}
-                  {pill}
-                </div>
+              return (
+                <EluCard key={d.id} to={`/elu/demande/${d.id}`} title={title} meta={meta} badge={pill} />
               );
             })
           )}

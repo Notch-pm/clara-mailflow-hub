@@ -96,3 +96,68 @@ export function lookupMap(rows: Array<{ key: string | null; value: string | null
   for (const { key, value } of rows) if (key && value) map.set(key.toLowerCase(), value);
   return map;
 }
+
+// ── Fil d'une demande (`GET /v1/requests/{id}/timeline`, contrat Iris 2.5.0) ──
+
+export interface IrisTimelineEvent {
+  type: string;
+  at: string;
+  by: string | null;
+  detail: Record<string, string | number | null>;
+}
+
+export interface IrisTimelineNote {
+  body: string;
+  at: string;
+  by: string | null;
+}
+
+export interface IrisTimelineIntervention {
+  status: string;
+  intervenant: string | null;
+  requested_at: string | null;
+  requested_for: string | null;
+  request_comment: string | null;
+  completed_on: string | null;
+  completion_comment: string | null;
+}
+
+/** Réponse d'Iris (champs inconnus tolérés — contrat additif). */
+export interface IrisTimeline {
+  request?: IrisListedRequest & { body?: string | null };
+  events?: IrisTimelineEvent[];
+  notes?: IrisTimelineNote[];
+  interventions?: IrisTimelineIntervention[];
+}
+
+/** Ce que l'écran reçoit : la demande enrichie, et son fil. */
+export interface DemandeDetail {
+  demande: ContactDemande & { body: string | null; socle_contact_id: string | null };
+  events: IrisTimelineEvent[];
+  notes: IrisTimelineNote[];
+  interventions: IrisTimelineIntervention[];
+}
+
+/**
+ * `null` : demande illisible ou HORS du périmètre de l'appelant — l'appelant
+ * répond 404, sans dire laquelle des deux (même règle qu'Iris).
+ */
+export function buildDemandeDetail(
+  timeline: IrisTimeline | null,
+  lookups: ContactDemandeLookups,
+  allowedSocleOrgIds: Set<string> | null,
+): DemandeDetail | null {
+  const request = timeline?.request;
+  if (!request?.id) return null;
+  const [demande] = buildContactDemandes([request], lookups, allowedSocleOrgIds);
+  if (!demande) return null;
+  const byDate = <T extends { at: string }>(items: T[] | undefined) =>
+    [...(items ?? [])].sort((a, b) => (b.at ?? "").localeCompare(a.at ?? ""));
+  return {
+    demande: { ...demande, body: request.body ?? null, socle_contact_id: request.socle_contact_id ?? null },
+    // Plus récent d'abord, comme l'historique des courriers.
+    events: byDate(timeline?.events),
+    notes: byDate(timeline?.notes),
+    interventions: [...(timeline?.interventions ?? [])],
+  };
+}

@@ -11,9 +11,9 @@ function formatDate(value: string | null): string {
 
 /**
  * Demandes de l'usager instruites dans Iris, toutes origines confondues
- * (portail, guichet, courrier). Lecture seule : Iris en est propriétaire. Une
- * demande née d'un courrier ouvre ce courrier ; les autres ne s'ouvrent pas —
- * leur fiche est dans Iris, hors d'atteinte sans compte Iris.
+ * (portail, guichet, courrier). Lecture seule : Iris en est propriétaire.
+ * Chaque ligne ouvre le détail de la demande (`/demandes/:id`), qui mène au
+ * courrier d'origine quand elle en vient.
  */
 export default function ContactDemandesCard({ socleContactId }: { socleContactId: string }) {
   const navigate = useNavigate();
@@ -47,11 +47,7 @@ export default function ContactDemandesCard({ socleContactId }: { socleContactId
             </TableHeader>
             <TableBody>
               {data.map((d) => (
-                <TableRow
-                  key={d.id}
-                  className={d.courier_id ? "cursor-pointer" : undefined}
-                  onClick={d.courier_id ? () => navigate(`/courrier/${d.courier_id}`) : undefined}
-                >
+                <TableRow key={d.id} className="cursor-pointer" onClick={() => navigate(`/demandes/${d.id}`)}>
                   <TableCell className="font-mono text-xs">{d.reference ?? "—"}</TableCell>
                   <TableCell className="max-w-[280px] truncate">{d.subject ?? "—"}</TableCell>
                   <TableCell className="max-w-[220px] truncate">

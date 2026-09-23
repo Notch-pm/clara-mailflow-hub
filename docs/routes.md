@@ -38,7 +38,8 @@ Toute nouvelle route doit être ajoutée ici dans la même PR que son ajout dans
 | `/parametres` | `SettingsPage` | Hub vers les paramètres de l'organisation active. |
 | `/mon-profil` | `MonProfil` | Profil utilisateur. |
 | `/contacts` | `Contacts` | Annuaire des contacts (référentiel Socle via contacts-api). |
-| `/contacts/:id` | `Contacts` | Fiche contact (données Socle + courriers liés). |
+| `/contacts/:id` | `Contacts` | Fiche contact (données Socle + courriers liés + demandes Iris de l'usager). |
+| `/demandes/:irisRequestId` | `DemandeDetail` | Une demande instruite dans Iris, en lecture seule : texte, statut, réponse apportée, puis demandes d'intervention, commentaires internes et activité (`iris-request-detail`). Ouverte depuis la carte « Demandes » de la fiche contact. 404 hors des organisations de l'utilisateur. |
 | `/recherche` | `RechercheCourrierPage` | Recherche transverse des courriers. |
 | `/import-en-masse` | `BulkImport` | Assistant d'import de courriers en lot. |
 | `/statistiques` | `StatistiquesPage` | Statistiques lazy-loaded. |
@@ -61,9 +62,10 @@ par `AppLayout`, qui pose alors un retour « ‹ Espace élu » (`EluReturnBanne
 | `/elu` | `EluAccueil` | Ce qui attend l'élu : courriers à signer, compteurs du mois, accès à la recherche. |
 | `/elu/a-signer` | `EluASigner` | File des réponses en attente de sa signature, avec leur ancienneté. Visible même s'il n'est pas signataire (état vide). |
 | `/elu/reponse/:replyId` | `EluReponse` | Lecture d'une réponse et actions du workflow (signer, transitions secondaires). |
-| `/elu/courrier/:courierId` | `EluCourrier` | Le courrier reçu, en lecture seule : expéditeur, résumé de l'analyse, intentions, pièces jointes. Atteint depuis la file à signer, le détail d'une réponse et la recherche. |
+| `/elu/courrier/:courierId` | `EluCourrier` | Le courrier reçu, en lecture seule : expéditeur, résumé de l'analyse, intentions, pièces jointes ; en bas, réponses apportées, commentaires internes et activité (mêmes libellés que l'onglet Historique, `src/lib/courier-history.ts`). Atteint depuis la file à signer, le détail d'une réponse et la recherche. |
 | `/elu/recherche` | `EluRecherche` | Derniers courriers reçus tant que rien n'est saisi, puis recherche courriers + usagers (`useGlobalSearch`, partagée avec la recherche globale). |
-| `/elu/usager/:contactId` | `EluUsager` | Fiche d'un usager : coordonnées cliquables et ses courriers. |
+| `/elu/usager/:contactId` | `EluUsager` | Fiche d'un usager : coordonnées cliquables, ses courriers et ses demandes Iris. |
+| `/elu/demande/:irisRequestId` | `EluDemande` | Une demande Iris vue par l'élu : ce que demande l'usager, statut, réponse apportée, puis interventions, commentaires internes et activité. |
 | `/elu/indicateurs` | `EluIndicateurs` | Enveloppe qui monte **la page de statistiques existante** — jamais dupliquée ; elle lui pose seulement la gouttière que `main` lui donne ailleurs. Masquée si `canAccessStats` est faux. |
 
 ## Sous-pages paramètres
