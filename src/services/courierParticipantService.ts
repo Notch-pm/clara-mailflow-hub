@@ -8,6 +8,8 @@ export interface ContactCourier {
   received_at: string | null;
   sent_at: string | null;
   direction: string;
+  /** Renseigné pour une réponse : le courrier auquel elle répond. */
+  parent_courier_id: string | null;
   channel: string | null;
   chrono: string | null;
   created_at: string;
@@ -24,7 +26,7 @@ export async function listContactCouriers(socleContactId: string): Promise<Conta
   const { data, error } = await supabase
     .from("courier_participants")
     .select(
-      "courier_id, role, courier:couriers(id, subject, received_at, sent_at, direction, channel, chrono, created_at, metadata, workflow_state:workflow_states(name, category))",
+      "courier_id, role, courier:couriers(id, subject, received_at, sent_at, direction, parent_courier_id, channel, chrono, created_at, metadata, workflow_state:workflow_states(name, category))",
     )
     .eq("socle_contact_id", socleContactId);
   if (error) throw error;

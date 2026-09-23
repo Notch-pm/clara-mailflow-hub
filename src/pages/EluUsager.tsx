@@ -139,20 +139,25 @@ export default function EluUsager() {
         ) : (
           couriers.map((courier) => {
             const date = courier.received_at ?? courier.sent_at ?? courier.created_at;
+            // Une réponse s'ouvre là où l'élu la lit et la signe ; un courrier
+            // reçu, sur sa page courrier.
+            const to =
+              courier.direction === "outbound" && courier.parent_courier_id
+                ? `/elu/reponse/${courier.id}`
+                : `/elu/courrier/${courier.id}`;
             return (
-              <div key={courier.id} className="flex flex-col gap-2 rounded-xl border bg-card p-4">
-                <span className="text-[17px] font-semibold leading-snug text-foreground [text-wrap:pretty]">
-                  {courier.subject ?? "Sans objet"}
-                </span>
-                <span className="flex items-center gap-2.5">
-                  {courier.workflow_state && (
-                    <EluStatusPill>{courier.workflow_state.name}</EluStatusPill>
-                  )}
-                  <span className="text-sm text-muted-foreground">
-                    {date ? new Date(date).toLocaleDateString("fr-FR") : "—"}
-                  </span>
-                </span>
-              </div>
+              <EluCard
+                key={courier.id}
+                to={to}
+                title={courier.subject ?? "Sans objet"}
+                meta={[
+                  courier.direction === "outbound" ? "Réponse" : null,
+                  date ? new Date(date).toLocaleDateString("fr-FR") : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+                badge={courier.workflow_state ? <EluStatusPill>{courier.workflow_state.name}</EluStatusPill> : null}
+              />
             );
           })
         )}
