@@ -54,9 +54,7 @@ export function useEluReply(replyId: string | undefined) {
       const { data, error } = await supabase
         .from("couriers")
         .select(
-          "id, parent_courier_id, organization_id, channel, subject, workflow_state_id, metadata, " +
-            "assigned_service, socle_organization_id, created_at, " +
-            "courier_participants(role, name, first_name, last_name, email, socle_contact_id)",
+          "id, parent_courier_id, organization_id, channel, subject, workflow_state_id, metadata, assigned_service, socle_organization_id, created_at, courier_participants(role, name, first_name, last_name, email, socle_contact_id)",
         )
         .eq("id", replyId!)
         .eq("organization_id", organizationId!)
@@ -75,8 +73,7 @@ export function useEluReply(replyId: string | undefined) {
       const { data, error } = await supabase
         .from("couriers")
         .select(
-          "id, subject, chrono, received_at, " +
-            "courier_participants(role, name, first_name, last_name, socle_contact_id)",
+          "id, subject, chrono, received_at, courier_participants(role, name, first_name, last_name, socle_contact_id)",
         )
         .eq("id", parentId!)
         .eq("organization_id", organizationId!)

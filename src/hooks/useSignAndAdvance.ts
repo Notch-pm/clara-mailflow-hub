@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { edgeError } from "@/lib/edge-error";
 import { signReply, transitionReplyState } from "@/services/courierReplyService";
 import { getSignatureDataUrl } from "@/services/signatoryService";
 import { appendSignature, buildSignatureBlock } from "@/lib/reply-signature";
@@ -122,13 +123,12 @@ export function useSignAndAdvance(ctx: EluSignContext): {
         body: { reply_id: ctx.replyId, organization_id: ctx.organizationId },
       });
       // La fonction répond 409 quand la réponse est déjà partie : l'élu doit
-      // lire une phrase, pas un code.
+      // lire une phrase, pas un code. Le statut se lit sur la réponse
+      // (`edgeError`) : le message du client Supabase ne le contient jamais.
       if (error) {
-        throw new Error(
-          /409/.test(String(error.message))
-            ? "Cette réponse a déjà été envoyée."
-            : "L'envoi a échoué. Réessayez dans un instant.",
-        );
+        const err = await edgeError(error, "L'envoi a échoué. Réessayez dans un instant.");
+        if (err.status === 409) throw new Error("Cette réponse a déjà été envoyée.");
+        throw err;
       }
       await advance(nextEntry.target);
     },

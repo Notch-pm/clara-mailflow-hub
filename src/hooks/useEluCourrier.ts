@@ -17,9 +17,7 @@ export function useEluCourrier(courierId: string | undefined) {
       const { data, error } = await supabase
         .from("couriers")
         .select(
-          "id, subject, chrono, received_at, created_at, channel, direction, assigned_service, " +
-            "workflow_state:workflow_states(name, category), " +
-            "courier_participants(role, name, first_name, last_name, email, socle_contact_id)",
+          "id, subject, chrono, received_at, created_at, channel, direction, assigned_service, workflow_state:workflow_states(name, category), courier_participants(role, name, first_name, last_name, email, socle_contact_id)",
         )
         .eq("id", courierId!)
         .eq("organization_id", organizationId!)

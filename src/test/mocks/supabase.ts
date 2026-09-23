@@ -24,7 +24,8 @@ function makeQueryBuilder(resolvedValue: unknown = { data: null, error: null }) 
 }
 
 export const mockSupabase = {
-  from: vi.fn(() => makeQueryBuilder()),
+  // `_table` typé pour qu'un test puisse aiguiller ses réponses par table.
+  from: vi.fn((_table: string): unknown => makeQueryBuilder()),
   rpc: vi.fn().mockResolvedValue({ data: [], error: null }),
   auth: {
     getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user-1" } }, error: null }),

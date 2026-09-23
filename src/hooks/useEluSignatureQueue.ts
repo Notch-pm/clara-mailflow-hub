@@ -88,8 +88,7 @@ export function useEluSignatureQueue() {
       const { data, error } = await supabase
         .from("couriers")
         .select(
-          "id, subject, chrono, created_at, parent_courier_id, assigned_service, " +
-            "courier_participants(role, name, first_name, last_name)",
+          "id, subject, chrono, created_at, parent_courier_id, assigned_service, courier_participants(role, name, first_name, last_name)",
         )
         .eq("organization_id", organizationId!)
         .eq("direction", "outbound")
@@ -116,8 +115,7 @@ export function useEluSignatureQueue() {
       const { data, error } = await supabase
         .from("couriers")
         .select(
-          "id, subject, chrono, received_at, " +
-            "courier_participants(role, name, first_name, last_name, socle_contact_id)",
+          "id, subject, chrono, received_at, courier_participants(role, name, first_name, last_name, socle_contact_id)",
         )
         .eq("organization_id", organizationId!)
         .in("id", parentIds);
