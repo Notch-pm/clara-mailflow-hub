@@ -17,6 +17,7 @@
 | `is_superadmin` | `(uuid) → bool` | Vérifie `public.users.is_superadmin = true` pour l'uid donné |
 | `is_admin_of` | `(uuid) → bool` | `is_superadmin(auth.uid()) OR` membre org avec rôle `admin`/`administrateur` |
 | `is_member_of` | `(uuid) → bool` | `is_superadmin(auth.uid()) OR` membre actif de l'org |
+| `shares_organization_with` | `(uuid) → bool` | l'appelant (membre **actif**) partage au moins une organisation avec l'utilisateur cible — actif ou non, pour qu'un auteur parti reste nommé. Sert `users_select` (2026-09-23) |
 
 **Règles d'or** :
 - toute nouvelle policy utilise `is_member_of` ou `is_admin_of` — jamais un `EXISTS` inline sur `organization_users`, jamais `x-org-id` en dur ;
@@ -135,7 +136,7 @@ Pas d'`organization_id` sur cette table → policies spécifiques (une par actio
 
 | Policy | CMD | Condition |
 |---|---|---|
-| `users_select` | SELECT | soi-même, superadmin, ou membre d'une org partagée (`EXISTS` sur `organization_users`, soumis à sa RLS : un membre voit ses collègues via un admin uniquement) |
+| `users_select` | SELECT | soi-même, superadmin, ou `shares_organization_with(id)` (2026-09-23). Avant, un `EXISTS` inline sur `organization_users` restait soumis à la RLS de cette table (un non-admin n'y voit que sa ligne) : élus, gestionnaires et superviseurs voyaient « Utilisateur inconnu » dans l'historique. `organization_users` reste lisible par son seul titulaire et les admins |
 | `users_insert` | INSERT | superadmin, ou header `x-org-id` présent **et** `is_superadmin = false` |
 | `users_update` | UPDATE | soi-même, superadmin, ou admin d'une org du user cible ; `WITH CHECK` interdit `is_superadmin = true` aux non-superadmins (en plus du trigger) |
 | `service_role_full_users` | ALL | `true` (`TO service_role`) |

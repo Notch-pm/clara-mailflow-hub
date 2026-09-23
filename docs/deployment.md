@@ -137,6 +137,23 @@ Correctif : `socle-contacts/index.ts` (variable renommée) ; garde-fou :
 |---|---|---|
 | 4 | `bunx supabase functions deploy socle-contacts --project-ref aullweizxcjbvtdspjli` (pas d'entrée `config.toml` : `verify_jwt = true`, comme en ligne) | **Fait** — v17 |
 
+### Lot « vue usager : demandes Iris et espace élu » (2026-09-23) — appliqué le 2026-09-23
+
+Branche `feat/application-elu` rebasée et fusionnée ; la fiche contact et l'espace élu montrent les
+demandes Iris de l'usager, toutes origines, avec leur détail. Voir `docs/iris-integration.md` § 5 ter.
+
+| # | Action | Pourquoi cet ordre | État |
+|---|---|---|---|
+| 1 | **Iris** : `20260923170000_scope_lecture_par_usager` (scope `requests:read_tenant`) puis `requests-api` 2.4.0 (`?socle_contact_id=`) et 2.5.0 (`/v1/requests/{id}/timeline`) | Iris d'abord : sans le filtre par usager, l'ancienne API aurait rendu toutes les demandes de la source `clara` à chaque fiche | **Fait** — `apply_migration` + `supabase functions deploy` |
+| 2 | **Iris** : `20260923171000_clara_scope_lecture_par_usager` (les trois clés `clara` : ACCM, Rosny, SNA) | Le MCP Iris refuse les écritures `execute_sql` ; migration de données, fichier dans le dépôt Iris | **Fait** |
+| 3 | **Clara** : `iris-contact-requests`, `iris-request-detail` | Après Iris : elles appellent ses nouvelles routes | **Fait** — `verify_jwt = true` (défaut, appel utilisateur) |
+| 4 | **Clara** : `20260923180000_noms_des_collegues.sql` (`shares_organization_with` + `users_select`) | Indépendant ; constaté en recette élu | **Fait** — `apply_migration` ; vérifié : un élu SNA lit ses collègues, pas un admin de Rosny |
+| 5 | Frontend (push `main`) | — | **Fait** |
+
+Recette (compte élu SNA) : demande dans le périmètre ⇒ 200 avec notes et interventions ; hors
+périmètre ⇒ 404 ; route Iris sans clé ou avec une fausse clé ⇒ 401. Une clé Clara émise plus tard
+devra recevoir `requests:read_tenant` à son émission.
+
 ### Lot « alerte mémoire + lien de réinitialisation » (2026-09-22) — appliqué le 2026-09-22
 
 Deux pannes sans rapport, remontées le même jour.

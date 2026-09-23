@@ -64,7 +64,7 @@ par `AppLayout`, qui pose alors un retour « ‹ Espace élu » (`EluReturnBanne
 | `/elu/reponse/:replyId` | `EluReponse` | Lecture d'une réponse et actions du workflow (signer, transitions secondaires). |
 | `/elu/courrier/:courierId` | `EluCourrier` | Le courrier reçu, en lecture seule : expéditeur, résumé de l'analyse, intentions, pièces jointes ; en bas, réponses apportées, commentaires internes et activité (mêmes libellés que l'onglet Historique, `src/lib/courier-history.ts`). Atteint depuis la file à signer, le détail d'une réponse et la recherche. |
 | `/elu/recherche` | `EluRecherche` | Derniers courriers reçus tant que rien n'est saisi, puis recherche courriers + usagers (`useGlobalSearch`, partagée avec la recherche globale). |
-| `/elu/usager/:contactId` | `EluUsager` | Fiche d'un usager : coordonnées cliquables, ses courriers et ses demandes Iris. |
+| `/elu/usager/:contactId` | `EluUsager` | Fiche d'un usager : coordonnées cliquables, ses courriers (un courrier reçu ouvre `/elu/courrier/:id`, une réponse `/elu/reponse/:id`) et ses demandes Iris (`/elu/demande/:id`). |
 | `/elu/demande/:irisRequestId` | `EluDemande` | Une demande Iris vue par l'élu : ce que demande l'usager, statut, réponse apportée, puis interventions, commentaires internes et activité. |
 | `/elu/indicateurs` | `EluIndicateurs` | Enveloppe qui monte **la page de statistiques existante** — jamais dupliquée ; elle lui pose seulement la gouttière que `main` lui donne ailleurs. Masquée si `canAccessStats` est faux. |
 
