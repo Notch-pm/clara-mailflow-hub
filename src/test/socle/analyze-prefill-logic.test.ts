@@ -144,6 +144,20 @@ describe("extractFillableFields", () => {
   });
 });
 
+describe("extractFillableFields / buildPrefillTool — champ `location`", () => {
+  const LIEU = {
+    version: 1,
+    content: [{ id: "ep-lieu", key: "intervention_lieu", type: "location", label: "Lieu d'intervention" }],
+  };
+
+  it("le lieu d'intervention est préremplissable, demandé comme une adresse texte", () => {
+    const fields = extractFillableFields(LIEU);
+    expect(fields.map((f) => f.prefillKey)).toEqual(["intervention_lieu"]);
+    const tool = buildPrefillTool([{ id: "p1", name: "Espace public", fields, knowledge: "" }]);
+    expect(JSON.stringify(tool.toolParameters)).toContain("adresse du lieu concerné");
+  });
+});
+
 // ── condenseKnowledgeBase ───────────────────────────────────────────────────
 
 describe("condenseKnowledgeBase", () => {

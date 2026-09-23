@@ -108,6 +108,9 @@ export interface FillableField {
 const FILLABLE_TYPES = new Set([
   "text", "textarea", "number", "date", "email", "phone",
   "boolean", "select", "radio", "checkboxes",
+  // Lieu d'intervention (Socle 1.29.0) : l'IA en rend l'ADRESSE en texte ; le
+  // dialogue en fait un lieu sans point (`applySocleFormPrefill`).
+  "location",
 ]);
 
 function parseOptions(raw: unknown): FillableFieldOption[] {
@@ -299,6 +302,11 @@ function fieldJsonSchema(field: FillableField): JsonSchema {
       return { type: "string", description: `${label}${help} — format YYYY-MM-DD ("" si absent)` };
     case "number":
       return { type: "string", description: `${label}${help} — nombre ("" si absent)` };
+    case "location":
+      return {
+        type: "string",
+        description: `${label}${help} — adresse du lieu concerné sur une ligne (numéro, voie, code postal, commune), ou repère précis cité par le courrier ("" si absent)`,
+      };
     default:
       return { type: "string", description: `${label}${help} ("" si absent du courrier)` };
   }

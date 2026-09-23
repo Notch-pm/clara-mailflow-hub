@@ -250,3 +250,17 @@ describe("applySocleFormPrefill", () => {
     expect(applySocleFormPrefill(SCHEMA, null)).toEqual({});
   });
 });
+
+describe("applySocleFormPrefill — champ `location`", () => {
+  const LIEU = parseFormSchema({
+    version: 1,
+    content: [{ id: "ep-lieu", key: "intervention_lieu", type: "location", label: "Lieu d'intervention" }],
+  });
+
+  it("l'adresse rendue par l'IA devient un lieu SANS point (jamais géocodé à sa place)", () => {
+    expect(applySocleFormPrefill(LIEU, { intervention_lieu: " Parvis de l'église Saint-Lazare " })).toEqual({
+      "ep-lieu": { address: "Parvis de l'église Saint-Lazare", lat: null, lon: null, precision: null, adjusted: false },
+    });
+    expect(applySocleFormPrefill(LIEU, { intervention_lieu: "" })).toEqual({});
+  });
+});

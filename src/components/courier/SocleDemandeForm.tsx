@@ -28,6 +28,7 @@ import {
   evaluateCondition,
   isFieldRequired,
   isSection,
+  locationAddressText,
   requesterFieldsFor,
   type Audience,
   type FormValues,
@@ -231,9 +232,14 @@ export function SocleRequesterForm({
 
 // ── Formulaire (form_schema) ────────────────────────────────────────────────
 
-/** Un champ long, un choix multiple ou une pièce occupe toute la largeur. */
+/** Un champ long, un choix multiple, une pièce ou un lieu occupe toute la largeur. */
 function spansFullWidth(field: SocleField): boolean {
-  return field.type === "textarea" || field.type === "attachment" || field.type === "checkboxes";
+  return (
+    field.type === "textarea" ||
+    field.type === "attachment" ||
+    field.type === "checkboxes" ||
+    field.type === "location"
+  );
 }
 
 interface FieldProps {
@@ -278,6 +284,43 @@ function SocleFieldInput({ field, ...props }: { field: SocleField } & FieldProps
           maxFiles={field.maxFiles}
         />
       </div>
+    );
+  }
+
+  // ── Lieu d'intervention (type `location`) : une ligne assistée par la BAN ──
+  // Ce qui s'écrit est la forme du contrat, comme dans Iris (`LocationFieldControl`) :
+  // une proposition retenue → son libellé et SON point ; une saisie libre →
+  // l'adresse tapée, sans point. Le point géocodé que la carte montre sous une
+  // saisie libre n'est jamais écrit, et l'agent ne déplace pas de point : cet
+  // ajustement est un savoir de l'usager, sur place, sur le portail.
+  if (field.type === "location") {
+    return (
+      <AddressField
+        id={inputId}
+        label={field.label}
+        required={required}
+        singleLine
+        hint={field.help}
+        value={{ line: locationAddressText(value), postcode: "", city: "" }}
+        onChange={(next, suggestion) => {
+          if (suggestion) {
+            onChange(field.id, {
+              address: suggestion.label,
+              lat: suggestion.lat,
+              lon: suggestion.lon,
+              precision: suggestion.precision,
+              adjusted: false,
+            });
+            return;
+          }
+          onChange(
+            field.id,
+            next.line === ""
+              ? undefined
+              : { address: next.line, lat: null, lon: null, precision: null, adjusted: false },
+          );
+        }}
+      />
     );
   }
 
@@ -458,10 +501,11 @@ function FieldGrid({
  * Rendu du formulaire d'une démarche : champs racine et sections dans l'ordre
  * du schéma, conditions `visibleIf` évaluées en direct sur les valeurs saisies.
  *
- * Le bloc « Lieu d'intervention » est reconnu et rendu en UN champ d'adresse
- * assisté (avec carte) plutôt qu'en sept champs séparés — exactement comme
- * dans Iris, et sans rien changer à ce qui part : on écrit dans les champs que
- * la démarche pose.
+ * Le lieu d'intervention a deux formes, lues toutes deux comme dans Iris : le
+ * champ `location` (Socle 1.29.0), rendu par `SocleFieldInput` ; et l'ancien
+ * bloc — une section de sept champs `intervention_*` — reconnu et rendu en UN
+ * champ d'adresse assisté (avec carte), sans rien changer à ce qui part : on
+ * écrit dans les champs que la démarche pose.
  */
 export function SocleFormFields({
   schema,

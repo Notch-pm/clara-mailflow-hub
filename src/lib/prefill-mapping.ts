@@ -8,6 +8,7 @@
 import type { SocleContact } from "@/services/socleContactService";
 import {
   isSection,
+  parseLocationValue,
   type Audience,
   type FormValues,
   type SocleField,
@@ -236,6 +237,10 @@ function validatedValue(field: SocleField, raw: unknown): unknown | undefined {
         : undefined;
     case "attachment":
       return undefined;
+    case "location":
+      // L'IA rend l'adresse en texte : un lieu SANS point (on ne géocode pas à
+      // sa place — l'agent retient une proposition de la BAN s'il le veut).
+      return parseLocationValue(raw) ?? undefined;
     default:
       return typeof raw === "string" && raw.trim() ? raw.trim() : undefined;
   }

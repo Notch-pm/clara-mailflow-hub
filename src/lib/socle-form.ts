@@ -101,7 +101,8 @@ export type SocleFieldType =
   | "select"
   | "radio"
   | "checkboxes"
-  | "attachment";
+  | "attachment"
+  | "location";
 
 export interface SocleFieldOption {
   value: string;
@@ -141,7 +142,83 @@ export interface SocleAttachmentField extends SocleFieldCommon {
   requiredIf?: Condition;
 }
 
-export type SocleField = SocleSimpleField | SocleChoiceField | SocleAttachmentField;
+/**
+ * Lieu d'intervention (Socle 1.29.0, 2026-09-22) : une adresse sur une ligne et
+ * le point retenu. Reconnu par son TYPE, jamais par sa clé (`intervention_lieu`
+ * n'est qu'un défaut). Sa réponse est un objet `LocationValue`, pas une chaîne.
+ */
+export interface SocleLocationField extends SocleFieldCommon {
+  type: "location";
+}
+
+export type SocleField =
+  | SocleSimpleField
+  | SocleChoiceField
+  | SocleAttachmentField
+  | SocleLocationField;
+
+// ── Valeur d'un lieu d'intervention (contrat `LocationValue`) ───────────────
+
+export const LOCATION_PRECISIONS = ["adresse", "voie", "lieu_dit", "commune"] as const;
+export type LocationPrecision = (typeof LOCATION_PRECISIONS)[number];
+
+export interface LocationValue {
+  /** Libellé BAN retenu, sinon le texte tapé — jamais vide. */
+  address: string;
+  /** Point retenu (WGS 84) ; `lat` et `lon` vont ensemble, `null` en saisie libre. */
+  lat: number | null;
+  lon: number | null;
+  precision: LocationPrecision | null;
+  /** Point déplacé par l'usager (portail) : jamais vrai pour une saisie d'agent. */
+  adjusted: boolean;
+}
+
+function finiteCoordinate(raw: unknown, bound: number): number | null {
+  return typeof raw === "number" && Number.isFinite(raw) && Math.abs(raw) <= bound ? raw : null;
+}
+
+/**
+ * Lecture tolérante d'une valeur de lieu — port d'Iris (`procedureForm.ts`).
+ * Un objet illisible (adresse vide…) vaut non renseigné ; une chaîne (préremplissage
+ * IA) devient une adresse sans point. `lat` sans `lon` : pas de point du tout.
+ */
+export function parseLocationValue(raw: unknown): LocationValue | null {
+  if (typeof raw === "string") {
+    const address = raw.trim();
+    return address === "" ? null : { address, lat: null, lon: null, precision: null, adjusted: false };
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const r = raw as Record<string, unknown>;
+  const address = typeof r.address === "string" ? r.address.trim() : "";
+  if (address === "") return null;
+  const lat = finiteCoordinate(r.lat, 90);
+  const lon = finiteCoordinate(r.lon, 180);
+  const hasPoint = lat !== null && lon !== null;
+  const precision = (LOCATION_PRECISIONS as readonly unknown[]).includes(r.precision)
+    ? (r.precision as LocationPrecision)
+    : null;
+  return {
+    address,
+    lat: hasPoint ? lat : null,
+    lon: hasPoint ? lon : null,
+    precision,
+    adjusted: hasPoint && r.adjusted === true,
+  };
+}
+
+/**
+ * L'adresse d'un lieu telle qu'elle a été TAPÉE, pour la réafficher dans le
+ * champ : sans rogner. ⚠️ Réafficher `parseLocationValue(v).address` rendrait
+ * l'espace intapable (elle disparaît à la frappe) — vécu dans Iris.
+ */
+export function locationAddressText(raw: unknown): string {
+  if (typeof raw === "string") return raw;
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const address = (raw as Record<string, unknown>).address;
+    if (typeof address === "string") return address;
+  }
+  return "";
+}
 
 export interface SocleSection {
   id: string;
@@ -205,31 +282,62 @@ const attachmentFieldZod = z.object({
   requiredIf: conditionZod.optional(),
 });
 
-// Ordre important : les schémas les plus spécifiques (choix, PJ) avant le simple.
-const fieldZod = z.union([choiceFieldZod, attachmentFieldZod, simpleFieldZod]);
+const locationFieldZod = z.object({
+  ...fieldCommonShape,
+  type: z.literal("location"),
+});
 
-const sectionZod = z.object({
+// Ordre important : les schémas les plus spécifiques (choix, PJ, lieu) avant le simple.
+const fieldZod = z.union([choiceFieldZod, attachmentFieldZod, locationFieldZod, simpleFieldZod]);
+
+const sectionHeadZod = z.object({
   id: z.string(),
   kind: z.literal("section"),
   title: z.string(),
   description: z.string().optional(),
   visibleIf: conditionZod.optional(),
-  fields: z.array(fieldZod).default([]),
+  fields: z.array(z.unknown()).default([]),
 });
 
-const formSchemaZod = z.object({
+const formSchemaHeadZod = z.object({
   version: z.literal(1).default(1),
-  content: z.array(z.union([sectionZod, fieldZod])).default([]),
+  content: z.array(z.unknown()).default([]),
 });
+
+/** Les champs lisibles d'une liste ; un champ de type inconnu est écarté SEUL. */
+function parseFields(raw: unknown[]): SocleField[] {
+  const out: SocleField[] = [];
+  for (const item of raw) {
+    const field = fieldZod.safeParse(item);
+    if (field.success) out.push(field.data as SocleField);
+  }
+  return out;
+}
 
 /**
- * Transforme le JSON stocké (arbitraire) en `SocleFormSchema` valide. En cas
- * de structure invalide, retombe sur un schéma vide plutôt que de planter.
+ * Transforme le JSON stocké (arbitraire) en `SocleFormSchema` valide.
+ *
+ * ⚠️ Lecture NŒUD PAR NŒUD : un champ que Clara ne sait pas lire (type ajouté
+ * au contrat du Socle depuis, forme abîmée) est écarté seul, le reste du
+ * formulaire est rendu. Le Socle fait évoluer le contrat en ajoutant des types
+ * (`location`, 1.29.0) et demande aux consommateurs d'ignorer ceux qu'ils ne
+ * connaissent pas. Un parse d'un seul bloc vidait tout le formulaire en
+ * silence : le 2026-09-23, une action Rosny est partie dans Iris sans aucune
+ * réponse, faute de connaître `location`.
  */
 export function parseFormSchema(raw: unknown): SocleFormSchema {
-  if (!raw) return { version: 1, content: [] };
-  const result = formSchemaZod.safeParse(raw);
-  return result.success ? (result.data as SocleFormSchema) : { version: 1, content: [] };
+  const head = formSchemaHeadZod.safeParse(raw ?? {});
+  if (!head.success) return { version: 1, content: [] };
+  const content: SocleFormNode[] = [];
+  for (const node of head.data.content) {
+    const section = sectionHeadZod.safeParse(node);
+    if (section.success) {
+      content.push({ ...section.data, fields: parseFields(section.data.fields) } as SocleSection);
+      continue;
+    }
+    content.push(...parseFields([node]));
+  }
+  return { version: 1, content };
 }
 
 // ── Configuration demandeur (procedures.requester_config) ───────────────────
@@ -404,6 +512,7 @@ export function formRequiredMet(
     if (!isFieldRequired(f, values)) return true;
     if (f.type === "attachment") return (attachments[f.id]?.length ?? 0) > 0;
     if (f.type === "boolean") return values[f.id] === true;
+    if (f.type === "location") return parseLocationValue(values[f.id]) !== null;
     return !isEmptyValue(values[f.id]);
   });
 }
@@ -472,11 +581,15 @@ export function buildSocleDemandeData(input: {
       if (docs.length > 0) pieces[f.id] = docs;
       continue;
     }
-    const value = formValues[f.id];
+    // Un lieu part NORMALISÉ (adresse rognée, point entier ou absent) : c'est
+    // la forme que la frontière d'Iris revalide.
+    const value = f.type === "location" ? parseLocationValue(formValues[f.id]) : formValues[f.id];
     if (isEmptyValue(value) || value === false) continue;
     const entry: SocleFormEntry = { id: f.id, key: f.key, label: f.label, type: f.type, value };
     if (f.type === "select" || f.type === "radio" || f.type === "checkboxes") {
       entry.valueLabel = choiceLabel(f, value);
+    } else if (f.type === "location") {
+      entry.valueLabel = (value as LocationValue).address;
     }
     form.push(entry);
   }

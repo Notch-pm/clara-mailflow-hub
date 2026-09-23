@@ -16,7 +16,13 @@
 // produits reconnaissent le MÊME bloc : ce que Clara saisit ici, Iris doit le
 // relire comme une adresse.
 
-import { isSection, type SocleField, type SocleFormSchema, type SocleSection } from "./socle-form";
+import {
+  isSection,
+  parseLocationValue,
+  type SocleField,
+  type SocleFormSchema,
+  type SocleSection,
+} from "./socle-form";
 
 const PARTS = [
   "numero",
@@ -249,6 +255,7 @@ export function optionValueFor(field: SocleField, text: string): string | null {
 export function displayFieldValue(field: SocleField, value: unknown): string {
   if (value === undefined || value === null || value === "") return "";
   if (field.type === "boolean") return value === true ? "Oui" : "Non";
+  if (field.type === "location") return parseLocationValue(value)?.address ?? "";
   if (field.type === "select" || field.type === "radio") {
     return field.options.find((o) => o.value === value)?.label ?? String(value);
   }

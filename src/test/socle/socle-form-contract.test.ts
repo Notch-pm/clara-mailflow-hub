@@ -6,6 +6,7 @@ import {
   formRequiredMet,
   isFieldRequired,
   parseFormSchema,
+  parseLocationValue,
   parseRequesterConfig,
   requesterFieldsFor,
   requesterRequiredMet,
@@ -120,6 +121,109 @@ describe("parseFormSchema", () => {
     expect(parsed.content).toHaveLength(3);
     const section = parsed.content[2];
     expect("kind" in section && section.kind).toBe("section");
+  });
+
+  // Régression du 2026-09-23 : la démarche « Signaler un problème dans l'espace
+  // public » (Rosny) ouvrait sur un formulaire VIDE — un seul type inconnu
+  // (`location`, Socle 1.29.0) faisait échouer le parse de tout le schéma.
+  it("lit le champ `location` du Socle 1.29.0 sans perdre les autres champs", () => {
+    const parsed = parseFormSchema({
+      version: 1,
+      content: [
+        { id: "ep-lieu", key: "intervention_lieu", type: "location", label: "Lieu d'intervention", required: true },
+        { id: "ep-desc", key: "description", type: "textarea", label: "Description", required: true },
+      ],
+    });
+    expect(parsed.content.map((n) => ("type" in n ? n.type : "section"))).toEqual(["location", "textarea"]);
+  });
+
+  it("écarte SEUL un champ de type inconnu, à la racine comme dans une section", () => {
+    const parsed = parseFormSchema({
+      version: 1,
+      content: [
+        { id: "futur", key: "futur", type: "signature", label: "Type à venir" },
+        { id: "desc", key: "description", type: "textarea", label: "Description" },
+        {
+          id: "s1",
+          kind: "section",
+          title: "Détails",
+          fields: [
+            { id: "abime", key: "x", label: "Sans type" },
+            { id: "nom", key: "nom", type: "text", label: "Nom" },
+          ],
+        },
+      ],
+    });
+    expect(parsed.content).toHaveLength(2);
+    expect(parsed.content[0]).toMatchObject({ id: "desc" });
+    const section = parsed.content[1];
+    expect("kind" in section && section.fields.map((f) => f.id)).toEqual(["nom"]);
+  });
+});
+
+// ── Lieu d'intervention (type `location`) ───────────────────────────────────
+
+describe("parseLocationValue", () => {
+  it("lit la forme du contrat et exige une adresse non vide", () => {
+    expect(
+      parseLocationValue({ address: " 1 Rue X ", lat: 48.87, lon: 2.48, precision: "adresse", adjusted: false }),
+    ).toEqual({ address: "1 Rue X", lat: 48.87, lon: 2.48, precision: "adresse", adjusted: false });
+    expect(parseLocationValue({ address: "  " })).toBeNull();
+    expect(parseLocationValue(null)).toBeNull();
+  });
+
+  it("un point incomplet n'est pas un point, une précision hors vocabulaire est nulle", () => {
+    expect(parseLocationValue({ address: "Place", lat: 48.8, precision: "gps", adjusted: true })).toEqual({
+      address: "Place",
+      lat: null,
+      lon: null,
+      precision: null,
+      adjusted: false,
+    });
+  });
+
+  it("une chaîne (préremplissage IA) devient une adresse sans point", () => {
+    expect(parseLocationValue("Parvis de l'église Saint-Lazare")).toEqual({
+      address: "Parvis de l'église Saint-Lazare",
+      lat: null,
+      lon: null,
+      precision: null,
+      adjusted: false,
+    });
+  });
+});
+
+describe("champ `location` : obligation et payload", () => {
+  const schema: SocleFormSchema = {
+    version: 1,
+    content: [{ id: "ep-lieu", key: "intervention_lieu", type: "location", label: "Lieu d'intervention", required: true }],
+  };
+
+  it("un lieu obligatoire n'est satisfait que par une adresse lisible", () => {
+    expect(formRequiredMet(schema, {}, {})).toBe(false);
+    expect(formRequiredMet(schema, { "ep-lieu": { address: " " } }, {})).toBe(false);
+    expect(formRequiredMet(schema, { "ep-lieu": { address: "1 Rue X", lat: null, lon: null } }, {})).toBe(true);
+  });
+
+  it("part normalisé dans socle_data, l'adresse en libellé lisible", () => {
+    const data = buildSocleDemandeData({
+      config: null,
+      audience: null,
+      requesterValues: {},
+      schema,
+      formValues: { "ep-lieu": { address: " 1 Rue X ", lat: 48.87, lon: 2.48, precision: "adresse", adjusted: false } },
+      attachments: {},
+    });
+    expect(data.form).toEqual([
+      {
+        id: "ep-lieu",
+        key: "intervention_lieu",
+        label: "Lieu d'intervention",
+        type: "location",
+        value: { address: "1 Rue X", lat: 48.87, lon: 2.48, precision: "adresse", adjusted: false },
+        valueLabel: "1 Rue X",
+      },
+    ]);
   });
 });
 
