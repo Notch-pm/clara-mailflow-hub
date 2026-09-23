@@ -8,6 +8,7 @@
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import type { IrisEnvelope, IrisRequestDto } from "./iris-envelope.ts";
+import type { IrisListedRequest } from "./iris-contact-requests.ts";
 
 /** Accusé de dépôt d'un fichier (`POST /v1/uploads`) — valable 24 h. */
 export interface IrisUploadReceipt {
@@ -165,6 +166,21 @@ export function listIrisRequests(
 ): Promise<IrisResponse<{ requests?: IrisRequestDto[]; error?: unknown }>> {
   const params = new URLSearchParams({ limit: String(limit) });
   if (updatedSince) params.set("updated_since", updatedSince);
+  return callIris(integration, `/v1/requests?${params.toString()}`, { method: "GET" });
+}
+
+/**
+ * Les demandes d'UN usager (`GET /v1/requests?socle_contact_id=`, contrat 2.4.0).
+ * Toutes sources du tenant si la clé porte `requests:read_tenant` ; sinon Iris
+ * ne rend que celles de la source `clara` — la vue est alors partielle, pas en
+ * erreur.
+ */
+export function listIrisRequestsByContact(
+  integration: IrisIntegration,
+  socleContactId: string,
+  limit = 500,
+): Promise<IrisResponse<{ requests?: IrisListedRequest[]; error?: unknown }>> {
+  const params = new URLSearchParams({ socle_contact_id: socleContactId, limit: String(limit) });
   return callIris(integration, `/v1/requests?${params.toString()}`, { method: "GET" });
 }
 

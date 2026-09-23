@@ -26,6 +26,7 @@ import { useOrganization } from "@/contexts/OrganizationContext";
 import DuplicateContactsAlert from "@/components/contacts/DuplicateContactsAlert";
 import { QuartierBadge } from "@/components/contacts/QuartierBadge";
 import ConsentementsCard from "@/components/contacts/ConsentementsCard";
+import ContactDemandesCard from "@/components/contacts/ContactDemandesCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -926,6 +927,8 @@ function ContactDetail({ contactId }: { contactId: string }) {
               )}
             </CardContent>
           </Card>
+
+          <ContactDemandesCard socleContactId={contact.id} />
 
           <ContactFormDialog
             organizationId={organizationId!}

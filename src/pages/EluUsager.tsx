@@ -1,6 +1,7 @@
 import { Mail, MapPin, Phone } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { EluCard } from "@/components/elu/EluCard";
 import { EluEmptyState } from "@/components/elu/EluEmptyState";
 import { EluScreen, EluScreenHeader } from "@/components/elu/EluScreenHeader";
 import { EluStatusPill } from "@/components/elu/EluStatusPill";
@@ -8,6 +9,8 @@ import { QuartierBadge } from "@/components/contacts/QuartierBadge";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { getContact } from "@/services/socleContactService";
 import { listContactCouriers } from "@/services/courierParticipantService";
+import { useContactIrisRequests } from "@/hooks/useContactIrisRequests";
+import { irisSourceLabel, irisStatusLabel } from "@/lib/iris";
 import {
   contactAddress,
   contactInitials,
@@ -62,6 +65,11 @@ export default function EluUsager() {
     enabled: !!contactId,
     gcTime: 0,
   });
+
+  // Les demandes instruites dans Iris, toutes origines confondues ; `null` =
+  // tenant non raccordé, la section disparaît.
+  const demandesQuery = useContactIrisRequests(contactId);
+  const demandes = demandesQuery.data;
 
   if (isLoading) {
     return (
@@ -149,6 +157,43 @@ export default function EluUsager() {
           })
         )}
       </div>
+
+      {demandes !== null && (
+        <div className="flex flex-col gap-2.5">
+          <h2 className="text-[19px] font-bold text-foreground">Ses demandes</h2>
+          {demandesQuery.isLoading ? (
+            <EluEmptyState>Chargement…</EluEmptyState>
+          ) : demandesQuery.isError ? (
+            <EluEmptyState>Demandes indisponibles pour le moment.</EluEmptyState>
+          ) : !demandes || demandes.length === 0 ? (
+            <EluEmptyState>Aucune demande pour cet usager.</EluEmptyState>
+          ) : (
+            demandes.map((d) => {
+              const title = d.procedure_label ?? d.subject ?? "Demande";
+              const meta = [
+                irisSourceLabel(d.source),
+                d.received_at ? new Date(d.received_at).toLocaleDateString("fr-FR") : null,
+              ]
+                .filter(Boolean)
+                .join(" · ");
+              const pill = d.status ? <EluStatusPill>{irisStatusLabel(d.status)}</EluStatusPill> : null;
+              // Née d'un courrier : ce courrier s'ouvre. Sinon, sa fiche est
+              // dans Iris — l'élu la lit ici, sans lien.
+              return d.courier_id ? (
+                <EluCard key={d.id} to={`/elu/courrier/${d.courier_id}`} title={title} meta={meta} badge={pill} />
+              ) : (
+                <div key={d.id} className="flex flex-col gap-2 rounded-xl border bg-card p-4">
+                  <span className="text-[17px] font-semibold leading-snug text-foreground [text-wrap:pretty]">
+                    {title}
+                  </span>
+                  {meta && <span className="text-[15px] text-muted-foreground">{meta}</span>}
+                  {pill}
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
     </EluScreen>
   );
 }

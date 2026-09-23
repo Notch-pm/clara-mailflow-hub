@@ -32,3 +32,19 @@ export function irisStatusVariant(
   if (CLOSED.has(status)) return "secondary";
   return "default";
 }
+
+/**
+ * Canal d'arrivée d'une demande, d'après le code de sa source Iris. Le registre
+ * des sources est ouvert (chaque collectivité peut en déclarer) : un code
+ * inconnu s'affiche tel quel.
+ */
+const IRIS_SOURCE_LABELS: Record<string, string> = {
+  clara: "Courrier",
+  iris: "Guichet",
+  "portail-citoyen": "Portail",
+};
+
+export function irisSourceLabel(source: string | null | undefined): string | null {
+  if (!source) return null;
+  return IRIS_SOURCE_LABELS[source] ?? source;
+}

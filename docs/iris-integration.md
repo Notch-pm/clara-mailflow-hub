@@ -187,6 +187,35 @@ ajouter des pièces à une demande **déjà déposée sans elles** changerait l'
 Le chemin pour celles-là est `POST /v1/requests/{id}/attachments` — non implémenté côté Clara
 (décision PO : pas de rattrapage, les demandes concernées sont des essais).
 
+## 5 ter. Lire les demandes d'un usager (contrat 2.4.0)
+
+> **Livré le 2026-09-23.** La fiche contact et la page usager de l'espace élu montrent les
+> demandes de l'usager instruites dans Iris, **toutes origines confondues** — portail,
+> guichet, courrier —, à côté de ses courriers. Objectif : une vue centralisée de ce qu'un
+> usager a adressé à la collectivité.
+
+**Lecture en direct, rien de stocké.** `iris-contact-requests` appelle
+`GET /v1/requests?socle_contact_id=` à chaque ouverture ; Clara ne garde aucune copie, comme
+pour les contacts du Socle. Iris ne sert que sa liste blanche (ni notes internes, ni
+`form_data`) et des identifiants : les libellés de démarche et d'organisme sont résolus dans
+les miroirs (`procedures.socle_id`, `socle_organizations.socle_id`), et une demande déposée
+depuis Clara est reliée à son courrier par `action_tickets.iris_request_id`.
+
+**Le scope qui ouvre toutes les sources.** Par défaut, une clé ne lit que les demandes de sa
+source. La clé de Clara porte en plus **`requests:read_tenant`**, qui lève ce filtre **à la
+seule condition qu'un usager soit nommé** — jamais d'aspiration du tenant. Sans ce scope,
+Iris ne rend que les demandes nées dans Clara : la vue est **partielle, pas en erreur**.
+
+**Le périmètre est appliqué côté serveur**, dans la fonction : hors administrateur et
+superadmin, seules sortent les demandes des organisations Socle de l'appelant
+(`socle_organization_members` → `socle_id`) et celles sans organisme — même règle que les
+courriers (`applyServiceFilter`), mais pas « UI seulement » : ce sont les données d'un autre
+produit. Logique pure et testée : `_shared/iris-contact-requests.ts`
+(+ `src/test/iris/iris-contact-requests.test.ts`).
+
+Tenant sans connexion Iris ⇒ `{ skipped: true }` et la section disparaît de l'écran. Pas de
+lien vers la fiche Iris : elle ne s'ouvre qu'avec un compte Iris.
+
 ## 6. Limites connues
 
 - **Pas de rattrapage des demandes déposées avant le 2026-09-11** : elles sont parties sans

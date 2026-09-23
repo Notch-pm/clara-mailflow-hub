@@ -46,6 +46,11 @@
 
 Défense en profondeur côté edge (fonctions en `service_role`, hors RLS) : garde `assertEditor` (`supabase/functions/_shared/authz.ts`) sur `send-courier-reply`, `create-arpege-demande`, `push-iris-request` (déposer une demande dans Iris, ou la renvoyer, est un effet de bord — le consultant est refusé ; la **réconciliation** nocturne, elle, est une écriture système non attribuable, donc un consultant voit un statut à jour sans rien déclencher), `send-mention-notification`, `draft-reply`, `extract-courier-info`, `analyze-courier` (branche utilisateur uniquement — le worker cron reste sur `x-cron-secret`), `storage-documents` (upload/delete), `socle-contacts` (mutations). Migration : `supabase/migrations/20260722194100_consultant_read_only_is_editor_of.sql`.
 
+**Demandes Iris d'un usager — périmètre appliqué côté serveur (2026-09-23).** La fonction
+`iris-contact-requests` (fiche contact, espace élu) ne rend, hors administrateur et
+superadmin, que les demandes des organisations Socle de l'appelant et celles sans organisme.
+Contrairement aux courriers, ce filtre n'est **pas** UI-only : ce sont les données d'Iris.
+
 **Hors périmètre (inchangé) — filtre intra-tenant par organisation Socle** : toujours appliqué **UI-only** (`useUserServiceFilter`) ; la RLS SELECT reste `is_member_of` (visibilité à l'échelle du tenant). Un membre — consultant compris — peut donc *lire* tout le tenant via appel direct. Risque pré-existant, à traiter dans un ticket dédié.
 
 ---
