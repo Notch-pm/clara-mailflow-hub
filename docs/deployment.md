@@ -120,11 +120,22 @@ l'expéditeur à la création »). Pas de migration.
 | # | Action | État |
 |---|---|---|
 | 1 | `bunx supabase functions deploy extract-courier-info --project-ref aullweizxcjbvtdspjli` — embarque `_shared/senderMatchLogic.ts` et `_shared/courierFieldSuggestions.ts` (champ `sender_civility`) | **Fait** — v35 (`verify_jwt = true` conservé) |
-| 2 | `analyze-courier` partage `courierFieldSuggestions.ts` : son prompt demande désormais aussi `sender_civility` (rangé dans `suggested_sender`, jsonb). Redéploiement non urgent | À faire au prochain passage |
+| 2 | `analyze-courier` partage `courierFieldSuggestions.ts` : son prompt demande désormais aussi `sender_civility` (rangé dans `suggested_sender`, jsonb). Redéploiement non urgent | **Fait** — v67 le 2026-09-23 (déployé v66 identique au dépôt hors ce fichier) |
 | 3 | Frontend (push `main`) | **Fait** — Workers Builds au push |
 
 Ordre indifférent : l'écran refait le rapprochement lui-même quand l'edge function ne renvoie pas
 `sender_match` — le frontend peut partir avant la fonction sans rouvrir le bug.
+
+⚠️ **Découvert à la recette : `socle-contacts` ne démarrait plus depuis le lot « consentements
+RGPD »** (v16, 2026-09-22) — `Identifier 'socleBody' has already been declared`, 39 échecs de
+démarrage dans les logs depuis le 2026-09-23 10:06 UTC au moins. Annuaire, sélecteur d'usager,
+rapprochement et création de contact répondaient « Failed to send a request to the Edge Function ».
+Correctif : `socle-contacts/index.ts` (variable renommée) ; garde-fou :
+`src/test/edge-functions-syntax.test.ts` passe toutes les sources des edge functions par esbuild.
+
+| # | Action | État |
+|---|---|---|
+| 4 | `bunx supabase functions deploy socle-contacts --project-ref aullweizxcjbvtdspjli` (pas d'entrée `config.toml` : `verify_jwt = true`, comme en ligne) | **Fait** — v17 |
 
 ### Lot « alerte mémoire + lien de réinitialisation » (2026-09-22) — appliqué le 2026-09-22
 

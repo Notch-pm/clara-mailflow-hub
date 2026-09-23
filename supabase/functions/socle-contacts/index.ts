@@ -240,10 +240,10 @@ Deno.serve(async (req) => {
     });
     if (!built.ok) return errorResponse("bad_request", built.message, 400);
 
-    const { status, body: socleBody } = await fetchContactsApi(apiKey, built.request, {
+    const { status, body: responseBody } = await fetchContactsApi(apiKey, built.request, {
       socleOrgId: org?.socle_org_id as string | null,
     });
-    return jsonResponse(socleBody, status);
+    return jsonResponse(responseBody, status);
   } catch (e) {
     if (e instanceof SocleContactsAuthError) {
       return errorResponse(
