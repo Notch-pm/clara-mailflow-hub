@@ -12,6 +12,7 @@ import {
   Building2,
   ChevronLeft,
   ChevronRight,
+  Copy,
   ExternalLink,
   HeartHandshake,
   Landmark,
@@ -792,6 +793,24 @@ function ContactDetail({ contactId }: { contactId: string }) {
                 <Badge variant="secondary">{SOCLE_CONTACT_TYPE_LABELS[contact.contact_type]}</Badge>
                 {contact.status === "archived" && <Badge variant="destructive">Archivé</Badge>}
                 <Badge variant="outline" className="ml-auto">Contact référentiel</Badge>
+              </div>
+              {/* L'id Socle est le numéro commun à la gamme : c'est lui qu'Iris affiche
+                  pour l'usager (socle_contact_id des demandes). */}
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <span>N° référentiel :</span>
+                <code className="font-mono text-foreground select-all">{contact.id}</code>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  aria-label="Copier le numéro référentiel"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(contact.id);
+                    toast.success("Numéro référentiel copié dans le presse-papier");
+                  }}
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                </Button>
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
