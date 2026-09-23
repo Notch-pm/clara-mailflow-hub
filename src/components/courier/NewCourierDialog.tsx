@@ -44,10 +44,17 @@ import { assignableOrgs, listOrgsWithConfig } from "@/services/socleOrgConfigSer
 import { listTags, TAG_GROUPS, type TagGroup } from "@/services/courierTagService";
 import { splitAppliedTags } from "@/lib/courier-tags";
 import { storage } from "@/services/storageService";
-import { extractCourierInfo, runFullAnalysis } from "@/services/courierAnalysisService";
-import ContactPicker from "@/components/courier/ContactPicker";
 import {
-  createContact,
+  extractCourierInfo,
+  runFullAnalysis,
+  type SuggestedSender,
+} from "@/services/courierAnalysisService";
+import ContactPicker from "@/components/courier/ContactPicker";
+import SenderMatchNotice from "@/components/courier/SenderMatchNotice";
+import type { SenderMatch } from "../../../supabase/functions/_shared/senderMatchLogic";
+import {
+  createSenderContact,
+  matchSender,
   SOCLE_CONTACT_TYPE_LABELS,
   type SocleContact,
   type SocleContactCivility,
@@ -109,12 +116,10 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
   const [dragOver, setDragOver] = useState(false);
   const [previewIndex, setPreviewIndex] = useState(0);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
-  const [extractedSender, setExtractedSender] = useState<{
-    first_name: string | null;
-    last_name: string | null;
-    email: string | null;
-    phone: string | null;
-  } | null>(null);
+  // Expéditeur lu par l'analyse : sert à créer sa fiche quand le référentiel
+  // ne le connaît pas (ou quand l'agent écarte le contact reconnu).
+  const [extractedSender, setExtractedSender] = useState<SuggestedSender | null>(null);
+  const [senderMatch, setSenderMatch] = useState<SenderMatch<SocleContact> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const analyzedPreCreationRef = useRef(false);
 
@@ -136,6 +141,7 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
     setPendingFiles([]);
     setPreviewIndex(0);
     setExtractedSender(null);
+    setSenderMatch(null);
     analyzedPreCreationRef.current = false;
   }, [open]);
 
@@ -212,11 +218,19 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
         recipient_name: recipientName,
         service_id: serviceId,
       });
+      // Expéditeur inconnu du référentiel : sa fiche est créée avec le
+      // courrier, et le Socle exige la civilité d'une personne.
+      const senderToCreate = !senderContact && extractedSender ? extractedSender : null;
+      const fe: Record<string, string> = {};
       if (!parsed.success) {
-        const fe: Record<string, string> = {};
         parsed.error.issues.forEach((i) => {
           if (i.path[0]) fe[i.path[0] as string] = i.message;
         });
+      }
+      if (senderToCreate && !extractedCivility) {
+        fe.sender_civility = "Civilité requise pour créer l'expéditeur dans le référentiel";
+      }
+      if (Object.keys(fe).length > 0) {
         setErrors(fe);
         throw new Error("Veuillez corriger les erreurs du formulaire.");
       }
@@ -240,6 +254,14 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
       const {
         data: { user },
       } = await supabase.auth.getUser();
+
+      // Fiche créée AVANT le courrier : si le référentiel la refuse, rien n'est
+      // créé et l'agent corrige, plutôt qu'un courrier sans expéditeur.
+      const sender =
+        senderContact ??
+        (senderToCreate && extractedCivility
+          ? await createSenderContact(organizationId, extractedCivility, senderToCreate)
+          : null);
 
       // Build received_at: if the chosen date is today, use the current time
       // so manually created couriers are sorted alongside other recent items.
@@ -269,17 +291,17 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
       if (cErr) throw cErr;
       if (!courier) throw new Error("Création échouée");
 
-      if (senderContact) {
+      if (sender) {
         await addParticipant({
           courier_id: courier.id,
           organization_id: organizationId,
           role: "sender",
-          name: senderContact.display_name,
-          first_name: senderContact.first_name,
-          last_name: senderContact.last_name ?? senderContact.legal_name,
-          email: senderContact.email,
-          phone: senderContact.mobile_phone ?? senderContact.landline_phone,
-          socle_contact_id: senderContact.id,
+          name: sender.display_name,
+          first_name: sender.first_name,
+          last_name: sender.last_name ?? sender.legal_name,
+          email: sender.email,
+          phone: sender.mobile_phone ?? sender.landline_phone,
+          socle_contact_id: sender.id,
         });
       }
       if (recipientName.trim()) {
@@ -341,10 +363,19 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
 
   const extractMutation = useMutation({
     mutationFn: async () => {
-      return extractCourierInfo({
+      const result = await extractCourierInfo({
         files: importMode === "files" ? pendingFiles : undefined,
         pastedText: importMode === "paste" ? pastedText : undefined,
       });
+      // Une edge function antérieure au rapprochement par `match` ne renvoie
+      // pas `sender_match` (et son `matched_contact` repose sur le seul nom de
+      // famille) : on refait alors le rapprochement d'ici, même règle.
+      const s = result.sender;
+      if (!result.sender_match && (s.first_name || s.last_name || s.email || s.phone)) {
+        const match = await matchSender(organizationId, s).catch(() => null);
+        return { ...result, sender_match: match ?? undefined };
+      }
+      return result;
     },
     onSuccess: (result) => {
       // Mémorise qu'une extraction OCR a été effectuée : permettra de relancer
@@ -364,13 +395,21 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
         filled.push("contenu");
       }
 
-      // Pre-fill sender
-      if (result.matched_contact) {
-        setSenderContact(result.matched_contact);
-        setExtractedSender(null);
+      // Expéditeur : reconnu dans le référentiel (email, téléphone ou
+      // nom+prénom identiques) → sélectionné ; sinon il sera créé. L'identité
+      // extraite est gardée dans les deux cas, pour pouvoir créer une fiche si
+      // l'agent écarte le contact reconnu.
+      const s = result.sender;
+      const senderFound = !!(s.first_name || s.last_name || s.email || s.phone);
+      const match = result.sender_match ?? null;
+      setSenderMatch(match);
+      setExtractedSender(senderFound ? s : null);
+      if (s.civility) setExtractedCivility(s.civility);
+      if (match?.status === "matched" && match.contact) {
+        setSenderContact(match.contact);
         filled.push("expéditeur reconnu");
-      } else if (result.sender.first_name || result.sender.last_name) {
-        setExtractedSender(result.sender);
+      } else if (senderFound) {
+        setSenderContact(null);
         filled.push("expéditeur extrait");
       }
 
@@ -734,7 +773,7 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
 
               {/* Colonne droite — Expéditeur, Destinataire, Tags */}
               <div className="space-y-4">
-                {/* Extracted sender banner (OCR result not matched to a Socle contact) */}
+                {/* Expéditeur extrait, sans contact du référentiel retenu : il y sera créé. */}
                 {extractedSender && !senderContact && (
                   <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
                     <p className="text-xs font-medium text-primary">Expéditeur extrait par l'analyse</p>
@@ -745,12 +784,25 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
                       {extractedSender.email && <div>{extractedSender.email}</div>}
                       {extractedSender.phone && <div>{extractedSender.phone}</div>}
                     </div>
+                    {senderMatch && (
+                      <SenderMatchNotice
+                        match={senderMatch}
+                        selected={false}
+                        onUse={() => senderMatch.contact && setSenderContact(senderMatch.contact)}
+                      />
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      Le contact sera créé dans le référentiel à l'enregistrement du courrier.
+                    </p>
                     {/* Le Socle exige la civilité pour créer une personne. */}
                     <Select
                       value={extractedCivility || undefined}
                       onValueChange={(v) => setExtractedCivility(v as SocleContactCivility)}
                     >
-                      <SelectTrigger className="h-7 text-xs">
+                      <SelectTrigger
+                        className={cn("h-7 text-xs", errors.sender_civility && "border-destructive")}
+                        aria-invalid={!!errors.sender_civility}
+                      >
                         <SelectValue placeholder="Civilité (requise pour créer)" />
                       </SelectTrigger>
                       <SelectContent>
@@ -758,6 +810,9 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
                         <SelectItem value="monsieur">Monsieur</SelectItem>
                       </SelectContent>
                     </Select>
+                    {errors.sender_civility && (
+                      <p className="text-xs text-destructive">{errors.sender_civility}</p>
+                    )}
                     <Button
                       type="button"
                       size="sm"
@@ -765,15 +820,13 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
                       className="w-full h-7 text-xs"
                       disabled={!extractedCivility}
                       onClick={async () => {
+                        if (!extractedCivility) return;
                         try {
-                          const created = await createContact(organizationId, {
-                            contact_type: "personne",
-                            civility: extractedCivility || null,
-                            first_name: extractedSender.first_name,
-                            last_name: extractedSender.last_name || extractedSender.email,
-                            email: extractedSender.email,
-                            mobile_phone: extractedSender.phone,
-                          });
+                          const created = await createSenderContact(
+                            organizationId,
+                            extractedCivility,
+                            extractedSender,
+                          );
                           setSenderContact(created);
                           setExtractedSender(null);
                           toast.success("Contact créé dans le référentiel et sélectionné");
@@ -789,7 +842,7 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
                       className="text-xs text-muted-foreground hover:text-foreground transition-colors w-full text-center"
                       onClick={() => setExtractedSender(null)}
                     >
-                      Ignorer
+                      Ne pas renseigner d'expéditeur
                     </button>
                   </div>
                 )}
@@ -801,6 +854,13 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
                     value={senderContact}
                     onChange={setSenderContact}
                   />
+                  {senderContact && senderMatch?.contact?.id === senderContact.id && (
+                    <SenderMatchNotice
+                      match={senderMatch}
+                      selected
+                      onCreateInstead={extractedSender ? () => setSenderContact(null) : undefined}
+                    />
+                  )}
                   {senderContact && (
                     <div className="text-xs text-muted-foreground space-y-0.5 pt-1">
                       <div><span className="font-medium">Type :</span> {SOCLE_CONTACT_TYPE_LABELS[senderContact.contact_type]}</div>

@@ -6,6 +6,15 @@ import {
   type ContactDraft,
   type DuplicateReason,
 } from "@/lib/contact-duplicates";
+import {
+  buildSenderMatchPayload,
+  noSenderMatch,
+  normalizePhone,
+  resolveSenderMatch,
+  type MatchCandidate,
+  type SenderIdentity,
+  type SenderMatch,
+} from "../../supabase/functions/_shared/senderMatchLogic";
 
 /**
  * Contacts du référentiel Socle — point d'appel UNIQUE côté client.
@@ -453,6 +462,49 @@ export async function findPotentialDuplicates(
   } catch {
     return [];
   }
+}
+
+/**
+ * Rapprochement de l'expéditeur d'un courrier (import en masse) — même règle
+ * que `extract-courier-info` : email, téléphone ou nom+prénom identiques
+ * sélectionnent, un nom proche est seulement proposé.
+ *
+ * Contrairement à `findPotentialDuplicates`, une erreur REMONTE : conclure
+ * « aucun contact » sur un référentiel injoignable ferait créer un doublon.
+ */
+export async function matchSender(
+  organizationId: string,
+  sender: SenderIdentity,
+): Promise<SenderMatch<SocleContact>> {
+  const payload = buildSenderMatchPayload(sender);
+  if (!payload) return noSenderMatch<SocleContact>();
+  const candidates = await invokeSocleContacts<MatchCandidate<SocleContact>[]>({
+    action: "match",
+    organization_id: organizationId,
+    payload,
+  });
+  return resolveSenderMatch(sender, candidates);
+}
+
+/** Création de la fiche d'un expéditeur inconnu du référentiel (personne physique). */
+export async function createSenderContact(
+  organizationId: string,
+  civility: SocleContactCivility,
+  sender: SenderIdentity,
+): Promise<SocleContact> {
+  const phone = sender.phone?.trim() || null;
+  // 06 / 07 : mobile ; tout autre numéro est rangé en fixe.
+  const isMobile = phone ? /^0[67]/.test(normalizePhone(phone)) : false;
+  return createContact(organizationId, {
+    contact_type: "personne",
+    civility,
+    first_name: sender.first_name?.trim() || null,
+    // Faute de nom, l'email tient lieu d'identité affichable.
+    last_name: sender.last_name?.trim() || sender.email?.trim() || null,
+    email: sender.email?.trim() || null,
+    mobile_phone: isMobile ? phone : null,
+    landline_phone: phone && !isMobile ? phone : null,
+  });
 }
 
 const EXPORT_PAGE_SIZE = 500;

@@ -1,6 +1,10 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { SocleContact } from "@/services/socleContactService";
 import { edgeError } from "@/lib/edge-error";
+import type {
+  SenderCivility,
+  SenderMatch,
+} from "../../supabase/functions/_shared/senderMatchLogic";
 
 export interface CourierDocumentExtract {
   id: string;
@@ -45,6 +49,8 @@ export interface SuggestedAction {
 }
 
 export interface SuggestedSender {
+  /** Civilité lue dans le courrier — absente des analyses antérieures. */
+  civility?: SenderCivility | null;
   first_name: string | null;
   last_name: string | null;
   email: string | null;
@@ -81,8 +87,15 @@ export interface ExtractCourierInfoResult {
   recipient_name: string | null;
   suggested_service_name: string | null;
   suggested_tag_names: string[];
-  /** Contact Socle rapproché par email (fiche complète sérialisée par contacts-api). */
+  /** Contact Socle sélectionné d'office (= `sender_match.contact` quand `status === "matched"`). */
   matched_contact: SocleContact | null;
+  /**
+   * Résultat du rapprochement de l'expéditeur (règle de `senderMatchLogic`) :
+   * sélectionné, proposé ou absent, avec les divergences à signaler. `null`
+   * si le référentiel n'a pas répondu (à refaire côté écran, surtout ne pas
+   * conclure à un inconnu) ; absent d'une edge function antérieure au 2026-09-23.
+   */
+  sender_match?: SenderMatch<SocleContact> | null;
   extracted_text: string | null;
   quota_exceeded?: boolean;
   /** Pièces du lot restées illisibles, avec leur motif — l'extraction a abouti

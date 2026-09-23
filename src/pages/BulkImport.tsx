@@ -22,7 +22,18 @@ import BulkStep3Assign from "@/components/courier/bulk/BulkStep3Assign";
 import BulkStep4Verify from "@/components/courier/bulk/BulkStep4Verify";
 import BulkFilePreview from "@/components/courier/bulk/BulkFilePreview";
 import BulkPdfSplitDialog, { type PdfSplitResult } from "@/components/courier/bulk/BulkPdfSplitDialog";
-import { type BulkFile, type DraftCourier, nextGroupId } from "@/components/courier/bulk/types";
+import {
+  draftSender,
+  emptyDraft,
+  hasSender,
+  nextGroupId,
+  refreshFlags,
+  type BulkFile,
+  type DraftCourier,
+} from "@/components/courier/bulk/types";
+import { resolveSenderContact, type CreatedSender } from "@/components/courier/bulk/senderResolution";
+import { matchSender, type SocleContact } from "@/services/socleContactService";
+import type { SenderMatch } from "../../supabase/functions/_shared/senderMatchLogic";
 
 type BulkStep = 1 | 2 | 3 | 4 | 5;
 type CourierChannel = "paper" | "email";
@@ -177,20 +188,7 @@ export default function BulkImport() {
       grouped.set(f.groupId, arr);
     }
     for (const groupFiles of grouped.values()) {
-      result.push({
-        id: crypto.randomUUID(),
-        title: "",
-        senderName: "",
-        senderEmail: "",
-        recipientName: "",
-        serviceId: "",
-        serviceName: "",
-        tags: [],
-        bodyText: "",
-        fileIds: groupFiles.map((f) => f.id),
-        confidence: 0,
-        flags: ["missing-service"],
-      });
+      result.push(emptyDraft(groupFiles.map((f) => f.id)));
     }
     return result;
   }
@@ -216,7 +214,16 @@ export default function BulkImport() {
             description: result.ocr_failures.join(" ; "),
           });
         }
-        const senderName = [result.sender?.first_name, result.sender?.last_name].filter(Boolean).join(" ");
+        const s = result.sender;
+        const senderFound = !!(s?.first_name || s?.last_name || s?.email || s?.phone);
+        // Rapprochement fait par l'edge function ; une version antérieure ne
+        // le renvoie pas — on le fait alors d'ici, avec la même règle.
+        let senderMatch: SenderMatch<SocleContact> | null = null;
+        if (senderFound) {
+          senderMatch =
+            result.sender_match ??
+            (await matchSender(organizationId, s).catch(() => null));
+        }
         const matchedService = services.find(
           (s) => result.suggested_service_name &&
             s.name.toLowerCase() === result.suggested_service_name.toLowerCase()
@@ -227,20 +234,33 @@ export default function BulkImport() {
         // moins bien noté que celui qui aura fourni titre, expéditeur, service et tags.
         const signals = [
           !!result.suggested_subject?.trim(),
-          !!senderName,
+          senderFound,
           !!matchedService,
           (result.suggested_tag_names?.length ?? 0) > 0,
         ];
         const confidence = signals.filter(Boolean).length / signals.length;
 
         setDrafts((prev) =>
-          prev.map((d) => {
+          refreshFlags(prev.map((d) => {
             if (d.id !== draft.id) return d;
-            const updated: DraftCourier = {
+            // L'expéditeur est remplacé d'un bloc : mêler les champs extraits à
+            // une saisie antérieure fabriquerait une identité que le
+            // rapprochement n'a pas vue.
+            const sender: Partial<DraftCourier> = senderFound
+              ? {
+                  senderCivility: s.civility ?? d.senderCivility,
+                  senderFirstName: s.first_name ?? "",
+                  senderLastName: s.last_name ?? "",
+                  senderEmail: s.email ?? "",
+                  senderPhone: s.phone ?? "",
+                  senderMatch,
+                  senderDecision: "auto",
+                }
+              : {};
+            return {
               ...d,
+              ...sender,
               title: result.suggested_subject || d.title,
-              senderName: senderName || d.senderName,
-              senderEmail: result.sender?.email || d.senderEmail,
               recipientName: result.recipient_name || d.recipientName,
               serviceId: matchedService?.id ?? d.serviceId,
               serviceName: matchedService?.name ?? (result.suggested_service_name || d.serviceName),
@@ -255,10 +275,7 @@ export default function BulkImport() {
               bodyText: result.extracted_text || d.bodyText,
               confidence,
             };
-            const flags: Array<"missing-service" | "duplicate"> = [];
-            if (!updated.serviceName) flags.push("missing-service");
-            return { ...updated, flags };
-          })
+          }))
         );
       } catch (err) {
         const status = (err as Error & { status?: number }).status;
@@ -284,6 +301,9 @@ export default function BulkImport() {
     // ont de quoi être océrisés.
     const analysableCourierIds: string[] = [];
     const { data: { user } } = await supabase.auth.getUser();
+    // Fiches créées pendant cette confirmation : plusieurs courriers d'une même
+    // personne inconnue ne doivent produire qu'UNE fiche.
+    const createdContacts: CreatedSender[] = [];
 
     for (const draft of drafts) {
       try {
@@ -322,14 +342,30 @@ export default function BulkImport() {
           continue;
         }
 
-        if (draft.senderName) {
+        if (hasSender(draft)) {
+          const sender = draftSender(draft);
+          let contact: SocleContact | null = null;
+          try {
+            contact = await resolveSenderContact(organizationId, draft, sender, createdContacts);
+          } catch (err) {
+            // Le courrier ne doit pas être perdu pour autant : l'expéditeur est
+            // gardé en participant libre, à rattacher depuis la fiche courrier.
+            const msg = err instanceof Error ? err.message : "Erreur inconnue";
+            toast.warning(`Courrier "${draft.title}" : expéditeur non rattaché au référentiel`, {
+              description: msg,
+            });
+          }
+          const fullName = [sender.first_name, sender.last_name].filter(Boolean).join(" ");
           await addParticipant({
             courier_id: courier.id,
             organization_id: organizationId,
             role: "sender",
-            name: draft.senderName,
-            last_name: draft.senderName,
-            email: draft.senderEmail || null,
+            name: contact?.display_name ?? (fullName || sender.email),
+            first_name: contact ? contact.first_name : sender.first_name,
+            last_name: contact ? (contact.last_name ?? contact.legal_name) : sender.last_name,
+            email: contact ? contact.email : sender.email,
+            phone: contact ? (contact.mobile_phone ?? contact.landline_phone) : sender.phone,
+            socle_contact_id: contact?.id ?? null,
           });
         }
 
@@ -383,7 +419,8 @@ export default function BulkImport() {
   }
 
   const hasMissingService = drafts.some((d) => d.flags.includes("missing-service"));
-  const canConfirm = drafts.length > 0 && !hasMissingService && !confirming;
+  const hasMissingCivility = drafts.some((d) => d.flags.includes("missing-civility"));
+  const canConfirm = drafts.length > 0 && !hasMissingService && !hasMissingCivility && !confirming;
 
   // Un consultant (lecteur seul) ne peut pas créer de courrier : la page ne
   // sert à rien pour lui, on l'informe plutôt que de le laisser dérouler un
@@ -474,6 +511,11 @@ export default function BulkImport() {
                 {hasMissingService && !analyzing && (
                   <p className="text-sm text-destructive">
                     Certains courriers n'ont pas de service gestionnaire.
+                  </p>
+                )}
+                {hasMissingCivility && !analyzing && (
+                  <p className="text-sm text-destructive">
+                    Certains expéditeurs sont à créer dans le référentiel : indiquez leur civilité.
                   </p>
                 )}
               </div>

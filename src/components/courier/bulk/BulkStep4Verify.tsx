@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type Dispatch, type SetStateAction } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -32,17 +32,29 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { readableTextColor } from "@/lib/tag-color";
-import { Check, FileText, MoveRight, Plus, Trash2, X } from "lucide-react";
+import { Check, FileText, Loader2, MoveRight, Plus, Trash2, UserPlus, X } from "lucide-react";
+import { useOrganization } from "@/contexts/OrganizationContext";
+import { matchSender } from "@/services/socleContactService";
+import SenderMatchNotice from "@/components/courier/SenderMatchNotice";
 import type { SocleOrgWithConfig as OrgService } from "@/services/socleOrgConfigService";
 import type { CourierTag } from "@/services/courierTagService";
-import type { BulkFile, DraftCourier } from "./types";
+import {
+  draftSender,
+  emptyDraft,
+  hasSender,
+  linkedSenderContact,
+  refreshFlags,
+  senderNeedsCreation,
+  type BulkFile,
+  type DraftCourier,
+} from "./types";
 
 interface Props {
   drafts: DraftCourier[];
   files: BulkFile[];
   services: OrgService[];
   orgTags: CourierTag[];
-  onChange: (drafts: DraftCourier[]) => void;
+  onChange: Dispatch<SetStateAction<DraftCourier[]>>;
   onPreview: (fileId: string) => void;
   onFileReject: (fileId: string) => void;
 }
@@ -266,20 +278,50 @@ export default function BulkStep4Verify({
 }: Props) {
   const assignedFileIds = new Set(drafts.flatMap((d) => d.fileIds));
   const orphanedFiles = files.filter((f) => !f.rejected && !assignedFileIds.has(f.id));
+  const { organizationId } = useOrganization();
+  const [matchingIds, setMatchingIds] = useState<Set<string>>(new Set());
+
   function updateDraft(id: string, patch: Partial<DraftCourier>) {
-    onChange(
-      drafts.map((d) => {
-        if (d.id !== id) return d;
-        const updated = { ...d, ...patch };
-        const flags: Array<"missing-service" | "duplicate"> = [];
-        if (!updated.serviceName) flags.push("missing-service");
-        const sameTitle = drafts.filter(
-          (x) => x.id !== id && x.title.trim() && x.title.trim() === updated.title.trim()
-        );
-        if (sameTitle.length > 0) flags.push("duplicate");
-        return { ...updated, flags };
-      })
-    );
+    onChange((prev) => refreshFlags(prev.map((d) => (d.id === id ? { ...d, ...patch } : d))));
+  }
+
+  /** Une saisie sur l'identité périme le rapprochement : il est refait à la sortie du champ. */
+  function updateSender(
+    id: string,
+    patch: Partial<Pick<DraftCourier, "senderFirstName" | "senderLastName" | "senderEmail" | "senderPhone">>,
+  ) {
+    updateDraft(id, { ...patch, senderMatch: null, senderDecision: "auto" });
+  }
+
+  async function rematchSender(id: string) {
+    const draft = drafts.find((d) => d.id === id);
+    if (!organizationId || !draft || draft.senderMatch || !hasSender(draft)) return;
+    const sender = draftSender(draft);
+    const key = JSON.stringify(sender);
+    setMatchingIds((prev) => new Set(prev).add(id));
+    try {
+      const match = await matchSender(organizationId, sender);
+      // L'agent a pu retaper l'identité pendant l'appel : le résultat ne
+      // s'applique qu'à l'identité interrogée.
+      onChange((prev) =>
+        refreshFlags(
+          prev.map((d) =>
+            d.id === id && JSON.stringify(draftSender(d)) === key
+              ? { ...d, senderMatch: match, senderDecision: "auto" }
+              : d,
+          ),
+        ),
+      );
+    } catch {
+      // Référentiel injoignable : le rapprochement reste à faire, il est
+      // retenté à la confirmation plutôt que de conclure à un inconnu.
+    } finally {
+      setMatchingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
   }
 
   function moveFile(fileId: string, targetDraftId: string) {
@@ -297,25 +339,11 @@ export default function BulkStep4Verify({
   }
 
   function deleteDraft(id: string) {
-    onChange(drafts.filter((d) => d.id !== id));
+    onChange(refreshFlags(drafts.filter((d) => d.id !== id)));
   }
 
   function addDraft() {
-    const newDraft: DraftCourier = {
-      id: crypto.randomUUID(),
-      title: "",
-      senderName: "",
-      senderEmail: "",
-      recipientName: "",
-      serviceId: "",
-      serviceName: "",
-      tags: [],
-      bodyText: "",
-      fileIds: [],
-      confidence: 0,
-      flags: ["missing-service"],
-    };
-    onChange([...drafts, newDraft]);
+    onChange(refreshFlags([...drafts, emptyDraft()]));
   }
 
   return (
@@ -326,7 +354,7 @@ export default function BulkStep4Verify({
             <TableRow>
               <TableHead className="w-8">#</TableHead>
               <TableHead className="min-w-[180px]">Titre</TableHead>
-              <TableHead className="min-w-[140px]">Expéditeur</TableHead>
+              <TableHead className="min-w-[220px]">Expéditeur</TableHead>
               <TableHead className="min-w-[120px]">Destinataire</TableHead>
               <TableHead className="min-w-[160px]">
                 Organisation gestionnaire <span className="text-destructive">*</span>
@@ -340,6 +368,8 @@ export default function BulkStep4Verify({
           <TableBody>
             {drafts.map((draft, idx) => {
               const hasMissingService = draft.flags.includes("missing-service");
+              const hasMissingCivility = draft.flags.includes("missing-civility");
+              const linked = linkedSenderContact(draft);
               const hasDuplicate = draft.flags.includes("duplicate");
               return (
                 <TableRow
@@ -363,19 +393,91 @@ export default function BulkStep4Verify({
                   </TableCell>
                   <TableCell className="pt-2">
                     <div className="space-y-1">
+                      <div className="flex gap-1">
+                        <Select
+                          value={draft.senderCivility || undefined}
+                          onValueChange={(v) =>
+                            updateDraft(draft.id, { senderCivility: v as DraftCourier["senderCivility"] })
+                          }
+                        >
+                          <SelectTrigger
+                            aria-label="Civilité de l'expéditeur"
+                            className={cn(
+                              "h-8 w-[76px] shrink-0 text-xs",
+                              hasMissingCivility && "border-destructive focus:ring-destructive",
+                            )}
+                          >
+                            <SelectValue placeholder="Civ." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="madame" className="text-xs">Mme</SelectItem>
+                            <SelectItem value="monsieur" className="text-xs">M.</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Input
+                          value={draft.senderFirstName}
+                          onChange={(e) => updateSender(draft.id, { senderFirstName: e.target.value })}
+                          onBlur={() => rematchSender(draft.id)}
+                          placeholder="Prénom"
+                          aria-label="Prénom de l'expéditeur"
+                          className="h-8 text-xs"
+                        />
+                      </div>
                       <Input
-                        value={draft.senderName}
-                        onChange={(e) => updateDraft(draft.id, { senderName: e.target.value })}
+                        value={draft.senderLastName}
+                        onChange={(e) => updateSender(draft.id, { senderLastName: e.target.value })}
+                        onBlur={() => rematchSender(draft.id)}
                         placeholder="Nom"
+                        aria-label="Nom de l'expéditeur"
                         className="h-8 text-xs"
                       />
                       <Input
                         value={draft.senderEmail}
-                        onChange={(e) => updateDraft(draft.id, { senderEmail: e.target.value })}
+                        onChange={(e) => updateSender(draft.id, { senderEmail: e.target.value })}
+                        onBlur={() => rematchSender(draft.id)}
                         placeholder="Email"
+                        aria-label="Email de l'expéditeur"
                         className="h-8 text-xs"
                         type="email"
                       />
+                      <Input
+                        value={draft.senderPhone}
+                        onChange={(e) => updateSender(draft.id, { senderPhone: e.target.value })}
+                        onBlur={() => rematchSender(draft.id)}
+                        placeholder="Téléphone"
+                        aria-label="Téléphone de l'expéditeur"
+                        className="h-8 text-xs"
+                        type="tel"
+                      />
+                      {matchingIds.has(draft.id) ? (
+                        <p className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          Recherche dans le référentiel…
+                        </p>
+                      ) : (
+                        <>
+                          {draft.senderMatch && (
+                            <SenderMatchNotice
+                              compact
+                              match={draft.senderMatch}
+                              selected={!!linked && linked.id === draft.senderMatch.contact?.id}
+                              onUse={() => updateDraft(draft.id, { senderDecision: "use" })}
+                              onCreateInstead={() => updateDraft(draft.id, { senderDecision: "create" })}
+                            />
+                          )}
+                          {senderNeedsCreation(draft) && (
+                            <p className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                              <UserPlus className="h-3 w-3 shrink-0" />
+                              {draft.senderMatch
+                                ? "Sera créé dans le référentiel"
+                                : "Recherché dans le référentiel à la confirmation, créé s'il est inconnu"}
+                            </p>
+                          )}
+                          {hasMissingCivility && (
+                            <p className="text-[10px] text-destructive">Civilité requise pour créer le contact</p>
+                          )}
+                        </>
+                      )}
                     </div>
                   </TableCell>
                   <TableCell className="pt-2">
@@ -499,21 +601,8 @@ export default function BulkStep4Verify({
               variant="outline"
               className="gap-1.5 h-7"
               onClick={() => {
-                const newDrafts: DraftCourier[] = orphanedFiles.map((f) => ({
-                  id: crypto.randomUUID(),
-                  title: "",
-                  senderName: "",
-                  senderEmail: "",
-                  recipientName: "",
-                  serviceId: "",
-                  serviceName: "",
-                  tags: [],
-                  bodyText: "",
-                  fileIds: [f.id],
-                  confidence: 0,
-                  flags: ["missing-service"],
-                }));
-                onChange([...drafts, ...newDrafts]);
+                const newDrafts = orphanedFiles.map((f) => emptyDraft([f.id]));
+                onChange(refreshFlags([...drafts, ...newDrafts]));
               }}
             >
               <Plus className="h-3.5 w-3.5" />

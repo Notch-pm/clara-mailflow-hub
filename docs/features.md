@@ -25,6 +25,7 @@
 
 ### Import en masse
 - Page `BulkImport.tsx` (`/import-en-masse`), wizard 5 étapes : canal → documents → association → vérification → confirmation. Regroupement de fichiers par `groupId` (un courrier = N fichiers). Formats : PDF, JPG, PNG.
+- **Expéditeur** : civilité, prénom, nom, email et téléphone en champs distincts (le seul champ « Nom » d'avant mêlait prénom et nom, et écrivait le nom complet dans `last_name`). Rapproché du référentiel selon la règle commune ci-dessous (§ Rapprochement de l'expéditeur) ; à la confirmation, un expéditeur inconnu est **créé dans le Socle** et rattaché (`socle_contact_id`). Plusieurs courriers d'une même personne inconnue ne créent qu'une fiche (`isSameSender`). La civilité est exigée pour créer (flag `missing-civility`, bloquant). Un échec de création laisse un participant libre plutôt que de perdre le courrier.
 - **Dé-lotissement d'un PDF multi-pages** (lot scanné) : `BulkPdfSplitDialog` découpe à l'écran un PDF en plusieurs courriers — vignettes rendues via `pdfjs`, sélection de pages (clic / shift-clic) puis « Grouper en courrier », le reste des pages restant non associé. Génération client-side (`src/lib/pdf/split.ts`, `pdf-lib`). Découpe **manuelle** ; l'auto-suggestion des points de coupe reste un « à terme » (cf. `docs/technical-debt.md` P1.5).
 
 ## 2. Analyse IA d'un courrier
@@ -162,7 +163,24 @@ Détail complet — contrat, raccordement des champs, périmètre, exploitation 
 ### Contacts (`Contacts.tsx`, route `/contacts`)
 - **Référentiel servi par le Socle** (source de vérité — plus aucun stockage local d'identité). Liste/recherche (nom, email exact), fiche, création/édition, archivage/restauration via l'edge function `socle-contacts` (proxy de `contacts-api`), service client unique `socleContactService.ts`.
 - La fiche affiche aussi les **courriers liés** (donnée Clara : `courier_participants.socle_contact_id`) et les **relations entre contacts** (« est Gérant de… » / « … est Gérant de ce contact »), éditables via le référentiel ; ces relations apparaissent aussi sur les participants d'un courrier et sous l'expéditeur dans le panneau courrier.
-- Rapprochement automatique de l'expéditeur par email au passage en instruction (best-effort, jamais bloquant) ; pas d'auto-création (le Socle exige la civilité pour une personne).
+- Rapprochement automatique de l'expéditeur par email au passage en instruction (best-effort, jamais bloquant).
+
+#### Rapprochement de l'expéditeur à la création (import unitaire et en masse)
+
+Règle unique, `supabase/functions/_shared/senderMatchLogic.ts` (partagée par `extract-courier-info`
+et l'écran), sur la réponse de `POST /v1/contacts/match` :
+
+| Situation | Comportement |
+|---|---|
+| Motif `email`, `phone` ou `name_exact` (nom+prénom, accents et casse ignorés) | Contact **sélectionné** |
+| … mais email / téléphone de la fiche ≠ ceux du courrier, ou nom différent (téléphone de foyer) | Sélectionné **avec alerte** (`conflicts`), action « Créer plutôt un nouveau contact » |
+| Seulement `name_similar` | **Proposé, jamais sélectionné** (« C'est cette personne ») |
+| Aucun candidat | Contact **créé dans le Socle** à l'enregistrement (`createSenderContact`) |
+
+La civilité, obligatoire au Socle pour une personne, est extraite par l'IA quand le courrier
+l'indique ; sinon l'agent la choisit, et l'enregistrement est bloqué tant qu'elle manque. Historique :
+jusqu'au 2026-09-23, l'import unitaire cherchait le **nom de famille seul** (`?search=<nom>&limit=1`)
+et l'import en masse ne rapprochait rien — Madeleine Lefevre se voyait proposer Alain Lefevre.
 - **L'expéditeur du panneau courrier est un sélecteur d'usager** (`ContactPicker`, plus de saisie libre du nom dans la colonne latérale) : sélectionner une fiche renseigne `socle_contact_id` et aligne nom/email/téléphone/adresse du participant sur le référentiel ; « Aucun contact » dissocie sans effacer ce que porte le courrier.
 
 ### Détection de doublons à la saisie

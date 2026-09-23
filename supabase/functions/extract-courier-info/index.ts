@@ -24,6 +24,13 @@ import {
 } from "../_shared/courierFieldSuggestions.ts";
 import { contactsApiKeyForOrg, fetchContactsApi } from "../_shared/socleContactsClient.ts";
 import { assertEditor } from "../_shared/authz.ts";
+import {
+  buildSenderMatchPayload,
+  noSenderMatch,
+  resolveSenderMatch,
+  type MatchCandidate,
+  type SenderMatch,
+} from "../_shared/senderMatchLogic.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -44,6 +51,7 @@ interface FileInput {
 
 interface ExtractedInfo {
   suggested_subject: string | null;
+  sender_civility: string | null;
   sender_first_name: string | null;
   sender_last_name: string | null;
   sender_email: string | null;
@@ -364,37 +372,31 @@ ${combinedText}`;
     );
 
     const sender = cleanSenderFields(extracted);
-    const senderEmail = sender.email;
-    const senderLastName = sender.last_name;
 
-    // Rapprochement de l'expéditeur avec un contact du référentiel Socle
-    // (email exact d'abord, puis nom dans display_name). Best-effort : un Socle
-    // indisponible ne fait pas échouer l'extraction.
-    let matchedContact: unknown = null;
+    // Rapprochement de l'expéditeur avec le référentiel Socle : le Socle compare
+    // email, téléphone et nom+prénom (`POST /v1/contacts/match`), la règle de
+    // décision est celle de `senderMatchLogic` — commune avec l'import en masse.
+    // Best-effort : un Socle indisponible ne fait pas échouer l'extraction,
+    // mais rend `null` (« non vérifié ») et non « aucun contact » — ce qui
+    // ferait créer un doublon ; l'écran refait alors le rapprochement.
+    const matchPayload = buildSenderMatchPayload(sender);
+    let senderMatch: SenderMatch | null = matchPayload ? null : noSenderMatch();
 
-    if (senderEmail || senderLastName) {
+    if (matchPayload) {
       try {
         // `socleOrgId` est déjà résolu plus haut pour l'imputation IA : le
         // relire ici ferait une requête pour rien, et laisserait deux sources
         // pour un même rattachement.
         const contactsKey = contactsApiKeyForOrg(socleOrgId);
         if (contactsKey) {
-          if (senderEmail) {
-            const { body } = await fetchContactsApi(contactsKey, {
-              method: "GET",
-              path: `/v1/contacts?email=${encodeURIComponent(senderEmail)}&limit=1`,
-              idempotent: true,
-            }, { socleOrgId });
-            if (Array.isArray(body) && body.length > 0) matchedContact = body[0];
-          }
-          if (!matchedContact && senderLastName) {
-            const { body } = await fetchContactsApi(contactsKey, {
-              method: "GET",
-              path: `/v1/contacts?search=${encodeURIComponent(senderLastName)}&limit=1`,
-              idempotent: true,
-            }, { socleOrgId });
-            if (Array.isArray(body) && body.length > 0) matchedContact = body[0];
-          }
+          const { body } = await fetchContactsApi(contactsKey, {
+            method: "POST",
+            path: "/v1/contacts/match",
+            body: matchPayload,
+            // Lecture seule malgré le POST : rejouable sans risque.
+            idempotent: true,
+          }, { socleOrgId });
+          senderMatch = resolveSenderMatch(sender, body as MatchCandidate[]);
         }
       } catch (e) {
         console.warn("extract-courier-info: rapprochement contact Socle impossible:", e);
@@ -407,7 +409,9 @@ ${combinedText}`;
       recipient_name: nullIfEmpty(extracted.recipient_name),
       suggested_service_name: suggestedService,
       suggested_tag_names: suggestedTags,
-      matched_contact: matchedContact,
+      // Compat : rempli seulement quand le contact est sélectionné d'office.
+      matched_contact: senderMatch?.status === "matched" ? senderMatch.contact : null,
+      sender_match: senderMatch,
       extracted_text: extractedText.slice(0, 10_000),
       // true si certains fichiers du lot n'ont pas pu être OCRisés faute de quota
       // (mais l'extraction a quand même pu se faire sur les fichiers déjà traités).
