@@ -23,6 +23,12 @@ const BASE_TABS: EluTab[] = [
  * Même jeton que le rail de l'application complète (`--rail`, bleu nuit) :
  * la navigation garde une seule couleur dans tout Clara, thème sombre compris.
  *
+ * Marge du bas : dans un navigateur, c'est lui qui dégage la barre système du
+ * téléphone. Y ajouter `safe-area-inset-bottom` la comptait deux fois — Firefox
+ * Android (bord à bord) la signale, et la barre flottait trop haut (constaté le
+ * 2026-09-23). La zone de sécurité ne sert qu'installé sur l'écran d'accueil
+ * (`display-mode: standalone`), où rien d'autre ne la réserve.
+ *
  * Les onglets naviguent en `replace`. Sans cela, chaque aller-retour entre deux
  * onglets empile une entrée d'historique et le bouton retour du téléphone
  * remonte tout le zapping au lieu de quitter l'application.
@@ -36,7 +42,7 @@ export function EluTabBar({ signatureCount = 0 }: { signatureCount?: number }) {
   return (
     <nav
       aria-label="Navigation de l'espace élu"
-      className="flex shrink-0 items-stretch gap-1 bg-rail px-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2"
+      className="flex shrink-0 items-stretch gap-1 bg-rail px-2 pb-2 pt-2 [@media(display-mode:standalone)]:pb-[max(0.5rem,env(safe-area-inset-bottom))]"
     >
       {tabs.map((tab) => {
         const Icon = tab.icon;
