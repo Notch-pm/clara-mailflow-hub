@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Send, Save, Lock, PenLine, X, Plus, Pencil, Eye, Trash2, ArrowLeft, Printer, ChevronDown, Sparkles } from "lucide-react";
+import { Send, Save, Lock, PenLine, X, Plus, Pencil, Eye, Trash2, ArrowLeft, Printer, ChevronDown, Sparkles, Undo2, WandSparkles } from "lucide-react";
 import { toast } from "sonner";
 import { edgeError } from "@/lib/edge-error";
 import { RESPONSE_TYPES } from "../../../supabase/functions/draft-reply/logic";
@@ -56,7 +56,8 @@ import { appendSignature, buildSignatureBlock } from "@/lib/reply-signature";
 import { useAuth } from "@/contexts/AuthContext";
 import { printReply, buildContactBlock } from "@/utils/printReply";
 import { getOrgHtmlTemplate } from "@/services/templateService";
-import { draftReply } from "@/services/courierDraftService";
+import { draftReply, improveReply } from "@/services/courierDraftService";
+import { visibleText } from "../../../supabase/functions/_shared/improveMessage";
 import { Textarea } from "@/components/ui/textarea";
 import type { CourierChannel, CourierParticipant } from "@/types/courier";
 import { cn } from "@/lib/utils";
@@ -266,6 +267,9 @@ export default function ReplyComposer({
   const [aiResponseType, setAiResponseType] = useState<string>("");
   const [aiInstructions, setAiInstructions] = useState<string>("");
   const [isDrafting, setIsDrafting] = useState(false);
+  const [isImproving, setIsImproving] = useState(false);
+  /** Le texte d'avant « Améliorer » — annulable tant que l'agent n'a rien retouché depuis. */
+  const [beforeImprove, setBeforeImprove] = useState<{ original: string; improved: string } | null>(null);
 
   useEffect(() => {
     if (view !== "editor") return;
@@ -279,6 +283,7 @@ export default function ReplyComposer({
       setBody("");
       setSignatoryId("");
     }
+    setBeforeImprove(null);
     setDirty(false);
   }, [reply?.id, view, canEmail]);
 
@@ -564,7 +569,7 @@ export default function ReplyComposer({
 
   const isBusy = saveDraft.isPending || doSign.isPending || doUnsign.isPending ||
     doTransition.isPending || sendEmail.isPending || doDelete.isPending || isPrintingWithTemplate ||
-    doSignAndAdvance.isPending || doSendAndAdvance.isPending;
+    doSignAndAdvance.isPending || doSendAndAdvance.isPending || isImproving;
 
   // ─── Early exits (no organization / no workflow) ────────────────────
   if (!currentService) {
@@ -772,11 +777,38 @@ export default function ReplyComposer({
       setBody(html);
       setDirty(true);
       setAiPanelOpen(false);
+      setBeforeImprove(null);
     } catch (err: any) {
       toast.error(err.message);
     } finally {
       setIsDrafting(false);
     }
+  }
+
+  async function handleImprove() {
+    const original = body;
+    setIsImproving(true);
+    try {
+      const improved = await improveReply({ courierId, orgId: organizationId, html: original });
+      if (improved === original) {
+        toast.info("Aucune correction à apporter.");
+        return;
+      }
+      setBody(improved);
+      setDirty(true);
+      setBeforeImprove({ original, improved });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Amélioration impossible");
+    } finally {
+      setIsImproving(false);
+    }
+  }
+
+  function undoImprove() {
+    if (!beforeImprove) return;
+    setBody(beforeImprove.original);
+    setDirty(true);
+    setBeforeImprove(null);
   }
 
   async function handlePrintPdf(useTemplate: boolean) {
@@ -1151,6 +1183,29 @@ export default function ReplyComposer({
         </div>
       )}
 
+      {/* Améliorer mon message : la langue, jamais le sens. Annulable tant
+          que l'agent n'a pas retouché le texte amélioré. */}
+      {!editorDisabled && visibleText(body) !== "" && (
+        <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
+          {beforeImprove && beforeImprove.improved === body && (
+            <Button variant="ghost" size="sm" className="gap-1.5" onClick={undoImprove} disabled={isBusy}>
+              <Undo2 className="h-3.5 w-3.5" />
+              Annuler l'amélioration
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleImprove}
+            disabled={isBusy || isDrafting}
+            className="gap-1.5 border-violet-300 text-violet-700 hover:bg-violet-50 hover:text-violet-800"
+          >
+            <WandSparkles className="h-3.5 w-3.5" />
+            {isImproving ? "Relecture…" : "Améliorer mon message"}
+          </Button>
+        </div>
+      )}
+
       {/* Éditeur */}
       <RichTextEditor
         value={body}
@@ -1160,7 +1215,7 @@ export default function ReplyComposer({
             ? `Rédigez la réponse à envoyer à ${senderEmail ?? "l'expéditeur"}…`
             : "Rédigez le contenu du courrier de réponse…"
         }
-        disabled={editorDisabled}
+        disabled={editorDisabled || isImproving}
         minHeight={220}
         className="flex-1 min-h-[220px]"
       />

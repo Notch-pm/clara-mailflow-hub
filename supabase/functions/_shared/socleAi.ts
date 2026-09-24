@@ -31,6 +31,7 @@ import {
 } from "./socleAiLogic.ts";
 
 export {
+  AGENT_CORRECTION,
   AGENT_EXTRACTION,
   AGENT_REDACTION,
   AiQuotaExceededError,
@@ -38,6 +39,7 @@ export {
   type ChatMessage,
   deriveAiApiBaseUrl,
   FEATURE_ANALYSIS,
+  FEATURE_CORRECTION,
   FEATURE_DRAFT,
   FEATURE_EXTRACTION,
   FEATURE_PREFILL,

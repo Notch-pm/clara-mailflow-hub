@@ -36,6 +36,8 @@ export const FEATURE_ANALYSIS = "analyse-courrier";
 export const FEATURE_PREFILL = "preremplissage-demarche";
 export const FEATURE_EXTRACTION = "extraction-courrier";
 export const FEATURE_DRAFT = "redaction-reponse";
+/** « Améliorer mon message » — même libellé qu'Iris : une seule ligne au compteur du Socle. */
+export const FEATURE_CORRECTION = "correction-message";
 
 /**
  * Alias d'agents. Clara demande « extraction-courrier », le Socle sait quel
@@ -51,6 +53,7 @@ export const FEATURE_DRAFT = "redaction-reponse";
  */
 export const AGENT_EXTRACTION = "extraction-courrier";
 export const AGENT_REDACTION = "redaction-reponse";
+export const AGENT_CORRECTION = "correction-message";
 
 /**
  * ⚠️ BORNES DU GUICHET, RECOPIÉES ICI POUR ÊTRE RESPECTÉES AVANT L'APPEL et
