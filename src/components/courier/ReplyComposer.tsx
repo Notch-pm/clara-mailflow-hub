@@ -88,6 +88,12 @@ interface Props {
    */
   senderReplyEmail?: string | null;
   readOnly?: boolean;
+  /**
+   * Motif pour lequel ce courrier n'accepte pas encore de nouvelle réponse
+   * (voir `courierCreationBlockReason`) ; `null` si la création est permise.
+   * Les réponses existantes restent ouvrables.
+   */
+  creationBlockedReason?: string | null;
   onStateChange?: (state: { name: string; category: string | null } | null) => void;
   initialReplyId?: string | null;
   initialOpenEditor?: boolean;
@@ -110,6 +116,7 @@ export default function ReplyComposer({
   sender,
   senderReplyEmail = null,
   readOnly,
+  creationBlockedReason = null,
   onStateChange,
   initialReplyId = null,
   initialOpenEditor = false,
@@ -611,6 +618,7 @@ export default function ReplyComposer({
           {!readOnly && (
             <Button
               size="sm"
+              disabled={!!creationBlockedReason}
               onClick={() => { setActiveReplyId(null); setView("editor"); }}
             >
               <Plus className="h-4 w-4 mr-1.5" />
@@ -618,6 +626,12 @@ export default function ReplyComposer({
             </Button>
           )}
         </div>
+
+        {creationBlockedReason && !readOnly && (
+          <p className="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
+            {creationBlockedReason}
+          </p>
+        )}
 
         {replies.length === 0 ? (
           <p className="text-sm text-muted-foreground italic">

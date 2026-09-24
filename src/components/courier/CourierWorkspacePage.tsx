@@ -76,6 +76,7 @@ import {
   type WorkspaceCourier,
 } from "@/hooks/useCourierWorkspace";
 import type { CourierChannel } from "@/types/courier";
+import { courierCreationBlockReason } from "../../../supabase/functions/_shared/courierCreationGuard";
 
 interface Props {
   courier: WorkspaceCourier;
@@ -245,6 +246,14 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
     upsertParticipant,
     linkSenderContact,
   } = ws;
+
+  // Ni action ni réponse tant que le courrier n'est pas orienté et sorti de la
+  // boîte aux lettres ; la base tient la même règle (trigger de création).
+  const creationBlockedReason = courierCreationBlockReason({
+    socleOrganizationId: localSocleOrgId,
+    workflowStateId: localWorkflowStateId,
+    stateIsInitial: localWorkflowStateId ? currentStateInfo?.is_initial : true,
+  });
 
   // Le défilement vit désormais DANS la colonne de travail : sans ce recalage,
   // l'onglet ouvert hériterait de la hauteur où l'on avait laissé le précédent
@@ -634,6 +643,7 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
                   organizationId={organizationId}
                   courierSocleOrganizationId={localSocleOrgId}
                   readOnly={effectiveReadOnly || isFinalState}
+                  creationBlockedReason={creationBlockedReason}
                 />
               </TabsContent>
             )}
@@ -653,6 +663,7 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
                     sender={sender ?? null}
                     senderReplyEmail={senderReplyEmail}
                     readOnly={effectiveReadOnly}
+                    creationBlockedReason={creationBlockedReason}
                     onStateChange={setReplyState}
                     initialReplyId={initialReplyIdParam}
                     initialOpenEditor={initialEditParam}

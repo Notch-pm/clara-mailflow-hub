@@ -112,6 +112,29 @@ bunx supabase functions deploy <nom> --project-ref aullweizxcjbvtdspjli
 bun run build && npx wrangler deploy --dry-run
 ```
 
+### Lot « ni action ni réponse depuis la boîte aux lettres » (2026-09-24) — appliqué le 2026-09-24
+
+Règle : un courrier sans organisation gestionnaire, ou encore dans la boîte aux lettres (état
+initial, ou aucun état), n'accepte ni action liée ni réponse. L'écran grise « Créer » et dit
+pourquoi ; le trigger tient la règle pour tout appelant, **service_role compris** (seul le GUC
+`clara.bypass_transition_guard` y échappe). Messages partagés :
+`supabase/functions/_shared/courierCreationGuard.ts`.
+
+| # | Action | Pourquoi cet ordre | État |
+|---|---|---|---|
+| 1 | `20260924190000_garde_creation_action_reponse.sql` (`courier_creation_block_reason`, triggers `BEFORE INSERT` sur `action_tickets` et `couriers`) | `create-arpege-demande` appelle la fonction SQL | **Appliqué** via `apply_migration` ; vérifié en transaction annulée : ticket et réponse refusés sur un courrier à l'état initial, motif `NULL` sur un courrier en cours |
+| 2 | Déployer `create-arpege-demande` | Refuse AVANT l'appel à Arpège : sinon la demande partenaire naît, puis le ticket est refusé par la base | **Fait** — `supabase functions deploy create-arpege-demande --project-ref aullweizxcjbvtdspjli` |
+| 3 | Publier le frontend | Boutons grisés + motif affiché ; sans lui, l'agent ne découvre la règle qu'au refus | **Fait** — push sur `main` (Workers Builds) |
+
+INSERT seulement : les 4 actions et 3 réponses de production déjà rattachées à un courrier
+qui serait refusé aujourd'hui restent intactes et modifiables.
+
+```sql
+-- Doit renvoyer le motif « boîte aux lettres » pour un courrier à l'état initial.
+SELECT c.chrono, courier_creation_block_reason(c.id) FROM couriers c
+JOIN workflow_states ws ON ws.id = c.workflow_state_id WHERE ws.is_initial LIMIT 3;
+```
+
 ### Lot « rapprochement de l'expéditeur » (2026-09-23) — fonction déployée le 2026-09-23
 
 Règle commune aux imports unitaire et en masse (cf. `docs/features.md`, « Rapprochement de

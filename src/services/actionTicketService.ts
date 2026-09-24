@@ -3,6 +3,7 @@
 // affectation, ni descriptif — d'où un service réduit à créer, lister, supprimer.
 // Les colonnes `title` / `description` / `assignee_id` ne servent plus qu'à
 // afficher les tickets d'avant le 2026-09-11.
+import { edgeError } from "@/lib/edge-error";
 import { supabase } from "@/integrations/supabase/client";
 
 export async function createArpegeTicket(payload: {
@@ -27,7 +28,7 @@ export async function createArpegeTicket(payload: {
     },
   });
 
-  if (res.error) throw new Error(res.error.message);
+  if (res.error) throw await edgeError(res.error, "Création de la demande Arpège impossible");
   const data = res.data as { ticket: ActionTicket; arpege_ref: string };
   if (!data?.ticket) throw new Error("Réponse invalide de l'edge function");
   return data.ticket;

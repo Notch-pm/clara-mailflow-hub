@@ -81,6 +81,21 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Courrier non orienté ou encore dans la boîte aux lettres : pas d'action.
+    // Vérifié AVANT l'appel à Arpège — le trigger de la base refuserait de
+    // toute façon le ticket, mais après la création de la demande chez le
+    // partenaire, qui resterait orpheline.
+    const { data: blockReason, error: guardErr } = await supabaseAdmin.rpc(
+      "courier_creation_block_reason",
+      { p_courier_id: courier_id },
+    );
+    if (guardErr) throw guardErr;
+    if (blockReason) {
+      return new Response(JSON.stringify({ error: blockReason }), {
+        status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Récupérer la procédure et sa config Arpège
     const { data: procedure, error: procErr } = await supabaseAdmin
       .from("procedures")

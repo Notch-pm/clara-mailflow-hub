@@ -27,6 +27,12 @@ interface Props {
   courierSocleOrganizationId?: string | null;
   /** When true, disables ticket creation and deletion. */
   readOnly?: boolean;
+  /**
+   * Motif pour lequel ce courrier n'accepte pas encore de nouvelle action
+   * (voir `courierCreationBlockReason`) ; `null` si la création est permise.
+   * Les actions existantes restent consultables et supprimables.
+   */
+  creationBlockedReason?: string | null;
 }
 
 function formatDate(iso: string | null | undefined) {
@@ -151,6 +157,7 @@ export default function LinkedActionsTab({
   organizationId,
   courierSocleOrganizationId = null,
   readOnly = false,
+  creationBlockedReason = null,
 }: Props) {
   const qc = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -254,13 +261,19 @@ export default function LinkedActionsTab({
           <Button
             size="sm"
             onClick={() => openCreate()}
-            disabled={readOnly}
-            title={readOnly ? "Courrier archivé — actions désactivées" : undefined}
+            disabled={readOnly || !!creationBlockedReason}
+            title={readOnly ? "Courrier archivé — actions désactivées" : creationBlockedReason ?? undefined}
           >
             <Plus className="h-4 w-4" />
             Créer
           </Button>
         </div>
+
+        {creationBlockedReason && !readOnly && (
+          <p className="mb-3 rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
+            {creationBlockedReason}
+          </p>
+        )}
 
         {isLoading ? (
           <div className="space-y-2">
@@ -372,7 +385,7 @@ export default function LinkedActionsTab({
       {/* === Actions suggérées (avec création de ticket depuis chaque action) === */}
       <SuggestedActionsCard
         courierId={courierId}
-        onCreateTicket={(action) => openCreate(action)}
+        onCreateTicket={creationBlockedReason ? undefined : (action) => openCreate(action)}
         readOnly={readOnly}
       />
 
