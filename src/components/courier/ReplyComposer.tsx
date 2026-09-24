@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Send, Save, Lock, PenLine, X, Plus, Pencil, Eye, Trash2, ArrowLeft, Printer, ChevronDown, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { edgeError } from "@/lib/edge-error";
+import { RESPONSE_TYPES } from "../../../supabase/functions/draft-reply/logic";
 import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
@@ -1094,7 +1095,7 @@ export default function ReplyComposer({
               <div>
                 <p className="text-xs font-medium text-muted-foreground mb-2">Type de réponse</p>
                 <div className="flex flex-wrap gap-2">
-                  {["Accusé de réception", "Suivi", "Clôture"].map((type) => (
+                  {RESPONSE_TYPES.map((type) => (
                     <button
                       key={type}
                       type="button"
