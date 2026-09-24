@@ -573,6 +573,18 @@ d'avant (cf. `docs/features.md` § 4).
 | `socle_organization_id` | uuid FK → socle_organizations | **organisation destinataire choisie par l'agent** — commande la liste des démarches proposées et l'organisme transmis à Iris. Nullable : à null, on retombe sur celle du courrier (tickets antérieurs au 2026-09-10). Adresser une demande à un service ne déplace pas le courrier |
 | `arpege_demande_ref` / `arpege_demande_status` | text | |
 
+**Garde de création** (2026-09-24, `20260924190000_garde_creation_action_reponse.sql`) : le
+trigger `trg_action_tickets_creation_guard` (BEFORE INSERT) — et son jumeau
+`trg_couriers_reply_creation_guard` sur `couriers`, pour une réponse sortante (`outbound` avec
+`parent_courier_id`) — refuse la création si le courrier parent n'a pas d'organisation
+gestionnaire, ou s'il est dans la boîte aux lettres : `workflow_state_id` nul, état introuvable,
+ou `is_initial IS TRUE` (un `is_initial` NULL compte comme « pas initial », comme le filtre de la
+boîte). Le motif vient de `courier_creation_block_reason(uuid)` (SECURITY DEFINER, `service_role`
+seulement — `create-arpege-demande` l'appelle AVANT d'écrire chez Arpège) et reprend mot pour mot
+`_shared/courierCreationGuard.ts`. **Le service_role n'est pas dispensé** ; seul le GUC
+`clara.bypass_transition_guard` y échappe. INSERT seulement : 4 actions et 3 réponses de production
+antérieures à la règle restent sur des courriers qui seraient refusés aujourd'hui.
+
 **Suivi de la demande déposée dans Iris** (écrit par le serveur uniquement — cf.
 `docs/iris-integration.md`) :
 

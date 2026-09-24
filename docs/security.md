@@ -20,7 +20,13 @@ Toutes les tables métier ont RLS activée (cf `docs/data-model.md`). Policies p
 - **Trigger `prevent_superadmin_escalation`** sur `public.users` : empêche un user d'updater son propre `is_superadmin` à `true`.
 - **Policy `users_update_own`** : `WITH CHECK (id = auth.uid() AND is_superadmin = false)` — ceinture + bretelles.
 - **Notifications** : policies scoppées au rôle `authenticated` + `user_id = auth.uid()`.
+- **Création d'action ou de réponse** (2026-09-24) : `trg_action_tickets_creation_guard` et `trg_couriers_reply_creation_guard` refusent toute action liée ou réponse sur un courrier sans organisation gestionnaire ou encore dans la boîte aux lettres — **service_role compris**, contrairement à `couriers_enforce_transition` ; seul le GUC `clara.bypass_transition_guard` y échappe. Détail : `docs/data-model.md` § `action_tickets`.
 - **Consentements RGPD** (`couriers.consents`, 2026-09-22) : `trg_couriers_consents_insert_guard` refuse une trace posée hors contexte de service (seule `portal-form` a posé la question — un éditeur ne peut pas la forger par PostgREST), `trg_couriers_consents_immutable` refuse toute réécriture, service_role compris. Côté Socle, la phrase consignée est composée par le serveur (`socle-contacts`), jamais reçue du navigateur.
+
+## Données confiées à l'IA
+
+- Tout passe par le guichet du Socle (règle d'or n°7). `draft-reply` et `analyze-courier` envoient le contenu du courrier, identité de l'expéditeur comprise : c'est la matière même de la réponse.
+- **« Améliorer mon message »** (`improve-reply`, 2026-09-24) n'envoie **aucune identité connue** : participants du courrier, courriels, téléphones, IBAN, SIRET et variables partent sous jetons réversibles, les balises HTML aussi (ni URL ni source d'image). Un nom que Clara ne connaît pas (un tiers cité par l'agent) peut passer. Un résultat qui perd ou invente un jeton, ou déplace une balise, est refusé ; le texte du modèle est échappé avant restitution. Rien n'est écrit en base.
 
 ## Storage
 

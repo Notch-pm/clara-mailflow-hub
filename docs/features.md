@@ -74,6 +74,43 @@ Les suggestions (`suggested_subject`, `suggested_sender`, `suggested_service_nam
 - Budget : chaque bloc annexe est borné pour que le contenu garde sa part, et l'assemblage se
   calcule sur le message réellement produit — la consigne finale ne peut pas être perdue par la
   troncature du transport (`fitMessage` coupe par la fin).
+- **Un cahier des charges par type** (depuis le 2026-09-24, relevé par l'agent Iris) : le prompt
+  système dit ce que chacun contient. **Accusé de réception** : confirme la réception, dit la suite,
+  n'aborde pas le fond, n'annonce un délai que s'il est fourni. **Suivi** : point d'étape à partir
+  des actions liées et des réponses déjà faites, sans les répéter, sans issue définitive.
+  **Clôture** : l'issue doit venir des données ou des instructions de l'agent, sinon
+  `[à compléter : issue de la demande]` ; motifs d'un refus et voies de recours jamais inventés
+  (`[à compléter : motif]`, `[à compléter : voies et délais de recours]`). Les instructions de
+  l'agent priment sur ces consignes, jamais sur « n'invente rien » ; le courrier, les pièces et les
+  analyses sont des **données**, pas des consignes. Avant, le modèle ne recevait que
+  `Type de réponse : Suivi` et devinait.
+- Les trois libellés vivent dans `RESPONSE_TYPES` (`draft-reply/logic.ts`), importé par l'écran :
+  un libellé divergent entre les pastilles et le prompt ferait retomber le modèle sur la
+  devinette, sans erreur. Un test le verrouille.
+- Un échec affiche le **motif rédigé par le serveur** (crédit épuisé, Socle non raccordé…) :
+  `draftReply()` passe par `edgeError`, plus par le « non-2xx status code » du client Supabase.
+
+### « Améliorer mon message » (depuis le 2026-09-24)
+Relecture de la réponse en cours d'édition — **la langue, jamais le sens**. Repris d'Iris (onglet
+Échanges), adapté au HTML de l'éditeur riche.
+
+- UI : bouton au-dessus de l'éditeur de `ReplyComposer` dès que la réponse contient du texte et
+  reste modifiable (ni signée, ni finale). L'éditeur est verrouillé pendant la relecture ; le texte
+  corrigé remplace celui de l'éditeur **sans être enregistré** ; « Annuler l'amélioration » rend le
+  texte d'origine tant que l'agent n'a pas retouché le résultat.
+- Edge function `improve-reply` (logique pure : `_shared/improveMessage.ts`, testée dans
+  `src/test/socle/improve-message.test.ts`). Feature et alias d'agent `correction-message`, les
+  mêmes qu'Iris.
+- **Ce qui part masqué, et revient** : sous ⟦Pn⟧, les identités connues du courrier (participants :
+  nom, prénom, nom affiché, courriel, organisme), tout courriel, téléphone, IBAN, SIRET et les
+  variables `{{…}}` ; sous ⟦Bn⟧, **chaque balise HTML**, numérotée à chaque occurrence — le modèle
+  ne voit ni URL de lien ni source d'image.
+- **Ce qui est refusé** (502, l'éditeur garde le texte de l'agent) : un jeton de donnée perdu ou
+  inventé, une suite de balises qui n'est plus exactement celle de l'aller (perdue, ajoutée ou
+  déplacée), un résultat vide. Le texte du modèle est échappé avant le retour des balises : il ne
+  peut pas injecter de HTML.
+- Bornes : environ 4 500 caractères de texte masqué (la réécriture doit tenir sous le plafond de
+  sortie du guichet) ; au-delà, un 400 le dit.
 
 ### Consommation IA — d'où vient le crédit
 Depuis le **2026-08-29**, Clara n'appelle plus de fournisseur LLM : elle compose ses prompts et les
@@ -107,6 +144,11 @@ Clara ne remplace pas les applications métier qui exécutent les demandes d'act
 
 - **une action EST une demande fondée sur une démarche**, déposée chez qui l'instruit : Iris pour les démarches du référentiel, le partenaire pour les démarches Arpège. Clara conserve le lien et l'état de résolution utiles à la réponse ;
 - l'analyse IA peut recommander des actions, mais l'agent reste responsable de la décision et du circuit retenu.
+
+**Pas d'action tant que le courrier n'est pas orienté** (depuis le 2026-09-24) : sans organisation
+gestionnaire, ou dans la boîte aux lettres (état initial du workflow, ou aucun état), l'onglet
+Actions grise « Créer », affiche le motif et retire la création depuis les actions suggérées. La
+base tient la même règle — voir § 5 et `docs/data-model.md` § `action_tickets`.
 
 **Plus d'action « libre » depuis le 2026-09-11** : la démarche est obligatoire dans le dialogue, qui ne propose que les démarches Iris ou partenaire (`src/lib/procedure-origin.ts` — une démarche sans origine, embryon local, n'est plus proposée). Avec elle disparaissent les champs que Clara ajoutait de son côté — **titre de l'action, affecté à, descriptif** — et la modification d'un ticket : une demande instruite ailleurs ne s'édite pas dans Clara (elle se supprime, ou se renvoie si le dépôt a échoué). Les colonnes `title` / `description` / `assignee_id` d'`action_tickets` ne servent plus qu'à afficher les tickets antérieurs ; l'edge `send-assignment-notification` n'a donc plus d'appelant.
 
@@ -152,6 +194,13 @@ Détail complet — contrat, raccordement des champs, périmètre, exploitation 
 ## 5. Réponses (couriers sortants)
 
 - Modèle : un courrier `direction=outbound` avec `parent_courier_id` pointant l'inbound.
+- **Pas de réponse depuis la boîte aux lettres** (depuis le 2026-09-24) : tant que le courrier n'a
+  pas d'organisation gestionnaire, ou qu'il est à l'état initial ou sans état, « Créer une réponse »
+  est grisé et le motif affiché. Règle unique pour les actions et les réponses :
+  `_shared/courierCreationGuard.ts` (écran) et le trigger de création (base, pour tout appelant —
+  service_role compris). Les réponses et actions déjà créées restent consultables et modifiables.
+  Un courrier dont l'organisation n'a pas de workflow n'a jamais d'état : il reste donc sans
+  action ni réponse tant qu'un workflow n'est pas rattaché.
 - Service : `src/services/courierReplyService.ts` — création, édition, signature, transitions, envoi.
 - **Signature** : sélection d'un `signatory` → l'image de signature est intégrée dans le HTML avec un marker `<img alt="signature-clara">`. `stripSignatureBlock()` permet de retirer le bloc avant ré-édition.
 - **Adresse du destinataire** : celle portée par le courrier (participant `sender`) d'abord, **sinon celle de la fiche du référentiel** liée par `socle_contact_id`. Le participant n'est qu'un instantané du dépôt : sans ce repli, un courrier reçu alors que l'usager n'avait pas d'email restait « sans adresse » même après l'ajout de l'email sur sa fiche. Le repli est appliqué des deux côtés — `useCourierWorkspace` (`senderReplyEmail`, active le canal Courriel) et `send-courier-reply` (dernier recours avant le 400).

@@ -118,14 +118,16 @@ Une fois le courrier rattaché à une organisation, l'agent instructeur doit com
 3. Le courrier entre en instruction.
 4. L'analyse IA peut aider l'agent : résumé, extraction du contenu, suggestion de tags, recommandations d'actions ou de démarches.
 5. L'agent confirme ou corrige la qualification.
-6. Le courrier peut générer une ou plusieurs actions.
+6. Le courrier peut générer une ou plusieurs actions — **seulement une fois orienté et sorti de la boîte aux lettres** : sans organisation gestionnaire, ou à l'état initial de son workflow, ni action ni réponse ne peut être créée (règle tenue par l'écran et par la base).
 
 ### Actions issues d'un courrier
 
 Les actions peuvent être :
 
-- **internes à Clara**, pour demander une action simple à un collègue, avec notification email et suivi minimal ;
-- **externes**, via une demande créée ou suivie dans Iris ou dans une application partenaire comme Arpège.
+- des **demandes fondées sur une démarche du référentiel**, déposées dans Iris qui les instruit ;
+- des **demandes partenaires**, créées dans une application comme Arpège.
+
+Il n'y a plus d'action « libre » interne à Clara depuis le 2026-09-11 : une action est toujours une demande que quelqu'un instruit (voir `docs/features.md` § 4).
 
 Clara doit conserver la trace de ces actions et de leur résolution, sans remplacer les outils métiers lorsque ceux-ci portent l'exécution complète.
 
@@ -154,7 +156,7 @@ Les réponses ont leur propre workflow, paramétrable par organisation. Ce workf
 - envoi ;
 - archivage.
 
-L'IA peut aider à rédiger un brouillon, mais l'agent reste responsable du contenu final.
+L'IA peut aider à rédiger un brouillon : chaque type (accusé de réception, suivi, clôture) a ses consignes, et le modèle écrit `[à compléter]` plutôt que d'inventer un fait, une décision ou un délai. « Améliorer mon message » relit ensuite le texte de l'agent (langue et tournures, jamais le sens) en masquant les données personnelles ; l'amélioration s'annule d'un clic. Dans tous les cas, l'agent reste responsable du contenu final.
 
 ## Parcours critique 4 — Signer une réponse
 

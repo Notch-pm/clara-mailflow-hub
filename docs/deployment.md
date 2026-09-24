@@ -112,6 +112,19 @@ bunx supabase functions deploy <nom> --project-ref aullweizxcjbvtdspjli
 bun run build && npx wrangler deploy --dry-run
 ```
 
+### Lot « Améliorer mon message » (2026-09-24) — appliqué le 2026-09-24
+
+Relecture IA de la réponse en cours d'édition (voir `docs/features.md` § 2). Aucune migration.
+
+| # | Action | Pourquoi cet ordre | État |
+|---|---|---|---|
+| 1 | Déployer `improve-reply` (nouvelle ; `verify_jwt` par défaut, appelée par le navigateur) | Le bouton l'appelle | **Fait** — `supabase functions deploy improve-reply --project-ref aullweizxcjbvtdspjli` ; démarrage vérifié (`OPTIONS` 200, 401 sans jeton) |
+| 2 | Publier le frontend | Bouton « Améliorer mon message » | **Fait** — push sur `main` (Workers Builds) |
+
+Vérification : sur une réponse modifiable contenant une faute et du gras, « Améliorer mon
+message » corrige la faute et garde le gras ; « Annuler l'amélioration » rend le texte d'origine.
+Les refus (jeton perdu, balise déplacée) sont journalisés `[improve-reply] résultat refusé (…)`.
+
 ### Lot « ni action ni réponse depuis la boîte aux lettres » (2026-09-24) — appliqué le 2026-09-24
 
 Règle : un courrier sans organisation gestionnaire, ou encore dans la boîte aux lettres (état
