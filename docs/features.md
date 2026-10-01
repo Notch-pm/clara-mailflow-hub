@@ -50,6 +50,13 @@ Les chemins d'**ingestion** ne peuvent pas océriser en ligne : c'est long, coû
 - Un seul job vivant par courrier (index unique partiel) : recliquer ou réimporter n'empile pas d'OCR concurrents.
 - Crédit IA épuisé → job reporté **à la date de renouvellement rendue par le Socle**, sans consommer de tentative. ⚠️ Depuis le 2026-08-29 le guichet renvoie **deux refus distincts en 429** : le plafond (rien à tenter avant le mois prochain) et la **cadence** (`ai_rate_limited` — le crédit est intact, replanification à 5 min). Les confondre endormirait un mois durant un courrier simplement arrivé dans une rafale. Autres erreurs → 3 tentatives espacées de 5 min.
 - Indispensable à la numérisation : personne n'est devant l'écran pour cliquer « Analyser ».
+- **Réveil immédiat (2026-10-01)** : toute entrée en file réveille aussitôt le worker (trigger
+  `courier_analysis_jobs_wake_worker` → `trigger_process_analysis_queue()`, anti-rebond 5 s via
+  `analysis_queue_wakeups`), et une exécution enchaîne les lots tant que la file en a (budget 75 s,
+  arrêt sur refus de cadence). Le cron de 2 minutes reste le filet. Mesuré : job pris en 0,3 s,
+  analyse terminée en 5,6 s (avant : jusqu'à 2 min d'attente). Un courrier **sans pièce** saute
+  l'OCR et passe directement à l'analyse du corps. L'écran « Courrier entrant » se relit toutes
+  les 5 s tant qu'un courrier est en analyse.
 
 Les suggestions (`suggested_subject`, `suggested_sender`, service instructeur) sont exposées sur un courrier existant dans l'onglet « Contenu » (`ContentIntentsTab`), le titre étant applicable en un clic — c'est ce qui permet de qualifier un courrier numérisé arrivé sans titre exploitable.
 

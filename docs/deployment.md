@@ -112,6 +112,14 @@ bunx supabase functions deploy <nom> --project-ref aullweizxcjbvtdspjli
 bun run build && npx wrangler deploy --dry-run
 ```
 
+### Lot « réveil de la file d'analyse » (2026-10-01) — appliqué le 2026-10-01
+
+| # | Action | Pourquoi cet ordre | État |
+|---|---|---|---|
+| 1 | Déployer `process-analysis-queue` (boucle de lots bornée, saut de l'OCR sans pièce) | Le worker réveillé doit déjà savoir vider la file | **Fait** |
+| 2 | `20261001095153_reveil_file_analyse.sql` (table `analysis_queue_wakeups`, trigger `courier_analysis_jobs_wake_worker`) | Réveil à l'entrée en file | **Appliqué** via `apply_migration` — registre `20261001095153`. Vérifié : job SNA pris en 0,3 s, fini en 5,6 s |
+| 3 | Publier le frontend | Relecture toutes les 5 s pendant une analyse | **Fait** — push sur `main` |
+
 ### Lot « attributions des organisations » (2026-10-01) — appliqué le 2026-10-01
 
 Attributions internes du Socle (public-api 1.33.0) dans le catalogue de la proposition de service

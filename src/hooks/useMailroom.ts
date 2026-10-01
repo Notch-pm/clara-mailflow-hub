@@ -9,6 +9,8 @@ export type MailroomPeriod = 7 | 30 | 90;
 
 /** Rafraîchissement automatique : l'IMAP et la numérisation arrivent seuls. */
 const REFRESH_MS = 2 * 60_000;
+/** Rafraîchissement tant qu'au moins un courrier est en file d'analyse. */
+const ANALYSING_REFRESH_MS = 5_000;
 
 /**
  * Données de l'écran « Courrier entrant » : lignes du RPC classées en étapes,
@@ -25,7 +27,13 @@ export function useMailroom(organizationId: string | null | undefined, period: M
     queryKey: ["mailroom-couriers", organizationId, period],
     queryFn: () => fetchMailroomCouriers(organizationId!, new Date(Date.now() - period * 86_400_000)),
     enabled: !!organizationId,
-    refetchInterval: REFRESH_MS,
+    // Un courrier en cours d'analyse : relu toutes les 5 s, pour qu'il rejoigne
+    // « À valider » / « À qualifier » dès que l'analyse (quelques secondes,
+    // worker réveillé à l'entrée en file) est terminée.
+    refetchInterval: (query) =>
+      (query.state.data ?? []).some((r) => r.analysis_status === "pending" || r.analysis_status === "running")
+        ? ANALYSING_REFRESH_MS
+        : REFRESH_MS,
   });
 
   const orgs = orgsQuery.data;

@@ -21,10 +21,18 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-/** Nombre de courriers traités par exécution. Volontairement bas : chaque job
- *  peut enchaîner plusieurs OCR, et l'edge function a un temps d'exécution
- *  borné. Le cron repasse toutes les minutes, la file se vide progressivement. */
+/** Taille d'un lot réclamé. Volontairement bas : chaque job peut enchaîner
+ *  plusieurs OCR. */
 const JOBS_PER_RUN = 3;
+/**
+ * Depuis le 2026-10-01, une exécution enchaîne les lots tant que la file en a
+ * et que ce budget n'est pas épuisé (l'edge function a un temps d'exécution
+ * borné : un job entamé juste avant l'échéance doit encore tenir). Avant, elle
+ * s'arrêtait après 3 jobs et le reste attendait le cron suivant, 2 minutes plus
+ * tard. Elle est maintenant aussi réveillée dès l'entrée d'un job en file
+ * (trigger `courier_analysis_jobs_wake_worker`), le cron restant le filet.
+ */
+const RUN_BUDGET_MS = 75_000;
 /** Au-delà, le job est abandonné définitivement. */
 const MAX_ATTEMPTS = 3;
 
@@ -166,109 +174,121 @@ Deno.serve(async (req) => {
   });
   if (requeueErr) console.error("requeue_stale_analysis_jobs:", requeueErr.message);
 
-  const { data: jobs, error: claimErr } = await admin.rpc("claim_analysis_jobs", {
-    p_limit: JOBS_PER_RUN,
-  });
-  if (claimErr) {
-    console.error("claim_analysis_jobs:", claimErr.message);
-    return jsonResponse({ error: claimErr.message }, 500);
-  }
-
-  const claimed = (jobs ?? []) as AnalysisJob[];
+  const runStartedAt = Date.now();
+  let claimedTotal = 0;
   let done = 0;
   let failed = 0;
   let deferred = 0;
+  // Une rafale refusée (cadence) arrête l'exécution : enchaîner d'autres
+  // appels ne ferait qu'aggraver le refus.
+  let stop = false;
 
-  for (const job of claimed) {
-    try {
-      let outcome: CallOutcome = { ok: true, kind: "ok" };
+  while (!stop && Date.now() - runStartedAt < RUN_BUDGET_MS) {
+    const { data: jobs, error: claimErr } = await admin.rpc("claim_analysis_jobs", {
+      p_limit: JOBS_PER_RUN,
+    });
+    if (claimErr) {
+      console.error("claim_analysis_jobs:", claimErr.message);
+      if (claimedTotal === 0) return jsonResponse({ error: claimErr.message }, 500);
+      break;
+    }
 
-      // Un courrier SANS pièce (email sans pièce jointe, saisie manuelle) n'a
-      // rien à océriser : son texte est dans le corps. `ocr-courier` refuse alors
-      // (400 « Aucun document à extraire ») — sans ce saut, un job `full` lancé
-      // depuis « Courrier entrant » échouait trois fois puis abandonnait un
-      // courrier parfaitement analysable.
-      let hasDocuments = true;
-      if (job.kind === "full" || job.kind === "ocr") {
-        const { count, error: countErr } = await admin
-          .from("courier_documents")
-          .select("id", { count: "exact", head: true })
-          .eq("courier_id", job.courier_id);
-        if (countErr) throw new Error(countErr.message);
-        hasDocuments = (count ?? 0) > 0;
-      }
+    const claimed = (jobs ?? []) as AnalysisJob[];
+    if (claimed.length === 0) break;
+    claimedTotal += claimed.length;
 
-      if ((job.kind === "full" || job.kind === "ocr") && hasDocuments) {
-        outcome = await callAnalyzeCourier("ocr-courier", job.organization_id, job.courier_id, provided);
-      }
-      // L'analyse LLM n'a de sens qu'avec des extraits : on ne l'enchaîne que si
-      // l'OCR a réussi.
-      if (outcome.ok && (job.kind === "full" || job.kind === "analyze")) {
-        outcome = await callAnalyzeCourier("analyze", job.organization_id, job.courier_id, provided);
-      }
+    for (const job of claimed) {
+      try {
+        let outcome: CallOutcome = { ok: true, kind: "ok" };
 
-      if (outcome.ok) {
-        await admin
-          .from("courier_analysis_jobs")
-          .update({ status: "done", finished_at: new Date().toISOString(), last_error: null })
-          .eq("id", job.id);
-        done++;
-        continue;
-      }
+        // Un courrier SANS pièce (email sans pièce jointe, saisie manuelle) n'a
+        // rien à océriser : son texte est dans le corps. `ocr-courier` refuse alors
+        // (400 « Aucun document à extraire ») — sans ce saut, un job `full` lancé
+        // depuis « Courrier entrant » échouait trois fois puis abandonnait un
+        // courrier parfaitement analysable.
+        let hasDocuments = true;
+        if (job.kind === "full" || job.kind === "ocr") {
+          const { count, error: countErr } = await admin
+            .from("courier_documents")
+            .select("id", { count: "exact", head: true })
+            .eq("courier_id", job.courier_id);
+          if (countErr) throw new Error(countErr.message);
+          hasDocuments = (count ?? 0) > 0;
+        }
 
-      // Deux reports, DEUX ÉCHÉANCES. Dans les deux cas la tentative est
-      // rendue : ni le crédit épuisé ni la rafale ne sont un défaut du job, et
-      // sans ce rollback trois passages de cron suffiraient à abandonner
-      // définitivement un courrier parfaitement analysable.
-      if (outcome.kind === "quota_exceeded" || outcome.kind === "rate_limited") {
+        if ((job.kind === "full" || job.kind === "ocr") && hasDocuments) {
+          outcome = await callAnalyzeCourier("ocr-courier", job.organization_id, job.courier_id, provided);
+        }
+        // L'analyse LLM n'a de sens qu'avec des extraits : on ne l'enchaîne que si
+        // l'OCR a réussi.
+        if (outcome.ok && (job.kind === "full" || job.kind === "analyze")) {
+          outcome = await callAnalyzeCourier("analyze", job.organization_id, job.courier_id, provided);
+        }
+
+        if (outcome.ok) {
+          await admin
+            .from("courier_analysis_jobs")
+            .update({ status: "done", finished_at: new Date().toISOString(), last_error: null })
+            .eq("id", job.id);
+          done++;
+          continue;
+        }
+
+        // Deux reports, DEUX ÉCHÉANCES. Dans les deux cas la tentative est
+        // rendue : ni le crédit épuisé ni la rafale ne sont un défaut du job, et
+        // sans ce rollback trois passages de cron suffiraient à abandonner
+        // définitivement un courrier parfaitement analysable.
+        if (outcome.kind === "quota_exceeded" || outcome.kind === "rate_limited") {
+          await admin
+            .from("courier_analysis_jobs")
+            .update({
+              status: "pending",
+              attempts: Math.max(0, job.attempts - 1),
+              scheduled_at: outcome.kind === "quota_exceeded"
+                ? deferUntil(outcome.renewsAt)
+                : retryAfterRateLimit(),
+              last_error: outcome.error,
+              started_at: null,
+            })
+            .eq("id", job.id);
+          deferred++;
+          if (outcome.kind === "rate_limited") stop = true;
+          continue;
+        }
+
+        const giveUp = job.attempts >= MAX_ATTEMPTS;
         await admin
           .from("courier_analysis_jobs")
           .update({
-            status: "pending",
-            attempts: Math.max(0, job.attempts - 1),
-            scheduled_at: outcome.kind === "quota_exceeded"
-              ? deferUntil(outcome.renewsAt)
-              : retryAfterRateLimit(),
-            last_error: outcome.error,
+            status: giveUp ? "failed" : "pending",
+            last_error: outcome.error ?? "unknown",
+            finished_at: giveUp ? new Date().toISOString() : null,
+            started_at: null,
+            // Réessai espacé : une erreur immédiate se reproduit souvent à l'identique.
+            scheduled_at: giveUp
+              ? new Date().toISOString()
+              : new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+          })
+          .eq("id", job.id);
+        failed++;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "unknown";
+        console.error(`Job ${job.id} exception:`, msg);
+        await admin
+          .from("courier_analysis_jobs")
+          .update({
+            status: job.attempts >= MAX_ATTEMPTS ? "failed" : "pending",
+            last_error: msg,
             started_at: null,
           })
           .eq("id", job.id);
-        deferred++;
-        continue;
+        failed++;
       }
-
-      const giveUp = job.attempts >= MAX_ATTEMPTS;
-      await admin
-        .from("courier_analysis_jobs")
-        .update({
-          status: giveUp ? "failed" : "pending",
-          last_error: outcome.error ?? "unknown",
-          finished_at: giveUp ? new Date().toISOString() : null,
-          started_at: null,
-          // Réessai espacé : une erreur immédiate se reproduit souvent à l'identique.
-          scheduled_at: giveUp
-            ? new Date().toISOString()
-            : new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-        })
-        .eq("id", job.id);
-      failed++;
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "unknown";
-      console.error(`Job ${job.id} exception:`, msg);
-      await admin
-        .from("courier_analysis_jobs")
-        .update({
-          status: job.attempts >= MAX_ATTEMPTS ? "failed" : "pending",
-          last_error: msg,
-          started_at: null,
-        })
-        .eq("id", job.id);
-      failed++;
     }
   }
 
   return jsonResponse({
-    claimed: claimed.length,
+    claimed: claimedTotal,
     done,
     failed,
     deferred,
