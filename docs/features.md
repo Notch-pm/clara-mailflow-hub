@@ -20,7 +20,7 @@
 - Le copieur est configuré en « scan vers email » sur une boîte dédiée, marquée **boîte de numérisation** (`imap_settings.is_scan_inbox`). Fonctionne avec tout scanner déjà installé, sans logiciel sur les postes ni licence.
 - Ingestion en mode scan : canal `paper`, pas de participant `sender` (l'adresse du copieur va dans `metadata.scan_device_email`), sujet neutre remplacé ensuite par `suggested_subject`, allowlist `scan_allowed_senders` **fail-closed** : `NULL` ou vide → la boîte n'accepte **rien** (elle n'attend que ses copieurs). Logique testable : `fetch-inbound-emails/logic.ts` (`isInboundSenderAccepted`).
 - **Le refus doit rester visible** (incident du 2026-09-13, boîte « Scanner Mairie » de SNA) : une allowlist vide rejetait chaque courrier en silence — la relève se terminait sur `{ ok: true, processed: 0 }` et **remettait `last_error` à `null`**, donc la boîte s'affichait saine, et le bouton « Tester » ne valide que le LOGIN. Désormais : l'écran refuse d'enregistrer une boîte de numérisation sans expéditeur autorisé, « Tester » alerte sur ce cas (`scanInboxAcceptsNothing`), et une relève qui rejette écrit le détail dans `last_error` (`describeRejectedScanSenders`) au lieu de l'effacer.
-- L'OCR et l'analyse sont enfilés automatiquement (voir §2), puis l'agent qualifie le courrier depuis la Boîte aux lettres.
+- L'OCR et l'analyse sont enfilés automatiquement (voir §2) — **pour la boîte de numérisation seulement** : un mail reçu sur une boîte classique n'est pas analysé d'office (décision PO du 2026-10-01), l'agent lance l'analyse au besoin. Puis l'agent qualifie le courrier depuis la Boîte aux lettres.
 - Réglages copieur recommandés : PDF (pas TIFF, non géré par l'OCR), 200–300 dpi, niveaux de gris, « un fichier par document » pour limiter la découpe des lots — qui reste possible manuellement à l'import (voir Import en masse).
 
 ### Import en masse
@@ -46,7 +46,7 @@ Service client : `src/services/courierAnalysisService.ts`.
 ### Déclenchement automatique (file d'attente)
 Les chemins d'**ingestion** ne peuvent pas océriser en ligne : c'est long, coûteux en quota, et une erreur ferait perdre tout un lot. Ils enfilent donc un job dans `courier_analysis_jobs`, consommé par l'edge function `process-analysis-queue` (cron 2 min).
 
-- Producteurs : `fetch-inbound-emails` (insert direct, service role) et `BulkImport` (RPC `enqueue_courier_analysis` via `src/services/courierAnalysisJobService.ts`).
+- Producteurs : `fetch-inbound-emails` (insert direct, service role, **boîtes de numérisation uniquement**) et `BulkImport` (RPC `enqueue_courier_analysis` via `src/services/courierAnalysisJobService.ts`).
 - Un seul job vivant par courrier (index unique partiel) : recliquer ou réimporter n'empile pas d'OCR concurrents.
 - Crédit IA épuisé → job reporté **à la date de renouvellement rendue par le Socle**, sans consommer de tentative. ⚠️ Depuis le 2026-08-29 le guichet renvoie **deux refus distincts en 429** : le plafond (rien à tenter avant le mois prochain) et la **cadence** (`ai_rate_limited` — le crédit est intact, replanification à 5 min). Les confondre endormirait un mois durant un courrier simplement arrivé dans une rafale. Autres erreurs → 3 tentatives espacées de 5 min.
 - Indispensable à la numérisation : personne n'est devant l'écran pour cliquer « Analyser ».

@@ -621,11 +621,14 @@ async function processOrganization(
           payload: { from: senderEmail, subject, attachments: parsed.attachments?.length || 0 },
         });
 
-        // Enfile l'OCR + l'analyse. Indispensable pour la numérisation : personne
+        // Enfile l'OCR + l'analyse — boîte de numérisation SEULEMENT : personne
         // n'est devant l'écran pour cliquer « Analyser », et sans extraits le
-        // courrier n'a ni titre exploitable ni expéditeur suggéré. Le traitement
-        // lui-même est fait par process-analysis-queue, hors de cette exécution.
-        if (storedDocuments > 0) {
+        // courrier n'a ni titre exploitable ni expéditeur suggéré. Un mail
+        // classique, lui, a déjà un objet, un expéditeur et un corps : l'agent
+        // lance l'analyse s'il en a besoin (décision PO du 2026-10-01 — ne pas
+        // consommer de crédit IA sur chaque mail reçu). Le traitement lui-même
+        // est fait par process-analysis-queue, hors de cette exécution.
+        if (isScan && storedDocuments > 0) {
           const { error: jobErr } = await admin.from("courier_analysis_jobs").insert({
             organization_id: s.organization_id,
             courier_id: courier.id,
