@@ -64,7 +64,6 @@ export function ParapheurDetail({
     hasActiveVisa: !!detail.activeVisa,
     canVisa,
     workflowTransitions: detail.workflow?.transitions,
-    labels: { visa: "Viser et suivant", sign: "Signer et suivant" },
     signedToast: "Réponse signée",
     onDone: () => {
       setComment("");

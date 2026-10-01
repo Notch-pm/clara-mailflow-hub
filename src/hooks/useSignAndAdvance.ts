@@ -6,6 +6,7 @@ import { edgeError } from "@/lib/edge-error";
 import { transitionReplyState } from "@/services/courierReplyService";
 import { signAndAdvance as signReplyAndAdvance, signatureBlocker, visaAndAdvance as visaReplyAndAdvance } from "@/services/replyApprovalService";
 import { isFreeExitFromVisa, type VisaGraphTransition } from "@/lib/reply-visa";
+import { approvalLabel } from "@/lib/approval-label";
 import type { EluTransitionChoice } from "@/hooks/useEluReply";
 import type { WorkflowState } from "@/types/courier";
 
@@ -39,8 +40,6 @@ export interface EluSignContext {
   canVisa?: boolean;
   /** Transitions du workflow réponse : un renvoi « À corriger » se reconnaît à sa suite nominale. */
   workflowTransitions?: readonly VisaGraphTransition[];
-  /** Libellés de l'action principale, quand l'écran les veut autres (« Signer et suivant »). */
-  labels?: { visa?: string; sign?: string };
   /** Message après signature ; par défaut « Courrier signé et envoyé » (espace élu). */
   signedToast?: string;
   onDone: () => void;
@@ -59,7 +58,7 @@ export interface EluAction {
  * Les actions du pied de l'écran de détail.
  *
  * L'arbitrage reproduit celui de `ReplyComposer` — signature, envoi, ou simple
- * transition — plutôt qu'un « Signer et envoyer » écrit en dur : deux écrans
+ * transition — plutôt qu'un libellé écrit en dur : deux écrans
  * qui décideraient différemment finiraient par produire deux courriers
  * différents pour la même réponse.
  *
@@ -69,7 +68,7 @@ export interface EluAction {
  * collectivité modélise, ou non — s'il n'y en a aucune, il n'y a aucun bouton.
  *
  * Dans une étape de visa pas encore visée, l'action principale est « Viser »
- * (visa puis transition nominale, comme « Viser et avancer » du composeur), et
+ * (visa puis transition nominale, comme dans le composeur), et
  * les secondaires se limitent aux sorties que la base laisse passer sans visa
  * — retour, abandon, renvoi pour correction (`isFreeExitFromVisa`).
  */
@@ -198,7 +197,7 @@ export function useSignAndAdvance(ctx: EluSignContext): {
     if (visaPending) {
       return {
         id: "visa",
-        label: ctx.labels?.visa ?? "Viser",
+        label: approvalLabel("visa", nextEntry?.label),
         disabledReason: ctx.canVisa ? null : "Vous n'êtes pas viseur de l'organisation gestionnaire.",
         run: (comment) => visaAndAdvance.mutate(comment),
       };
@@ -215,7 +214,7 @@ export function useSignAndAdvance(ctx: EluSignContext): {
       const reason = signatureBlocker(ctx.signatory, ctx.currentUserId);
       return {
         id: "sign",
-        label: ctx.labels?.sign ?? "Signer et envoyer",
+        label: approvalLabel("sign", nextEntry.label),
         disabledReason: reason,
         run: () => signAndAdvance.mutate(),
       };

@@ -71,6 +71,7 @@ import { visibleText } from "../../../supabase/functions/_shared/improveMessage"
 import { Textarea } from "@/components/ui/textarea";
 import type { CourierChannel, CourierParticipant } from "@/types/courier";
 import { cn } from "@/lib/utils";
+import { approvalLabel } from "@/lib/approval-label";
 
 type SendEmailResult = { error?: string; to?: string };
 
@@ -1026,9 +1027,9 @@ export default function ReplyComposer({
 
     const nextLabel = nextEntry
       ? (nextRequiresVisa
-          ? "Viser et avancer"
+          ? approvalLabel("visa", nextEntry.transition.name || nextEntry.target.name)
           : nextRequiresSign
-          ? "Signer et avancer"
+          ? approvalLabel("sign", nextEntry.transition.name || nextEntry.target.name)
           : nextRequiresSend
             ? (sendEmail.isPending ? "Envoi…" : "Envoyer et avancer")
             : (nextEntry.transition.name || nextEntry.target.name))
