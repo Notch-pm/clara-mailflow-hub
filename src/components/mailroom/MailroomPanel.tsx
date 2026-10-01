@@ -34,6 +34,7 @@ import { cn } from "@/lib/utils";
 import type { CourierChannel } from "@/types/courier";
 import OrgChoice from "./OrgChoice";
 import SubjectSuggestion from "./SubjectSuggestion";
+import TagSuggestion from "./TagSuggestion";
 import { TONE_CHIP, TONE_DOT, TONE_TEXT, businessDays, fullDate, stageLabel, type Tone } from "./mailroomDisplay";
 
 interface Props {
@@ -206,6 +207,16 @@ export default function MailroomPanel({
           organizationId={organizationId}
           courierId={row.id}
           currentSubject={row.subject}
+          canEdit={canEdit}
+        />
+      )}
+      {/* Attend le courrier chargé : l'ajout réécrit `metadata`, il ne doit
+          jamais partir d'un objet vide (il effacerait le reste). */}
+      {row.has_analysis && courier && (
+        <TagSuggestion
+          organizationId={organizationId}
+          courierId={row.id}
+          metadata={courier.metadata}
           canEdit={canEdit}
         />
       )}
