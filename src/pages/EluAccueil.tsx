@@ -1,4 +1,4 @@
-import { ArrowRight, ChevronRight, PenLine, Stamp, type LucideIcon } from "lucide-react";
+import { ArrowRight, ChevronRight, PenLine, Plus, Stamp, type LucideIcon } from "lucide-react";
 import { Link } from "react-router-dom";
 import { EluScreen } from "@/components/elu/EluScreenHeader";
 import { EluSearchLink } from "@/components/elu/EluSearchField";
@@ -125,6 +125,15 @@ export default function EluAccueil() {
           tone={isSignatory ? "quiet" : "primary"}
         />
       )}
+
+      {/* Relayer la demande d'un usager : canal « Relayé élu ». */}
+      <Link
+        to="/elu/nouveau-courrier"
+        className="flex min-h-14 w-full items-center justify-center gap-2 rounded-xl border border-primary bg-card text-[18px] font-bold text-primary shadow-airbnb-sm transition active:scale-[0.98]"
+      >
+        <Plus className="h-5 w-5" aria-hidden="true" />
+        Nouveau courrier
+      </Link>
 
       <EluSearchLink />
 

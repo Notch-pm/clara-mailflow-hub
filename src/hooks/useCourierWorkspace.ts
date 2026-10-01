@@ -42,6 +42,7 @@ export const channelLabels: Record<CourierChannel, string> = {
   paper: "Papier",
   email: "Email",
   portal: "Portail",
+  relaye_elu: "Relayé élu",
 };
 
 /** Le courrier tel que le manipulent les écrans : la ligne DB + ses relations chargées. */

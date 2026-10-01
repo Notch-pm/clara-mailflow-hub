@@ -24,10 +24,14 @@ export function EluSearchInput({
   value,
   onChange,
   autoFocus = false,
+  placeholder = "Nom, adresse, objet du courrier",
+  label = "Rechercher",
 }: {
   value: string;
   onChange: (value: string) => void;
   autoFocus?: boolean;
+  placeholder?: string;
+  label?: string;
 }) {
   return (
     <div className="flex min-h-14 items-center gap-3 rounded-xl border bg-card px-4 shadow-airbnb-sm focus-within:ring-2 focus-within:ring-ring">
@@ -37,8 +41,8 @@ export function EluSearchInput({
         value={value}
         autoFocus={autoFocus}
         onChange={(event) => onChange(event.target.value)}
-        placeholder="Nom, adresse, objet du courrier"
-        aria-label="Rechercher"
+        placeholder={placeholder}
+        aria-label={label}
         // 17 px et non moins : sous 16 px, iOS zoome à la mise au point et
         // l'écran part de travers.
         className="min-h-[54px] flex-1 border-none bg-transparent text-[17px] text-foreground outline-none placeholder:text-muted-foreground"

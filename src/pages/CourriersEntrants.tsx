@@ -44,6 +44,7 @@ const channelLabels: Record<CourierChannel, string> = {
   paper: "Papier",
   email: "Email",
   portal: "Portail",
+  relaye_elu: "Relayé élu",
 };
 
 export default function CourriersEntrants() {

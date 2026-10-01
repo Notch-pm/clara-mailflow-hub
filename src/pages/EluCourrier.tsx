@@ -25,6 +25,7 @@ const CHANNEL_LABELS: Record<string, string> = {
   form: "par formulaire",
   phone: "par téléphone",
   counter: "au guichet",
+  relaye_elu: "relayé par un élu",
 };
 
 const ROLE_LABELS: Record<string, string> = {

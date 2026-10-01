@@ -112,6 +112,13 @@ bunx supabase functions deploy <nom> --project-ref aullweizxcjbvtdspjli
 bun run build && npx wrangler deploy --dry-run
 ```
 
+### Lot « canal Relayé élu » (2026-10-01) — appliqué le 2026-10-01
+
+| # | Action | Pourquoi cet ordre | État |
+|---|---|---|---|
+| 1 | `20261001191911_canal_relaye_elu.sql` (valeur `relaye_elu` de l'enum `courier_channel`) | Le frontend insère des courriers sur ce canal | **Appliqué** via `apply_migration` — registre `20261001191911` (fichier renommé pour coller). Vérifié : `enum_range` = `{paper,email,portal,relaye_elu}` ; courrier créé depuis l'espace élu sur [TEST] Alpha (expéditeur rattaché, pièce, note, analyse en file) |
+| 2 | Publier le frontend | — | Push sur `main` |
+
 ### Lot « réveil de la file d'analyse » (2026-10-01) — appliqué le 2026-10-01
 
 | # | Action | Pourquoi cet ordre | État |

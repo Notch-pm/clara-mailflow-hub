@@ -338,7 +338,7 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
   const subtitle = [
     senderLabel,
     dateLabel
-      ? `${isOutbound ? "envoyé" : `reçu par ${channelLabels[courier.channel].toLowerCase()}`} le ${dateLabel}`
+      ? `${isOutbound ? "envoyé" : courier.channel === "relaye_elu" ? "relayé par un élu" : `reçu par ${channelLabels[courier.channel].toLowerCase()}`} le ${dateLabel}`
       : null,
     localAssignedService ? `organisation gestionnaire ${localAssignedService}` : null,
   ]

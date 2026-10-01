@@ -30,7 +30,7 @@ Le header `x-org-id` n'est **plus** utilisé dans les policies — il est unique
 | Enum | Valeurs |
 |---|---|
 | `courier_direction` | `inbound` `outbound` `internal` |
-| `courier_channel` | `email` `paper` `portal` |
+| `courier_channel` | `email` `paper` `portal` `relaye_elu` (saisi par un élu depuis l'espace mobile, depuis le 2026-10-01) |
 | `workflow_category` | `pending` `processing` `processed` `archived` |
 | `document_type` | (USER-DEFINED, voir types.ts) |
 | `participant_role` | (USER-DEFINED, voir types.ts) |
@@ -124,7 +124,7 @@ Table centrale. Tags stockés dans `metadata->'tags'` (tableau JSON de strings).
 | `organization_id` | uuid FK | |
 | `chrono` | varchar | Référence du registre, `AAAA-E\|S\|I-NNNNN` (ex. `2026-E-00042`). Posée par le trigger `assign_courier_chrono()` **à l'insertion, quelle que soit la porte d'entrée** ; définitive ensuite. Voir ci-dessous. |
 | `direction` | enum `courier_direction` | `inbound` \| `outbound` \| `internal` |
-| `channel` | enum `courier_channel` | `email` \| `paper` \| `portal` |
+| `channel` | enum `courier_channel` | `email` \| `paper` \| `portal` \| `relaye_elu` |
 | `subject` | text | |
 | `workflow_state_id` | uuid FK → workflow_states | |
 | `received_at` | timestamp | date réception (inbound) |

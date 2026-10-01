@@ -15,6 +15,7 @@ import { EluLayout } from "@/components/elu/EluLayout";
 const EluAccueil = lazyRoute(() => import("@/pages/EluAccueil"));
 const EluASigner = lazyRoute(() => import("@/pages/EluASigner"));
 const EluAViser = lazyRoute(() => import("@/pages/EluAViser"));
+const EluNouveauCourrier = lazyRoute(() => import("@/pages/EluNouveauCourrier"));
 const EluReponse = lazyRoute(() => import("@/pages/EluReponse"));
 const EluRecherche = lazyRoute(() => import("@/pages/EluRecherche"));
 const EluUsager = lazyRoute(() => import("@/pages/EluUsager"));
@@ -227,6 +228,7 @@ const App = () => (
                     <Route index element={<Suspense fallback={<LoadingScreen />}><EluAccueil /></Suspense>} />
                     <Route path="a-signer" element={<Suspense fallback={<LoadingScreen />}><EluASigner /></Suspense>} />
                     <Route path="a-viser" element={<Suspense fallback={<LoadingScreen />}><EluAViser /></Suspense>} />
+                    <Route path="nouveau-courrier" element={<Suspense fallback={<LoadingScreen />}><EluNouveauCourrier /></Suspense>} />
                     <Route path="reponse/:replyId" element={<Suspense fallback={<LoadingScreen />}><EluReponse /></Suspense>} />
                     <Route path="recherche" element={<Suspense fallback={<LoadingScreen />}><EluRecherche /></Suspense>} />
                     <Route path="usager/:contactId" element={<Suspense fallback={<LoadingScreen />}><EluUsager /></Suspense>} />

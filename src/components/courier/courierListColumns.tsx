@@ -1,5 +1,5 @@
 import type { ColumnDef } from "@tanstack/react-table";
-import { FileText, Globe, Mail } from "lucide-react";
+import { FileText, Globe, Mail, Landmark } from "lucide-react";
 import { DataTableColumnHeader } from "@/components/data-table/data-table-column-header";
 import { ListCellDate, ListCellText, ListCellTitle, StatusDot, type StatusTone } from "@/components/list/ListCells";
 import { readableTextColor } from "@/lib/tag-color";
@@ -34,12 +34,14 @@ export const CHANNEL_LABELS: Record<CourierChannel, string> = {
   paper: "Papier",
   email: "Email",
   portal: "Portail",
+  relaye_elu: "Relayé élu",
 };
 
 const CHANNEL_ICONS: Record<CourierChannel, typeof Mail> = {
   paper: FileText,
   email: Mail,
   portal: Globe,
+  relaye_elu: Landmark,
 };
 
 export function courierSenderName(c: CourierListRow): string {
