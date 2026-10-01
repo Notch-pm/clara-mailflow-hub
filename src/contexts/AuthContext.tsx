@@ -22,6 +22,8 @@ interface OrgMembership {
   is_signataire: boolean | null;
   /** Qualité affichée sous la signature (« Vice-président »). */
   signataire_title: string | null;
+  /** Droit de viser une réponse — transverse, indépendant du rôle. */
+  is_viseur: boolean | null;
   /** Profil « gestionnaire courrier » — transverse, indépendant du rôle. */
   is_service_courrier: boolean | null;
   organization_name: string;
@@ -98,7 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const membershipData = await withRetry(() =>
       supabase
         .from("organization_users")
-        .select("organization_id, role, is_active, is_signataire, signataire_title, is_service_courrier, organizations(name, logo_url)")
+        .select("organization_id, role, is_active, is_signataire, signataire_title, is_viseur, is_service_courrier, organizations(name, logo_url)")
         .eq("user_id", userId)
         .limit(1)
         .maybeSingle(),
@@ -116,6 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         is_active: membershipData.is_active,
         is_signataire: membershipData.is_signataire ?? null,
         signataire_title: membershipData.signataire_title ?? null,
+        is_viseur: membershipData.is_viseur ?? null,
         is_service_courrier: membershipData.is_service_courrier ?? null,
         organization_name: org?.name ?? "",
         organization_logo_url: org?.logo_url ?? null,

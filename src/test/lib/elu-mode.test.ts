@@ -43,6 +43,28 @@ describe("resolveEluMode", () => {
   });
 });
 
+describe("resolveEluMode — viseurs", () => {
+  // Le viseur (chef de service, DGS) est servi l'espace mobile en première
+  // intention, quel que soit son rôle — avec la même bascule vers le complet.
+  it.each(["gestionnaire", "administrateur", "superviseur", "consultant"])(
+    "viseur %s sur téléphone → actif",
+    (role) => {
+      const result = resolveEluMode({ membership: { role, is_viseur: true }, isPhone: true, choice: "simplifie" });
+      expect(result).toMatchObject({ isElu: false, isViseur: true, eligible: true, active: true });
+    },
+  );
+
+  it("viseur sur grand écran ou ayant demandé le complet → inactif", () => {
+    const membership = { role: "gestionnaire", is_viseur: true };
+    expect(resolveEluMode({ membership, isPhone: false, choice: "simplifie" }).active).toBe(false);
+    expect(resolveEluMode({ membership, isPhone: true, choice: "complet" }).active).toBe(false);
+  });
+
+  it("is_viseur à false ou absent ne suffit pas", () => {
+    expect(resolveEluMode({ membership: { role: "gestionnaire", is_viseur: false }, isPhone: true, choice: "simplifie" }).active).toBe(false);
+  });
+});
+
 describe("parseEluDisplayChoice", () => {
   it("ne retient « complet » que sur la valeur exacte", () => {
     expect(parseEluDisplayChoice("complet")).toBe("complet");

@@ -187,6 +187,7 @@ Faire valider une réponse par la hiérarchie (« j'ai vu, je valide ») avant q
 - Pendant l'étape, le texte est figé : on vise ce qu'on a lu. Un renvoi en rédaction rouvre le texte ; le visa déjà donné reste dans la trace mais est à refaire au prochain passage.
 - Sans visa, la réponse ne peut ni avancer ni être envoyée — même par appel direct à la base. Le renvoi en arrière et l'abandon restent possibles.
 - Le visa est visible dans l'onglet Réponse du courrier entrant, sur l'écran du courrier sortant et dans l'historique ; le viseur retrouve ce qui l'attend au tableau de bord (« En attente de votre visa »).
+- Sur téléphone, tout viseur — élu ou non (chef de service, DGS) — arrive sur l'affichage simplifié et vise depuis l'onglet « À viser » (commentaire facultatif), comme l'élu signe ; un même utilisateur peut viser certaines réponses et en signer d'autres. L'application complète reste accessible depuis le menu du compte.
 
 ## Parcours critique 5 — Archiver et retrouver les courriers
 

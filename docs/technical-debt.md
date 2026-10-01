@@ -81,7 +81,7 @@
 4. `couriers.metadata` fourre-tout (tags, body, imap_settings_id, socle_organization_id dupliqué) — schéma à documenter, puis promouvoir les champs stables en colonnes.
 5. ~~**Rapprochement de contacts à faire porter par le Socle**~~ ✅ 2026-07-17 — le Socle expose `POST /v1/contacts/match` (`pg_trgm` + `unaccent` en SQL). Clara délègue : un seul appel par saisie (action `match` du proxy), plus de moteur de comparaison local, les trois angles morts (téléphone seul, début du nom, accents) sont levés. Voir `docs/features.md` § Détection de doublons.
 6. **Suites du visa des réponses** (livré le 2026-10-01, `3aef8b8`) — hors périmètre de la première version :
-   - espace élu mobile : pas d'onglet « À viser » (`useSignAndAdvance` ne connaît que signature/envoi ; dans une étape de visa, l'action principale y tombe sur le refus serveur) ;
+   - ~~espace élu mobile : pas d'onglet « À viser »~~ ✅ 2026-10-01 — onglet et carte d'accueil pour le viseur, « Viser » (avec commentaire) sur l'écran de réponse, sorties vers l'avant masquées tant que l'étape n'est pas visée. Étendu le même jour à tout viseur, quel que soit son rôle ;
    - aucune notification (cloche, push, mail) au viseur désigné — il découvre la réponse au tableau de bord ;
    - « Autres actions » du composeur propose encore les sorties vers l'avant depuis une étape de visa : le serveur les refuse (toast d'erreur), l'UI pourrait les griser ;
    - verrou du contenu pendant le visa côté UI seulement (même choix que la signature).

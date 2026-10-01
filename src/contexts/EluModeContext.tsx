@@ -12,6 +12,10 @@ import {
 export interface EluModeValue {
   /** Le rôle d'organisation est `elu`. */
   isElu: boolean;
+  /** L'utilisateur porte l'attribut viseur. */
+  isViseur: boolean;
+  /** Élu ou viseur : l'espace mobile lui est destiné. */
+  eligible: boolean;
   /** L'écran est un téléphone (sous le seuil `md`). */
   isPhone: boolean;
   /** L'élu a demandé l'affichage complet sur CET appareil. */
@@ -26,6 +30,8 @@ const EluModeContext = createContext<EluModeValue | null>(null);
 /** Hors provider : jamais actif. Un composant partagé peut ainsi l'interroger sans garde. */
 const FALLBACK: EluModeValue = {
   isElu: false,
+  isViseur: false,
+  eligible: false,
   isPhone: false,
   optedOut: false,
   active: false,

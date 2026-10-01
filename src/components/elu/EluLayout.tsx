@@ -3,6 +3,7 @@ import { Outlet } from "react-router-dom";
 import { EluHeader } from "@/components/elu/EluHeader";
 import { EluTabBar } from "@/components/elu/EluTabBar";
 import { useEluSignatureQueue } from "@/hooks/useEluSignatureQueue";
+import { useEluVisaQueue } from "@/hooks/useEluVisaQueue";
 import { useScrollMemory } from "@/hooks/useScrollMemory";
 
 /**
@@ -17,6 +18,7 @@ export function EluLayout() {
   // Même hook que l'écran « À signer », donc même cache : le badge ne déclenche
   // pas une seconde série de requêtes.
   const { count } = useEluSignatureQueue();
+  const { count: visaCount } = useEluVisaQueue();
 
   return (
     <div className="flex h-dvh w-full flex-col overflow-hidden bg-background">
@@ -24,7 +26,7 @@ export function EluLayout() {
       <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain">
         <Outlet />
       </div>
-      <EluTabBar signatureCount={count} />
+      <EluTabBar signatureCount={count} visaCount={visaCount} />
     </div>
   );
 }

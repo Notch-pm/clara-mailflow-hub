@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 
 interface AuthState {
   profile: { is_superadmin: boolean } | null;
-  membership: { role: string } | null;
+  membership: { role: string; is_viseur?: boolean; is_signataire?: boolean } | null;
 }
 
 let authState: AuthState;
@@ -61,5 +61,33 @@ describe("EluTabBar", () => {
     renderBar(0, "/elu/recherche");
     expect(screen.getByRole("link", { name: /Accueil/ })).not.toHaveAttribute("aria-current");
     expect(screen.getByRole("link", { name: /Rechercher/ })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("« À viser » n'apparaît qu'au viseur, avec son propre compteur", () => {
+    const { unmount } = renderBar();
+    expect(screen.queryByRole("link", { name: /À viser/ })).not.toBeInTheDocument();
+    unmount();
+
+    // Viseur ET signataire : les deux onglets cohabitent.
+    authState.membership = { role: "elu", is_viseur: true };
+    render(
+      <MemoryRouter initialEntries={["/elu"]}>
+        <EluTabBar signatureCount={1} visaCount={4} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("link", { name: /À signer/ })).toHaveTextContent("1");
+    expect(screen.getByRole("link", { name: /À viser/ })).toHaveTextContent("4");
+  });
+
+  it("un viseur gestionnaire non signataire n'a pas d'onglet « À signer » vide", () => {
+    authState.membership = { role: "gestionnaire", is_viseur: true };
+    const { unmount } = renderBar();
+    expect(screen.getByRole("link", { name: /À viser/ })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /À signer/ })).not.toBeInTheDocument();
+    unmount();
+
+    authState.membership = { role: "gestionnaire", is_viseur: true, is_signataire: true };
+    renderBar();
+    expect(screen.getByRole("link", { name: /À signer/ })).toBeInTheDocument();
   });
 });

@@ -9,13 +9,20 @@ import {
   type ReplyRecord,
 } from "@/services/courierReplyService";
 import { listOrgsWithConfig } from "@/services/socleOrgConfigService";
+import { activeVisaFor, listOrgViseurs, listReplyVisas } from "@/services/courierVisaService";
 import type { WorkflowState, WorkflowTransition } from "@/types/courier";
 
 export interface EluTransitionChoice {
   transitionId: string;
   label: string;
   kind: "next" | "previous" | null;
-  target: { id: string; name: string; category: string | null; is_final: boolean | null };
+  target: {
+    id: string;
+    name: string;
+    category: string | null;
+    is_final: boolean | null;
+    is_initial: boolean | null;
+  };
 }
 
 /** Une transition sortante, telle que l'écran de détail doit la proposer. */
@@ -34,6 +41,7 @@ function toChoice(
       name: target.name,
       category: target.category ?? null,
       is_final: target.is_final ?? null,
+      is_initial: target.is_initial ?? null,
     },
   };
 }
@@ -142,6 +150,23 @@ export function useEluReply(replyId: string | undefined) {
     [workflow, reply],
   );
 
+  // Visa : mêmes clés que le composeur et l'écran du courrier sortant, que
+  // toute transition invalide (`reply-visas`) — un retour en rédaction périme
+  // le visa, l'écran doit le relire.
+  const { data: visas = [] } = useQuery({
+    queryKey: ["reply-visas", organizationId, [replyId], reply?.workflow_state_id ?? null],
+    queryFn: () => listReplyVisas(organizationId!, [replyId!]),
+    enabled: !!organizationId && !!replyId,
+  });
+
+  const isVisaState = currentState?.requires_visa === true;
+
+  const { data: viseurs = [] } = useQuery({
+    queryKey: ["socle-org-viseurs-detailed", organizationId, service?.id],
+    queryFn: () => listOrgViseurs(organizationId!, service!.id),
+    enabled: !!organizationId && !!service?.id && isVisaState,
+  });
+
   const outgoing = useMemo<EluTransitionChoice[]>(() => {
     if (!workflow || !currentState) return [];
     return workflow.transitions
@@ -172,6 +197,9 @@ export function useEluReply(replyId: string | undefined) {
     [parentSender?.first_name, parentSender?.last_name].filter(Boolean).join(" ").trim() ||
     null;
 
+  const visaDesignees = (metadata.visa_viseurs ?? {}) as Record<string, string>;
+  const designatedViseurId = currentState ? visaDesignees[currentState.id] ?? null : null;
+
   return {
     reply,
     parent,
@@ -191,6 +219,12 @@ export function useEluReply(replyId: string | undefined) {
     isSigned: !!metadata.signed_at,
     isSent: !!metadata.sent_email_at,
     channel: reply?.channel ?? "paper",
+    visas,
+    isVisaState,
+    activeVisa: replyId ? activeVisaFor(visas, replyId, currentState?.id) : null,
+    viseurs,
+    designatedViseur: viseurs.find((v) => v.id === designatedViseurId) ?? null,
+    designatedViseurId,
     isLoading: replyLoading,
     /** Ni organisation gestionnaire, ni workflow de réponse : rien à proposer. */
     isUnconfigured: !!reply && !replyWorkflowId,

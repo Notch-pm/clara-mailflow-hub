@@ -137,4 +137,28 @@ describe("EluSignFooter", () => {
     const { container } = render(<EluSignFooter primary={null} secondary={[]} isPending={false} />);
     expect(container).toBeEmptyDOMElement();
   });
+
+  it("le visa demande confirmation et transmet le commentaire saisi", () => {
+    const run = vi.fn();
+    render(
+      <EluSignFooter primary={{ id: "visa", label: "Viser", run }} secondary={[]} isPending={false} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Viser" }));
+    expect(screen.getByText("Viser cette réponse ?")).toBeInTheDocument();
+    expect(run).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByRole("textbox", { name: /commentaire/i }), {
+      target: { value: "Vu, conforme." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Oui, viser" }));
+
+    expect(run).toHaveBeenCalledWith("Vu, conforme.");
+  });
+
+  it("la feuille de signature ne propose pas de commentaire", () => {
+    render(<EluSignFooter primary={signAction()} secondary={[]} isPending={false} />);
+    fireEvent.click(screen.getByRole("button", { name: /signer et envoyer/i }));
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+  });
 });

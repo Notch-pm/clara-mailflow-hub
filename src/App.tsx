@@ -14,6 +14,7 @@ import { EluModeGate } from "@/components/elu/EluModeGate";
 import { EluLayout } from "@/components/elu/EluLayout";
 const EluAccueil = lazyRoute(() => import("@/pages/EluAccueil"));
 const EluASigner = lazyRoute(() => import("@/pages/EluASigner"));
+const EluAViser = lazyRoute(() => import("@/pages/EluAViser"));
 const EluReponse = lazyRoute(() => import("@/pages/EluReponse"));
 const EluRecherche = lazyRoute(() => import("@/pages/EluRecherche"));
 const EluUsager = lazyRoute(() => import("@/pages/EluUsager"));
@@ -219,12 +220,13 @@ const App = () => (
                     <Route path="/statistiques" element={<Suspense fallback={<LoadingScreen />}><StatistiquesPage /></Suspense>} />
                   </Route>
 
-                  {/* Espace élu : servi au rôle `elu` sur téléphone. `EluModeGate`
+                  {/* Espace élu : servi au rôle `elu` et aux viseurs sur téléphone. `EluModeGate`
                       y renvoie depuis `/`, et en ramène dès que l'une des trois
                       conditions tombe (rôle, largeur, affichage complet demandé). */}
                   <Route path="/elu" element={<EluLayout />}>
                     <Route index element={<Suspense fallback={<LoadingScreen />}><EluAccueil /></Suspense>} />
                     <Route path="a-signer" element={<Suspense fallback={<LoadingScreen />}><EluASigner /></Suspense>} />
+                    <Route path="a-viser" element={<Suspense fallback={<LoadingScreen />}><EluAViser /></Suspense>} />
                     <Route path="reponse/:replyId" element={<Suspense fallback={<LoadingScreen />}><EluReponse /></Suspense>} />
                     <Route path="recherche" element={<Suspense fallback={<LoadingScreen />}><EluRecherche /></Suspense>} />
                     <Route path="usager/:contactId" element={<Suspense fallback={<LoadingScreen />}><EluUsager /></Suspense>} />

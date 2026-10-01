@@ -24,7 +24,9 @@ export function EluReturnBanner() {
       className="flex h-10 shrink-0 items-center gap-1 border-b bg-muted/60 px-4 text-sm font-semibold text-primary md:hidden"
     >
       <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-      Espace élu
+      {/* « Affichage simplifié » plutôt qu'« Espace élu » : un viseur
+          gestionnaire y est servi aussi. Même mot que le réglage de « Mon profil ». */}
+      Affichage simplifié
     </Link>
   );
 }

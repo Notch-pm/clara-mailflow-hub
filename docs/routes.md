@@ -49,22 +49,25 @@ Toute nouvelle route doit être ajoutée ici dans la même PR que son ajout dans
 
 ## Espace élu (`ProtectedRoutes` + `EluModeGate` + `EluLayout`)
 
-Servi au rôle `elu` **sur téléphone** (moins de 768 px), sauf s'il a demandé l'affichage
+Servi au rôle `elu` **et aux viseurs** (`organization_users.is_viseur`, quel que soit leur rôle —
+depuis le 2026-10-01) **sur téléphone** (moins de 768 px), sauf s'ils ont demandé l'affichage
 complet. `EluModeGate` (`src/components/elu/EluModeGate.tsx`) arbitre : il renvoie `/` vers
 `/elu` quand les trois conditions tiennent, et ramène `/elu/*` vers `/` dès que l'une tombe
-— changement de rôle, écran élargi, affichage complet demandé. Les autres rôles ne voient
-jamais ces routes. Réglage retenu par appareil : `clara.elu-affichage:<userId>` en
+— changement de rôle ou d'attribut, écran élargi, affichage complet demandé. Les autres
+utilisateurs ne voient jamais ces routes. Pour un viseur qui n'est pas élu, l'onglet « À signer »
+n'apparaît que s'il est aussi signataire (`is_signataire`). Réglage retenu par appareil : `clara.elu-affichage:<userId>` en
 `localStorage` (`src/lib/elu-mode.ts`).
 
 Un lien profond vers un écran classique (`/courrier/:id` depuis une notification) reste servi
-par `AppLayout`, qui pose alors un retour « ‹ Espace élu » (`EluReturnBanner`).
+par `AppLayout`, qui pose alors un retour « ‹ Affichage simplifié » (`EluReturnBanner`).
 
 | Path | Page | Description |
 |---|---|---|
-| `/elu` | `EluAccueil` | Ce qui attend l'élu : courriers à signer, compteurs du mois, accès à la recherche. |
+| `/elu` | `EluAccueil` | Ce qui attend l'élu : courriers à signer, réponses à viser (s'il est viseur), compteurs du mois, accès à la recherche. |
 | `/elu/a-signer` | `EluASigner` | File des réponses en attente de sa signature, avec leur ancienneté. Visible même s'il n'est pas signataire (état vide). |
-| `/elu/reponse/:replyId` | `EluReponse` | Lecture d'une réponse et actions du workflow (signer, transitions secondaires). |
-| `/elu/courrier/:courierId` | `EluCourrier` | Le courrier reçu, en lecture seule : expéditeur, résumé de l'analyse, intentions, pièces jointes ; en bas, réponses apportées, commentaires internes et activité (mêmes libellés que l'onglet Historique, `src/lib/courier-history.ts`). Atteint depuis la file à signer, le détail d'une réponse et la recherche. |
+| `/elu/a-viser` | `EluAViser` | File des réponses en attente de son visa (`listMyVisaQueue`, clé `visa-queue` partagée avec le tableau de bord), les siennes d'abord. Onglet affiché seulement si `organization_users.is_viseur`. |
+| `/elu/reponse/:replyId` | `EluReponse` | Lecture d'une réponse et actions du workflow (signer, viser avec commentaire facultatif, transitions secondaires). Dans une étape de visa non visée, seules les sorties libres sans visa sont proposées (`src/lib/reply-visa.ts`, miroir du trigger `couriers_enforce_visa`) ; trace des visas affichée. |
+| `/elu/courrier/:courierId` | `EluCourrier` | Le courrier reçu, en lecture seule, avec **toutes** les informations du poste de travail (depuis le 2026-10-01), l'essentiel d'abord : usager (lien vers sa fiche), service instructeur, résumé, tags, réponses ; puis informations, délais, pièces jointes (ouvrables), texte du courriel, actions liées (une demande Iris ouvre `/elu/demande/:id`), actions suggérées, courriers liés, participants, commentaires internes, historique (replié). Atteint depuis les files à signer et à viser, le détail d'une réponse et la recherche. |
 | `/elu/recherche` | `EluRecherche` | Derniers courriers reçus tant que rien n'est saisi, puis recherche courriers + usagers (`useGlobalSearch`, partagée avec la recherche globale). |
 | `/elu/usager/:contactId` | `EluUsager` | Fiche d'un usager : coordonnées cliquables, ses courriers (un courrier reçu ouvre `/elu/courrier/:id`, une réponse `/elu/reponse/:id`) et ses demandes Iris (`/elu/demande/:id`). |
 | `/elu/demande/:irisRequestId` | `EluDemande` | Une demande Iris vue par l'élu : ce que demande l'usager, statut, réponse apportée, puis interventions, commentaires internes et activité. |

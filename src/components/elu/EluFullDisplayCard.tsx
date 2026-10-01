@@ -11,15 +11,15 @@ import { useEluMode } from "@/contexts/EluModeContext";
  * les règle séparément, ce qui est le comportement souhaitable — la tablette a
  * la place d'afficher l'application complète.
  *
- * La carte ne se montre que là où le réglage a un effet : rôle élu, sur un
+ * La carte ne se montre que là où le réglage a un effet : élu ou viseur, sur un
  * téléphone. Elle porte donc sa propre `Card`, faute de quoi « Mon profil »
  * afficherait un cadre vide à tous les autres.
  */
 export function EluFullDisplayCard() {
-  const { isElu, isPhone, optedOut, setOptedOut } = useEluMode();
+  const { eligible, isPhone, optedOut, setOptedOut } = useEluMode();
   const id = useId();
 
-  if (!isElu || !isPhone) return null;
+  if (!eligible || !isPhone) return null;
 
   return (
     <Card>
@@ -37,8 +37,8 @@ export function EluFullDisplayCard() {
               Affichage simplifié
             </span>
             <span className="text-xs text-muted-foreground">
-              Des écrans conçus pour le téléphone : ce qui attend votre signature, la recherche
-              et les indicateurs.
+              Des écrans conçus pour le téléphone : ce qui attend votre signature ou votre visa, la
+              recherche et les indicateurs.
             </span>
           </label>
         </div>

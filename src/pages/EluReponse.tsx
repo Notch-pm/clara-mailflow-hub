@@ -6,6 +6,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { useEluReply } from "@/hooks/useEluReply";
 import { useSignAndAdvance } from "@/hooks/useSignAndAdvance";
+import { ReplyVisaTrail } from "@/components/courier/ReplyVisaTrail";
+import { visaPersonName } from "@/services/courierVisaService";
 
 /** « Réponse n°2 · courrier 2026-E-00025 · service Environnement » */
 function metaLine(parts: Array<string | null>): string {
@@ -20,6 +22,11 @@ export default function EluReponse() {
   const detail = useEluReply(replyId);
 
   const signatory = detail.signatories.find((s) => s.id === detail.signatoryId) ?? null;
+  const canVisa = detail.viseurs.some((v) => v.id === user?.id);
+  const visaPending = detail.isVisaState && !detail.activeVisa;
+  // Viser à la place du désigné est permis ; on le dit avant, la trace le dira après.
+  const visaOnBehalf =
+    visaPending && canVisa && !!detail.designatedViseurId && detail.designatedViseurId !== user?.id;
 
   const { primary, secondary, isPending } = useSignAndAdvance({
     organizationId,
@@ -34,7 +41,11 @@ export default function EluReponse() {
     isSigned: detail.isSigned,
     isSent: detail.isSent,
     canEmail: true,
-    onDone: () => navigate("/elu/a-signer", { replace: true }),
+    isVisaState: detail.isVisaState,
+    hasActiveVisa: !!detail.activeVisa,
+    canVisa,
+    // On revient à la file d'où l'on vient : celle des visas pour un visa.
+    onDone: () => navigate(visaPending ? "/elu/a-viser" : "/elu/a-signer", { replace: true }),
   });
 
   if (detail.isLoading) {
@@ -114,6 +125,34 @@ export default function EluReponse() {
             </span>
           )}
         </div>
+
+        {/* Le visa : qui est attendu, puis la trace de ceux déjà donnés. */}
+        {visaPending && (
+          <div className="flex flex-col gap-1 rounded-[--radius] border border-secondary bg-secondary/15 p-4">
+            <span className="text-[17px] font-semibold text-foreground">
+              {detail.currentState?.name ? `Étape « ${detail.currentState.name} »` : "Étape de visa"}
+            </span>
+            <span className="text-base leading-relaxed text-foreground">
+              {detail.designatedViseurId === user?.id
+                ? "Votre visa est attendu."
+                : detail.designatedViseur
+                  ? `En attente du visa de ${visaPersonName(detail.designatedViseur)}.`
+                  : "En attente du visa d'un viseur de l'organisation."}
+            </span>
+            {visaOnBehalf && (
+              <span className="text-[15px] text-muted-foreground">
+                Vous pouvez viser à sa place : la trace le mentionnera.
+              </span>
+            )}
+          </div>
+        )}
+
+        {detail.visas.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <span className="text-sm font-bold text-muted-foreground">Visas</span>
+            <ReplyVisaTrail visas={detail.visas} />
+          </div>
+        )}
 
         {detail.isUnconfigured && (
           <EluEmptyState>

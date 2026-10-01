@@ -10,6 +10,8 @@ export interface FilReply {
   subject: string | null;
   stateName: string | null;
   at: string | null;
+  signed: boolean;
+  sent: boolean;
 }
 
 export interface FilNote {
@@ -83,6 +85,8 @@ export function useEluCourrierFil(courierId: string | undefined) {
             subject: r.subject,
             stateName: r.workflow_state_id ? stateName.get(r.workflow_state_id) ?? null : null,
             at: r.created_at ?? null,
+            signed: !!r.metadata?.signed_at,
+            sent: !!r.metadata?.sent_email_at,
           }))
           .reverse(),
         notes: notes.map<FilNote>((n) => ({

@@ -5,6 +5,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { edgeError } from "@/lib/edge-error";
 import { signReply, transitionReplyState } from "@/services/courierReplyService";
 import { getSignatureDataUrl } from "@/services/signatoryService";
+import { grantVisa } from "@/services/courierVisaService";
+import { isFreeExitFromVisa } from "@/lib/reply-visa";
 import { appendSignature, buildSignatureBlock } from "@/lib/reply-signature";
 import type { EluTransitionChoice } from "@/hooks/useEluReply";
 import type { WorkflowState } from "@/types/courier";
@@ -31,13 +33,20 @@ export interface EluSignContext {
   isSigned: boolean;
   isSent: boolean;
   canEmail: boolean;
+  /** L'étape courante est une étape de visa. */
+  isVisaState?: boolean;
+  /** Un visa est en vigueur sur l'étape courante. */
+  hasActiveVisa?: boolean;
+  /** L'utilisateur est viseur de l'organisation gestionnaire. */
+  canVisa?: boolean;
   onDone: () => void;
 }
 
 export interface EluAction {
   id: string;
   label: string;
-  run: () => void;
+  /** Le visa reçoit le commentaire saisi dans la feuille de confirmation. */
+  run: (comment?: string) => void;
   /** Renseignée, elle explique pourquoi l'action est grisée. */
   disabledReason?: string | null;
 }
@@ -54,6 +63,11 @@ export interface EluAction {
  * avec le libellé que la collectivité leur a donné. « Renvoyer au service »
  * n'est donc pas un bouton du produit : c'est une transition que chaque
  * collectivité modélise, ou non — s'il n'y en a aucune, il n'y a aucun bouton.
+ *
+ * Dans une étape de visa pas encore visée, l'action principale est « Viser »
+ * (visa puis transition nominale, comme « Viser et avancer » du composeur), et
+ * les secondaires se limitent aux sorties que la base laisse passer sans visa
+ * — retour, abandon (`isFreeExitFromVisa`).
  */
 export function useSignAndAdvance(ctx: EluSignContext): {
   primary: EluAction | null;
@@ -77,6 +91,8 @@ export function useSignAndAdvance(ctx: EluSignContext): {
     void queryClient.invalidateQueries({ queryKey: ["elu-reply"] });
     void queryClient.invalidateQueries({ queryKey: ["elu-signature-queue"] });
     void queryClient.invalidateQueries({ queryKey: ["elu-signature-waiting"] });
+    void queryClient.invalidateQueries({ queryKey: ["reply-visas"] });
+    void queryClient.invalidateQueries({ queryKey: ["visa-queue"] });
     void queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
   }
 
@@ -140,6 +156,28 @@ export function useSignAndAdvance(ctx: EluSignContext): {
     onSettled: settle,
   });
 
+  // Le serveur refuse le visa d'un non-viseur, et toute sortie vers l'avant
+  // sans visa : l'écran ne fait que proposer.
+  const visaAndAdvance = useMutation({
+    mutationFn: async (comment: string | undefined) => {
+      if (!ctx.currentState) throw new Error("Étape de visa introuvable.");
+      await grantVisa({
+        organizationId: ctx.organizationId!,
+        parentCourierId: ctx.parentCourierId!,
+        replyId: ctx.replyId!,
+        stateId: ctx.currentState.id,
+        comment: comment ?? null,
+      });
+      if (nextEntry) await advance(nextEntry.target);
+    },
+    onSuccess: () => {
+      toast.success("Réponse visée");
+      ctx.onDone();
+    },
+    onError: (error: Error) => toast.error(error.message || "Le visa a échoué."),
+    onSettled: settle,
+  });
+
   const transition = useMutation({
     mutationFn: async (target: EluTransitionChoice["target"]) => advance(target),
     onSuccess: () => ctx.onDone(),
@@ -147,9 +185,23 @@ export function useSignAndAdvance(ctx: EluSignContext): {
     onSettled: settle,
   });
 
-  const isPending = signAndAdvance.isPending || sendAndAdvance.isPending || transition.isPending;
+  const isPending =
+    signAndAdvance.isPending || sendAndAdvance.isPending || visaAndAdvance.isPending || transition.isPending;
+
+  const visaPending = !!ctx.isVisaState && !ctx.hasActiveVisa;
 
   const primary = useMemo<EluAction | null>(() => {
+    // Viser n'exige pas de transition suivante : sans elle, le visa est tout de
+    // même consigné et la réponse reste dans l'étape.
+    if (visaPending) {
+      return {
+        id: "visa",
+        label: "Viser",
+        disabledReason: ctx.canVisa ? null : "Vous n'êtes pas viseur de l'organisation gestionnaire.",
+        run: (comment) => visaAndAdvance.mutate(comment),
+      };
+    }
+
     if (!nextEntry) return null;
 
     const requiresSignature = !!ctx.currentState?.requires_signature && !ctx.isSigned;
@@ -187,18 +239,20 @@ export function useSignAndAdvance(ctx: EluSignContext): {
       label: nextEntry.label,
       run: () => transition.mutate(nextEntry.target),
     };
-  }, [nextEntry, ctx, signAndAdvance, sendAndAdvance, transition]);
+  }, [nextEntry, ctx, visaPending, signAndAdvance, sendAndAdvance, visaAndAdvance, transition]);
 
   const secondary = useMemo<EluAction[]>(
     () =>
       // Le retour en tête : c'est là que la plupart des collectivités
       // modéliseront « renvoyer au service ».
-      [...(prevEntry ? [prevEntry] : []), ...others].map((choice) => ({
-        id: choice.transitionId,
-        label: choice.label,
-        run: () => transition.mutate(choice.target),
-      })),
-    [prevEntry, others, transition],
+      [...(prevEntry ? [prevEntry] : []), ...others]
+        .filter((choice) => !visaPending || isFreeExitFromVisa(choice))
+        .map((choice) => ({
+          id: choice.transitionId,
+          label: choice.label,
+          run: () => transition.mutate(choice.target),
+        })),
+    [prevEntry, others, transition, visaPending],
   );
 
   return { primary, secondary, isPending };

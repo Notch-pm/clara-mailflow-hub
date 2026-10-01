@@ -1,9 +1,11 @@
-import { ArrowRight, ChevronRight, PenLine } from "lucide-react";
+import { ArrowRight, ChevronRight, PenLine, Stamp, type LucideIcon } from "lucide-react";
 import { Link } from "react-router-dom";
 import { EluScreen } from "@/components/elu/EluScreenHeader";
 import { EluSearchLink } from "@/components/elu/EluSearchField";
 import { useEluMonthCounters } from "@/hooks/useEluMonthCounters";
 import { useEluSignatureQueue } from "@/hooks/useEluSignatureQueue";
+import { useEluVisaQueue } from "@/hooks/useEluVisaQueue";
+import { cn } from "@/lib/utils";
 import { oldestWaitingLabel } from "@/lib/elu-delay";
 
 function CounterRow({ value, label, meta }: { value: number; label: string; meta: string }) {
@@ -24,8 +26,59 @@ function CounterRow({ value, label, meta }: { value: number; label: string; meta
   );
 }
 
+/** Carte d'une file d'attente (signature, visa) : le compteur, l'ancienneté, le bouton. */
+function QueueCard({
+  icon: Icon,
+  count,
+  noun,
+  meta,
+  cta,
+  to,
+  tone,
+}: {
+  icon: LucideIcon;
+  count: number;
+  noun: string;
+  meta: string;
+  cta: string;
+  to: string;
+  tone: "primary" | "quiet";
+}) {
+  const primary = tone === "primary";
+  return (
+    <div
+      className={cn(
+        "flex flex-col gap-[18px] rounded-[--radius] p-5",
+        primary ? "bg-primary text-primary-foreground shadow-airbnb-lg" : "border bg-card text-foreground shadow-airbnb-sm",
+      )}
+    >
+      <div className="flex items-start gap-3.5">
+        <Icon className={cn("mt-0.5 h-[30px] w-[30px] shrink-0", !primary && "text-primary")} aria-hidden="true" />
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[40px] font-extrabold leading-none tracking-tight tabular-nums">{count}</span>
+          <span className="text-[19px] font-semibold">{noun}</span>
+          <span className={cn("text-[15px]", primary ? "opacity-85" : "text-muted-foreground")}>{meta}</span>
+        </div>
+      </div>
+      {count > 0 && (
+        <Link
+          to={to}
+          className={cn(
+            "flex min-h-14 items-center justify-center gap-2 rounded-xl text-[18px] font-bold transition active:scale-[0.98]",
+            primary ? "bg-primary-foreground text-primary" : "bg-primary text-primary-foreground",
+          )}
+        >
+          {cta}
+          <ArrowRight className="h-5 w-5" aria-hidden="true" />
+        </Link>
+      )}
+    </div>
+  );
+}
+
 export default function EluAccueil() {
   const { count, items, isSignatory } = useEluSignatureQueue();
+  const visa = useEluVisaQueue();
   const { counters } = useEluMonthCounters();
 
   const today = new Date().toLocaleDateString("fr-FR", {
@@ -35,6 +88,7 @@ export default function EluAccueil() {
     year: "numeric",
   });
   const oldest = items.length > 0 ? items[0].waitingDays : 0;
+  const oldestVisa = Math.max(0, ...visa.items.map((i) => i.waitingDays));
 
   return (
     <EluScreen>
@@ -43,34 +97,33 @@ export default function EluAccueil() {
         <span className="text-base text-muted-foreground first-letter:uppercase">{today}</span>
       </div>
 
-      {/* La carte n'a de sens que pour un signataire : sans fiche, elle
-          promettrait une action qui ne viendra jamais. */}
+      {/* Chaque carte n'a de sens que pour qui peut agir : sans fiche de
+          signataire (ou sans l'attribut viseur), elle promettrait une action
+          qui ne viendra jamais. Un élu peut porter les deux qualités. */}
       {isSignatory && (
-        <div className="flex flex-col gap-[18px] rounded-[--radius] bg-primary p-5 text-primary-foreground shadow-airbnb-lg">
-          <div className="flex items-start gap-3.5">
-            <PenLine className="mt-0.5 h-[30px] w-[30px] shrink-0" aria-hidden="true" />
-            <div className="flex flex-col gap-0.5">
-              <span className="text-[40px] font-extrabold leading-none tracking-tight tabular-nums">
-                {count}
-              </span>
-              <span className="text-[19px] font-semibold">
-                {count === 1 ? "courrier à signer" : "courriers à signer"}
-              </span>
-              <span className="text-[15px] opacity-85">
-                {count === 0 ? "Rien ne vous attend" : oldestWaitingLabel(oldest)}
-              </span>
-            </div>
-          </div>
-          {count > 0 && (
-            <Link
-              to="/elu/a-signer"
-              className="flex min-h-14 items-center justify-center gap-2 rounded-xl bg-primary-foreground text-[18px] font-bold text-primary transition active:scale-[0.98]"
-            >
-              Ouvrir la signature
-              <ArrowRight className="h-5 w-5" aria-hidden="true" />
-            </Link>
-          )}
-        </div>
+        <QueueCard
+          icon={PenLine}
+          count={count}
+          noun={count === 1 ? "courrier à signer" : "courriers à signer"}
+          meta={count === 0 ? "Rien ne vous attend" : oldestWaitingLabel(oldest)}
+          cta="Ouvrir la signature"
+          to="/elu/a-signer"
+          tone="primary"
+        />
+      )}
+
+      {visa.isViseur && (
+        <QueueCard
+          icon={Stamp}
+          count={visa.count}
+          noun={visa.count === 1 ? "réponse à viser" : "réponses à viser"}
+          meta={visa.count === 0 ? "Rien ne vous attend" : oldestWaitingLabel(oldestVisa)}
+          cta="Ouvrir les visas"
+          to="/elu/a-viser"
+          // Une seule carte pleine à l'écran : la signature garde l'accent
+          // quand l'élu porte les deux qualités.
+          tone={isSignatory ? "quiet" : "primary"}
+        />
       )}
 
       <EluSearchLink />
