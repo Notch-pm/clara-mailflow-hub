@@ -752,6 +752,8 @@ export type Database = {
           consents: Json
           created_at: string
           created_by: string | null
+          deleted_at: string | null
+          deleted_by: string | null
           direction: Database["public"]["Enums"]["courier_direction"]
           dismissed_link_suggestions: Json
           fts_body: unknown
@@ -777,6 +779,8 @@ export type Database = {
           consents?: Json
           created_at?: string
           created_by?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
           direction: Database["public"]["Enums"]["courier_direction"]
           dismissed_link_suggestions?: Json
           fts_body?: unknown
@@ -802,6 +806,8 @@ export type Database = {
           consents?: Json
           created_at?: string
           created_by?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
           direction?: Database["public"]["Enums"]["courier_direction"]
           dismissed_link_suggestions?: Json
           fts_body?: unknown
@@ -2268,6 +2274,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      can_access_mailroom: { Args: { _org: string }; Returns: boolean }
       claim_analysis_jobs: {
         Args: { p_limit?: number }
         Returns: {
@@ -2304,6 +2311,7 @@ export type Database = {
         Args: { p_id: string; p_reason: string }
         Returns: undefined
       }
+      empty_trash: { Args: { p_organization_id: string }; Returns: number }
       enqueue_courier_analysis: {
         Args: { p_courier_id: string; p_kind?: string }
         Returns: string
@@ -2360,6 +2368,10 @@ export type Database = {
           is_active: boolean
         }[]
       }
+      purge_trashed_courier: {
+        Args: { p_courier_id: string; p_organization_id: string }
+        Returns: undefined
+      }
       purge_expired_data: { Args: never; Returns: Json }
       register_push_subscription: {
         Args: {
@@ -2369,6 +2381,10 @@ export type Database = {
           p_user_agent?: string
         }
         Returns: string
+      }
+      restore_courier: {
+        Args: { p_courier_id: string; p_organization_id: string }
+        Returns: undefined
       }
       requeue_stale_analysis_jobs: {
         Args: { p_older_than?: string }
@@ -2508,6 +2524,27 @@ export type Database = {
           p_username: string
         }
         Returns: undefined
+      }
+      trash_courier: {
+        Args: { p_courier_id: string; p_organization_id: string }
+        Returns: undefined
+      }
+      trashed_couriers: {
+        Args: { p_organization_id: string }
+        Returns: {
+          channel: string
+          chrono: string
+          created_at: string
+          deleted_at: string
+          deleted_by_name: string
+          direction: string
+          id: string
+          purge_at: string
+          received_at: string
+          reply_count: number
+          sender_name: string
+          subject: string
+        }[]
       }
       trigger_fetch_inbound_emails: { Args: never; Returns: number }
       trigger_iris_sync: { Args: never; Returns: number }

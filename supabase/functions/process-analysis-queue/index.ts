@@ -201,6 +201,27 @@ Deno.serve(async (req) => {
       try {
         let outcome: CallOutcome = { ok: true, kind: "ok" };
 
+        // Courrier passé à la corbeille depuis la mise en file : rien à
+        // analyser, et aucune dépense IA pour un courrier qui sera purgé.
+        const { data: target, error: targetErr } = await admin
+          .from("couriers")
+          .select("deleted_at")
+          .eq("id", job.courier_id)
+          .maybeSingle();
+        if (targetErr) throw new Error(targetErr.message);
+        if (!target || target.deleted_at) {
+          await admin
+            .from("courier_analysis_jobs")
+            .update({
+              status: "done",
+              finished_at: new Date().toISOString(),
+              last_error: "Courrier dans la corbeille : analyse abandonnée",
+            })
+            .eq("id", job.id);
+          done++;
+          continue;
+        }
+
         // Un courrier SANS pièce (email sans pièce jointe, saisie manuelle) n'a
         // rien à océriser : son texte est dans le corps. `ocr-courier` refuse alors
         // (400 « Aucun document à extraire ») — sans ce saut, un job `full` lancé

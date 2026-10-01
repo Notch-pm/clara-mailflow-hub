@@ -48,6 +48,7 @@ import MailboxSidePanel from "@/components/courier/MailboxSidePanel";
 import NewCourierDialog from "@/components/courier/NewCourierDialog";
 import mailboxIcon from "@/assets/icons/mailbox.svg";
 import type { CourierWithRelations } from "@/types/courier";
+import { TRASH_RETENTION_DAYS } from "@/lib/trash";
 
 const LAST_LOGIN_KEY = "clara_last_login_at";
 
@@ -93,17 +94,13 @@ export default function BoiteAuxLettres() {
     const { error } = await deleteCourier(organizationId, courierToDelete.id);
     setDeleting(false);
     if (error) {
-      const isLinkedReply = error.message?.includes("parent_courier_id");
-      toast({
-        title: "Suppression impossible",
-        description: isLinkedReply
-          ? "Ce courrier a des réponses associées. Supprimez d'abord les réponses avant de supprimer le courrier parent."
-          : error.message,
-        variant: "destructive",
-      });
+      toast({ title: "Suppression impossible", description: error.message, variant: "destructive" });
       return;
     }
-    toast({ title: "Courrier supprimé" });
+    toast({
+      title: "Courrier placé dans la corbeille",
+      description: `Il pourra être restauré pendant ${TRASH_RETENTION_DAYS} jours.`,
+    });
     if (selectedCourier?.id === courierToDelete.id) {
       setSelectedCourier(null);
     }
@@ -111,6 +108,7 @@ export default function BoiteAuxLettres() {
     // Une seule clé désormais : la requête « mailbox-unassigned » a fusionné
     // avec celle-ci (paramètre includeNullState du RPC).
     queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
+    queryClient.invalidateQueries({ queryKey: ["trash-couriers"] });
   }
   const [selectedCourier, setSelectedCourier] = useState<CourierWithRelations | null>(null);
   const [newDialogOpen, setNewDialogOpen] = useState(false);
@@ -502,9 +500,9 @@ export default function BoiteAuxLettres() {
           <AlertDialogHeader>
             <AlertDialogTitle>Supprimer ce courrier ?</AlertDialogTitle>
             <AlertDialogDescription>
-              Cette action est définitive. Le courrier
-              {courierToDelete?.subject ? ` « ${courierToDelete.subject} »` : ""} sera
-              supprimé de la boîte aux lettres.
+              Le courrier
+              {courierToDelete?.subject ? ` « ${courierToDelete.subject} »` : ""} sera placé
+              dans la corbeille, avec ses réponses. Il pourra être restauré pendant {TRASH_RETENTION_DAYS} jours.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

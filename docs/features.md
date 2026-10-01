@@ -139,6 +139,23 @@ service gestionnaire, puis **suit et relance** ; il n'instruit pas. Écran `/cou
 - Pas de « Clôturer » sur un courrier renvoyé : sans organisation il n'a plus de workflow ; on le
   réoriente.
 
+### Corbeille et spam (depuis le 2026-10-01)
+
+« Supprimer » (boîte aux lettres, courrier entrant) ne détruit plus rien : `deleteCourier` appelle
+le RPC `trash_courier`, qui pose `deleted_at` sur le courrier et ses réponses. Le courrier
+disparaît de toutes les listes, recherches, statistiques et de la file d'analyse
+(`process-analysis-queue` clôt sans dépense IA un job dont le courrier est passé à la corbeille).
+
+- Écran `/corbeille` (`src/pages/Corbeille.tsx`), visible comme « Courrier entrant ».
+  Restaurer ramène le courrier tel quel (workflow, notes, réponses) ; supprimer définitivement
+  et « Vider la corbeille » font un vrai `DELETE` (cascade et outbox `storage_deletions`).
+- **30 jours**, puis la purge nocturne `purge_expired_data()` efface d'elle-même (clé
+  `trashed_couriers_purged` du compte rendu). Constante d'affichage : `src/lib/trash.ts`.
+- « Spam » n'est qu'un nom : un seul geste, « Supprimer ». Le mail supprimé n'est pas réimporté
+  par l'IMAP tant qu'il est dans la corbeille (la déduplication voit `deleted_at`) — après la
+  purge, comme avant, rien ne l'empêche s'il est resté sur le serveur.
+- Événements `courier_trashed` / `courier_restored` dans l'historique.
+
 ### Rédaction de réponse IA
 - Edge function `draft-reply` : prend `courier_id`, `response_type`, instructions additionnelles → renvoie du HTML prêt à coller dans l'éditeur Tiptap.
 - UI : `ReplyComposer.tsx`.

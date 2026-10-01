@@ -99,6 +99,7 @@ export function navItemVisible(
     case "/statistiques":
       return canAccessStats(profile, membership);
     case "/courrier-entrant":
+    case "/corbeille":
       return canAccessMailroom(profile, membership);
     case "/boite-aux-lettres":
       return showsMailbox(profile, membership);

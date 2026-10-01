@@ -4,6 +4,8 @@
 
 export const COURIER_EVENT_LABELS: Record<string, string> = {
   courier_created: "Création du courrier",
+  courier_trashed: "Placé dans la corbeille",
+  courier_restored: "Restauré depuis la corbeille",
   instruction_started: "Début d'instruction",
   note_added: "Note ajoutée",
   note_updated: "Note modifiée",

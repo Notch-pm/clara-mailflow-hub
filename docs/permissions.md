@@ -87,6 +87,7 @@ Contrairement aux courriers, ce filtre n'est **pas** UI-only : ce sont les donn�
 |---|---|---|
 | `/` | Tableau de bord | Vue d'ensemble + courriers en attente de signature |
 | `/boite-aux-lettres` | Boîte aux lettres | Nouveaux courriers reçus. Masquée dans la navigation d'un gestionnaire courrier non administrateur |
+| `/corbeille` | Corbeille et spam | **Mêmes que Courrier entrant** (`canAccessMailroom`, miroir SQL `can_access_mailroom`) ; restaurer / supprimer définitivement / vider exigent en plus `canEditCouriers` (`is_editor_of`). Barre mobile : gestionnaire courrier seulement |
 | `/courrier-entrant` | Courrier entrant | **Gestionnaire courrier, administrateur, superadmin** (`canAccessMailroom`) — sinon redirection vers la boîte aux lettres |
 | `/courriers-en-instruction` | En instruction | États `in_progress` |
 | `/courriers-traites` | Traités | États `processed` |

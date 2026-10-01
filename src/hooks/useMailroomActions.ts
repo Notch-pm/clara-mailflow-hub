@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { getMailroomCourier } from "@/services/mailroomService";
 import { enqueueCourierAnalyses } from "@/services/courierAnalysisJobService";
 import { deleteCourier } from "@/services/courierService";
+import { TRASH_RETENTION_DAYS } from "@/lib/trash";
 import { remindService, routeCourier, routeCouriers, transferCourier } from "@/services/courierRoutingService";
 import type { SocleOrgWithConfig } from "@/services/socleOrgConfigService";
 
@@ -96,22 +97,19 @@ export function useMailroomActions(organizationId: string) {
     onError: (err: Error) => toast.error(err.message),
   });
 
-  // Même geste et même garde que la boîte aux lettres : un courrier qui a des
-  // réponses ne se supprime pas avant elles (contrainte parent_courier_id).
+  // Même geste que la boîte aux lettres : le courrier part dans la corbeille
+  // (avec ses réponses), restaurable 30 jours depuis « Corbeille et spam ».
   const remove = useMutation({
     mutationFn: async (courierId: string) => {
       const { error } = await deleteCourier(organizationId, courierId);
-      if (error) {
-        throw new Error(
-          error.message?.includes("parent_courier_id")
-            ? "Ce courrier a des réponses associées. Supprimez d'abord les réponses avant de supprimer le courrier parent."
-            : error.message,
-        );
-      }
+      if (error) throw new Error(error.message);
     },
     onSuccess: () => {
       refresh();
-      toast.success("Courrier supprimé");
+      queryClient.invalidateQueries({ queryKey: ["trash-couriers"] });
+      toast.success("Courrier placé dans la corbeille", {
+        description: `Il pourra être restauré pendant ${TRASH_RETENTION_DAYS} jours.`,
+      });
     },
     onError: (err: Error) => toast.error("Suppression impossible", { description: err.message }),
   });

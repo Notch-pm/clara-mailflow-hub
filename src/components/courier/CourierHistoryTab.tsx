@@ -41,6 +41,8 @@ interface UnifiedEvent {
 
 const ICONS: Record<string, JSX.Element> = {
   courier_created:       <FilePlus2 className="h-3.5 w-3.5" />,
+  courier_trashed:       <Trash2 className="h-3.5 w-3.5" />,
+  courier_restored:      <RotateCcw className="h-3.5 w-3.5" />,
   instruction_started:   <PlayCircle className="h-3.5 w-3.5" />,
   note_added:            <StickyNote className="h-3.5 w-3.5" />,
   note_updated:          <Pencil className="h-3.5 w-3.5" />,

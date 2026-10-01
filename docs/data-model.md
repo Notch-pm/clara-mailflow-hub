@@ -136,6 +136,7 @@ Table centrale. Tags stockés dans `metadata->'tags'` (tableau JSON de strings).
 | `resolved_at` | timestamptz | Courrier reçu : entrée dans un état `processed`/`archived` ; **remise à NULL** s'il en ressort. Trigger `couriers_track_resolution` (BEFORE). Passer de traité à archivé ne la déplace pas |
 | `consents` | jsonb NOT NULL défaut `[]` | Consentements RGPD recueillis **au dépôt portail** : `[{kind, granted, statement, collected_at}]`. Écrit par `portal-form` seul, **immuable** ensuite. Voir ci-dessous. |
 | `fts_subject` / `fts_body` | tsvector | index full-text français |
+| `deleted_at` / `deleted_by` | timestamptz / uuid FK → users | **Corbeille** (2026-10-01). NULL = courrier vivant. Posés par `trash_courier` sur le courrier ET ses réponses (même horodatage, d'où une restauration groupée). La policy `auth_select` ajoute `deleted_at IS NULL` ; les RPC SECURITY DEFINER (`search_couriers`, `mailroom_couriers`, `enqueue_courier_analysis`, `courier_creation_block_reason`) filtrent explicitement. Le service role voit tout — la déduplication IMAP doit voir la corbeille. Purge définitive à 30 jours par `purge_expired_data()` |
 
 **Référence du registre (`chrono`) — implémentée le 2026-09-13.** Format `AAAA-E|S|I-NNNNN`,
 compteurs dans `courier_sequences` (une suite par organisation × année × sens).

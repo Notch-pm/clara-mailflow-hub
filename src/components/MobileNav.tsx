@@ -1,5 +1,5 @@
 import { NavLink } from "@/components/NavLink";
-import { Home, Send, FileClock, CheckCircle2, Archive, Mailbox, Inbox, BarChart3, LucideIcon } from "lucide-react";
+import { Home, Send, FileClock, CheckCircle2, Archive, Mailbox, Inbox, BarChart3, Trash2, LucideIcon } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { isServiceCourrier, navItemVisible } from "@/lib/permissions";
 
@@ -18,16 +18,19 @@ const baseNavItems: NavItem[] = [
   { title: "Archivés", url: "/courriers-archives", icon: Archive },
   { title: "Sortants", url: "/courriers-sortants", icon: Send },
   { title: "Stats", url: "/statistiques", icon: BarChart3 },
+  { title: "Corbeille", url: "/corbeille", icon: Trash2 },
 ];
+
+const MAILROOM_ONLY = new Set(["/courrier-entrant", "/corbeille"]);
 
 export function MobileNav() {
   const { profile, membership } = useAuth();
-  // Barre étroite : « Entrant » n'y figure que pour le gestionnaire courrier,
-  // pas pour l'administrateur qui garde la boîte aux lettres.
+  // Barre étroite : « Entrant » et « Corbeille » n'y figurent que pour le
+  // gestionnaire courrier, pas pour l'administrateur qui garde la boîte aux lettres.
   const navItems = baseNavItems.filter(
     (it) =>
       navItemVisible(it.url, profile, membership) &&
-      (it.url !== "/courrier-entrant" || isServiceCourrier(membership)),
+      (!MAILROOM_ONLY.has(it.url) || isServiceCourrier(membership)),
   );
   return (
     <nav aria-label="Navigation principale" className="fixed bottom-0 left-0 right-0 z-40 border-t py-1.5 md:hidden bg-rail">

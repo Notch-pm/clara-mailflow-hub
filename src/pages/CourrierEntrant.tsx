@@ -35,6 +35,7 @@ import { useMailroomActions } from "@/hooks/useMailroomActions";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { channelLabels } from "@/hooks/useCourierWorkspace";
 import { canAccessMailroom, canEditCouriers } from "@/lib/permissions";
+import { TRASH_RETENTION_DAYS } from "@/lib/trash";
 import {
   analysisCandidates,
   batchCandidates,
@@ -324,8 +325,9 @@ export default function CourrierEntrant() {
           <AlertDialogHeader>
             <AlertDialogTitle>Supprimer ce courrier ?</AlertDialogTitle>
             <AlertDialogDescription>
-              Cette action est définitive. Le courrier
-              {toDelete?.row.subject ? ` « ${toDelete.row.subject} »` : ""} sera supprimé.
+              Le courrier
+              {toDelete?.row.subject ? ` « ${toDelete.row.subject} »` : ""} sera placé dans la corbeille, avec
+              ses réponses. Il pourra être restauré pendant {TRASH_RETENTION_DAYS} jours.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

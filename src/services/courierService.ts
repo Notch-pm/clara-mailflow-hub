@@ -73,10 +73,14 @@ export async function updateCourier(organizationId: string, courierId: string, d
     .single();
 }
 
+/**
+ * « Supprimer » place le courrier — et ses réponses — dans la corbeille, d'où
+ * il se restaure pendant 30 jours (voir `trashService.ts`). La suppression
+ * définitive ne se fait que depuis l'écran « Corbeille et spam » ou par la purge.
+ */
 export async function deleteCourier(organizationId: string, courierId: string) {
-  return supabase
-    .from("couriers")
-    .delete()
-    .eq("organization_id", organizationId)
-    .eq("id", courierId);
+  return supabase.rpc("trash_courier", {
+    p_organization_id: organizationId,
+    p_courier_id: courierId,
+  });
 }
