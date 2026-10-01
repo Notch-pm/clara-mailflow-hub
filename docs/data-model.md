@@ -107,6 +107,7 @@ Appartenance d'un user à une org. Source unique des permissions d'org.
 | `role` | varchar | `'admin'` \| `'administrateur'` \| `'member'` |
 | `is_active` | boolean | |
 | `is_signataire` | boolean | |
+| `is_viseur` | boolean | droit de viser une réponse (étape de visa), indépendant du rôle — 2026-10-01 |
 | `is_service_courrier` | boolean | profil « gestionnaire courrier » (écran Courrier entrant), indépendant du rôle — 2026-10-01 |
 | `signataire_title` | text | |
 
@@ -343,7 +344,8 @@ référence n'était jamais attribuée.
 | `name` | varchar | |
 | `category` | enum | `pending` \| `processing` \| `processed` \| `archived` |
 | `is_initial` / `is_final` | boolean | |
-| `requires_signature` / `is_send` | boolean | |
+| `requires_signature` / `is_send` | boolean | un seul état par workflow (règle UI) |
+| `requires_visa` | boolean | étape de visa — plusieurs possibles ; `CHECK workflow_states_visa_exclusive` : jamais avec signature ni envoi (2026-10-01) |
 
 #### `workflow_transitions`
 `from_state_id` → `to_state_id` avec `name` et `condition jsonb`.
@@ -379,6 +381,25 @@ Personnes autorisées à signer. Image de signature dans le bucket `signatures`.
 | `first_name` / `last_name` | varchar |
 | `title` | text |
 | `signature_storage_key` | text |
+
+#### `socle_organization_viseurs`
+Viseurs rattachés à une organisation (`socle_organization_id`, `user_id` → `users`, unique par couple). Lecture `is_member_of`, écriture `is_admin_of`. Un viseur vise les réponses des organisations auxquelles il est rattaché, à condition de porter `organization_users.is_viseur`.
+
+#### `courier_visas`
+Trace **immuable** des visas de réponse (2026-10-01) : aucune policy UPDATE/DELETE.
+
+| Colonne | Type | Notes |
+|---|---|---|
+| `courier_id` | uuid FK → couriers (CASCADE) | la réponse (outbound) |
+| `workflow_state_id` | uuid FK → workflow_states (SET NULL) | l'étape visée |
+| `state_name` | text | nom de l'étape figé au visa |
+| `user_id` | uuid FK → users | le viseur (= `auth.uid()`) |
+| `designated_user_id` | uuid | viseur désigné à ce moment (`couriers.metadata.visa_viseurs[state_id]`) — trace « à la place de » |
+| `comment` | text | facultatif |
+| `visa_at` | timestamptz | horodatage serveur |
+| `superseded_at` | timestamptz | posé quand la réponse revient dans l'étape : le visa est à refaire |
+
+Gardes : voir `docs/database-rls.md` (`courier_visas_validate`, `couriers_enforce_visa`, `couriers_supersede_visas`).
 
 #### `procedures`
 Démarches administratives. **Source de vérité : le Socle** (référentiel central), synchronisé chaque nuit par l'edge function `sync-socle-referentiel`. Plus de création/suppression côté Clara (policies RLS `admin_insert`/`admin_delete` supprimées) ; seul le toggle `is_displayed` reste éditable par les admins (`admin_update` conservé).

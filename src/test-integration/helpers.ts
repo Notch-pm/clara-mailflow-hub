@@ -14,6 +14,7 @@ export interface Fixtures {
     membreAlpha: string;
     consultantAlpha: string;
     signataireAlpha: string;
+    viseurAlpha: string;
     superadminTest: string;
     adminBeta: string;
     membreBeta: string;
@@ -30,7 +31,7 @@ export interface TenantFixture {
   workflowId: string;
   replyWorkflowId: string;
   states: { initial: string; processing: string; final: string };
-  replyStates: { initial: string; signature: string; final: string };
+  replyStates: { initial: string; signature: string; final: string; visa: string; abandon: string };
   signatoryId: string;
   couriers: { assigned: string; root: string; unassigned: string };
   tagId: string;

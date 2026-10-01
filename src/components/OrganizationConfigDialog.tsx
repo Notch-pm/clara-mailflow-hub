@@ -5,9 +5,11 @@ import {
   listOrgMemberIds,
   listOrgsWithConfig,
   listOrgSignatoryIds,
+  listOrgViseurIds,
   setImapBoxOrganization,
   setOrgMembers,
   setOrgSignatories,
+  setOrgViseurs,
   updateOrgConfig,
   type SocleOrgWithConfig,
 } from "@/services/socleOrgConfigService";
@@ -40,7 +42,7 @@ import { inheritedSlaTargets } from "@/lib/courier-sla";
 const NONE = "__none__";
 
 // Configuration Clara d'une (sous-)organisation Socle : workflows, boîte IMAP,
-// membres, signataires. Le libellé et les coordonnées viennent du Socle (lecture
+// membres, signataires, viseurs. Le libellé et les coordonnées viennent du Socle (lecture
 // seule). Le nœud RACINE porte en plus les paramètres globaux du tenant
 // (fichier domiciliaire, différenciation IMAP, conservation/purge) — stockés
 // sur `organizations`, seule l'UI a déménagé depuis l'ex-« Configuration générale ».
@@ -61,6 +63,7 @@ export default function OrganizationConfigDialog({ open, onOpenChange, org, orgI
   const [replyWorkflowId, setReplyWorkflowId] = useState<string>(NONE);
   const [imapSettingsId, setImapSettingsId] = useState<string>(NONE);
   const [signatoryIds, setSignatoryIds] = useState<string[]>([]);
+  const [viseurIds, setViseurIds] = useState<string[]>([]);
   const [memberIds, setMemberIds] = useState<string[]>([]);
   const [slaAck, setSlaAck] = useState("");
   const [slaResolution, setSlaResolution] = useState("");
@@ -127,6 +130,12 @@ export default function OrganizationConfigDialog({ open, onOpenChange, org, orgI
     enabled: open && !!org?.id,
   });
 
+  const { data: existingViseurIds } = useQuery({
+    queryKey: ["socle-org-viseurs", org?.id],
+    queryFn: () => listOrgViseurIds(org!.id),
+    enabled: open && !!org?.id,
+  });
+
   const { data: existingMemberIds } = useQuery({
     queryKey: ["socle-org-members", org?.id],
     queryFn: () => listOrgMemberIds(org!.id),
@@ -139,6 +148,7 @@ export default function OrganizationConfigDialog({ open, onOpenChange, org, orgI
     setReplyWorkflowId(org.reply_workflow_id ?? NONE);
     setImapSettingsId(org.imap_configs?.[0]?.id ?? NONE);
     setSignatoryIds([]);
+    setViseurIds([]);
     setMemberIds([]);
     setSlaAck(org.sla_ack_business_days != null ? String(org.sla_ack_business_days) : "");
     setSlaResolution(
@@ -149,6 +159,9 @@ export default function OrganizationConfigDialog({ open, onOpenChange, org, orgI
   useEffect(() => {
     if (existingSignatoryIds) setSignatoryIds(existingSignatoryIds);
   }, [existingSignatoryIds]);
+  useEffect(() => {
+    if (existingViseurIds) setViseurIds(existingViseurIds);
+  }, [existingViseurIds]);
   useEffect(() => {
     if (existingMemberIds) setMemberIds(existingMemberIds);
   }, [existingMemberIds]);
@@ -174,6 +187,7 @@ export default function OrganizationConfigDialog({ open, onOpenChange, org, orgI
       await Promise.all([
         setOrgMembers(orgId, org.id, memberIds),
         setOrgSignatories(orgId, org.id, signatoryIds),
+        setOrgViseurs(orgId, org.id, viseurIds),
       ]);
     },
     onSuccess: () => {
@@ -183,6 +197,7 @@ export default function OrganizationConfigDialog({ open, onOpenChange, org, orgI
       queryClient.invalidateQueries({ queryKey: ["imap-settings", orgId] });
       queryClient.invalidateQueries({ queryKey: ["socle-org-members", org?.id] });
       queryClient.invalidateQueries({ queryKey: ["socle-org-signatories", org?.id] });
+      queryClient.invalidateQueries({ queryKey: ["socle-org-viseurs", org?.id] });
       onOpenChange(false);
     },
     onError: (e: Error) => toast.error("Erreur : " + e.message),
@@ -195,6 +210,7 @@ export default function OrganizationConfigDialog({ open, onOpenChange, org, orgI
   if (!org) return null;
 
   const activeMembers = orgMembers.filter((m) => m.membership_active !== false);
+  const viseurCandidates = activeMembers.filter((m) => m.is_viseur);
   const inherited = inheritedSlaTargets(allOrgs, org);
   const inheritedHint = (days: number | null) =>
     isRoot ? "Aucun objectif" : days ? `Hérité : ${days} j` : "Hérité : aucun";
@@ -376,6 +392,48 @@ export default function OrganizationConfigDialog({ open, onOpenChange, org, orgI
                 ))
               )}
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label>Viseurs associés</Label>
+              <div className="flex gap-2 text-xs">
+                <button
+                  type="button"
+                  className="text-primary hover:underline"
+                  onClick={() => setViseurIds(viseurCandidates.map((m) => m.id))}
+                >
+                  Tout
+                </button>
+                <button
+                  type="button"
+                  className="text-muted-foreground hover:underline"
+                  onClick={() => setViseurIds([])}
+                >
+                  Aucun
+                </button>
+              </div>
+            </div>
+            <div className="max-h-40 overflow-y-auto rounded-lg border p-2 space-y-1">
+              {viseurCandidates.length === 0 ? (
+                <p className="text-xs text-muted-foreground p-1">
+                  Aucun viseur : activez l'attribut « Viseur » sur la fiche d'un utilisateur.
+                </p>
+              ) : (
+                viseurCandidates.map((m) => (
+                  <label key={m.id} className="flex items-center gap-2 text-sm p-1 rounded hover:bg-muted cursor-pointer">
+                    <Checkbox
+                      checked={viseurIds.includes(m.id)}
+                      onCheckedChange={() => setViseurIds((prev) => toggleId(prev, m.id))}
+                    />
+                    {[m.first_name, m.last_name].filter(Boolean).join(" ") || m.email}
+                  </label>
+                ))
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Peuvent viser les réponses de cette organisation aux étapes de visa.
+            </p>
           </div>
 
           <div className="space-y-2">

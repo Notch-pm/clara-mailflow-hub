@@ -75,6 +75,7 @@ import InlineEditField from "./InlineEditField";
 import LinkedActionsTab from "./LinkedActionsTab";
 import ParticipantManager from "./ParticipantManager";
 import ReplyComposer from "./ReplyComposer";
+import { ReplyVisaSection } from "./ReplyVisaTrail";
 import LinkedCouriersSection from "./LinkedCouriersSection";
 import CloseLinkedCouriersDialog from "./CloseLinkedCouriersDialog";
 import ReturnToMailroomDialog from "./ReturnToMailroomDialog";
@@ -651,6 +652,11 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
                     </Field>
                   )}
                 </div>
+                {isOutbound && (
+                  <div className="mt-4">
+                    <ReplyVisaSection organizationId={organizationId} replyId={courier.id} stateId={courier.workflow_state_id} />
+                  </div>
+                )}
               </Section>
 
               <Section title="Aperçu du document">

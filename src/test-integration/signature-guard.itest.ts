@@ -40,6 +40,12 @@ async function newReply(socleOrgId: string): Promise<string> {
     .select("id")
     .single();
   if (pErr) throw new Error(`parent: ${pErr.message}`);
+  // Une réponse ne naît que d'un courrier sorti de la boîte aux lettres.
+  const { error: iErr } = await adminAlpha
+    .from("couriers")
+    .update({ workflow_state_id: fx.alpha.states.processing })
+    .eq("id", parent!.id);
+  if (iErr) throw new Error(`instruction du parent: ${iErr.message}`);
 
   const { data: reply, error: rErr } = await adminAlpha
     .from("couriers")

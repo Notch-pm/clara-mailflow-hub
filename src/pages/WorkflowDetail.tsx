@@ -82,6 +82,7 @@ function layoutNodes(states: WorkflowState[], transitions: WorkflowTransition[])
         is_initial: s.is_initial ?? false,
         is_final: s.is_final ?? false,
         requires_signature: (s as any).requires_signature ?? false,
+        requires_visa: s.requires_visa ?? false,
         is_send: (s as any).is_send ?? false,
       } satisfies StateNodeData,
     };
@@ -244,6 +245,7 @@ export default function WorkflowDetail() {
           is_initial: data.is_initial ?? false,
           is_final: data.is_final ?? false,
           requires_signature: (data as any).requires_signature ?? false,
+          requires_visa: data.requires_visa ?? false,
           is_send: (data as any).is_send ?? false,
         } satisfies StateNodeData,
       };
@@ -253,7 +255,7 @@ export default function WorkflowDetail() {
   );
 
   const handleUpdateNode = useCallback(
-    async (data: { name?: string; category?: WorkflowCategory; is_initial?: boolean; is_final?: boolean; requires_signature?: boolean; is_send?: boolean }) => {
+    async (data: { name?: string; category?: WorkflowCategory; is_initial?: boolean; is_final?: boolean; requires_signature?: boolean; requires_visa?: boolean; is_send?: boolean }) => {
       if (!selectedNodeId || !workflowId) return;
 
       if (data.is_initial === true) {
@@ -302,6 +304,7 @@ export default function WorkflowDetail() {
               is_initial: data.is_initial ?? current.is_initial,
               is_final: data.is_final ?? current.is_final,
               requires_signature: data.requires_signature ?? current.requires_signature,
+              requires_visa: data.requires_visa ?? current.requires_visa,
               is_send: data.is_send ?? current.is_send,
             } satisfies StateNodeData,
           };
@@ -543,6 +546,7 @@ export default function WorkflowDetail() {
             isInitial={selectedData.is_initial}
             isFinal={selectedData.is_final}
             requiresSignature={selectedData.requires_signature ?? false}
+            requiresVisa={selectedData.requires_visa ?? false}
             isSend={selectedData.is_send ?? false}
             workflowType={(workflow as any)?.type ?? null}
             onUpdate={handleUpdateNode}

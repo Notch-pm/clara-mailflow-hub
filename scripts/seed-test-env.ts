@@ -68,8 +68,8 @@ async function cleanup() {
     // Ordre de dépendances (pas de cascade garanti partout)
     const tablesByOrg = [
       "courier_events", "courier_notes", "courier_participants", "courier_documents",
-      "action_tickets", "couriers", "courier_sequences",
-      "socle_organization_members", "socle_organization_signatories",
+      "courier_visas", "action_tickets", "couriers", "courier_sequences",
+      "socle_organization_members", "socle_organization_signatories", "socle_organization_viseurs",
       "imap_settings", "smtp_settings", "portal_forms",
       "socle_organizations", "socle_categories", "socle_document_types", "socle_sync_runs",
       "workflow_transitions", "workflow_states", "workflows",
@@ -146,7 +146,7 @@ interface TenantFixture {
   workflowId: string;
   replyWorkflowId: string;
   states: { initial: string; processing: string; final: string };
-  replyStates: { initial: string; signature: string; final: string };
+  replyStates: { initial: string; signature: string; final: string; visa: string; abandon: string };
   signatoryId: string;
   couriers: { assigned: string; root: string; unassigned: string };
   tagId: string;
@@ -208,6 +208,35 @@ async function seedTenant(letter: "Alpha" | "Beta"): Promise<TenantFixture> {
   await insertOne("workflow_transitions", {
     organization_id: org.id, workflow_id: replyWf.id, name: "Terminer", kind: "next",
     from_state_id: rSignature.id, to_state_id: rFinal.id,
+  });
+  // Branche VISA (garde de visa) : En rédaction → À viser → À signer, avec retour
+  // en rédaction (previous), abandon (final non traité) et une sortie directe
+  // vers « Terminée » (final traité — refusée sans visa).
+  const rVisa = await insertOne<{ id: string }>("workflow_states", {
+    organization_id: org.id, workflow_id: replyWf.id, name: "À viser", category: "processing", requires_visa: true,
+  });
+  const rAbandon = await insertOne<{ id: string }>("workflow_states", {
+    organization_id: org.id, workflow_id: replyWf.id, name: "Abandonnée", category: "archived", is_final: true,
+  });
+  await insertOne("workflow_transitions", {
+    organization_id: org.id, workflow_id: replyWf.id, name: "Envoyer en visa",
+    from_state_id: rInitial.id, to_state_id: rVisa.id,
+  });
+  await insertOne("workflow_transitions", {
+    organization_id: org.id, workflow_id: replyWf.id, name: "Viser", kind: "next",
+    from_state_id: rVisa.id, to_state_id: rSignature.id,
+  });
+  await insertOne("workflow_transitions", {
+    organization_id: org.id, workflow_id: replyWf.id, name: "Renvoyer en rédaction", kind: "previous",
+    from_state_id: rVisa.id, to_state_id: rInitial.id,
+  });
+  await insertOne("workflow_transitions", {
+    organization_id: org.id, workflow_id: replyWf.id, name: "Abandonner",
+    from_state_id: rVisa.id, to_state_id: rAbandon.id,
+  });
+  await insertOne("workflow_transitions", {
+    organization_id: org.id, workflow_id: replyWf.id, name: "Terminer sans signature",
+    from_state_id: rVisa.id, to_state_id: rFinal.id,
   });
 
   // Miroir socle : racine + sous-organisation (insert direct service_role,
@@ -301,7 +330,7 @@ async function seedTenant(letter: "Alpha" | "Beta"): Promise<TenantFixture> {
     rootSocleOrgId: rootSocle.id, subSocleOrgId: subSocle.id,
     workflowId: wf.id, replyWorkflowId: replyWf.id,
     states: { initial: stInitial.id, processing: stProcessing.id, final: stFinal.id },
-    replyStates: { initial: rInitial.id, signature: rSignature.id, final: rFinal.id },
+    replyStates: { initial: rInitial.id, signature: rSignature.id, final: rFinal.id, visa: rVisa.id, abandon: rAbandon.id },
     signatoryId: signatory.id,
     couriers: { assigned: courierAssigned.id, root: courierRoot.id, unassigned: courierUnassigned.id },
     tagId: tag.id,
@@ -328,6 +357,7 @@ async function main() {
   const membreAlpha = await createUser("membre.alpha", "Membre", "Alpha");
   const consultantAlpha = await createUser("consultant.alpha", "Consultant", "Alpha");
   const signataireAlpha = await createUser("signataire.alpha", "Signataire", "Alpha");
+  const viseurAlpha = await createUser("viseur.alpha", "Viseur", "Alpha");
   const adminBeta = await createUser("admin.beta", "Admin", "Beta");
   // Superadmin global (aucun membership d'org — is_member_of/is_admin_of l'incluent)
   const superadminTest = await createUser("superadmin.test", "Super", "Admin", true);
@@ -340,6 +370,8 @@ async function main() {
     { organization_id: alpha.orgId, user_id: consultantAlpha.id, role: "consultant", is_active: true },
     // Éditeur marqué signataire (garde de signature) — lié plus bas à la racine Socle.
     { organization_id: alpha.orgId, user_id: signataireAlpha.id, role: "gestionnaire", is_active: true, is_signataire: true },
+    // Éditeur marqué viseur (garde de visa) — lié plus bas à la racine Socle.
+    { organization_id: alpha.orgId, user_id: viseurAlpha.id, role: "gestionnaire", is_active: true, is_viseur: true },
     { organization_id: beta.orgId, user_id: adminBeta.id, role: "administrateur", is_active: true },
     { organization_id: beta.orgId, user_id: membreBeta.id, role: "member", is_active: true },
   ];
@@ -360,6 +392,13 @@ async function main() {
     signatory_id: signataireRow.id,
   });
 
+  // viseur.alpha peut viser les réponses de la racine — pas celles du Cabinet.
+  await insertOne("socle_organization_viseurs", {
+    organization_id: alpha.orgId,
+    socle_organization_id: alpha.rootSocleOrgId,
+    user_id: viseurAlpha.id,
+  });
+
   // membre.alpha + consultant.alpha appartiennent à la sous-org « Cabinet Alpha »
   // (filtrage des courriers par organisation Socle)
   await insertOne("socle_organization_members", {
@@ -378,6 +417,7 @@ async function main() {
       membreAlpha: membreAlpha.email,
       consultantAlpha: consultantAlpha.email,
       signataireAlpha: signataireAlpha.email,
+      viseurAlpha: viseurAlpha.email,
       superadminTest: superadminTest.email,
       adminBeta: adminBeta.email,
       membreBeta: membreBeta.email,

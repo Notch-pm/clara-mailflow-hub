@@ -136,6 +136,9 @@ describe("Garde de transitions — flux légitimes autorisés", () => {
 
   it("AC-L6 : cycle d'une réponse initial→signature→final", async () => {
     const parent = await newCourier(fx.alpha.rootSocleOrgId, fx.alpha.states.initial);
+    // Une réponse ne naît que d'un courrier sorti de la boîte aux lettres.
+    const p1 = await adminAlpha.from("couriers").update({ workflow_state_id: fx.alpha.states.processing }).eq("id", parent);
+    expect(p1.error).toBeNull();
     const { data: reply, error: cErr } = await adminAlpha
       .from("couriers")
       .insert({

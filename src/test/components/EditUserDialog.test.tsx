@@ -29,6 +29,7 @@ const fakeMember = {
   is_signataire: false,
   signataire_title: null,
   is_service_courrier: false,
+  is_viseur: false,
 };
 
 beforeEach(() => {
@@ -103,6 +104,26 @@ describe("EditUserDialog", () => {
         "user-1",
         "mem-1",
         expect.objectContaining({ first_name: "Pierre", last_name: "Dupont" })
+      );
+    });
+  });
+
+  it("enregistre l'attribut viseur, indépendant du rôle", async () => {
+    const { updateOrgMember } = await import("@/services/userService");
+    renderWithProviders(
+      <EditUserDialog member={fakeMember} organizationId={ORG_ID} onClose={onClose} />
+    );
+
+    // Ordre des interrupteurs : Signataire, Viseur, Gestionnaire courrier.
+    fireEvent.click(screen.getAllByRole("switch")[1]);
+    fireEvent.click(screen.getByRole("button", { name: /enregistrer/i }));
+
+    await waitFor(() => {
+      expect(updateOrgMember).toHaveBeenCalledWith(
+        ORG_ID,
+        "user-1",
+        "mem-1",
+        expect.objectContaining({ is_viseur: true, role: "gestionnaire" })
       );
     });
   });

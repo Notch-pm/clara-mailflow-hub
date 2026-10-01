@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { MailOpen, Clock, FileText, FileCheck, PenLine } from "lucide-react";
+import { MailOpen, Clock, FileText, FileCheck, PenLine, Stamp } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -9,6 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUserServiceFilter, applyServiceFilter } from "@/hooks/useUserServiceFilter";
+import { listMyVisaQueue } from "@/services/courierVisaService";
 
 // ─── KPI card ────────────────────────────────────────────────────────────────
 
@@ -162,6 +163,13 @@ export default function Dashboard() {
     enabled: !!userSignatory?.id && !!organizationId,
   });
 
+  // ── Réponses en attente de mon visa (viseur de l'organisation gestionnaire) ─
+  const { data: pendingVisa = [] } = useQuery({
+    queryKey: ["visa-queue", organizationId, user?.id],
+    queryFn: () => listMyVisaQueue(organizationId!, user!.id),
+    enabled: !!user?.id && !!organizationId,
+  });
+
   // ── Derived state ID sets ──────────────────────────────────────────────────
   const initialStateIds   = useMemo(() => (workflowStates ?? []).filter((s) => s.is_initial).map((s) => s.id), [workflowStates]);
   const processingStateIds = useMemo(() => (workflowStates ?? []).filter((s) => s.category === "processing").map((s) => s.id), [workflowStates]);
@@ -222,6 +230,10 @@ export default function Dashboard() {
     }).length,
   [couriers, processedStateIds, startOfPrevMonth, startOfCurrentMonth]);
 
+  const showSignature = !!userSignatory && (pendingSignature?.length ?? 0) > 0;
+  const showVisa = pendingVisa.length > 0;
+  const listCount = [courriersEnAttente.length > 0, showSignature, showVisa].filter(Boolean).length;
+
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6 md:space-y-8">
@@ -242,8 +254,8 @@ export default function Dashboard() {
       </div>
 
       {/* Listes côte à côte — chacune prend toute la largeur si l'autre est absente */}
-      {(courriersEnAttente.length > 0 || (userSignatory && (pendingSignature?.length ?? 0) > 0)) && (
-        <div className={`grid grid-cols-1 items-start gap-4 md:gap-6 ${courriersEnAttente.length > 0 && userSignatory && (pendingSignature?.length ?? 0) > 0 ? "lg:grid-cols-2" : ""}`}>
+      {listCount > 0 && (
+        <div className={`grid grid-cols-1 items-start gap-4 md:gap-6 ${listCount > 1 ? "lg:grid-cols-2" : ""}`}>
 
           {/* En attente de prise en charge */}
           {courriersEnAttente.length > 0 && (
@@ -287,8 +299,46 @@ export default function Dashboard() {
             </section>
           )}
 
+          {/* En attente de visa */}
+          {showVisa && (
+            <section className="space-y-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <Stamp className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <h2 className="min-w-0 text-base font-semibold">En attente de votre visa</h2>
+                <Badge variant="secondary" className="shrink-0">{pendingVisa.length}</Badge>
+              </div>
+              <Card>
+                <div className="divide-y">
+                  {pendingVisa.map((c) => (
+                    <Link
+                      key={c.id}
+                      to={
+                        c.parent_courier_id
+                          ? `/courrier/${c.parent_courier_id}?tab=response&replyId=${c.id}&edit=1`
+                          : `/courrier/${c.id}`
+                      }
+                      className="flex items-center justify-between gap-3 px-3 py-3 transition-colors hover:bg-muted/50 md:px-4"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">{c.subject ?? "(sans objet)"}</p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {c.chrono && <span className="mr-2">{c.chrono}</span>}
+                          Étape « {c.state_name} »
+                          {!c.designated_to_me && c.designated_user_id && (
+                            <span className="ml-2 text-muted-foreground/70">— désigné : un autre viseur</span>
+                          )}
+                        </p>
+                      </div>
+                      <span className="shrink-0 text-muted-foreground">→</span>
+                    </Link>
+                  ))}
+                </div>
+              </Card>
+            </section>
+          )}
+
           {/* En attente de signature */}
-          {userSignatory && (pendingSignature?.length ?? 0) > 0 && (
+          {showSignature && (
             <section className="space-y-3">
               <div className="flex min-w-0 items-center gap-2">
                 <PenLine className="h-4 w-4 shrink-0 text-muted-foreground" />

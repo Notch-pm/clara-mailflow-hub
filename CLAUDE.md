@@ -26,7 +26,7 @@ Multi-tenant strict : toute donnée est scopée par `organization_id`. Repo (pri
 ## Règles d'or (à ne jamais violer)
 
 1. **Multi-tenant** : toute requête DB filtre par `organization_id`. La RLS repose sur les helpers `is_member_of` / `is_admin_of` / `is_superadmin` ; le header `x-org-id` ne sert qu’à contextualiser certaines edge functions (voir `docs/data-model.md`).
-2. **Rôles** : `is_superadmin` (global) sur `public.users` ; rôle d'org dans `organization_users` parmi `administrateur`, `gestionnaire`, `elu`, `superviseur`, `consultant` (legacy `admin` = `administrateur`). L'attribut `is_signataire` (droit de signer une réponse) est **indépendant** du rôle. Détail des droits par rôle : `docs/permissions.md`. Ne **jamais** stocker un rôle ailleurs. Pas d'escalade côté client.
+2. **Rôles** : `is_superadmin` (global) sur `public.users` ; rôle d'org dans `organization_users` parmi `administrateur`, `gestionnaire`, `elu`, `superviseur`, `consultant` (legacy `admin` = `administrateur`). Les attributs `is_signataire` (droit de signer une réponse) et `is_viseur` (droit de viser une réponse) sont **indépendants** du rôle. Détail des droits par rôle : `docs/permissions.md`. Ne **jamais** stocker un rôle ailleurs. Pas d'escalade côté client.
 3. **Services côté client** : un fichier par domaine dans `src/services/`, retourne du typé `Database["public"]...`. Pas de logique métier dans les composants.
 4. **Design system** : tokens sémantiques HSL dans `src/index.css` + `tailwind.config.ts`. Pas de couleurs hardcodées dans les composants. Palette Notch (vert `#0acf83`, jaune `#ffcd57`), police Nunito Sans.
 5. **Edge functions** : `supabase/functions/<name>/index.ts`, Deno, CORS, auth check explicite (JWT user OU service role OU `x-cron-secret`).

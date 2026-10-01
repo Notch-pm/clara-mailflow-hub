@@ -106,7 +106,7 @@ Nouveau `src/test-integration/garde-transitions.itest.ts` (moule `droits-roles.i
 - **NULL → NEW** : seulement si `NEW.is_initial`.
 - **Garde tenant** ajouté (`new_state.org = courier.org`) : recommandé, à entériner.
 - **Retour arrière** : compatible (transitions `previous` = successeurs légaux).
-- **Hors périmètre** : permissions par transition/rôle ; préconditions de données (`requires_signature` avant `processed`) ; refonte de l'éditeur de workflow ; transitions inter-workflow ; effets de bord métier (SMTP, `instruction_started`).
+- **Hors périmètre** : permissions par transition/rôle ; préconditions de données (`requires_signature` avant `processed`) — **exception : le visa**, gardé depuis le 2026-10-01 par un trigger distinct (`couriers_enforce_visa`, voir `docs/database-rls.md`) ; refonte de l'éditeur de workflow ; transitions inter-workflow ; effets de bord métier (SMTP, `instruction_started`).
 
 ## 9. Chemins de production à re-tester manuellement après implémentation
 

@@ -32,6 +32,8 @@ export interface OrganizationUser {
   is_signataire: boolean;
   signataire_title: string | null;
   is_service_courrier: boolean;
+  /** Droit de viser une réponse (étape de visa), indépendant du rôle. */
+  is_viseur: boolean;
   created_at: string;
 }
 
@@ -44,6 +46,7 @@ export interface OrganizationUserInsert {
   is_signataire?: boolean;
   signataire_title?: string | null;
   is_service_courrier?: boolean;
+  is_viseur?: boolean;
 }
 
 export interface OrgRole {
@@ -66,6 +69,8 @@ export interface OrgMember {
   signataire_title: string | null;
   /** Profil « gestionnaire courrier » (écran Courrier entrant), indépendant du rôle. */
   is_service_courrier: boolean;
+  /** Droit de viser une réponse (étape de visa), indépendant du rôle. */
+  is_viseur: boolean;
   membership_id: string; // organization_users.id
   membership_active: boolean | null;
 }

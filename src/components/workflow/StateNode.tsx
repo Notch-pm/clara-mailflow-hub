@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { Zap, CheckCircle2, PenLine, Send } from "lucide-react";
+import { Zap, CheckCircle2, PenLine, Send, Stamp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { WorkflowCategory } from "@/types/courier";
 
@@ -10,6 +10,7 @@ export interface StateNodeData {
   is_initial: boolean;
   is_final: boolean;
   requires_signature?: boolean;
+  requires_visa?: boolean;
   is_send?: boolean;
   [key: string]: unknown;
 }
@@ -37,6 +38,7 @@ function StateNodeComponent({ data, selected }: NodeProps) {
         {nodeData.is_initial && <Zap className="h-3.5 w-3.5 text-primary" />}
         {nodeData.is_final && <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />}
         {nodeData.requires_signature && <PenLine className="h-3.5 w-3.5 text-amber-600" aria-label="État de signature" />}
+        {nodeData.requires_visa && <Stamp className="h-3.5 w-3.5 text-primary" aria-label="Étape de visa" />}
         {nodeData.is_send && <Send className="h-3.5 w-3.5 text-blue-600" aria-label="État d'envoi" />}
         <span className="font-semibold text-sm text-foreground truncate">{nodeData.label}</span>
       </div>

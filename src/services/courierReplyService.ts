@@ -143,6 +143,8 @@ export async function updateReplyContent(
     signedAt?: string | null;
     signedBy?: string | null;
     signedStateId?: string | null;
+    /** Viseur désigné pour une étape de visa (metadata.visa_viseurs[stateId]). */
+    visaViseur?: { stateId: string; userId: string | null };
   },
 ): Promise<void> {
   // Fetch current metadata to preserve other keys
@@ -178,6 +180,13 @@ export async function updateReplyContent(
   }
   if (patch.signedStateId !== undefined) {
     nextMeta.signed_state_id = patch.signedStateId;
+    metaChanged = true;
+  }
+  if (patch.visaViseur) {
+    const viseurs = { ...((currentMeta.visa_viseurs as Record<string, string> | undefined) ?? {}) };
+    if (patch.visaViseur.userId) viseurs[patch.visaViseur.stateId] = patch.visaViseur.userId;
+    else delete viseurs[patch.visaViseur.stateId];
+    nextMeta.visa_viseurs = viseurs;
     metaChanged = true;
   }
   if (metaChanged) update.metadata = nextMeta;

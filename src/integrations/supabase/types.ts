@@ -742,6 +742,81 @@ export type Database = {
           },
         ]
       }
+      courier_visas: {
+        Row: {
+          comment: string | null
+          courier_id: string
+          designated_user_id: string | null
+          id: string
+          organization_id: string
+          state_name: string
+          superseded_at: string | null
+          user_id: string
+          visa_at: string
+          workflow_state_id: string | null
+        }
+        Insert: {
+          comment?: string | null
+          courier_id: string
+          designated_user_id?: string | null
+          id?: string
+          organization_id: string
+          state_name?: string
+          superseded_at?: string | null
+          user_id?: string
+          visa_at?: string
+          workflow_state_id?: string | null
+        }
+        Update: {
+          comment?: string | null
+          courier_id?: string
+          designated_user_id?: string | null
+          id?: string
+          organization_id?: string
+          state_name?: string
+          superseded_at?: string | null
+          user_id?: string
+          visa_at?: string
+          workflow_state_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "courier_visas_courier_id_fkey"
+            columns: ["courier_id"]
+            isOneToOne: false
+            referencedRelation: "couriers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "courier_visas_designated_user_id_fkey"
+            columns: ["designated_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "courier_visas_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "courier_visas_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "courier_visas_workflow_state_id_fkey"
+            columns: ["workflow_state_id"]
+            isOneToOne: false
+            referencedRelation: "workflow_states"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       couriers: {
         Row: {
           acknowledged_at: string | null
@@ -1062,6 +1137,7 @@ export type Database = {
           is_active: boolean | null
           is_signataire: boolean
           is_service_courrier: boolean
+          is_viseur: boolean
           organization_id: string
           role: string
           signataire_title: string | null
@@ -1073,6 +1149,7 @@ export type Database = {
           is_active?: boolean | null
           is_signataire?: boolean
           is_service_courrier?: boolean
+          is_viseur?: boolean
           organization_id: string
           role: string
           signataire_title?: string | null
@@ -1084,6 +1161,7 @@ export type Database = {
           is_active?: boolean | null
           is_signataire?: boolean
           is_service_courrier?: boolean
+          is_viseur?: boolean
           organization_id?: string
           role?: string
           signataire_title?: string | null
@@ -1938,6 +2016,52 @@ export type Database = {
           },
         ]
       }
+      socle_organization_viseurs: {
+        Row: {
+          created_at: string
+          id: string
+          organization_id: string
+          socle_organization_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          organization_id: string
+          socle_organization_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          organization_id?: string
+          socle_organization_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "socle_organization_viseurs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "socle_organization_viseurs_socle_organization_id_fkey"
+            columns: ["socle_organization_id"]
+            isOneToOne: false
+            referencedRelation: "socle_organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "socle_organization_viseurs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       socle_organizations: {
         Row: {
           address: string | null
@@ -2126,6 +2250,7 @@ export type Database = {
           name: string
           organization_id: string
           requires_signature: boolean
+          requires_visa: boolean
           workflow_id: string
         }
         Insert: {
@@ -2138,6 +2263,7 @@ export type Database = {
           name: string
           organization_id: string
           requires_signature?: boolean
+          requires_visa?: boolean
           workflow_id: string
         }
         Update: {
@@ -2150,6 +2276,7 @@ export type Database = {
           name?: string
           organization_id?: string
           requires_signature?: boolean
+          requires_visa?: boolean
           workflow_id?: string
         }
         Relationships: [

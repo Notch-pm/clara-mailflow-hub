@@ -25,6 +25,7 @@ export const COURIER_EVENT_LABELS: Record<string, string> = {
   reply_sent: "Réponse envoyée",
   reply_signed: "Réponse signée",
   reply_unsigned: "Signature retirée",
+  reply_visa_granted: "Réponse visée",
   reply_send_reset: "Envoi annulé",
   ticket_created: "Ticket créé",
   ticket_updated: "Ticket mis à jour",
@@ -66,6 +67,15 @@ export function describeCourierEvent(type: string, payload: Payload): { title: s
     case "document_deleted":
     case "document_updated":
       detail = [p.file_name, p.document_type].filter(Boolean).join(" · ") || null;
+      break;
+    case "reply_visa_granted":
+      detail = [
+        p.state_name ? `Étape « ${p.state_name} »` : null,
+        p.designated_name ? `à la place de ${p.designated_name}` : null,
+        p.comment ? `« ${p.comment} »` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ") || null;
       break;
   }
   return { title: COURIER_EVENT_LABELS[type] ?? type, detail };

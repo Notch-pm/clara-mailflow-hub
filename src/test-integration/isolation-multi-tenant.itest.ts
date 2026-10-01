@@ -29,6 +29,8 @@ const MEMBER_READABLE_TABLES = [
   "socle_document_types",
   "socle_organization_members",
   "socle_organization_signatories",
+  "socle_organization_viseurs",
+  "courier_visas",
   "signatories",
   "procedures",
   "socle_sync_runs",

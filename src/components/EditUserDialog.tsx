@@ -27,6 +27,7 @@ const editSchema = z
     role: z.enum(ORG_ROLE_VALUES, { required_error: "Rôle obligatoire" }),
     is_signataire: z.boolean().default(false),
     is_service_courrier: z.boolean().default(false),
+    is_viseur: z.boolean().default(false),
     signataire_title: z.string().max(150, "150 caractères maximum").optional().or(z.literal("")),
   })
   .refine((d) => !d.is_signataire || (d.signataire_title && d.signataire_title.trim().length > 0), {
@@ -54,8 +55,9 @@ export function EditUserDialog({ member, organizationId, onClose }: Props) {
           is_signataire: member.is_signataire ?? false,
           signataire_title: member.signataire_title ?? "",
           is_service_courrier: member.is_service_courrier ?? false,
+          is_viseur: member.is_viseur ?? false,
         }
-      : { first_name: "", last_name: "", role: "consultant" as const, is_signataire: false, signataire_title: "", is_service_courrier: false },
+      : { first_name: "", last_name: "", role: "consultant" as const, is_signataire: false, signataire_title: "", is_service_courrier: false, is_viseur: false },
   });
 
   const isSignataire = form.watch("is_signataire");
@@ -65,6 +67,7 @@ export function EditUserDialog({ member, organizationId, onClose }: Props) {
   // signer lui-même une réponse tant qu'il ne peut pas y écrire. Avertissement
   // non bloquant : l'enregistrement reste possible.
   const showConsultantSignataireWarning = watchedRole === "consultant" && isSignataire;
+  const showConsultantViseurWarning = watchedRole === "consultant" && form.watch("is_viseur");
 
   const updateMutation = useMutation({
     mutationFn: async (values: z.infer<typeof editSchema>) => {
@@ -76,6 +79,7 @@ export function EditUserDialog({ member, organizationId, onClose }: Props) {
         is_signataire: values.is_signataire,
         signataire_title: values.is_signataire ? (values.signataire_title?.trim() || null) : null,
         is_service_courrier: values.is_service_courrier,
+        is_viseur: values.is_viseur,
       });
     },
     onSuccess: () => {
@@ -232,6 +236,28 @@ export function EditUserDialog({ member, organizationId, onClose }: Props) {
                       <FormMessage />
                     </FormItem>
                   )} />
+                )}
+                <FormField control={form.control} name="is_viseur" render={({ field }) => (
+                  <FormItem className="flex items-center justify-between rounded-md border p-3">
+                    <div className="space-y-0.5">
+                      <FormLabel className="text-sm">Viseur</FormLabel>
+                      <p className="text-xs text-muted-foreground">
+                        Autorise cet utilisateur à viser les réponses (« vu et validé ») aux étapes de visa.
+                      </p>
+                    </div>
+                    <FormControl>
+                      <Switch checked={field.value} onCheckedChange={field.onChange} />
+                    </FormControl>
+                  </FormItem>
+                )} />
+                {showConsultantViseurWarning && (
+                  <Alert className="border-warning/50 bg-warning/5">
+                    <AlertTriangle className="h-4 w-4 text-warning" />
+                    <AlertDescription>
+                      En lecture seule, un consultant ne pourra pas viser de réponse tant que
+                      son rôle ne change pas.
+                    </AlertDescription>
+                  </Alert>
                 )}
                 <FormField control={form.control} name="is_service_courrier" render={({ field }) => (
                   <FormItem className="flex items-center justify-between rounded-md border p-3">

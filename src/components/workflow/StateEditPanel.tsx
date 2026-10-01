@@ -3,7 +3,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Trash2, X, PenLine, Send } from "lucide-react";
+import { Trash2, X, PenLine, Send, Stamp } from "lucide-react";
 import type { WorkflowCategory } from "@/types/courier";
 
 interface StateEditPanelProps {
@@ -13,6 +13,7 @@ interface StateEditPanelProps {
   isInitial: boolean;
   isFinal: boolean;
   requiresSignature?: boolean;
+  requiresVisa?: boolean;
   isSend?: boolean;
   workflowType?: "inbound" | "reply" | null;
   onUpdate: (data: {
@@ -21,6 +22,7 @@ interface StateEditPanelProps {
     is_initial?: boolean;
     is_final?: boolean;
     requires_signature?: boolean;
+    requires_visa?: boolean;
     is_send?: boolean;
   }) => void;
   onDelete: () => void;
@@ -40,6 +42,7 @@ export function StateEditPanel({
   isInitial,
   isFinal,
   requiresSignature = false,
+  requiresVisa = false,
   isSend = false,
   workflowType = null,
   onUpdate,
@@ -109,7 +112,7 @@ export function StateEditPanel({
             <Switch
               id="requires-signature"
               checked={requiresSignature}
-              disabled={isInitial || isFinal || isSend}
+              disabled={isInitial || isFinal || isSend || requiresVisa}
               onCheckedChange={(v) => onUpdate({ requires_signature: v })}
             />
           </div>
@@ -122,13 +125,28 @@ export function StateEditPanel({
             <Switch
               id="is-send"
               checked={isSend}
-              disabled={isInitial || isFinal || requiresSignature}
+              disabled={isInitial || isFinal || requiresSignature || requiresVisa}
               onCheckedChange={(v) => onUpdate({ is_send: v })}
             />
           </div>
 
+          <div className="flex items-center justify-between">
+            <Label htmlFor="requires-visa" className="flex items-center gap-2">
+              <Stamp className="h-4 w-4 text-primary" />
+              Étape de visa
+            </Label>
+            <Switch
+              id="requires-visa"
+              checked={requiresVisa}
+              disabled={isInitial || isFinal || requiresSignature || isSend}
+              onCheckedChange={(v) => onUpdate({ requires_visa: v })}
+            />
+          </div>
+
           <p className="text-xs text-muted-foreground italic">
-            Un seul état peut être marqué "signature" ou "envoi". Ces marqueurs ne peuvent être combinés avec initial ou final.
+            Un seul état peut être marqué "signature" ou "envoi" ; plusieurs étapes de visa sont possibles.
+            Une étape de visa attend le visa d'un viseur de l'organisation avant d'avancer. Ces marqueurs
+            sont exclusifs entre eux et ne peuvent être combinés avec initial ou final.
           </p>
         </>
       )}

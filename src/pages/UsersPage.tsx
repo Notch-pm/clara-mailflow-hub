@@ -222,6 +222,11 @@ export default function UsersPage({ organizationId: propOrgId }: UsersPageProps 
                           Signataire
                         </Badge>
                       )}
+                      {m.is_viseur && (
+                        <Badge variant="outline" className="border-primary/40 text-primary">
+                          Viseur
+                        </Badge>
+                      )}
                       {m.is_service_courrier && (
                         <Badge variant="outline" className="border-secondary text-secondary-foreground">
                           Gestionnaire courrier

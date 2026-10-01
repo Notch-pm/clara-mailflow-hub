@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Send, Save, Lock, PenLine, X, Plus, Pencil, Eye, Trash2, ArrowLeft, Printer, ChevronDown, Sparkles, Undo2, WandSparkles } from "lucide-react";
+import { Send, Save, Lock, PenLine, X, Plus, Pencil, Eye, Trash2, ArrowLeft, Printer, ChevronDown, Sparkles, Undo2, WandSparkles, Stamp } from "lucide-react";
 import { toast } from "sonner";
 import { edgeError } from "@/lib/edge-error";
 import { RESPONSE_TYPES } from "../../../supabase/functions/draft-reply/logic";
@@ -52,6 +52,15 @@ import {
   type ReplyRecord,
 } from "@/services/courierReplyService";
 import { getSignatureDataUrl } from "@/services/signatoryService";
+import {
+  activeVisaFor,
+  grantVisa,
+  listOrgViseurs,
+  listReplyVisas,
+  visaPersonName,
+} from "@/services/courierVisaService";
+import { ReplyVisaTrail } from "./ReplyVisaTrail";
+import { Input } from "@/components/ui/input";
 import { appendSignature, buildSignatureBlock } from "@/lib/reply-signature";
 import { useAuth } from "@/contexts/AuthContext";
 import { printReply, buildContactBlock } from "@/utils/printReply";
@@ -256,8 +265,23 @@ export default function ReplyComposer({
     enabled: !!currentService?.id,
   });
 
+  // ─── Viseurs (de l'organisation gestionnaire) & visas des réponses ──
+  const { data: serviceViseurs = [] } = useQuery({
+    queryKey: ["socle-org-viseurs-detailed", organizationId, currentService?.id],
+    queryFn: () => listOrgViseurs(organizationId, currentService!.id),
+    enabled: !!currentService?.id,
+  });
+
+  const replyIds = useMemo(() => replies.map((r) => r.id), [replies]);
+  const { data: visas = [] } = useQuery({
+    queryKey: ["reply-visas", organizationId, replyIds],
+    queryFn: () => listReplyVisas(organizationId, replyIds),
+    enabled: !!organizationId && replyIds.length > 0,
+  });
+
   // ─── Editor local state ─────────────────────────────────────────────
   const [channel, setChannel] = useState<CourierChannel>("paper");
+  const [visaComment, setVisaComment] = useState("");
   const [body, setBody] = useState<string>("");
   const [signatoryId, setSignatoryId] = useState<string>("");
   const [dirty, setDirty] = useState(false);
@@ -284,6 +308,7 @@ export default function ReplyComposer({
       setSignatoryId("");
     }
     setBeforeImprove(null);
+    setVisaComment("");
     setDirty(false);
   }, [reply?.id, view, canEmail]);
 
@@ -303,6 +328,7 @@ export default function ReplyComposer({
   const replyMeta = (reply?.metadata as {
     signed_at?: string | null;
     sent_email_at?: string | null;
+    visa_viseurs?: Record<string, string> | null;
   } | null) ?? {};
 
   const isSigned = !!replyMeta.signed_at;
@@ -310,7 +336,17 @@ export default function ReplyComposer({
   const isFinal = currentState?.category === "processed" || currentState?.is_final === true;
   const isSignatureState = (currentState as any)?.requires_signature === true;
   const isSendState = (currentState as any)?.is_send === true;
-  const editorDisabled = !!readOnly || isFinal || isSigned;
+  // Étape de visa : le contenu est figé tant que la réponse s'y trouve — on vise
+  // ce qu'on a lu. Un retour en arrière rouvre la rédaction (et exigera un
+  // nouveau visa au prochain passage).
+  const isVisaState = currentState?.requires_visa === true;
+  const replyVisas = useMemo(
+    () => (reply ? visas.filter((v) => v.courier_id === reply.id) : []),
+    [visas, reply],
+  );
+  const activeVisa = reply ? activeVisaFor(visas, reply.id, currentState?.id) : null;
+  const currentUserIsViseur = serviceViseurs.some((v) => v.id === currentUserId);
+  const editorDisabled = !!readOnly || isFinal || isSigned || isVisaState;
 
   const selectedSignatory = useMemo(
     () => serviceSignatories.find((s) => s.id === signatoryId) ?? null,
@@ -344,6 +380,17 @@ export default function ReplyComposer({
     () => outgoingTransitions.find((x) => x.target.is_final === true || x.target.category === "processed") ?? null,
     [outgoingTransitions],
   );
+
+  // Étape de visa dont on désigne le viseur : l'étape courante tant qu'elle
+  // n'est pas visée, sinon celle vers laquelle mène la transition nominale.
+  const nextForward = outgoingTransitions.find(({ transition }) => transition.kind === "next") ?? null;
+  const designationState = isVisaState && !activeVisa
+    ? currentState
+    : nextForward?.target.requires_visa
+      ? nextForward.target
+      : null;
+  const designatedViseurId = designationState ? replyMeta.visa_viseurs?.[designationState.id] ?? "" : "";
+  const designatedViseur = serviceViseurs.find((v) => v.id === designatedViseurId) ?? null;
 
   // ─── Helpers ────────────────────────────────────────────────────────
   function isReplyFinal(r: ReplyRecord): boolean {
@@ -409,6 +456,10 @@ export default function ReplyComposer({
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["courier-replies", courierId] });
     queryClient.invalidateQueries({ queryKey: ["courier-events", courierId] });
+    // Une transition peut périmer des visas (retour dans une étape de visa) :
+    // la trace et l'état « à viser » se relisent avec les réponses.
+    queryClient.invalidateQueries({ queryKey: ["reply-visas"] });
+    queryClient.invalidateQueries({ queryKey: ["visa-queue"] });
   };
 
   const saveDraft = useMutation({
@@ -554,6 +605,47 @@ export default function ReplyComposer({
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const setViseur = useMutation({
+    mutationFn: async (args: { stateId: string; userId: string | null }) => {
+      const ensured = await ensureReply();
+      await updateReplyContent(organizationId, ensured.id, { visaViseur: args });
+    },
+    onSuccess: () => { setDirty(false); invalidate(); refetchReplies(); },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  // Viser l'étape courante puis avancer par la transition nominale. Le serveur
+  // refuse un visa d'un non-viseur et toute sortie vers l'avant sans visa.
+  const doVisaAndAdvance = useMutation({
+    mutationFn: async () => {
+      if (!reply || !currentState) throw new Error("Aucune réponse à viser.");
+      await grantVisa({
+        organizationId,
+        parentCourierId: courierId,
+        replyId: reply.id,
+        stateId: currentState.id,
+        comment: visaComment,
+      });
+      if (nextForward) {
+        await transitionReplyState(
+          organizationId, courierId, reply.id,
+          nextForward.target.id, nextForward.target.name, nextForward.target.category,
+        );
+      }
+    },
+    onSuccess: () => {
+      setVisaComment("");
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
+      refetchReplies();
+      toast.success("Réponse visée");
+    },
+    onError: (err: Error) => {
+      queryClient.invalidateQueries({ queryKey: ["reply-visas"] });
+      toast.error(err.message);
+    },
+  });
+
   const doDelete = useMutation({
     mutationFn: async (r: ReplyRecord) => {
       await deleteReply(organizationId, courierId, r.id);
@@ -569,7 +661,8 @@ export default function ReplyComposer({
 
   const isBusy = saveDraft.isPending || doSign.isPending || doUnsign.isPending ||
     doTransition.isPending || sendEmail.isPending || doDelete.isPending || isPrintingWithTemplate ||
-    doSignAndAdvance.isPending || doSendAndAdvance.isPending || isImproving;
+    doSignAndAdvance.isPending || doSendAndAdvance.isPending || isImproving ||
+    setViseur.isPending || doVisaAndAdvance.isPending;
 
   // ─── Early exits (no organization / no workflow) ────────────────────
   if (!currentService) {
@@ -664,6 +757,24 @@ export default function ReplyComposer({
                       </span>
                     )}
                   </div>
+                  {(() => {
+                    const state = workflow?.states.find((s) => s.id === r.workflow_state_id);
+                    if (state?.requires_visa && !activeVisaFor(visas, r.id, state.id)) {
+                      return (
+                        <Badge variant="outline" className="text-xs shrink-0 gap-1 border-warning/50 text-warning">
+                          <Stamp className="h-3 w-3" />Visa en attente
+                        </Badge>
+                      );
+                    }
+                    if (visas.some((v) => v.courier_id === r.id && !v.superseded_at)) {
+                      return (
+                        <Badge variant="outline" className="text-xs shrink-0 gap-1 border-primary/40 text-primary">
+                          <Stamp className="h-3 w-3" />Visée
+                        </Badge>
+                      );
+                    }
+                    return null;
+                  })()}
                   <Badge variant="outline" className="text-xs shrink-0">{replyStateName(r)}</Badge>
                   <div className="flex items-center gap-1 shrink-0">
                     {/* Une réponse envoyée s'ouvre toujours — l'éditeur la rend en
@@ -839,6 +950,8 @@ export default function ReplyComposer({
     ? "Réponse verrouillée (signée). Retirez la signature pour modifier."
     : isFinal
       ? "Réponse verrouillée."
+      : isVisaState
+        ? "Réponse verrouillée pendant l'étape de visa. Renvoyez-la en rédaction pour la modifier."
       : !dirty && !!reply
         ? "Aucune modification à enregistrer."
         : null;
@@ -861,9 +974,12 @@ export default function ReplyComposer({
 
     // The "next" nominal transition implicitly performs the signature / send
     // action when leaving a signature- or send-state.
+    const nextRequiresVisa = !!nextEntry && isVisaState && !activeVisa;
     const nextRequiresSign = !!nextEntry && isSignatureState && !isSigned;
     const nextRequiresSend = !!nextEntry && isSendState && !isSent && channel === "email";
-    const nextDisabledReason = nextRequiresSign
+    const nextDisabledReason = nextRequiresVisa
+      ? (!currentUserIsViseur ? "Vous n'êtes pas viseur de cette organisation." : null)
+      : nextRequiresSign
       ? (!currentUserIsSignatory
           ? "Vous n'êtes pas le signataire désigné."
           : !signatoryId
@@ -875,6 +991,10 @@ export default function ReplyComposer({
 
     const onClickNext = () => {
       if (!nextEntry) return;
+      if (nextRequiresVisa) {
+        doVisaAndAdvance.mutate();
+        return;
+      }
       if (nextRequiresSign) {
         doSignAndAdvance.mutate();
         return;
@@ -892,14 +1012,18 @@ export default function ReplyComposer({
     };
 
     const nextLabel = nextEntry
-      ? (nextRequiresSign
+      ? (nextRequiresVisa
+          ? "Viser et avancer"
+          : nextRequiresSign
           ? "Signer et avancer"
           : nextRequiresSend
             ? (sendEmail.isPending ? "Envoi…" : "Envoyer et avancer")
             : (nextEntry.transition.name || nextEntry.target.name))
       : "";
 
-    const nextIcon = nextRequiresSign
+    const nextIcon = nextRequiresVisa
+      ? <Stamp className="h-3.5 w-3.5" />
+      : nextRequiresSign
       ? <PenLine className="h-3.5 w-3.5" />
       : nextRequiresSend
         ? <Send className="h-3.5 w-3.5" />
@@ -1089,6 +1213,29 @@ export default function ReplyComposer({
             </Select>
           )}
 
+          {/* Désignation du viseur de l'étape de visa (courante ou suivante) */}
+          {designationState && !readOnly && !isFinal && (
+            <Select
+              value={designatedViseurId || "__none__"}
+              onValueChange={(v) => setViseur.mutate({ stateId: designationState.id, userId: v === "__none__" ? null : v })}
+              disabled={isBusy || serviceViseurs.length === 0}
+            >
+              <SelectTrigger className="h-8 w-[200px] text-sm" aria-label={`Viseur — ${designationState.name}`}>
+                <Stamp className="mr-1.5 h-3.5 w-3.5 text-primary" />
+                <SelectValue placeholder="Viseur…" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectLabel>Viseur — {designationState.name}</SelectLabel>
+                  <SelectItem value="__none__">Tout viseur de l'organisation</SelectItem>
+                  {serviceViseurs.map((v) => (
+                    <SelectItem key={v.id} value={v.id}>{visaPersonName(v)}</SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          )}
+
           {/* Retirer la signature */}
           {isSigned && currentUserIsSignatory && !isSent && !isFinal && (
             <Button
@@ -1205,6 +1352,41 @@ export default function ReplyComposer({
           </Button>
         </div>
       )}
+
+      {/* Visa : attente, commentaire, trace */}
+      {isVisaState && !activeVisa && reply && (
+        <div className="shrink-0 space-y-2 rounded-md border border-warning/40 bg-warning/5 px-3 py-2">
+          <p className="flex items-center gap-2 text-sm">
+            <Stamp className="h-4 w-4 shrink-0 text-warning" />
+            {designatedViseur
+              ? <>En attente du visa de <span className="font-medium">{visaPersonName(designatedViseur)}</span> (ou d'un autre viseur de l'organisation).</>
+              : <>En attente du visa d'un viseur de l'organisation.</>}
+          </p>
+          {serviceViseurs.length === 0 && (
+            <p className="text-xs text-muted-foreground">
+              Aucun viseur n'est rattaché à l'organisation « {currentService.name} » : un administrateur doit en associer un.
+            </p>
+          )}
+          {currentUserIsViseur && !readOnly && (
+            <>
+              {designatedViseur && designatedViseur.id !== currentUserId && (
+                <p className="text-xs text-muted-foreground">
+                  Vous visez à la place de {visaPersonName(designatedViseur)}.
+                </p>
+              )}
+              <Input
+                value={visaComment}
+                onChange={(e) => setVisaComment(e.target.value)}
+                placeholder="Commentaire de visa (facultatif)"
+                maxLength={500}
+                className="h-8 text-sm"
+                disabled={isBusy}
+              />
+            </>
+          )}
+        </div>
+      )}
+      {replyVisas.length > 0 && <ReplyVisaTrail visas={replyVisas} className="shrink-0" />}
 
       {/* Éditeur */}
       <RichTextEditor

@@ -184,6 +184,45 @@ export async function setOrgSignatories(
   }
 }
 
+/** Viseurs (users.id) rattachés à une organisation : ceux qui peuvent viser ses réponses. */
+export async function listOrgViseurIds(socleOrgId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("socle_organization_viseurs")
+    .select("user_id")
+    .eq("socle_organization_id", socleOrgId);
+  if (error) throw error;
+  return ((data ?? []) as { user_id: string }[]).map((r) => r.user_id);
+}
+
+export async function setOrgViseurs(
+  organizationId: string,
+  socleOrgId: string,
+  userIds: string[],
+): Promise<void> {
+  const existingIds = await listOrgViseurIds(socleOrgId);
+  const toAdd = userIds.filter((id) => !existingIds.includes(id));
+  const toRemove = existingIds.filter((id) => !userIds.includes(id));
+
+  if (toAdd.length > 0) {
+    const { error } = await supabase.from("socle_organization_viseurs").insert(
+      toAdd.map((uid) => ({
+        organization_id: organizationId,
+        socle_organization_id: socleOrgId,
+        user_id: uid,
+      })),
+    );
+    if (error) throw error;
+  }
+  if (toRemove.length > 0) {
+    const { error } = await supabase
+      .from("socle_organization_viseurs")
+      .delete()
+      .eq("socle_organization_id", socleOrgId)
+      .in("user_id", toRemove);
+    if (error) throw error;
+  }
+}
+
 /** Vue inverse : organisations associées, par signataire, pour tout le tenant. */
 export async function listSignatoryOrgAssociations(
   organizationId: string,
