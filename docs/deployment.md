@@ -112,6 +112,18 @@ bunx supabase functions deploy <nom> --project-ref aullweizxcjbvtdspjli
 bun run build && npx wrangler deploy --dry-run
 ```
 
+### Lot « courrier entrant » (2026-10-01) — appliqué le 2026-10-01
+
+Écran du gestionnaire courrier, confiance de la proposition de service, renvoi au service courrier
+(voir `docs/features.md` § 2).
+
+| # | Action | Pourquoi cet ordre | État |
+|---|---|---|---|
+| 1 | `20261001074711_courrier_entrant.sql` (`organization_users.is_service_courrier`, `courier_analyses.suggested_service_confidence` + `suggested_service_alternatives`, RPC `mailroom_couriers` et `mailroom_member_ids`) | L'analyse écrit les colonnes ; le frontend lit le RPC | **Appliqué** via `apply_migration` — registre `20261001074711` (fichier renommé pour coller). Vérifié : 3 365 lignes ACCM en 0,4 s sous un admin |
+| 2 | Déployer `analyze-courier` (`_shared/serviceSuggestion.ts` dans le lot) | Écrit confiance et alternatives ; avant lui, « À valider » reste alimenté (confiance `NULL`) mais rien n'est routable en lot | **Fait** — `supabase functions deploy analyze-courier` (2026-10-01) |
+| 3 | Déployer `notifications-push` (`_shared/push/message.ts`) | Titres push de `courier_returned` / `courier_reminder` ; avant lui, repli « Notification » | **Fait** — `supabase functions deploy notifications-push` (2026-10-01) |
+| 4 | Publier le frontend | Écran `/courrier-entrant`, renvoi au service courrier, case « Gestionnaire courrier » | **Fait** — push sur `main` (Workers Builds) ; reste à cocher le profil des agents concernés |
+
 ### Lot « proposition du service instructeur » (2026-10-01) — appliqué le 2026-10-01
 
 L'analyse propose l'organisation gestionnaire à partir d'un catalogue décrit (voir

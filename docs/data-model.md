@@ -107,6 +107,7 @@ Appartenance d'un user à une org. Source unique des permissions d'org.
 | `role` | varchar | `'admin'` \| `'administrateur'` \| `'member'` |
 | `is_active` | boolean | |
 | `is_signataire` | boolean | |
+| `is_service_courrier` | boolean | profil « gestionnaire courrier » (écran Courrier entrant), indépendant du rôle — 2026-10-01 |
 | `signataire_title` | text | |
 
 ---
@@ -261,6 +262,8 @@ Analyse LLM par courrier (cache).
 | `suggested_service_name` | text — nom de l'organisation proposée (dérivé de l'id depuis le 2026-10-01) |
 | `suggested_socle_organization_id` | uuid FK → socle_organizations, `ON DELETE SET NULL` — organisation gestionnaire **proposée** par l'IA, revalidée contre le catalogue. L'agent l'applique ou non |
 | `suggested_service_reason` | text — la justification, une phrase |
+| `suggested_service_confidence` | smallint 0–100 — confiance de l'IA (2026-10-01) ; NULL pour les analyses antérieures |
+| `suggested_service_alternatives` | uuid[] — au plus deux autres organisations plausibles, revalidées contre le catalogue |
 | `model` / `tokens_used` | text / integer |
 
 #### `courier_analysis_jobs`

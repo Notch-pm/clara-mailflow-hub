@@ -28,6 +28,7 @@ Toute nouvelle route doit être ajoutée ici dans la même PR que son ajout dans
 | Path | Page | Description |
 |---|---|---|
 | `/` | `Dashboard` | Vue d'ensemble. |
+| `/courrier-entrant` | `CourrierEntrant` | Écran du gestionnaire courrier (`canAccessMailroom`) : compteurs-onglets (À qualifier, À valider, À réorienter, En cours, En retard, Traités, Tous), liste à gauche, panneau d'action par étape à droite (`src/components/mailroom/`). `?open=<id>` ouvre l'onglet du courrier (notification « renvoyé »). |
 | `/boite-aux-lettres` | `BoiteAuxLettres` | Tri des courriers reçus : liste à gauche, panneau du courrier sélectionné à droite (`MailboxSidePanel`). |
 | `/courriers-en-instruction` | `CourriersEnInstruction` | États `in_progress`. |
 | `/courriers-traites` | `CourriersTraites` | États `processed`. |

@@ -80,6 +80,49 @@ L'analyse propose l'**organisation gestionnaire** ; l'agent l'applique ou l'éca
 - `extract-courier-info` (pré-saisie de `NewCourierDialog` / `BulkImport`) utilise le même
   catalogue, et renvoie toujours un nom à l'écran.
 
+**Confiance et alternatives (2026-10-01).** Le modèle chiffre sa proposition (`confidence`, 0–100)
+et cite jusqu'à deux autres organisations plausibles (`alternative_ids`), revalidées comme la
+proposition (`resolveSuggestedService`) et stockées dans `courier_analyses.suggested_service_confidence`
+/ `suggested_service_alternatives`. C'est ce qui alimente « À valider » / « À qualifier » et le
+routage en lot de l'écran « Courrier entrant ». Analyses antérieures : confiance `NULL`, jamais
+routées en lot.
+
+### Écran « Courrier entrant » — gestionnaire courrier (depuis le 2026-10-01)
+
+Le service courrier **qualifie** (accepte ou corrige la proposition de Clara), **route** vers le
+service gestionnaire, puis **suit et relance** ; il n'instruit pas. Écran `/courrier-entrant`
+(`src/pages/CourrierEntrant.tsx`, composants `src/components/mailroom/`), réservé au profil
+`is_service_courrier`, aux administrateurs et au superadmin.
+
+- **Données** : RPC `mailroom_couriers(org, since)` — une ligne légère par courrier reçu **non
+  résolu**, ou résolu depuis `since` (7/30/90 j). Rafraîchi toutes les 2 minutes.
+- **Classement** (pur, testé — `src/lib/mailroom.ts`) :
+  - **À router** = sans organisation, **ou** renvoyé, **ou** à l'état initial **sans aucun événement
+    de routage ni prise en charge**. ⚠️ Ce n'est pas « sans organisation » : la plupart des
+    courriers arrivent déjà rattachés à l'organisation de leur boîte IMAP (souvent la racine).
+    Parmi eux : *analyse en cours* (job `pending`/`running`, bandeau), **À réorienter** (dernier
+    routage = `service_returned`), **À qualifier** (échec d'analyse, non analysé, pas de
+    proposition, organisation proposée indisponible, ou confiance < 70), **À valider** (le reste).
+  - **Routé** : **En retard** si l'échéance du moment (`primarySla`, accusé puis résolution) est
+    dépassée, sinon **En cours** (« non pris en charge » tant que le courrier est à l'état
+    initial) ; **Traités** = `resolved_at` posé.
+- **Gestes** (`src/services/courierRoutingService.ts`) :
+  - **Router** (`routeCourier`) : autre organisation → `assignOrganization` (`service_changed`) ;
+    organisation déjà posée → seul l'événement `courier_routed` acte la décision. Les membres de
+    l'organisation sont notifiés (`courier_transferred`).
+  - **Lot « Valider les N propositions ≥ 90 % »** : `routeCouriers`, un échec n'arrête pas les autres.
+  - **Relancer** : événement `service_reminded` + notification `courier_reminder` aux membres.
+  - **Réaffecter** : `transferCourier` (le transfert de la fiche, sorti de `useCourierWorkspace`).
+- **Côté service — « Je ne sais pas, renvoyer au service courrier »** : lien dans le choix
+  d'organisation (panneau de tri et fiche), boîte `ReturnToMailroomDialog` (Déjà traité facultatif,
+  Reste à faire obligatoire). `returnToMailroom` retire organisation et état, journalise
+  `service_returned {from, done, todo}` et notifie les gestionnaires courrier
+  (`courier_returned`, liste via le RPC `mailroom_member_ids` — un agent ne lit pas les autres
+  lignes d'`organization_users`). Proposé seulement si la collectivité a au moins un
+  gestionnaire courrier. Le transfert direct de service à service reste possible.
+- Pas de « Clôturer » sur un courrier renvoyé : sans organisation il n'a plus de workflow ; on le
+  réoriente.
+
 ### Rédaction de réponse IA
 - Edge function `draft-reply` : prend `courier_id`, `response_type`, instructions additionnelles → renvoie du HTML prêt à coller dans l'éditeur Tiptap.
 - UI : `ReplyComposer.tsx`.
@@ -354,7 +397,8 @@ Variables (à insérer par le menu « Variables » de l'éditeur) :
 ## 8. Notifications
 
 - Table `notifications` + cloche `NotificationBell.tsx` + hook `useNotifications`.
-- Quatre types aujourd'hui : `new_courier` (fan-out à tous les membres actifs de l'org, par
+- Six types aujourd'hui (`courier_returned` « Renvoyé : … » et `courier_reminder` « Relance : … »
+  depuis le 2026-10-01, insérés par `courierRoutingService`, sauf pour l'auteur du geste) : `new_courier` (fan-out à tous les membres actifs de l'org, par
   `fn_create_courier_notifications`, sauf l'auteur du courrier), `courier_transferred`
   (inséré côté client depuis `useCourierWorkspace`), `action_assigned` et `action_unassigned`
   (edge `send-assignment-notification`, sans appelant depuis le 2026-09-11).

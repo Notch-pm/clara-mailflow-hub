@@ -34,6 +34,8 @@
 
 ➕ **Attribut transverse — Signataire** (`is_signataire`) : **indépendant du rôle**. Seul un utilisateur marqué signataire peut **signer** une réponse ; l'attribut se cumule avec n'importe quel rôle et n'est pas un profil à part entière.
 
+➕ **Attribut transverse — Gestionnaire courrier** (`organization_users.is_service_courrier`, 2026-10-01) : **indépendant du rôle**, comme le signataire. Donne accès à l'écran **« Courrier entrant »** (`/courrier-entrant`), où le service courrier qualifie, route, suit et relance les courriers reçus. Il n'ouvre **aucun droit d'écriture** : c'est toujours `canEditCouriers` / `is_editor_of` qui décide (un consultant marqué gestionnaire courrier voit l'écran sans pouvoir router). Prédicats : `isServiceCourrier`, `canAccessMailroom` (profil, administrateur ou superadmin), `showsMailbox` (un gestionnaire courrier non administrateur ne voit plus la boîte aux lettres dans la navigation) — `src/lib/permissions.ts`. Coché par un administrateur dans la fiche utilisateur.
+
 ➕ **Espace élu sur téléphone** (2026-09-13) : le rôle `elu` reçoit une interface dédiée et simplifiée quand il ouvre Clara sur un écran de moins de 768 px — voir `docs/routes.md` § « Espace élu ». **Ce n'est pas un niveau de droits** : l'élu garde exactement les mêmes autorisations qu'un gestionnaire (`canEditCouriers`), seuls les écrans changent. Le mode se coupe par appareil (« Affichage complet », menu de l'avatar ou `Mon profil`). Prédicat : `isElu()` dans `src/lib/permissions.ts` ; arbitrage : `src/lib/elu-mode.ts`. Depuis le 2026-09-23, la fiche usager et le courrier y montrent aussi les demandes Iris de l'usager, les réponses, les **commentaires internes** et l'activité — mêmes droits que tout membre, périmètre des demandes appliqué côté serveur (voir plus bas).
 
 ### État d'application
@@ -84,7 +86,8 @@ Contrairement aux courriers, ce filtre n'est **pas** UI-only : ce sont les donn�
 | Route | Écran | Notes |
 |---|---|---|
 | `/` | Tableau de bord | Vue d'ensemble + courriers en attente de signature |
-| `/boite-aux-lettres` | Boîte aux lettres | Nouveaux courriers reçus |
+| `/boite-aux-lettres` | Boîte aux lettres | Nouveaux courriers reçus. Masquée dans la navigation d'un gestionnaire courrier non administrateur |
+| `/courrier-entrant` | Courrier entrant | **Gestionnaire courrier, administrateur, superadmin** (`canAccessMailroom`) — sinon redirection vers la boîte aux lettres |
 | `/courriers-en-instruction` | En instruction | États `in_progress` |
 | `/courriers-traites` | Traités | États `processed` |
 | `/courriers-archives` | Archivés | États `archived` |
