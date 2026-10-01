@@ -223,7 +223,7 @@ export function useSignAndAdvance(ctx: EluSignContext): {
     if (requiresSend) {
       return {
         id: "send",
-        label: "Envoyer",
+        label: approvalLabel("send", nextEntry.label),
         disabledReason: ctx.canEmail ? null : "L'usager n'a pas d'adresse électronique.",
         run: () => sendAndAdvance.mutate(),
       };

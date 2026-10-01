@@ -1031,7 +1031,7 @@ export default function ReplyComposer({
           : nextRequiresSign
           ? approvalLabel("sign", nextEntry.transition.name || nextEntry.target.name)
           : nextRequiresSend
-            ? (sendEmail.isPending ? "Envoi…" : "Envoyer et avancer")
+            ? (sendEmail.isPending ? "Envoi…" : approvalLabel("send", nextEntry.transition.name || nextEntry.target.name))
             : (nextEntry.transition.name || nextEntry.target.name))
       : "";
 
