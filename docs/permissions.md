@@ -92,6 +92,7 @@ Contrairement aux courriers, ce filtre n'est **pas** UI-only : ce sont les donn�
 | `/corbeille` | Corbeille et spam | **Mêmes que Courrier entrant** (`canAccessMailroom`, miroir SQL `can_access_mailroom`) ; restaurer / supprimer définitivement / vider exigent en plus `canEditCouriers` (`is_editor_of`). Barre mobile : gestionnaire courrier seulement |
 | `/courrier-entrant` | Courrier entrant | **Gestionnaire courrier, administrateur, superadmin** (`canAccessMailroom`) — sinon redirection vers la boîte aux lettres |
 | `/courriers-en-instruction` | En instruction | États `in_progress` |
+| `/parapheur` | Parapheur | **Viseur ou signataire** (`canAccessParapheur`), quel que soit le rôle. L'écran ne fait que proposer : chaque visa est gardé par `courier_visas_validate` (rattachement à l'organisation gestionnaire), chaque signature exige d'être le signataire désigné avec une signature manuscrite |
 | `/courriers-traites` | Traités | États `processed` |
 | `/courriers-archives` | Archivés | États `archived` |
 | `/courriers-sortants` | Sortants | Réponses + courriers outbound |

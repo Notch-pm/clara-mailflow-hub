@@ -89,13 +89,30 @@ export function showsMailbox(
   return !isServiceCourrier(membership) || isOrgAdmin(membership) || isSuperAdmin(profile);
 }
 
+/**
+ * Parapheur : réservé à qui peut viser ou signer. Les deux attributs sont
+ * indépendants du rôle ; l'écran ne promet rien de plus — le serveur décide
+ * de chaque visa (rattachement à l'organisation gestionnaire) et chaque
+ * signature (fiche de signataire désignée).
+ */
+export function canAccessParapheur(
+  membership: { is_signataire?: boolean | null; is_viseur?: boolean | null } | null | undefined,
+): boolean {
+  return membership?.is_signataire === true || membership?.is_viseur === true;
+}
+
 /** Visibilité d'une entrée de navigation (rail et barre mobile). */
 export function navItemVisible(
   url: string,
   profile: Profile,
-  membership: (Membership & { is_service_courrier?: boolean | null }) | null | undefined,
+  membership:
+    | (Membership & { is_service_courrier?: boolean | null; is_signataire?: boolean | null; is_viseur?: boolean | null })
+    | null
+    | undefined,
 ): boolean {
   switch (url) {
+    case "/parapheur":
+      return canAccessParapheur(membership);
     case "/statistiques":
       return canAccessStats(profile, membership);
     case "/courrier-entrant":

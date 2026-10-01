@@ -190,6 +190,7 @@ Faire valider une réponse par la hiérarchie (« j'ai vu, je valide ») avant q
 - Sans visa, la réponse ne peut ni avancer ni être envoyée — même par appel direct à la base. Le renvoi en arrière, l'abandon et le renvoi « à corriger » (vers une étape dont la suite normale ramène au visa) restent possibles, sur téléphone comme sur ordinateur.
 - Le visa est visible dans l'onglet Réponse du courrier entrant, sur l'écran du courrier sortant et dans l'historique ; le viseur retrouve ce qui l'attend au tableau de bord (« En attente de votre visa »).
 - Sur téléphone, tout viseur — élu ou non (chef de service, DGS) — arrive sur l'affichage simplifié et vise depuis l'onglet « À viser » (commentaire facultatif), comme l'élu signe ; un même utilisateur peut viser certaines réponses et en signer d'autres. L'application complète reste accessible depuis le menu du compte.
+- Sur ordinateur, le **Parapheur** (`/parapheur`, entrée du rail visible des seuls viseurs et signataires) rassemble les deux files — À viser, À signer — et ce que l'utilisateur a traité ce mois-ci : il relit la réponse mise en page, vise (commentaire facultatif) ou signe, et la suivante s'ouvre. Il peut aussi viser ou signer une sélection en une fois, après confirmation ; chaque réponse y suit le même chemin et les mêmes gardes qu'une à une.
 
 ## Parcours critique 5 — Archiver et retrouver les courriers
 

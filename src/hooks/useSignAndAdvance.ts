@@ -3,11 +3,9 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { edgeError } from "@/lib/edge-error";
-import { signReply, transitionReplyState } from "@/services/courierReplyService";
-import { getSignatureDataUrl } from "@/services/signatoryService";
-import { grantVisa } from "@/services/courierVisaService";
+import { transitionReplyState } from "@/services/courierReplyService";
+import { signAndAdvance as signReplyAndAdvance, signatureBlocker, visaAndAdvance as visaReplyAndAdvance } from "@/services/replyApprovalService";
 import { isFreeExitFromVisa, type VisaGraphTransition } from "@/lib/reply-visa";
-import { appendSignature, buildSignatureBlock } from "@/lib/reply-signature";
 import type { EluTransitionChoice } from "@/hooks/useEluReply";
 import type { WorkflowState } from "@/types/courier";
 
@@ -41,6 +39,10 @@ export interface EluSignContext {
   canVisa?: boolean;
   /** Transitions du workflow réponse : un renvoi « À corriger » se reconnaît à sa suite nominale. */
   workflowTransitions?: readonly VisaGraphTransition[];
+  /** Libellés de l'action principale, quand l'écran les veut autres (« Signer et suivant »). */
+  labels?: { visa?: string; sign?: string };
+  /** Message après signature ; par défaut « Courrier signé et envoyé » (espace élu). */
+  signedToast?: string;
   onDone: () => void;
 }
 
@@ -95,6 +97,8 @@ export function useSignAndAdvance(ctx: EluSignContext): {
     void queryClient.invalidateQueries({ queryKey: ["elu-signature-waiting"] });
     void queryClient.invalidateQueries({ queryKey: ["reply-visas"] });
     void queryClient.invalidateQueries({ queryKey: ["visa-queue"] });
+    void queryClient.invalidateQueries({ queryKey: ["elu-visa-waiting"] });
+    void queryClient.invalidateQueries({ queryKey: ["parapheur-done"] });
     void queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
   }
 
@@ -112,22 +116,18 @@ export function useSignAndAdvance(ctx: EluSignContext): {
   const signAndAdvance = useMutation({
     mutationFn: async () => {
       if (!nextEntry) throw new Error("Aucune transition suivante définie.");
-      const signatory = ctx.signatory!;
-      const signatureDataUrl = await getSignatureDataUrl(signatory.signature_storage_key!);
-      const fullName = `${signatory.first_name} ${signatory.last_name}`.trim();
-      const signedBody = appendSignature(
-        ctx.bodyHtml,
-        buildSignatureBlock({ fullName, title: signatory.title, signatureDataUrl }),
-      );
-      await signReply(ctx.organizationId!, ctx.parentCourierId!, ctx.replyId!, {
-        bodyHtml: signedBody,
-        signedBy: signatory.id,
-        signedStateId: ctx.currentState?.id ?? null,
+      await signReplyAndAdvance({
+        organizationId: ctx.organizationId!,
+        parentCourierId: ctx.parentCourierId!,
+        replyId: ctx.replyId!,
+        stateId: ctx.currentState?.id ?? null,
+        bodyHtml: ctx.bodyHtml,
+        signatory: ctx.signatory!,
+        next: nextEntry.target,
       });
-      await advance(nextEntry.target);
     },
     onSuccess: () => {
-      toast.success("Courrier signé et envoyé");
+      toast.success(ctx.signedToast ?? "Courrier signé et envoyé");
       ctx.onDone();
     },
     onError: (error: Error) => toast.error(error.message || "La signature a échoué."),
@@ -163,14 +163,14 @@ export function useSignAndAdvance(ctx: EluSignContext): {
   const visaAndAdvance = useMutation({
     mutationFn: async (comment: string | undefined) => {
       if (!ctx.currentState) throw new Error("Étape de visa introuvable.");
-      await grantVisa({
+      await visaReplyAndAdvance({
         organizationId: ctx.organizationId!,
         parentCourierId: ctx.parentCourierId!,
         replyId: ctx.replyId!,
         stateId: ctx.currentState.id,
+        next: nextEntry?.target ?? null,
         comment: comment ?? null,
       });
-      if (nextEntry) await advance(nextEntry.target);
     },
     onSuccess: () => {
       toast.success("Réponse visée");
@@ -198,7 +198,7 @@ export function useSignAndAdvance(ctx: EluSignContext): {
     if (visaPending) {
       return {
         id: "visa",
-        label: "Viser",
+        label: ctx.labels?.visa ?? "Viser",
         disabledReason: ctx.canVisa ? null : "Vous n'êtes pas viseur de l'organisation gestionnaire.",
         run: (comment) => visaAndAdvance.mutate(comment),
       };
@@ -212,16 +212,10 @@ export function useSignAndAdvance(ctx: EluSignContext): {
       ctx.channel === "email";
 
     if (requiresSignature) {
-      const reason = !ctx.signatory
-        ? "Aucun signataire n'est désigné sur cette réponse."
-        : ctx.signatory.user_id !== ctx.currentUserId
-          ? "Vous n'êtes pas le signataire désigné."
-          : !ctx.signatory.signature_storage_key
-            ? "Aucune signature manuscrite n'est enregistrée pour vous."
-            : null;
+      const reason = signatureBlocker(ctx.signatory, ctx.currentUserId);
       return {
         id: "sign",
-        label: "Signer et envoyer",
+        label: ctx.labels?.sign ?? "Signer et envoyer",
         disabledReason: reason,
         run: () => signAndAdvance.mutate(),
       };
