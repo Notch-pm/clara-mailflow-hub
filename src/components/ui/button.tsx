@@ -11,9 +11,9 @@ const buttonVariants = cva(
       variant: {
         default: "bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm hover:shadow-md active:shadow-sm",
         destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-sm hover:shadow-md active:shadow-sm",
-        outline: "border border-input bg-background hover:bg-accent hover:text-accent-foreground shadow-sm hover:shadow active:shadow-sm",
+        outline: "border border-input bg-background hover:bg-accent hover:text-accent-foreground [&:hover_svg]:text-current [&:hover_.text-primary]:text-current [&:hover_.text-muted-foreground:not([class*=bg-])]:text-current shadow-sm hover:shadow active:shadow-sm",
         secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80 shadow-sm hover:shadow active:shadow-sm",
-        ghost: "hover:bg-accent hover:text-accent-foreground",
+        ghost: "hover:bg-accent hover:text-accent-foreground [&:hover_svg]:text-current [&:hover_.text-primary]:text-current [&:hover_.text-muted-foreground:not([class*=bg-])]:text-current",
         link: "text-primary underline-offset-4 hover:underline",
         // Barre d'outils des listes : bouton cerclé, discret au repos. Un
         // réglage en vigueur (groupement, filtres) se signale par `data-active`.
