@@ -428,6 +428,7 @@ Miroir de la **hiérarchie d'organisations** du Socle (sous-arbre du `socle_org_
 | `workflow_id` | uuid FK → workflows | **config Clara** : workflow des courriers reçus |
 | `reply_workflow_id` | uuid FK → workflows | **config Clara** : workflow des réponses |
 | `public_description` | text | **miroir Socle** : descriptif « informations usager » (`GET /v1/portal/organizations`), en texte brut borné à 1 500 caractères. Écrit par la sync seule ; NULL pour un service interne (le Socle ne publie rien pour eux). Catalogue de la proposition de service instructeur |
+| `attributions` | text | **miroir Socle, INTERNE** (2026-10-01) : ce que l'organisation traite et ne traite pas (`GET /v1/organizations/attributions`, public-api ≥ 1.33.0), texte brut borné à 2 000 caractères, listes rendues en « • ». **Services internes compris.** Écrit par la sync seule ; NULL si rien d'écrit — pas d'héritage du parent. Source prioritaire du catalogue de la proposition de service instructeur. **Jamais montré à un usager** (RLS SELECT `is_member_of`, le portail ne lit que `id, name, workflow_id`) |
 | `sla_ack_business_days` / `sla_resolution_business_days` | integer (1-365 / 1-3650) | **config Clara** : délais souhaités avant accusé de réception / résolution, en jours ouvrés. **NULL = hérite du parent** ; la racine porte ceux de la collectivité. Voir `docs/features.md` § 3 |
 | `synced_at` / `obsoleted_at` | timestamptz | |
 

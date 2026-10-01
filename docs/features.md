@@ -58,14 +58,22 @@ Les suggestions (`suggested_subject`, `suggested_sender`, service instructeur) s
 L'analyse propose l'**organisation gestionnaire** ; l'agent l'applique ou l'écarte — comme les tags.
 
 - **Ce que le modèle sait de chaque organisation** : un catalogue décrit
-  (`_shared/serviceSuggestion.ts`, `buildServiceCatalog`) — nom, organisation parente, **descriptif
-  « informations usager » du Socle** (`socle_organizations.public_description`, synchronisé chaque
-  nuit) et **démarches qu'elle instruit** (`procedure_organizations`). Ne sont candidates que les
-  organisations qui ont un workflow (sans lui, un courrier n'est jamais instruit).
-- ⚠️ **Les services internes n'ont pas de descriptif** : le Socle ne publie « informations usager »
-  que pour les organismes ouverts au public (onglet masqué et route filtrée pour
-  `is_internal_service`). Pour eux, le modèle ne dispose que du nom, de la place dans l'arbre et des
-  démarches — c'est la limite connue de la proposition, à lever côté Socle.
+  (`_shared/serviceSuggestion.ts`, `buildServiceCatalog`) — nom, organisation parente, puis :
+  - **attributions** (`socle_organizations.attributions`, depuis le 2026-10-01) : texte INTERNE de ce
+    qu'elle traite et ne traite pas, **services internes compris** — bloc « attributions : … »,
+    source prioritaire (le prompt demande de s'y fonder d'abord ; une exclusion explicite écarte
+    l'organisation) ;
+  - **descriptif « informations usager »** (`public_description`) en complément — étiqueté
+    « informations usager : » quand il côtoie des attributions, non étiqueté sinon ;
+  - **démarches qu'elle instruit** (`procedure_organizations`).
+  Une organisation sans attributions garde exactement la ligne d'avant. Budget du catalogue :
+  16 000 caractères ; au-delà, le descriptif raccourcit puis disparaît avant que les attributions
+  ne raccourcissent. Ne sont candidates que les organisations qui ont un workflow.
+- **Les attributions sont internes** : elles ne vont qu'au modèle et aux agents (la raison de la
+  proposition peut s'en inspirer), jamais dans un texte destiné à l'usager — `draft-reply` et le
+  portail ne les lisent pas.
+- ⚠️ **Tant qu'une collectivité n'a rien rédigé** (cas général au 2026-10-01), un service interne
+  n'a pour le modèle que son nom, sa place dans l'arbre et ses démarches — la limite d'avant.
 - **Réponse par identifiant** (`suggested_service: {socle_organization_id, reason}`), revalidée par
   `resolveSuggestedService` : un id hors catalogue est écarté. Stockée dans
   `courier_analyses.suggested_socle_organization_id` + `suggested_service_reason`

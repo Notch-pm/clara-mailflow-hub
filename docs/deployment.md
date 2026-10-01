@@ -112,6 +112,18 @@ bunx supabase functions deploy <nom> --project-ref aullweizxcjbvtdspjli
 bun run build && npx wrangler deploy --dry-run
 ```
 
+### Lot « attributions des organisations » (2026-10-01) — appliqué le 2026-10-01
+
+Attributions internes du Socle (public-api 1.33.0) dans le catalogue de la proposition de service
+(voir `docs/features.md` § 2).
+
+| # | Action | Pourquoi cet ordre | État |
+|---|---|---|---|
+| 1 | `20261001083950_attributions_organisations.sql` (`socle_organizations.attributions`) | La sync l'écrit, l'analyse la lit | **Appliqué** via `apply_migration` — registre `20261001083950` |
+| 2 | Déployer `sync-socle-referentiel` | Remplit la colonne ; `[]` partout au déploiement (rien de rédigé), donc aucun changement visible tant que les collectivités n'écrivent pas | **Fait** — `supabase functions deploy` (épinglé `verify_jwt = false` dans `config.toml`) |
+| 3 | Déployer `analyze-courier` et `extract-courier-info` | Lisent la colonne. Ordre indifférent avec 2 : sans attributions, le catalogue est celui d'avant | **Fait** |
+| 4 | Publier le frontend | Compteur « Attributions » dans le toast de synchronisation superadmin (cosmétique) | **Fait** — push sur `main` (Workers Builds) |
+
 ### Lot « courrier entrant » (2026-10-01) — appliqué le 2026-10-01
 
 Écran du gestionnaire courrier, confiance de la proposition de service, renvoi au service courrier
