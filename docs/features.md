@@ -119,6 +119,7 @@ service gestionnaire, puis **suit et relance** ; il n'instruit pas. Écran `/cou
     organisation déjà posée → seul l'événement `courier_routed` acte la décision. Les membres de
     l'organisation sont notifiés (`courier_transferred`).
   - **Lot « Valider les N propositions ≥ 90 % »** : `routeCouriers`, un échec n'arrête pas les autres.
+  - **Lancer l'analyse IA** : sur « À qualifier », un bouton envoie en file (`enqueue_courier_analysis`, comme l'import en masse) tous les courriers jamais analysés ou en échec d'analyse ; le panneau propose le même geste courrier par courrier. Ils passent en « analyse en cours », puis rejoignent « À valider » ou « À qualifier ».
   - **Relancer** : événement `service_reminded` + notification `courier_reminder` aux membres.
   - **Réaffecter** : `transferCourier` (le transfert de la fiche, sorti de `useCourierWorkspace`).
 - **Côté service — « Je ne sais pas, renvoyer au service courrier »** : lien dans le choix

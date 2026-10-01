@@ -1,4 +1,4 @@
-import { ArrowDownWideNarrow, CheckCheck, ChevronRight, Loader2 } from "lucide-react";
+import { ArrowDownWideNarrow, CheckCheck, ChevronRight, Loader2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LIST_HEADER_SURFACE } from "@/components/list/ListCells";
 import { ListFooter, ListMessage } from "@/components/list/ListPage";
@@ -26,6 +26,10 @@ interface Props {
   batchCount: number;
   batchBusy: boolean;
   onBatch: () => void;
+  /** Courriers à qualifier faute d'analyse — vue « à qualifier » seulement. */
+  analyzeCount: number;
+  analyzeBusy: boolean;
+  onAnalyze: () => void;
   filtered: boolean;
 }
 
@@ -40,6 +44,9 @@ export default function MailroomList({
   batchCount,
   batchBusy,
   onBatch,
+  analyzeCount,
+  analyzeBusy,
+  onAnalyze,
   filtered,
 }: Props) {
   const def = MAILROOM_VIEWS[view];
@@ -55,6 +62,12 @@ export default function MailroomList({
           <Button variant="outline" size="sm" onClick={onBatch} disabled={batchBusy} className="gap-2 font-bold">
             {batchBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCheck className="h-4 w-4 text-primary" />}
             Valider les {batchCount} proposition{batchCount > 1 ? "s" : ""} ≥ 90 %
+          </Button>
+        )}
+        {view === "aq" && analyzeCount > 0 && (
+          <Button variant="outline" size="sm" onClick={onAnalyze} disabled={analyzeBusy} className="gap-2 font-bold">
+            {analyzeBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4 text-primary" />}
+            Lancer l'analyse IA ({analyzeCount} non analysé{analyzeCount > 1 ? "s" : ""})
           </Button>
         )}
         <span className="hidden items-center gap-1.5 text-[13px] font-semibold text-muted-foreground lg:flex">

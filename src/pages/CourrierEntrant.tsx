@@ -26,6 +26,7 @@ import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { channelLabels } from "@/hooks/useCourierWorkspace";
 import { canAccessMailroom, canEditCouriers } from "@/lib/permissions";
 import {
+  analysisCandidates,
   batchCandidates,
   countViews,
   inView,
@@ -82,6 +83,7 @@ export default function CourrierEntrant() {
   const counts = useMemo(() => countViews(filtered), [filtered]);
   const shown = useMemo(() => sortForView(filtered.filter((i) => inView(i, view)), view), [filtered, view]);
   const batch = useMemo(() => batchCandidates(filtered), [filtered]);
+  const toAnalyze = useMemo(() => analysisCandidates(filtered), [filtered]);
 
   // `?open=<id>` (notification « renvoyé ») : ouvre l'onglet du courrier.
   useEffect(() => {
@@ -273,6 +275,9 @@ export default function CourrierEntrant() {
               batchCount={canEdit ? batch.length : 0}
               batchBusy={actions.routeBatch.isPending}
               onBatch={runBatch}
+              analyzeCount={canEdit ? toAnalyze.length : 0}
+              analyzeBusy={actions.analyze.isPending}
+              onAnalyze={() => actions.analyze.mutate(toAnalyze.map((i) => i.row.id))}
               filtered={activeChips.length > 0 || !!filters.query.trim()}
             />
             {splitView && (
@@ -289,6 +294,8 @@ export default function CourrierEntrant() {
                     onRoute={(courierId, org) => actions.route.mutate({ courierId, org })}
                     onReassign={(courierId, org) => actions.reassign.mutate({ courierId, org })}
                     onRemind={(courierId) => actions.remind.mutate(courierId)}
+                    onAnalyze={(courierId) => actions.analyze.mutate([courierId])}
+                    analyzing={actions.analyze.isPending}
                   />
                 ) : (
                   <ListMessage>Sélectionnez un courrier.</ListMessage>

@@ -43,6 +43,8 @@ interface Props {
   onRoute: (courierId: string, org: SocleOrgWithConfig) => void;
   onReassign: (courierId: string, org: SocleOrgWithConfig) => void;
   onRemind: (courierId: string) => void;
+  onAnalyze: (courierId: string) => void;
+  analyzing: boolean;
   busy: boolean;
 }
 
@@ -68,6 +70,8 @@ export default function MailroomPanel({
   onRoute,
   onReassign,
   onRemind,
+  onAnalyze,
+  analyzing,
   busy,
 }: Props) {
   const navigate = useNavigate();
@@ -208,6 +212,12 @@ export default function MailroomPanel({
               )}
             </span>
           </div>
+          {canEdit && (item.reason === "not_analysed" || item.reason === "analysis_failed") && (
+            <Button variant="outline" className="h-10 gap-2 rounded-lg font-bold" disabled={analyzing} onClick={() => onAnalyze(row.id)}>
+              {analyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4 text-primary" />}
+              {item.reason === "analysis_failed" ? "Relancer l'analyse IA" : "Lancer l'analyse IA"}
+            </Button>
+          )}
           {(!row.sender_name || !row.subject) && (
             <p className="text-[13px] text-muted-foreground">
               {!row.sender_name ? "Expéditeur" : "Objet"} à compléter —{" "}

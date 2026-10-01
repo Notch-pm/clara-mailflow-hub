@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { MailroomRow } from "@/services/mailroomService";
 import {
+  analysisCandidates,
   batchCandidates,
   classifyCourier,
   countViews,
@@ -166,5 +167,18 @@ describe("suivi", () => {
     expect(slaProgress(fresh, NOW)).toBe(10);
     const old = classifyCourier(row({ ...routed, received_at: "2026-08-01T08:00:00Z" }), ctx);
     expect(slaProgress(old, NOW)).toBe(100);
+  });
+});
+
+describe("analysisCandidates", () => {
+  it("à qualifier faute d'analyse : jamais analysés ou analyse en échec, pas ceux en file", () => {
+    const items = [
+      classifyCourier(row({ id: "jamais", has_analysis: false, analysis_status: null }), ctx),
+      classifyCourier(row({ id: "echec", has_analysis: false, analysis_status: "failed" }), ctx),
+      classifyCourier(row({ id: "file", has_analysis: false, analysis_status: "pending" }), ctx),
+      classifyCourier(row({ id: "incertain", suggested_service_confidence: 40 }), ctx),
+      classifyCourier(row({ id: "valider" }), ctx),
+    ];
+    expect(analysisCandidates(items).map((i) => i.row.id)).toEqual(["jamais", "echec"]);
   });
 });

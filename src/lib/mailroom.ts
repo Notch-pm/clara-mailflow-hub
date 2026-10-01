@@ -55,7 +55,7 @@ export const QUALIFY_REASONS: Record<QualifyReason, { title: string; text: strin
   },
   not_analysed: {
     title: "Non analysé",
-    text: "Ce courrier n'a pas été analysé par Clara. Choisissez le service destinataire.",
+    text: "Ce courrier n'a pas encore fait l'objet d'une analyse IA, lancez l'analyse ou assignez manuellement un service gestionnaire.",
   },
   no_suggestion: {
     title: "Service non identifié",
@@ -299,6 +299,16 @@ export function batchCandidates(items: MailroomItem[]): MailroomItem[] {
       i.stage === "to_validate" &&
       i.row.suggested_service_confidence !== null &&
       i.row.suggested_service_confidence >= CONFIDENCE_BATCH_MIN,
+  );
+}
+
+/**
+ * Courriers à envoyer à l'analyse IA : à qualifier faute d'analyse (jamais
+ * analysés, ou analyse en échec). Un courrier déjà en file est en « analysing ».
+ */
+export function analysisCandidates(items: MailroomItem[]): MailroomItem[] {
+  return items.filter(
+    (i) => i.stage === "to_qualify" && (i.reason === "not_analysed" || i.reason === "analysis_failed"),
   );
 }
 
