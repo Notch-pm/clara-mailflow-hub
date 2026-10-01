@@ -107,7 +107,7 @@ describe("instructionTodo", () => {
       // Résolu : ne compte plus.
       item({ ...inVoirie, resolved_at: "2026-09-30T12:00:00Z", received_at: "2026-08-20T08:00:00Z" }),
     ];
-    const cards = Object.fromEntries(instructionTodo(items, voirieScope, 4).map((c) => [c.key, c.count]));
+    const cards = Object.fromEntries(instructionTodo(items, voirieScope, 4, true).map((c) => [c.key, c.count]));
     expect(cards).toEqual({
       "instruction-late": 1,
       "instruction-pickup": 1,
@@ -118,7 +118,22 @@ describe("instructionTodo", () => {
 
   it("sans périmètre, couvre toute l'organisation", () => {
     const items = [item({ ...inVoirie, received_at: "2026-08-20T08:00:00Z" }), item({ ...inVoirie, socle_organization_id: "root", received_at: "2026-08-20T08:00:00Z" })];
-    expect(instructionTodo(items, null, 0)[0].count).toBe(2);
+    expect(instructionTodo(items, null, 0, true)[0].count).toBe(2);
+  });
+
+  it("un courrier encore à router n'est en retard chez le service que sans service courrier", () => {
+    // Arrivé par la boîte de la voirie, à l'état initial, jamais routé ni pris en charge.
+    const unrouted = item({
+      socle_organization_id: "voirie",
+      workflow_state_id: "init",
+      state_is_initial: true,
+      received_at: "2026-08-20T08:00:00Z",
+      created_at: "2026-08-20T08:00:00Z",
+    });
+    const late = (mailroomActive: boolean) =>
+      instructionTodo([unrouted], voirieScope, 0, mailroomActive).find((c) => c.key === "instruction-late")!.count;
+    expect(late(true)).toBe(0);
+    expect(late(false)).toBe(1);
   });
 });
 
@@ -126,7 +141,7 @@ describe("sortTodo", () => {
   it("met le rouge d'abord, retire les cartes vides", () => {
     const cards = sortTodo([
       ...parapheurTodo([], null),
-      ...instructionTodo([item({ ...inVoirie, received_at: "2026-08-20T08:00:00Z" })], voirieScope, 3),
+      ...instructionTodo([item({ ...inVoirie, received_at: "2026-08-20T08:00:00Z" })], voirieScope, 3, true),
     ]);
     expect(cards.map((c) => c.key)).toEqual(["instruction-late", "instruction-drafts"]);
   });
@@ -243,6 +258,16 @@ describe("indicateurs", () => {
       ["on-time", "50 %"],
     ]);
     expect(kpis[0].delta).toBe("+100 %");
+    // Échéances de septembre : l'une tenue, l'autre dépassée et toujours ouverte.
+    expect(kpis[2]).toMatchObject({ label: "Respect des délais", detail: "sur 2 échéances", delta: "+50 pts" });
+  });
+
+  it("un service qui ne clôt rien n'affiche pas 100 %", () => {
+    const items = [
+      item({ ...inVoirie, received_at: "2026-09-01T08:00:00Z", created_at: "2026-09-01T08:00:00Z", resolved_at: "2026-09-03T08:00:00Z" }),
+      ...[1, 2, 3].map(() => item({ ...inVoirie, received_at: "2026-09-02T08:00:00Z", created_at: "2026-09-02T08:00:00Z" })),
+    ];
+    expect(monthKpis({ items, scope: null, routing: false, now: NOW })[2]).toMatchObject({ value: "25 %", detail: "sur 4 échéances" });
   });
 
   it("service courrier : part des routés en moins d'un jour ouvré", () => {

@@ -22,7 +22,7 @@ import {
   type DashboardList,
   type ParapheurEntry,
 } from "@/lib/dashboard";
-import { fetchMailroomCouriers } from "@/services/mailroomService";
+import { fetchMailroomCouriers, fetchMailroomMemberIds } from "@/services/mailroomService";
 import { assignableOrgs, listOrgsWithConfig } from "@/services/socleOrgConfigService";
 import { countMyDraftReplies, listMySocleOrganizationIds, listWorkflowStateNames } from "@/services/dashboardService";
 
@@ -71,6 +71,16 @@ export function useDashboard() {
     queryFn: () => countMyDraftReplies(organizationId!, user!.id),
     enabled: !!organizationId && !!user?.id,
   });
+
+  // La collectivité a-t-elle un service courrier ? Sans lui, les courriers
+  // à router restent comptés en retard chez le service qui les a reçus.
+  const mailroomMembersQuery = useQuery({
+    queryKey: ["mailroom-member-ids", organizationId],
+    queryFn: () => fetchMailroomMemberIds(organizationId!),
+    enabled: !!organizationId,
+    staleTime: 5 * 60_000,
+  });
+  const mailroomActive = (mailroomMembersQuery.data?.length ?? 0) > 0;
 
   const visa = useEluVisaQueue();
   const signature = useEluSignatureQueue();
@@ -140,7 +150,7 @@ export function useDashboard() {
     const orgName = (id: string | null) => (id ? (orgs?.find((o) => o.id === id)?.name ?? null) : null);
     const has = (r: (typeof roles)[number]) => roles.includes(r);
 
-    const instructionCards = has("instruction") ? instructionTodo(items, myScope, draftsQuery.data ?? 0) : [];
+    const instructionCards = has("instruction") ? instructionTodo(items, myScope, draftsQuery.data ?? 0, mailroomActive) : [];
     const todo = sortTodo([
       ...instructionCards,
       ...(has("mailroom") ? mailroomTodo(items) : []),
@@ -169,7 +179,7 @@ export function useDashboard() {
       defaultList: defaultListRole(lists),
       hero: heroAction({ roles, instructionLate, mailroomItems: items }),
     };
-  }, [roles, items, myScope, draftsQuery.data, parapheurEntries, membership, statesQuery.data, orgs]);
+  }, [roles, items, myScope, draftsQuery.data, mailroomActive, parapheurEntries, membership, statesQuery.data, orgs]);
 
   return {
     ...view,

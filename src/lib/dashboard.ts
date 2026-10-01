@@ -13,6 +13,7 @@
 import {
   batchCandidates,
   CONFIDENCE_BATCH_MIN,
+  needsRouting,
   type MailroomItem,
   type MailroomView,
 } from "@/lib/mailroom";
@@ -100,19 +101,27 @@ function awaitsPickup(item: MailroomItem): boolean {
   return !row.taken_at && (!row.workflow_state_id || row.state_is_initial);
 }
 
+/**
+ * Retards d'un service : les courriers qu'on lui a confiés (routés ou pris en
+ * charge). Un courrier encore à router est en retard chez le service courrier,
+ * pas chez lui — sauf si la collectivité n'a pas de service courrier : personne
+ * d'autre ne le verrait alors.
+ */
 export function instructionTodo(
   items: MailroomItem[],
   scope: ReadonlySet<string> | null,
   draftCount: number,
+  mailroomActive: boolean,
 ): TodoCard[] {
   const mine = items.filter((i) => isOpen(i) && inScope(i, scope));
+  const lateOfService = (i: MailroomItem) => isOverdue(i) && (!mailroomActive || !needsRouting(i.row));
   const card = (c: Omit<TodoCard, "role">): TodoCard => ({ ...c, role: "instruction" });
   return [
     card({
       key: "instruction-late",
       tone: "urgent",
       label: "En retard",
-      count: mine.filter(isOverdue).length,
+      count: mine.filter(lateOfService).length,
       sub: "échéance dépassée",
       cta: "Traiter",
       href: "/courriers-en-instruction",
@@ -474,12 +483,14 @@ export function kpiMonths(now: Date = new Date()): { current: string; previous: 
 }
 
 /**
- * Borne du RPC (« résolus depuis ») : la veille du premier jour du mois d'avant
- * le dernier mois complet — un jour de marge absorbe le décalage horaire de Paris.
+ * Borne du RPC (« résolus depuis ») : 120 jours avant le mois d'avant le dernier
+ * mois complet. Un courrier dont l'échéance tombe ce mois-là a pu être reçu,
+ * et clos, bien avant (jusqu'à 40 jours ouvrés d'objectif) : sans cette marge,
+ * le respect des délais du mois de comparaison serait faussé.
  */
 export function kpiSince(now: Date = new Date()): Date {
   const { previous } = kpiMonths(now);
-  return new Date(Date.parse(`${previous}-01T00:00:00Z`) - 86_400_000);
+  return new Date(Date.parse(`${previous}-01T00:00:00Z`) - 120 * 86_400_000);
 }
 
 const MONTH_FORMAT = new Intl.DateTimeFormat("fr-FR", { month: "long", year: "numeric", timeZone: "UTC" });
@@ -502,6 +513,8 @@ export interface Kpi {
   delta: string | null;
   /** `null` : l'écart n'est ni bon ni mauvais (volume reçu). */
   trend: "good" | "bad" | null;
+  /** Base du pourcentage (« sur 31 échéances ») : un 100 % sur deux courriers n'est pas une tendance. */
+  detail?: string;
 }
 
 const frNumber = new Intl.NumberFormat("fr-FR");
@@ -585,18 +598,28 @@ export function monthKpis(args: {
     });
   }
 
+  // Respect des délais : parmi les courriers dont l'échéance de résolution
+  // tombait dans le mois, la part close à temps. Un courrier encore ouvert
+  // après son échéance compte comme un échec — sans quoi seuls les courriers
+  // clos seraient jugés, et un service qui ne clôt rien afficherait 100 %.
+  const dueIn = (month: string) =>
+    items.filter((i) => {
+      const { kind, dueDay } = i.sla.resolution;
+      return dueDay?.slice(0, 7) === month && (kind === "met" || kind === "missed" || kind === "overdue");
+    });
   const onTime = (month: string) => {
-    const judged = resolvedIn(month).filter((i) => i.sla.resolution.kind === "met" || i.sla.resolution.kind === "missed");
-    return ratio(judged.filter((i) => i.sla.resolution.kind === "met").length, judged.length);
+    const due = dueIn(month);
+    return { share: ratio(due.filter((i) => i.sla.resolution.kind === "met").length, due.length), base: due.length };
   };
   const cur = onTime(current);
-  const { delta, diff } = pointsDelta(cur, onTime(previous));
+  const { delta, diff } = pointsDelta(cur.share, onTime(previous).share);
   kpis.push({
     key: "on-time",
-    label: "Traités dans les délais",
-    value: cur === null ? "—" : `${cur} %`,
+    label: "Respect des délais",
+    value: cur.share === null ? "—" : `${cur.share} %`,
     delta,
     trend: trendOf(diff),
+    detail: cur.base ? `sur ${frNumber.format(cur.base)} échéance${cur.base > 1 ? "s" : ""}` : "aucune échéance",
   });
   return kpis;
 }

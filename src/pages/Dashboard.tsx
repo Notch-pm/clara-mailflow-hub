@@ -279,7 +279,10 @@ function KpiPanel({
       <Card className="px-5 py-1 shadow-airbnb">
         {kpis.map((kpi) => (
           <div key={kpi.key} className="flex items-center gap-3 border-b border-border/70 py-3.5">
-            <span className="flex-1 text-[13.5px] text-muted-foreground">{kpi.label}</span>
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className="text-[13.5px] text-muted-foreground">{kpi.label}</span>
+              {kpi.detail && !loading && <span className="text-[11.5px] text-muted-foreground/80">{kpi.detail}</span>}
+            </span>
             {loading ? (
               <Skeleton className="h-7 w-12" />
             ) : (
