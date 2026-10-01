@@ -158,7 +158,8 @@ disparaît de toutes les listes, recherches, statistiques et de la file d'analys
 - Événements `courier_trashed` / `courier_restored` dans l'historique.
 
 ### Rédaction de réponse IA
-- Edge function `draft-reply` : prend `courier_id`, `response_type`, instructions additionnelles → renvoie du HTML prêt à coller dans l'éditeur Tiptap.
+- Edge function `draft-reply` : prend `courier_id`, `response_type`, instructions additionnelles et l'objet en cours (`currentSubject`) → renvoie `{ html, subject }` : le corps prêt à coller dans l'éditeur Tiptap et l'objet proposé (repris s'il convenait, corrigé ou remplacé sinon). Le modèle rend l'objet en tête, entre `<objet></objet>` ; `splitDraftSubject` le sépare et le nettoie. Sans objet exploitable, `subject: null` et l'écran garde le sien.
+- **Objet de la réponse** (depuis le 2026-10-01) : champ « Objet » au-dessus de l'éditeur (colonne `couriers.subject`), prérempli « Re: » + objet du courrier reçu (`defaultReplySubject`), verrouillé comme le corps. C'est l'objet du courriel envoyé et la ligne « Objet » de la lettre. L'envoi enregistre d'abord les modifications en cours : `send-courier-reply` relit la réponse en base.
 - UI : `ReplyComposer.tsx`.
 - **Ce que le prompt contient** (assemblé par `draft-reply/logic.ts`, testé dans
   `src/test/socle/draft-reply-logic.test.ts`) : type de réponse et instructions de l'agent, nom de
@@ -202,6 +203,9 @@ Relecture de la réponse en cours d'édition — **la langue, jamais le sens**. 
   reste modifiable (ni signée, ni finale). L'éditeur est verrouillé pendant la relecture ; le texte
   corrigé remplace celui de l'éditeur **sans être enregistré** ; « Annuler l'amélioration » rend le
   texte d'origine tant que l'agent n'a pas retouché le résultat.
+- L'objet est relu avec le corps : il voyage en tête du message dans un paragraphe marqué
+  (`withSubject` / `splitSubject`), donc sous le même masquage des identités et le même contrôle
+  des balises au retour — pas de second appel.
 - Edge function `improve-reply` (logique pure : `_shared/improveMessage.ts`, testée dans
   `src/test/socle/improve-message.test.ts`). Feature et alias d'agent `correction-message`, les
   mêmes qu'Iris.

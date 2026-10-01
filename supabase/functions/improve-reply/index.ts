@@ -1,8 +1,10 @@
 // « Améliorer mon message » — relecture de la réponse qu'un agent rédige à un
 // courrier : la langue, jamais le sens. Voir `_shared/improveMessage.ts`.
 //
-// Entrée : `{ courierId, orgId, html }` (le corps en cours d'édition, pas
-// forcément enregistré). Sortie : `{ html }`, ou une erreur en français.
+// Entrée : `{ courierId, orgId, html, subject? }` (le corps et l'objet en cours
+// d'édition, pas forcément enregistrés). Sortie : `{ html, subject }`, ou une
+// erreur en français. L'objet voyage dans le message (`withSubject`) : mêmes
+// masquage et contrôle que le corps.
 // Rien n'est écrit en base : le texte revient à l'éditeur, l'agent le relit,
 // peut l'annuler, et c'est « Enregistrer » qui l'enregistre.
 
@@ -24,6 +26,8 @@ import {
   IMPROVE_SYSTEM_PROMPT,
   improveOutputTokens,
   maskMessage,
+  splitSubject,
+  withSubject,
   MAX_IMPROVE_CHARS,
   MAX_IMPROVE_HTML_CHARS,
   unmaskMessage,
@@ -65,10 +69,11 @@ Deno.serve(async (req) => {
     const user = auth.user;
     const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
 
-    const { courierId, orgId, html } = await req.json().catch(() => ({})) as {
+    const { courierId, orgId, html, subject } = await req.json().catch(() => ({})) as {
       courierId?: string;
       orgId?: string;
       html?: unknown;
+      subject?: unknown;
     };
     if (!courierId || !orgId) return jsonResponse({ error: "Paramètres manquants" }, 400);
     if (typeof html !== "string" || visibleText(html) === "") {
@@ -116,7 +121,8 @@ Deno.serve(async (req) => {
       participants.flatMap((p) => [p.name, p.email, p.first_name, p.last_name, p.organization]),
     );
 
-    const masked = maskMessage(html, terms);
+    const subjectIn = typeof subject === "string" ? subject.trim() : "";
+    const masked = maskMessage(withSubject(html, subjectIn), terms);
     if (masked.text.length > MAX_IMPROVE_CHARS) {
       return jsonResponse(
         { error: `Le message est trop long pour être amélioré d'un coup (${MAX_IMPROVE_CHARS} caractères environ au plus).` },
@@ -126,7 +132,7 @@ Deno.serve(async (req) => {
 
     const answer = await socleCompletion({
       system: IMPROVE_SYSTEM_PROMPT,
-      messages: [{ role: "user", content: buildImproveUserMessage(masked.text) }],
+      messages: [{ role: "user", content: buildImproveUserMessage(masked.text, { hasSubject: !!subjectIn }) }],
       agent: AGENT_CORRECTION,
       maxOutputTokens: improveOutputTokens(masked.text),
       ctx: {
@@ -147,7 +153,10 @@ Deno.serve(async (req) => {
         502,
       );
     }
-    return jsonResponse({ html: result.html });
+    if (!subjectIn) return jsonResponse({ html: result.html, subject: null });
+    const split = splitSubject(result.html);
+    // Un objet vidé par le modèle ne remplace rien : on garde celui de l'agent.
+    return jsonResponse({ html: split.html, subject: split.subject ?? subjectIn });
   } catch (err) {
     if (err instanceof SocleAiError) {
       return jsonResponse({

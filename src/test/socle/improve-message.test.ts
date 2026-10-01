@@ -7,8 +7,11 @@ import {
   IMPROVE_SYSTEM_PROMPT,
   improveOutputTokens,
   maskMessage,
+  splitSubject,
+  SUBJECT_NOTE,
   unmaskMessage,
   visibleText,
+  withSubject,
 } from "../../../supabase/functions/_shared/improveMessage";
 
 const TERMS = identityTerms(["Marie Dupont", "Dupont", "marie.dupont@exemple.fr", "Li", null, ""]);
@@ -131,5 +134,40 @@ describe("prompt et sortie", () => {
     expect(visibleText("<p></p><p> </p>")).toBe("");
     expect(visibleText("<p>Bonjour&nbsp;!</p>")).toBe("Bonjour !");
     expect(decodeEntities("&#233;&#xE9;&inconnu;")).toBe("éé&inconnu;");
+  });
+});
+
+describe("objet — relu avec le corps, sous les mêmes garde-fous", () => {
+  it("voyage en tête et revient séparé du corps", () => {
+    const html = withSubject("<p>Bonjour,</p>", "Votre demande de place en crèche");
+    const masked = maskMessage(html, TERMS);
+    const back = unmaskMessage(masked.text.replace("crèche", "crèche municipale"), masked);
+    expect(back.ok).toBe(true);
+    if (!back.ok) return;
+    expect(splitSubject(back.html)).toEqual({
+      subject: "Votre demande de place en crèche municipale",
+      html: "<p>Bonjour,</p>",
+    });
+  });
+
+  it("masque une identité présente dans l'objet", () => {
+    const masked = maskMessage(withSubject("<p>Bonjour,</p>", "Demande de Marie Dupont"), TERMS);
+    expect(masked.text).not.toContain("Dupont");
+  });
+
+  it("échappe l'objet à l'aller et le décode au retour", () => {
+    const html = withSubject("<p>x</p>", "Travaux <rue> & trottoirs");
+    expect(html).toContain("Travaux &lt;rue&gt; &amp; trottoirs");
+    expect(splitSubject(html).subject).toBe("Travaux <rue> & trottoirs");
+  });
+
+  it("sans objet, ne change rien", () => {
+    expect(withSubject("<p>x</p>", "  ")).toBe("<p>x</p>");
+    expect(splitSubject("<p>x</p>")).toEqual({ subject: null, html: "<p>x</p>" });
+  });
+
+  it("ne dit au modèle où est l'objet que s'il y en a un", () => {
+    expect(buildImproveUserMessage("⟦B1⟧Objet⟦B2⟧⟦B3⟧Bonjour⟦B4⟧", { hasSubject: true })).toContain(SUBJECT_NOTE);
+    expect(buildImproveUserMessage("⟦B1⟧Bonjour⟦B2⟧")).not.toContain(SUBJECT_NOTE);
   });
 });

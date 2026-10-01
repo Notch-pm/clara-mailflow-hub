@@ -43,6 +43,7 @@ import {
   deleteReply,
   getReplyWorkflow,
   createReply,
+  defaultReplySubject,
   updateReplyContent,
   transitionReplyState,
   signReply,
@@ -285,6 +286,7 @@ export default function ReplyComposer({
   const [channel, setChannel] = useState<CourierChannel>("paper");
   const [visaComment, setVisaComment] = useState("");
   const [body, setBody] = useState<string>("");
+  const [subject, setSubject] = useState<string>("");
   const [signatoryId, setSignatoryId] = useState<string>("");
   const [dirty, setDirty] = useState(false);
 
@@ -295,7 +297,12 @@ export default function ReplyComposer({
   const [isDrafting, setIsDrafting] = useState(false);
   const [isImproving, setIsImproving] = useState(false);
   /** Le texte d'avant « Améliorer » — annulable tant que l'agent n'a rien retouché depuis. */
-  const [beforeImprove, setBeforeImprove] = useState<{ original: string; improved: string } | null>(null);
+  const [beforeImprove, setBeforeImprove] = useState<{
+    original: string;
+    improved: string;
+    originalSubject: string;
+    improvedSubject: string;
+  } | null>(null);
 
   useEffect(() => {
     if (view !== "editor") return;
@@ -303,10 +310,12 @@ export default function ReplyComposer({
       setChannel(reply.channel);
       const meta = (reply.metadata as { body_html?: string; signatory_id?: string | null } | null) ?? {};
       setBody(meta.body_html ?? "");
+      setSubject(reply.subject ?? defaultReplySubject(parentSubject));
       setSignatoryId(meta.signatory_id ?? "");
     } else {
       setChannel(canEmail ? "email" : "paper");
       setBody("");
+      setSubject(defaultReplySubject(parentSubject));
       setSignatoryId("");
     }
     setBeforeImprove(null);
@@ -415,6 +424,7 @@ export default function ReplyComposer({
     if (reply) {
       await updateReplyContent(organizationId, reply.id, {
         channel,
+        subject,
         bodyHtml: body,
         signatoryId: signatoryId || null,
       });
@@ -426,6 +436,7 @@ export default function ReplyComposer({
       channel,
       bodyHtml: body,
       parentSubject,
+      subject,
       assignedService: currentService?.name ?? assignedService,
       socleOrganizationId: currentService?.id ?? socleOrganizationId ?? null,
       initialStateId: workflow?.initialState?.id ?? null,
@@ -535,6 +546,9 @@ export default function ReplyComposer({
   const sendEmail = useMutation({
     mutationFn: async () => {
       if (!reply) throw new Error("Aucune réponse à envoyer.");
+      // L'envoi relit la réponse en base : ce qui vient d'être tapé (objet,
+      // corps) doit y être avant, sinon c'est l'ancienne version qui part.
+      if (dirty) await ensureReply();
       const { data, error } = await supabase.functions.invoke("send-courier-reply", {
         body: { reply_id: reply.id, organization_id: organizationId },
       });
@@ -544,7 +558,7 @@ export default function ReplyComposer({
       return result;
     },
     onSuccess: (data) => {
-      invalidate(); refetchReplies();
+      setDirty(false); invalidate(); refetchReplies();
       toast.success(`Courriel envoyé à ${data?.to ?? "l'usager"}`);
       if (finalTransition) setProposeFinal(true);
     },
@@ -585,6 +599,9 @@ export default function ReplyComposer({
       const forward = outgoingTransitions.find(({ transition }) => (transition as any).kind === "next");
       if (!forward) throw new Error("Aucune transition suivante définie.");
       if (!reply) throw new Error("Aucune réponse à envoyer.");
+      // L'envoi relit la réponse en base : ce qui vient d'être tapé (objet,
+      // corps) doit y être avant, sinon c'est l'ancienne version qui part.
+      if (dirty) await ensureReply();
       const { data, error } = await supabase.functions.invoke("send-courier-reply", {
         body: { reply_id: reply.id, organization_id: organizationId },
       });
@@ -851,7 +868,7 @@ export default function ReplyComposer({
 
   const printArgs = {
     bodyHtml: body,
-    subject: reply?.subject ?? parentSubject,
+    subject: subject.trim() || reply?.subject || parentSubject,
     senderName: sender
       ? `${sender.first_name ?? ""} ${sender.last_name ?? ""}`.trim() || sender.name || null
       : null,
@@ -881,13 +898,17 @@ export default function ReplyComposer({
     if (!aiResponseType) { toast.error("Sélectionnez un type de réponse."); return; }
     setIsDrafting(true);
     try {
-      const html = await draftReply({
+      const draft = await draftReply({
         courierId,
         orgId: organizationId,
         responseType: aiResponseType,
         additionalInstructions: aiInstructions.trim() || undefined,
+        currentSubject: subject.trim() || null,
       });
-      setBody(html);
+      setBody(draft.html);
+      // L'objet proposé (ou corrigé) remplace celui de l'éditeur ; sans
+      // proposition exploitable, on garde ce qui y était.
+      if (draft.subject) setSubject(draft.subject);
       setDirty(true);
       setAiPanelOpen(false);
       setBeforeImprove(null);
@@ -900,16 +921,25 @@ export default function ReplyComposer({
 
   async function handleImprove() {
     const original = body;
+    const originalSubject = subject;
     setIsImproving(true);
     try {
-      const improved = await improveReply({ courierId, orgId: organizationId, html: original });
-      if (improved === original) {
+      const result = await improveReply({
+        courierId,
+        orgId: organizationId,
+        html: original,
+        subject: originalSubject.trim() || null,
+      });
+      const improved = result.html;
+      const improvedSubject = result.subject ?? originalSubject;
+      if (improved === original && improvedSubject === originalSubject) {
         toast.info("Aucune correction à apporter.");
         return;
       }
       setBody(improved);
+      setSubject(improvedSubject);
       setDirty(true);
-      setBeforeImprove({ original, improved });
+      setBeforeImprove({ original, improved, originalSubject, improvedSubject });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Amélioration impossible");
     } finally {
@@ -920,6 +950,7 @@ export default function ReplyComposer({
   function undoImprove() {
     if (!beforeImprove) return;
     setBody(beforeImprove.original);
+    setSubject(beforeImprove.originalSubject);
     setDirty(true);
     setBeforeImprove(null);
   }
@@ -1348,7 +1379,7 @@ export default function ReplyComposer({
           que l'agent n'a pas retouché le texte amélioré. */}
       {!editorDisabled && visibleText(body) !== "" && (
         <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
-          {beforeImprove && beforeImprove.improved === body && (
+          {beforeImprove && beforeImprove.improved === body && beforeImprove.improvedSubject === subject && (
             <Button variant="ghost" size="sm" className="gap-1.5" onClick={undoImprove} disabled={isBusy}>
               <Undo2 className="h-3.5 w-3.5" />
               Annuler l'amélioration
@@ -1401,6 +1432,22 @@ export default function ReplyComposer({
         </div>
       )}
       {replyVisas.length > 0 && <ReplyVisaTrail visas={replyVisas} className="shrink-0" />}
+
+      {/* Objet : celui du courriel envoyé et de la ligne « Objet » de la lettre. */}
+      <div className="flex shrink-0 items-center gap-2">
+        <label htmlFor="reply-subject" className="shrink-0 text-sm font-medium text-muted-foreground">
+          Objet
+        </label>
+        <Input
+          id="reply-subject"
+          value={subject}
+          onChange={(e) => { setSubject(e.target.value); setDirty(true); }}
+          placeholder={defaultReplySubject(parentSubject)}
+          maxLength={200}
+          disabled={editorDisabled || isDrafting || isImproving}
+          className="h-9 text-sm"
+        />
+      </div>
 
       {/* Éditeur */}
       <RichTextEditor

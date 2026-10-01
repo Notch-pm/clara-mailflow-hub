@@ -75,6 +75,8 @@ interface CreateReplyArgs {
   channel: CourierChannel;
   bodyHtml: string;
   parentSubject: string | null;
+  /** Objet saisi dans l'éditeur ; à défaut, « Re: » + objet du courrier reçu. */
+  subject?: string | null;
   assignedService: string | null;
   /** UUID de l'organisation gestionnaire (recopiée du courrier parent). */
   socleOrganizationId?: string | null;
@@ -82,12 +84,15 @@ interface CreateReplyArgs {
   recipient?: { name?: string | null; email?: string | null; first_name?: string | null; last_name?: string | null } | null;
 }
 
+/** Objet proposé d'office à une nouvelle réponse : « Re: » + objet du courrier reçu. */
+export function defaultReplySubject(parentSubject: string | null | undefined): string {
+  const parent = parentSubject?.trim();
+  if (!parent) return "Réponse";
+  return parent.toLowerCase().startsWith("re:") ? parent : `Re: ${parent}`;
+}
+
 export async function createReply(args: CreateReplyArgs): Promise<ReplyRecord> {
-  const subject = args.parentSubject
-    ? args.parentSubject.toLowerCase().startsWith("re:")
-      ? args.parentSubject
-      : `Re: ${args.parentSubject}`
-    : "Réponse";
+  const subject = args.subject?.trim() || defaultReplySubject(args.parentSubject);
 
   const { data, error } = await supabase
     .from("couriers")
@@ -138,6 +143,8 @@ export async function updateReplyContent(
   replyId: string,
   patch: {
     channel?: CourierChannel;
+    /** Objet de la réponse (colonne `subject`) : celui du courriel et de la lettre. */
+    subject?: string;
     bodyHtml?: string;
     signatoryId?: string | null;
     signedAt?: string | null;
@@ -158,6 +165,7 @@ export async function updateReplyContent(
 
   const update: Record<string, unknown> = {};
   if (patch.channel) update.channel = patch.channel;
+  if (typeof patch.subject === "string" && patch.subject.trim()) update.subject = patch.subject.trim();
 
   const nextMeta: Record<string, unknown> = { ...currentMeta };
   let metaChanged = false;

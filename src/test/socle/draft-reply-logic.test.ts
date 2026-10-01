@@ -10,6 +10,7 @@ import {
   MAX_THREAD_REPLIES,
   NO_SOURCE_WARNING,
   RESPONSE_TYPES,
+  splitDraftSubject,
   stripHtml,
 } from "../../../supabase/functions/draft-reply/logic";
 import { MAX_MESSAGE_CHARS } from "../../../supabase/functions/_shared/socleAiLogic";
@@ -25,7 +26,7 @@ const BASE = {
   orgName: "Commune de Saint-Aubin",
 };
 
-const FINAL = "Rédige maintenant le corps de la lettre de réponse";
+const FINAL = "Donne maintenant l'objet de la réponse entre <objet></objet>, puis le corps de la lettre";
 
 describe("prompt de rédaction — ce qui doit y être", () => {
   it("verse le texte OCR des pièces jointes, seule source d'un courrier scanné", () => {
@@ -296,5 +297,40 @@ describe("formatDateFr", () => {
   it("ne fabrique rien à partir de rien", () => {
     expect(formatDateFr(null)).toBeNull();
     expect(formatDateFr("pas une date")).toBeNull();
+  });
+});
+
+describe("objet de la réponse", () => {
+  it("demande l'objet entre balises, en tête de sortie", () => {
+    expect(DRAFT_SYSTEM_PROMPT).toContain("<objet>…</objet>");
+  });
+
+  it("donne l'objet actuel à reprendre ou corriger", () => {
+    const prompt = buildDraftUserPrompt({ ...BASE, currentReplySubject: "Re: Nuisances sonores" });
+    expect(prompt).toContain("Objet actuel de la réponse (à reprendre s'il convient, à corriger sinon) : Re: Nuisances sonores");
+    expect(buildDraftUserPrompt(BASE)).toContain("Objet actuel de la réponse (à reprendre s'il convient, à corriger sinon) : aucun");
+  });
+
+  it("sépare l'objet du corps", () => {
+    expect(splitDraftSubject("<objet>Nuisances sonores rue des Lilas</objet>\n<p>Madame,</p>")).toEqual({
+      subject: "Nuisances sonores rue des Lilas",
+      html: "<p>Madame,</p>",
+    });
+  });
+
+  it("retire ce que le modèle ajoute malgré la consigne", () => {
+    expect(
+      splitDraftSubject("```html\n<objet>Objet : « Re: Votre demande de place en crèche. »</objet><p>x</p>\n```"),
+    ).toEqual({ subject: "Votre demande de place en crèche", html: "<p>x</p>" });
+    expect(splitDraftSubject("<objet><strong>Accusé de réception</strong></objet><p>x</p>").subject).toBe("Accusé de réception");
+  });
+
+  it("sans balise, garde le corps entier et ne propose rien", () => {
+    expect(splitDraftSubject("<p>Madame,</p>")).toEqual({ subject: null, html: "<p>Madame,</p>" });
+  });
+
+  it("écarte un objet vide ou démesuré", () => {
+    expect(splitDraftSubject("<objet> </objet><p>x</p>")).toEqual({ subject: null, html: "<p>x</p>" });
+    expect(splitDraftSubject(`<objet>${"a".repeat(200)}</objet><p>x</p>`).subject).toBeNull();
   });
 });

@@ -132,6 +132,8 @@ export interface DraftPromptInput {
   recipientName?: string | null;
   receivedAtLabel?: string | null;
   subject?: string | null;
+  /** Objet que porte déjà la réponse : l'assistant le reprend ou le corrige. */
+  currentReplySubject?: string | null;
   bodyText?: string | null;
   attachments?: DraftAttachment[];
   analysisSummary?: string | null;
@@ -212,10 +214,48 @@ TON
 - Adresse-toi directement à l'expéditeur ; parle au nom de la collectivité (« nous », « nos services »).
 - Pas de jargon interne, aucune mention de l'analyse automatique ni de l'outil utilisé.
 
+OBJET DE LA RÉPONSE
+- Propose l'objet de la réponse : une ligne courte (80 caractères au plus) qui dit de quoi traite la réponse, compréhensible par l'expéditeur.
+- Si un objet actuel est fourni et qu'il convient, reprends-le en corrigeant seulement l'orthographe ou la formulation ; sinon, remplace-le.
+- Pas de « Re: », pas de « Objet : », pas de guillemets, pas de point final. Aucune référence, date ou décision qui ne figure pas dans les données.
+
 FORMAT DE SORTIE
-- Retourne UNIQUEMENT le corps de la lettre en HTML, avec les balises <p>, <strong>, <em>, <ul>, <li> uniquement.
-- N'inclus pas les coordonnées, la date, l'objet, la formule d'appel ni la formule de politesse finale : le modèle de courrier les ajoute.
-- Aucun commentaire avant ou après la lettre, pas de bloc de code.`;
+- Commence par l'objet, seul sur la première ligne, entre balises : <objet>…</objet>
+- Puis le corps de la lettre en HTML, avec les balises <p>, <strong>, <em>, <ul>, <li> uniquement.
+- N'inclus dans le corps ni les coordonnées, ni la date, ni la ligne d'objet, ni la formule d'appel, ni la formule de politesse finale : le modèle de courrier les ajoute.
+- Aucun commentaire avant ou après, pas de bloc de code.`;
+
+/** Longueur au-delà de laquelle un objet proposé n'en est plus un. */
+export const SUBJECT_MAX_CHARS = 150;
+
+/**
+ * Sépare l'objet proposé (`<objet>…</objet>` en tête) du corps de la lettre.
+ *
+ * Un modèle qui oublie la balise ne casse rien : le corps reste entier et
+ * l'objet en place n'est pas touché (`subject: null`). On retire aussi ce
+ * qu'un modèle ajoute malgré la consigne — « Re: », « Objet : », guillemets,
+ * point final — plutôt que de le laisser filer jusque dans le courriel.
+ */
+export function splitDraftSubject(answer: string): { subject: string | null; html: string } {
+  // Certains modèles enrobent la sortie d'une clôture markdown malgré la consigne.
+  const unfenced = answer.replace(/^```(?:html)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  const match = unfenced.match(/<objet>([\s\S]*?)<\/objet>/i);
+  if (!match || match.index === undefined) return { subject: null, html: unfenced };
+  const html = (unfenced.slice(0, match.index) + unfenced.slice(match.index + match[0].length)).trim();
+  let subject = match[1].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+  // Préfixes et guillemets s'emboîtent (« Objet : « Re: … » ») : on pèle
+  // jusqu'à ce qu'il n'y ait plus rien à retirer.
+  for (let previous = ""; previous !== subject; ) {
+    previous = subject;
+    subject = subject
+      .replace(/^(re|objet)\s*:\s*/i, "")
+      .replace(/^[«"“'\s]+|[»"”'\s]+$/g, "")
+      .replace(/\.$/, "")
+      .trim();
+  }
+  if (!subject || subject.length > SUBJECT_MAX_CHARS) return { subject: null, html };
+  return { subject, html };
+}
 
 /**
  * Averti au tout début du message, jamais à la fin : quand le dossier ne porte
@@ -226,7 +266,7 @@ export const NO_SOURCE_WARNING =
   `⚠️ AUCUN CONTENU DU COURRIER N'EST DISPONIBLE (ni corps de message, ni texte extrait des pièces jointes). N'invente ni son objet, ni sa demande, ni les faits qu'il rapporterait : rédige une lettre volontairement générique, conforme au type de réponse demandé, et place [à compléter] partout où un élément du dossier devrait figurer.`;
 
 const FINAL_INSTRUCTION =
-  `Rédige maintenant le corps de la lettre de réponse, en t'appuyant EXCLUSIVEMENT sur les éléments ci-dessus. Tout élément absent s'écrit [à compléter].`;
+  `Donne maintenant l'objet de la réponse entre <objet></objet>, puis le corps de la lettre, en t'appuyant EXCLUSIVEMENT sur les éléments ci-dessus. Tout élément absent s'écrit [à compléter].`;
 
 // ── Blocs ───────────────────────────────────────────────────────────────────
 
@@ -340,6 +380,11 @@ export function buildDraftUserPrompt(input: DraftPromptInput): string {
     `- Destinataire : ${(input.recipientName ?? "").trim() || "non renseigné"}`,
     `- Date de réception : ${(input.receivedAtLabel ?? "").trim() || "non renseignée"}`,
     `- Sujet : ${(input.subject ?? "").trim() || "non renseigné"}`,
+  );
+  const currentReplySubject = fitMessage((input.currentReplySubject ?? "").trim(), SUBJECT_MAX_CHARS);
+  identityLines.push(
+    "",
+    `Objet actuel de la réponse (à reprendre s'il convient, à corriger sinon) : ${currentReplySubject || "aucun"}`,
   );
   const identity = identityLines.join("\n");
 

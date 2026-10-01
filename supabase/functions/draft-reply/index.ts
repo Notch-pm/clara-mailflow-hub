@@ -17,6 +17,7 @@ import {
   type DraftPreviousReply,
   type DraftTicket,
   formatDateFr,
+  splitDraftSubject,
   stripHtml,
 } from "./logic.ts";
 
@@ -130,11 +131,13 @@ Deno.serve(async (req) => {
     const user = await verifyAuth(req);
     const admin = getAdminClient();
 
-    const { courierId, orgId, responseType, additionalInstructions } = await req.json() as {
+    const { courierId, orgId, responseType, additionalInstructions, currentSubject } = await req.json() as {
       courierId: string;
       orgId: string;
       responseType: string;
       additionalInstructions?: string;
+      /** Objet que porte la réponse dans l'éditeur, enregistré ou non. */
+      currentSubject?: string | null;
     };
 
     if (!courierId || !orgId || !responseType) {
@@ -312,6 +315,7 @@ Deno.serve(async (req) => {
       recipientName,
       receivedAtLabel: formatDateFr(courierRow.received_at),
       subject: courierRow.subject,
+      currentReplySubject: typeof currentSubject === "string" ? currentSubject : null,
       bodyText: bodyTextOf(courierRow.metadata),
       attachments,
       analysisSummary: analysis?.summary ?? null,
@@ -334,11 +338,11 @@ Deno.serve(async (req) => {
       },
     });
 
-    // Certains modèles enrobent la sortie d'une clôture markdown malgré la
-    // consigne — le seul écart jamais observé, et il se retire en une ligne.
-    const draftHtml = answer.replace(/^```(?:html)?\s*/i, "").replace(/\s*```$/i, "").trim();
+    // L'objet proposé arrive en tête, entre <objet></objet> ; absent, l'écran
+    // garde celui qu'il a (`subject: null`).
+    const { subject, html } = splitDraftSubject(answer);
 
-    return jsonResponse({ html: draftHtml });
+    return jsonResponse({ html, subject });
   } catch (err) {
     // Le guichet a déjà traduit ses refus en messages destinés à l'agent :
     // plafond atteint (avec la date de renouvellement, mot pour mot du Socle),
