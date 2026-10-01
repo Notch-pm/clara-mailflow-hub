@@ -17,6 +17,12 @@ import {
 } from "@/components/ui/alert-dialog";
 import { DataTable } from "@/components/data-table/data-table";
 import { ListCellDate, ListCellText, ListCellTitle } from "@/components/list/ListCells";
+import {
+  FilterSection,
+  ListActiveFilters,
+  ListFilterButton,
+  type ActiveFilterChip,
+} from "@/components/list/ListFilters";
 import { ListDensityToggle, ListMessage, ListPage, ListSearch, ListToolbar } from "@/components/list/ListPage";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOrganization } from "@/contexts/OrganizationContext";
@@ -203,6 +209,10 @@ export default function Corbeille() {
   if (profileLoaded && !canAccessMailroom(profile, membership)) return <Navigate to="/boite-aux-lettres" replace />;
 
   const total = trash.data?.length ?? 0;
+  const trimmedQuery = query.trim();
+  const chips: ActiveFilterChip[] = trimmedQuery
+    ? [{ key: "search", label: `Recherche : « ${trimmedQuery} »`, onRemove: () => setQuery("") }]
+    : [];
 
   return (
     <ListPage>
@@ -211,14 +221,6 @@ export default function Corbeille() {
         title="Corbeille et spam"
         count={trash.isLoading ? null : total}
         countLabel={total > 1 ? "courriers" : "courrier"}
-        search={
-          <ListSearch
-            value={query}
-            onChange={setQuery}
-            placeholder="Objet, expéditeur…"
-            ariaLabel="Rechercher un courrier, un expéditeur"
-          />
-        }
         primary={
           canEdit ? (
             <Button
@@ -234,8 +236,27 @@ export default function Corbeille() {
           ) : undefined
         }
       >
+        {/* La recherche vit dans le panneau « Filtres », comme sur toutes les
+            listes — même seule, elle y gagne sa pastille de filtre actif. */}
+        <ListFilterButton
+          title="Filtrer la corbeille"
+          activeCount={chips.length}
+          resultLabel={`${rows.length} courrier${rows.length > 1 ? "s" : ""}`}
+          onReset={() => setQuery("")}
+        >
+          <FilterSection label="Recherche">
+            <ListSearch
+              value={query}
+              onChange={setQuery}
+              placeholder="Objet, expéditeur…"
+              ariaLabel="Rechercher un courrier, un expéditeur"
+              focusOnOpen
+            />
+          </FilterSection>
+        </ListFilterButton>
         <ListDensityToggle />
       </ListToolbar>
+      <ListActiveFilters chips={chips} onReset={() => setQuery("")} />
 
       <p className="border-b bg-muted/40 px-5 py-2 text-xs text-muted-foreground">
         Les courriers supprimés restent ici {TRASH_RETENTION_DAYS} jours, avec leurs réponses et pièces jointes, puis

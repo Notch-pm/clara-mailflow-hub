@@ -96,6 +96,7 @@ export default function RechercheCourrierPage() {
   }, [debouncedKeywords, direction, stateId, service, selectedTags, dateFrom, dateTo]);
 
   const resetFilters = useCallback(() => {
+    setKeywords("");
     setDirection("all");
     setStateId("all");
     setService("all");
@@ -258,7 +259,12 @@ export default function RechercheCourrierPage() {
 
   const serviceName = services.find((s) => s.id === service)?.name;
   const stateName = stateById.get(stateId)?.name;
+  // La recherche vit dans le panneau « Filtres » : sa pastille dit, panneau
+  // fermé, ce que la liste cherche.
   const chips: ActiveFilterChip[] = [
+    ...(debouncedKeywords.trim()
+      ? [{ key: "search", label: `Recherche : « ${debouncedKeywords.trim()} »`, onRemove: () => setKeywords("") }]
+      : []),
     ...(direction !== "all"
       ? [{ key: "direction", label: `Type : ${direction === "inbound" ? "entrants" : "sortants"}`, onRemove: () => setDirection("all") }]
       : []),
@@ -280,14 +286,6 @@ export default function RechercheCourrierPage() {
         title="Recherche"
         count={isLoading ? null : totalCount}
         countLabel="résultats"
-        search={
-          <ListSearch
-            value={keywords}
-            onChange={setKeywords}
-            placeholder="Objet, correspondant…"
-            ariaLabel="Rechercher dans les objets, expéditeurs, destinataires, textes"
-          />
-        }
       >
         <ListFilterButton
           title="Filtrer la recherche"
@@ -295,6 +293,15 @@ export default function RechercheCourrierPage() {
           resultLabel={isFetching && !isFetchingNextPage ? "…" : `${totalCount} résultat${totalCount > 1 ? "s" : ""}`}
           onReset={resetFilters}
         >
+          <FilterSection label="Recherche">
+            <ListSearch
+              value={keywords}
+              onChange={setKeywords}
+              placeholder="Objet, correspondant, texte…"
+              ariaLabel="Rechercher dans les objets, expéditeurs, destinataires, textes"
+              focusOnOpen
+            />
+          </FilterSection>
           <FilterSection label="Type">
             <FilterChips
               options={[

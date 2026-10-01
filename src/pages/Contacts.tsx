@@ -1082,12 +1082,19 @@ function ContactsList() {
 
   // Réinitialiser, c'est revenir à l'affichage par défaut : les contacts actifs.
   function resetFilters() {
+    setSearch("");
     setTypeFilter("all");
     setStatusFilter("active");
     setPage(0);
   }
 
+  // La recherche vit dans le panneau « Filtres » : sa pastille dit, panneau
+  // fermé, pourquoi la liste est réduite.
+  const trimmedSearch = search.trim();
   const chips: ActiveFilterChip[] = [
+    ...(trimmedSearch
+      ? [{ key: "search", label: `Recherche : « ${trimmedSearch} »`, onRemove: () => { setSearch(""); setPage(0); } }]
+      : []),
     ...(typeFilter !== "all"
       ? [{ key: "type", label: `Type : ${SOCLE_CONTACT_TYPE_LABELS[typeFilter]}`, onRemove: () => { setTypeFilter("all"); setPage(0); } }]
       : []),
@@ -1107,13 +1114,6 @@ function ContactsList() {
       <ListToolbar
         icon={<Users className="text-primary" />}
         title="Contacts"
-        search={
-          <ListSearch
-            value={search}
-            onChange={(v) => { setSearch(v); setPage(0); }}
-            placeholder="Rechercher par nom…"
-          />
-        }
         primary={
           <ToolbarTooltip label="Nouveau contact" hideFromXl>
             <ToolbarButton
@@ -1128,6 +1128,14 @@ function ContactsList() {
         }
       >
         <ListFilterButton title="Filtrer les contacts" activeCount={chips.length} onReset={resetFilters}>
+          <FilterSection label="Recherche">
+            <ListSearch
+              value={search}
+              onChange={(v) => { setSearch(v); setPage(0); }}
+              placeholder="Rechercher par nom…"
+              focusOnOpen
+            />
+          </FilterSection>
           <FilterSection label="Type">
             <FilterChips
               options={Object.entries(SOCLE_CONTACT_TYPE_LABELS).map(([value, label]) => ({ value, label }))}

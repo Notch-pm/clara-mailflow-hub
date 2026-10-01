@@ -131,7 +131,13 @@ export default function CourrierEntrant() {
     );
   }
 
+  // La recherche vit dans le panneau « Filtres », comme sur les autres listes :
+  // sa pastille dit, panneau fermé, pourquoi la liste est réduite.
+  const trimmedQuery = filters.query.trim();
   const activeChips = [
+    ...(trimmedQuery
+      ? [{ key: "search", label: `Recherche : « ${trimmedQuery} »`, onRemove: () => setFilters((f) => ({ ...f, query: "" })) }]
+      : []),
     ...filters.channels.map((c) => ({
       key: `channel:${c}`,
       label: channelLabels[c as keyof typeof channelLabels] ?? c,
@@ -145,7 +151,7 @@ export default function CourrierEntrant() {
       : []),
   ];
   const resetFilters = () => {
-    setFilters((f) => ({ ...f, channels: [], serviceId: null }));
+    setFilters({ query: "", channels: [], serviceId: null });
     setPeriod(30);
   };
 
@@ -158,14 +164,6 @@ export default function CourrierEntrant() {
         title="Courrier entrant"
         count={mailroom.isLoading ? null : counts.aq + counts.av + counts.retour}
         countLabel="courriers à router"
-        search={
-          <ListSearch
-            value={filters.query}
-            onChange={(query) => setFilters((f) => ({ ...f, query }))}
-            placeholder="Objet, expéditeur…"
-            ariaLabel="Rechercher un courrier, un expéditeur"
-          />
-        }
         primary={
           organizationId && canEdit ? (
             <AddCourierMenu onNewCourier={() => setNewDialogOpen(true)} />
@@ -178,6 +176,15 @@ export default function CourrierEntrant() {
           resultLabel={`${filtered.length} courrier${filtered.length > 1 ? "s" : ""}`}
           onReset={resetFilters}
         >
+          <FilterSection label="Recherche">
+            <ListSearch
+              value={filters.query}
+              onChange={(query) => setFilters((f) => ({ ...f, query }))}
+              placeholder="Objet, expéditeur…"
+              ariaLabel="Rechercher un courrier, un expéditeur"
+              focusOnOpen
+            />
+          </FilterSection>
           <FilterSection label="Canal">
             <FilterChips
               options={CHANNEL_OPTIONS}
