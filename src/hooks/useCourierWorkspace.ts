@@ -12,7 +12,7 @@ import {
   assignOrganization,
   listOrgsWithConfig,
 } from "@/services/socleOrgConfigService";
-import { transferCourier, returnToMailroom } from "@/services/courierRoutingService";
+import { remindService, transferCourier, returnToMailroom } from "@/services/courierRoutingService";
 import { fetchMailroomMemberIds } from "@/services/mailroomService";
 import { useUserServiceFilter } from "@/hooks/useUserServiceFilter";
 import { useCourierDisplayDocuments } from "@/hooks/useCourierDisplayDocuments";
@@ -27,7 +27,7 @@ import {
 import { formatContactAddressInline } from "@/lib/prefill-mapping";
 import { parseConsentRecords } from "@/lib/consents";
 import { useAuth } from "@/contexts/AuthContext";
-import { canEditCouriers } from "@/lib/permissions";
+import { canAccessMailroom, canEditCouriers } from "@/lib/permissions";
 import { contactDisplay } from "@/components/courier/ContactPicker";
 import { listNotes, type CourierNote } from "@/services/courierNoteService";
 import { listRepliesForCourier } from "@/services/courierReplyService";
@@ -383,6 +383,32 @@ export function useCourierWorkspace({
     onError: (err: Error) => toast.error(err.message),
   });
 
+  // Relance du service destinataire — geste du service courrier (profil
+  // gestionnaire courrier ou administrateur), sur un courrier reçu confié à une
+  // organisation et pas encore résolu.
+  const canRemindService =
+    !effectiveReadOnly &&
+    canAccessMailroom(profile, membership) &&
+    !isOutbound &&
+    !!localSocleOrgId &&
+    !courier?.resolved_at;
+  const remindMutation = useMutation({
+    mutationFn: async () => {
+      if (!courier) return;
+      await remindService(organizationId, {
+        ...courier,
+        socle_organization_id: localSocleOrgId,
+        assigned_service: localAssignedService,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["courier-events", courier?.id] });
+      queryClient.invalidateQueries({ queryKey: ["mailroom-couriers"] });
+      toast.success("Relance envoyée", { description: `${localAssignedService ?? "Le service"} a été relancé.` });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   const transitionMutation = useMutation({
     mutationFn: async (toStateId: string) => {
       if (!courier) return;
@@ -667,6 +693,8 @@ export function useCourierWorkspace({
     transferMutation,
     returnMutation,
     canReturnToMailroom,
+    remindMutation,
+    canRemindService,
     transferTargetServiceId,
     setTransferTargetServiceId,
     transferConfirmOpen,

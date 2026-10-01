@@ -10,6 +10,7 @@ import {
   Tag as TagIcon,
   X,
   Undo2,
+  BellRing,
 } from "lucide-react";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { ResponsiveTabsList, type ResponsiveTabItem } from "@/components/courier/ResponsiveTabsList";
@@ -27,6 +28,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
@@ -236,6 +238,8 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
     transferMutation,
     returnMutation,
     canReturnToMailroom,
+    remindMutation,
+    canRemindService,
     transferTargetServiceId,
     setTransferTargetServiceId,
     transferConfirmOpen,
@@ -345,6 +349,17 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
   const otherTransitions = (transitions ?? []).filter(
     (t) => t.id !== nextTransition?.id && t.id !== prevTransition?.id,
   );
+  // Réaffecter : rouvre le choix d'organisation de la colonne de contexte
+  // (affectation à l'état initial, transfert confirmé au-delà).
+  const canReassign = !effectiveReadOnly && !isOutbound && !!localSocleOrgId && !isFinalState;
+  const hasOtherActions = otherTransitions.length > 0 || canRemindService || canReassign;
+
+  function openReassign() {
+    setRail("courrier");
+    // Après la fermeture du menu : sinon il rend le focus à son déclencheur,
+    // et le popover, aussitôt ouvert, se referme sur cette interaction.
+    setTimeout(() => setServicePopoverOpen(true), 0);
+  }
 
   // Position dans la frise. -1 : l'état courant a été atteint par une transition
   // secondaire, il ne figure pas dans la chaîne nominale.
@@ -477,7 +492,7 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
               <span className="truncate">Suivant</span>
             </AdvanceBlockedButton>
           )}
-          {!effectiveReadOnly && otherTransitions.length > 0 && (
+          {!effectiveReadOnly && hasOtherActions && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -498,6 +513,23 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
                     </span>
                   </DropdownMenuItem>
                 ))}
+                {otherTransitions.length > 0 && (canRemindService || canReassign) && <DropdownMenuSeparator />}
+                {canRemindService && (
+                  <DropdownMenuItem disabled={remindMutation.isPending} onClick={() => remindMutation.mutate()}>
+                    <span className="flex items-center gap-2">
+                      <BellRing className="h-4 w-4 text-muted-foreground" />
+                      Relancer le service
+                    </span>
+                  </DropdownMenuItem>
+                )}
+                {canReassign && (
+                  <DropdownMenuItem onSelect={openReassign}>
+                    <span className="flex items-center gap-2">
+                      <ArrowRightLeft className="h-4 w-4 text-muted-foreground" />
+                      Réaffecter…
+                    </span>
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           )}

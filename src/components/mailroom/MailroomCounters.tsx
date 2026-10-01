@@ -46,7 +46,7 @@ export default function MailroomCounters({ counts, view, onChange }: Props) {
     <div
       role="tablist"
       aria-label="Étapes du courrier"
-      className="grid shrink-0 grid-cols-2 gap-2.5 border-b px-4 py-3 sm:grid-cols-4 md:px-5 xl:grid-cols-[1.3fr_repeat(6,minmax(0,1fr))]"
+      className="grid shrink-0 grid-cols-2 gap-2 border-b px-4 py-2.5 sm:grid-cols-4 md:px-5 xl:grid-cols-[1.3fr_repeat(6,minmax(0,1fr))]"
     >
       {MAILROOM_VIEW_ORDER.map((key) => {
         const Icon = ICONS[key];
@@ -62,14 +62,14 @@ export default function MailroomCounters({ counts, view, onChange }: Props) {
             aria-selected={on}
             onClick={() => onChange(key)}
             className={cn(
-              "flex min-w-0 flex-col items-start gap-0.5 rounded-lg border px-3.5 py-2.5 text-left transition-shadow hover:shadow-airbnb-lg",
+              "flex min-w-0 flex-col items-start gap-0.5 rounded-lg border px-3 py-2 text-left transition-shadow hover:shadow-airbnb",
               hero ? "border-warning/50 bg-secondary/25" : "bg-card",
               on && "border-primary ring-1 ring-primary",
             )}
           >
             <span
               className={cn(
-                "flex max-w-full items-center gap-1.5 truncate text-[13px] font-bold",
+                "flex max-w-full items-center gap-1.5 truncate text-xs font-semibold",
                 hero ? "text-secondary-foreground" : alarm === "destructive" ? "text-destructive" : alarm === "warning" ? "text-warning" : "text-muted-foreground",
               )}
             >
@@ -78,14 +78,14 @@ export default function MailroomCounters({ counts, view, onChange }: Props) {
             </span>
             <span
               className={cn(
-                "font-extrabold leading-tight tabular-nums",
-                hero ? "text-[30px]" : "text-[24px]",
+                "font-bold leading-tight tabular-nums",
+                hero ? "text-2xl" : "text-xl",
                 alarm === "destructive" ? "text-destructive" : alarm === "warning" ? "text-warning" : "text-foreground",
               )}
             >
               {n.toLocaleString("fr-FR")}
             </span>
-            <span className="max-w-full truncate text-xs text-muted-foreground">{hint(key, counts)}</span>
+            <span className="max-w-full truncate text-[11.5px] text-muted-foreground">{hint(key, counts)}</span>
           </button>
         );
       })}

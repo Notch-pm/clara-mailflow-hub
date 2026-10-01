@@ -151,7 +151,7 @@ export default function MailroomPanel({
   const routeButton = (label: string) => (
     <Button
       size="lg"
-      className="h-12 gap-2 rounded-lg text-[15px] font-extrabold"
+      className="h-10 gap-2 font-bold"
       disabled={!pickedOrg || busy || !canEdit}
       onClick={() => pickedOrg && onRoute(row.id, pickedOrg)}
     >
@@ -165,12 +165,12 @@ export default function MailroomPanel({
   const late = item.stage === "late";
 
   return (
-    <div className="flex flex-col gap-5 p-5">
+    <div className="flex flex-col gap-4 p-4">
       <div className="flex items-center gap-2.5">
-        <span className={cn("inline-flex h-[26px] items-center rounded-full px-2.5 text-[13px] font-bold", TONE_CHIP[stage.tone])}>
+        <span className={cn("inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-xs font-bold", TONE_CHIP[stage.tone])}>
           {stage.label}
         </span>
-        {row.chrono && <span className="font-mono text-[13px] text-muted-foreground">{row.chrono}</span>}
+        {row.chrono && <span className="font-mono text-xs text-muted-foreground">{row.chrono}</span>}
         <div className="flex-1" />
         <Button variant="outline" size="icon" className="h-8 w-8" title="Ouvrir la fiche" onClick={() => navigate(`/courrier/${row.id}`)}>
           <Maximize2 className="h-4 w-4" />
@@ -178,7 +178,7 @@ export default function MailroomPanel({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <h3 className="text-xl font-extrabold leading-snug [text-wrap:pretty]">{row.subject || "Sans objet"}</h3>
+        <h3 className="text-lg font-bold leading-snug [text-wrap:pretty]">{row.subject || "Sans objet"}</h3>
         <p className="text-sm text-muted-foreground">
           {[row.sender_name || "Expéditeur non identifié", channel, `reçu le ${fullDate(row.received_at ?? row.created_at)}`].join(" · ")}
         </p>
@@ -188,7 +188,7 @@ export default function MailroomPanel({
         {dims.map((d, i) => (
           <div key={d.label} className={cn("flex flex-col gap-1 px-3 py-2.5", i > 0 && "sm:border-l", i % 2 === 1 && "border-l")}>
             <span className="text-xs text-muted-foreground">{d.label}</span>
-            <span className="flex items-center gap-1.5 text-[13px] font-bold leading-tight">
+            <span className="flex items-center gap-1.5 text-sm font-semibold leading-tight">
               <span className={cn("h-[7px] w-[7px] shrink-0 rounded-full", TONE_DOT[d.tone])} />
               {d.value}
             </span>
@@ -213,13 +213,13 @@ export default function MailroomPanel({
             </span>
           </div>
           {canEdit && (item.reason === "not_analysed" || item.reason === "analysis_failed") && (
-            <Button variant="outline" className="h-10 gap-2 rounded-lg font-bold" disabled={analyzing} onClick={() => onAnalyze(row.id)}>
+            <Button variant="outline" className="h-10 gap-2 font-bold" disabled={analyzing} onClick={() => onAnalyze(row.id)}>
               {analyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4 text-primary" />}
               {item.reason === "analysis_failed" ? "Relancer l'analyse IA" : "Lancer l'analyse IA"}
             </Button>
           )}
           {(!row.sender_name || !row.subject) && (
-            <p className="text-[13px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               {!row.sender_name ? "Expéditeur" : "Objet"} à compléter —{" "}
               <button type="button" className="font-bold text-primary hover:underline" onClick={() => navigate(`/courrier/${row.id}`)}>
                 compléter dans la fiche
@@ -243,7 +243,7 @@ export default function MailroomPanel({
           <div className="overflow-hidden rounded-lg border">
             <div className="flex items-center gap-2 border-b bg-primary/5 px-4 py-3">
               <Sparkles className="h-4 w-4 text-primary" />
-              <span className="text-[15px] font-extrabold">Proposition de Clara</span>
+              <span className="text-sm font-bold">Proposition de Clara</span>
               <div className="flex-1" />
               {row.suggested_service_confidence !== null && (
                 <span
@@ -266,7 +266,7 @@ export default function MailroomPanel({
               <dt className="text-muted-foreground">Échéance</dt>
               <dd>{targets.resolutionDays ? `Réponse sous ${targets.resolutionDays} jours ouvrés` : "Sans objectif fixé"}</dd>
               <dt className="text-muted-foreground">Service</dt>
-              <dd className="font-extrabold text-primary">{orgName(row.suggested_socle_organization_id)}</dd>
+              <dd className="font-semibold text-primary">{orgName(row.suggested_socle_organization_id)}</dd>
               {row.suggested_service_reason && (
                 <>
                   <dt className="text-muted-foreground">Pourquoi</dt>
@@ -304,7 +304,7 @@ export default function MailroomPanel({
                 />
               </div>
             )}
-            <span className={cn("text-[13px] font-bold", late ? TONE_TEXT.destructive : TONE_TEXT.muted)}>
+            <span className={cn("text-xs font-semibold", late ? TONE_TEXT.destructive : TONE_TEXT.muted)}>
               {item.sla.resolution.dueDay
                 ? late && item.primary
                   ? `${item.primary.axis === "ack" ? "Accusé de réception" : "Réponse"} en retard de ${businessDays(Math.abs(item.primary.status.margin ?? 0) || 1)} — échéance ${formatDay(item.primary.status.dueDay!)}`
@@ -319,13 +319,13 @@ export default function MailroomPanel({
                 <span className={cn("mx-[5px] mt-[5px] h-2.5 w-2.5 rounded-full ring-[3px]", TIMELINE_DOT[step.kind])} />
                 <span
                   className={cn(
-                    "text-sm font-semibold",
+                    "text-[13px] font-medium",
                     step.kind === "late" ? "text-destructive" : step.kind === "todo" ? "text-muted-foreground" : "text-foreground",
                   )}
                 >
                   {step.label}
                 </span>
-                <span className="text-[13px] tabular-nums text-muted-foreground">{stepDate(step.date)}</span>
+                <span className="text-xs tabular-nums text-muted-foreground">{stepDate(step.date)}</span>
               </li>
             ))}
           </ol>
@@ -334,7 +334,7 @@ export default function MailroomPanel({
             <>
               <div className="flex gap-2.5">
                 <Button
-                  className={cn("h-11 flex-1 gap-2 rounded-lg font-extrabold", late && "bg-destructive hover:bg-destructive/90")}
+                  className={cn("h-10 flex-1 gap-2 font-bold", late && "bg-destructive hover:bg-destructive/90")}
                   disabled={busy}
                   onClick={() => onRemind(row.id)}
                 >
@@ -343,7 +343,7 @@ export default function MailroomPanel({
                 </Button>
                 <Button
                   variant="outline"
-                  className="h-11 gap-2 rounded-lg font-bold"
+                  className="h-10 gap-2 font-bold"
                   aria-expanded={reassignOpen}
                   onClick={() => setReassignOpen((v) => !v)}
                 >
@@ -383,7 +383,7 @@ export default function MailroomPanel({
       {item.stage === "to_reorient" && (
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2.5 rounded-lg bg-warning/10 px-4 py-3.5">
-            <span className="flex items-center gap-2 text-sm font-extrabold text-warning">
+            <span className="flex items-center gap-2 text-sm font-bold text-warning">
               <Undo2 className="h-4 w-4" />
               Renvoyé par {row.returned_from ?? "un service"} le {fullDate(row.returned_at)}
             </span>
@@ -440,7 +440,7 @@ export default function MailroomPanel({
       <div className="flex flex-col gap-2.5">
         <div className="flex items-center gap-2">
           <FileText className="h-4 w-4" />
-          <span className="text-[15px] font-extrabold">Document</span>
+          <span className="text-base font-semibold leading-tight">Aperçu</span>
         </div>
         {displayDocuments.length > 0 ? (
           <DocumentViewer

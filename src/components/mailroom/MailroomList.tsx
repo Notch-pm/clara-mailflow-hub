@@ -54,9 +54,9 @@ export default function MailroomList({
 
   return (
     <section aria-label={def.label} className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="flex h-14 shrink-0 items-center gap-3 border-b px-4 md:px-5">
-        <h2 className="shrink-0 text-[16px] font-extrabold">{def.label}</h2>
-        <span className="hidden min-w-0 truncate text-sm text-muted-foreground sm:inline">{def.description}</span>
+      <div className="flex h-12 shrink-0 items-center gap-3 border-b px-4 md:px-5">
+        <h2 className="shrink-0 text-sm font-bold">{def.label}</h2>
+        <span className="hidden min-w-0 truncate text-[13px] text-muted-foreground sm:inline">{def.description}</span>
         <div className="flex-1" />
         {view === "av" && batchCount > 0 && (
           <Button variant="outline" size="sm" onClick={onBatch} disabled={batchBusy} className="gap-2 font-bold">
@@ -70,15 +70,15 @@ export default function MailroomList({
             Lancer l'analyse IA ({analyzeCount} non analysé{analyzeCount > 1 ? "s" : ""})
           </Button>
         )}
-        <span className="hidden items-center gap-1.5 text-[13px] font-semibold text-muted-foreground lg:flex">
-          <ArrowDownWideNarrow className="h-4 w-4" />
+        <span className="hidden items-center gap-1.5 text-xs font-semibold text-muted-foreground lg:flex">
+          <ArrowDownWideNarrow className="h-3.5 w-3.5" />
           {def.sortLabel}
         </span>
       </div>
 
       {showAnalysing && (
-        <div className="flex shrink-0 items-center gap-2.5 border-b bg-primary/5 px-4 py-2.5 text-[13px] md:px-5">
-          <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
+        <div className="flex shrink-0 items-center gap-2.5 border-b bg-primary/5 px-4 py-2 text-xs md:px-5">
+          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />
           <span>
             <strong>
               {analysingCount} courrier{analysingCount > 1 ? "s" : ""} en cours d'analyse par Clara
@@ -124,27 +124,27 @@ export default function MailroomList({
                 aria-current={selected}
                 className={cn(
                   ROW_GRID,
-                  "w-full border-b border-l-[3px] border-b-border/70 px-4 py-3 text-left transition-colors group-data-[density=compact]/list:py-2 md:pl-5",
+                  "min-h-12 w-full border-b border-l-[3px] border-b-border/70 px-4 py-1.5 text-left transition-colors group-data-[density=compact]/list:min-h-9 group-data-[density=compact]/list:py-1 md:pl-5",
                   selected ? "border-l-primary bg-primary/[0.06]" : "border-l-transparent hover:bg-muted/55",
                 )}
               >
                 <span className="flex min-w-0 flex-col gap-0.5">
-                  <span className="truncate text-[14.5px] font-bold">{title}</span>
-                  <span className="flex min-w-0 items-center gap-1.5 truncate text-[12.5px] text-muted-foreground">
+                  <span className="truncate text-[13.5px] font-semibold text-foreground">{title}</span>
+                  <span className="flex min-w-0 items-center gap-1.5 truncate text-xs text-muted-foreground group-data-[density=compact]/list:hidden">
                     <span>{channelLabels[row.channel as CourierChannel] ?? row.channel}</span>
                     <span aria-hidden="true">·</span>
                     <span className="tabular-nums">{shortDate(row.received_at ?? row.created_at)}</span>
                     <span aria-hidden="true">·</span>
-                    <span className={cn("font-bold", TONE_TEXT[stage.tone])}>{stage.label}</span>
+                    <span className={cn("font-semibold", TONE_TEXT[stage.tone])}>{stage.label}</span>
                     {/* Sous `md`, pas de colonnes : le statut passe ici. */}
                     <span className={cn("truncate md:hidden", TONE_TEXT[status.tone])}>· {status.text}</span>
                   </span>
                 </span>
-                <span className={cn("hidden min-w-0 items-center gap-1.5 text-[13.5px] md:flex", TONE_TEXT[svc.tone])}>
+                <span className={cn("hidden min-w-0 items-center gap-1.5 text-[13px] md:flex", TONE_TEXT[svc.tone])}>
                   {SvcIcon && <SvcIcon className="h-3.5 w-3.5 shrink-0 text-primary" />}
                   <span className="truncate">{svc.text}</span>
                 </span>
-                <span className={cn("hidden min-w-0 items-center gap-1.5 text-[13px] font-bold md:flex", TONE_TEXT[status.tone])}>
+                <span className={cn("hidden min-w-0 items-center gap-1.5 text-xs font-semibold md:flex", TONE_TEXT[status.tone])}>
                   {StatusIcon && <StatusIcon className={cn("h-3.5 w-3.5 shrink-0", status.spin && "animate-spin")} />}
                   <span className="truncate">{status.text}</span>
                 </span>

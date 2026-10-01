@@ -26,8 +26,8 @@ export default function OrgChoice({ candidates, suggestedId, assignable, value, 
 
   return (
     <div className="flex flex-col gap-2">
-      <span className="text-sm font-bold">{label}</span>
-      <div className="flex flex-wrap gap-2">
+      <span className="text-xs font-semibold text-muted-foreground">{label}</span>
+      <div className="flex flex-wrap gap-1.5">
         {chips.map((id) => {
           const on = value === id;
           const Icon = on ? Check : id === suggestedId ? Sparkles : Briefcase;
@@ -38,11 +38,11 @@ export default function OrgChoice({ candidates, suggestedId, assignable, value, 
               aria-pressed={on}
               onClick={() => onChange(id)}
               className={cn(
-                "inline-flex h-8 max-w-full items-center gap-1.5 rounded-full border px-3 text-[13px] font-bold transition-colors hover:border-primary/50",
+                "inline-flex h-7 max-w-full items-center gap-1.5 rounded-full border px-2.5 text-xs font-semibold transition-colors hover:border-primary/50",
                 on ? "border-primary bg-primary/10 text-primary" : "border-border bg-card text-foreground",
               )}
             >
-              <Icon className={cn("h-3.5 w-3.5 shrink-0", !on && id === suggestedId && "text-primary")} />
+              <Icon className={cn("h-3 w-3 shrink-0", !on && id === suggestedId && "text-primary")} />
               <span className="truncate">{byId.get(id)!.name}</span>
             </button>
           );
