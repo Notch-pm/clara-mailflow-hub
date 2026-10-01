@@ -112,6 +112,16 @@ bunx supabase functions deploy <nom> --project-ref aullweizxcjbvtdspjli
 bun run build && npx wrangler deploy --dry-run
 ```
 
+### Lot « délais de traitement » (2026-10-01) — appliqué le 2026-10-01
+
+Objectifs d'accusé de réception et de résolution par organisation, échéances dans les listes et
+la fiche (voir `docs/features.md` § 3).
+
+| # | Action | Pourquoi cet ordre | État |
+|---|---|---|---|
+| 1 | `20261001070242_delais_de_traitement.sql` — colonnes `socle_organizations.sla_*` et `couriers.acknowledged_at`/`resolved_at`, deux triggers, reprise de l'historique (`trigger_set_updated_at` suspendu le temps de la reprise), `search_couriers` recréé avec les deux colonnes | Le frontend lit les nouvelles colonnes du RPC et de `socle_organizations` | **Appliqué** via `apply_migration` — registre `20261001070242` (fichier renommé pour coller). Reprise : 1 187 résolutions, 27 accusés datés. Vérifié en transaction annulée : résolution datée au passage en `processed` puis effacée à la réouverture ; réponse passée en `processed` ⇒ `acknowledged_at` du parent posé |
+| 2 | Publier le frontend | Colonne « Échéance », carte de la fiche, saisie dans « Paramétrer » | **Fait** — push sur `main` (Workers Builds) |
+
 ### Lot « Améliorer mon message » (2026-09-24) — appliqué le 2026-09-24
 
 Relecture IA de la réponse en cours d'édition (voir `docs/features.md` § 2). Aucune migration.

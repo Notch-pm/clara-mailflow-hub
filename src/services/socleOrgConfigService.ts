@@ -11,6 +11,10 @@ import type { SocleOrgMirror } from "@/services/socleSyncService";
 export interface SocleOrgWithConfig extends SocleOrgMirror {
   workflow_id: string | null;
   reply_workflow_id: string | null;
+  /** Délai souhaité avant accusé de réception, en jours ouvrés — `null` : hérite du parent. */
+  sla_ack_business_days: number | null;
+  /** Délai souhaité avant résolution, en jours ouvrés — `null` : hérite du parent. */
+  sla_resolution_business_days: number | null;
   workflow?: { id: string; name: string } | null;
   reply_workflow?: { id: string; name: string } | null;
   /** Boîtes IMAP rattachées à cette organisation. */
@@ -78,7 +82,12 @@ export function assignableOrgs<T extends SocleOrgMirror>(orgs: T[]): T[] {
 /** Met à jour la config Clara d'une organisation (jamais les champs Socle). */
 export async function updateOrgConfig(
   id: string,
-  payload: { workflow_id?: string | null; reply_workflow_id?: string | null },
+  payload: {
+    workflow_id?: string | null;
+    reply_workflow_id?: string | null;
+    sla_ack_business_days?: number | null;
+    sla_resolution_business_days?: number | null;
+  },
 ): Promise<void> {
   const { error } = await supabase
     .from("socle_organizations")

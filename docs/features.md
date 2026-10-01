@@ -138,6 +138,35 @@ Client unique : `supabase/functions/_shared/socleAi.ts`. Voir aussi `docs/edge-f
 - Transitions définies par `workflow_transitions`. La validité des transitions est vérifiée côté client (et idéalement par trigger DB pour les cas critiques).
 - **Changer d'organisation gestionnaire** (carte « Organisation gestionnaire », colonne de contexte de `/courrier/:id` et panneau de la boîte aux lettres) : à l'état initial c'est une simple affectation ; ensuite c'est un **transfert**, confirmé par un dialogue, qui **remet le courrier à l'état initial du workflow de l'organisation cible** (chaque organisation a son workflow), journalise `service_transferred` et notifie les membres de la cible. Le panneau de tri se referme après le transfert (le courrier quitte la pile à trier) ; l'écran d'instruction, lui, reste ouvert sur le courrier — sauf transfert vers une organisation hors du périmètre de l'agent, qui n'aurait plus rien à afficher.
 
+### Délais de traitement (SLA, depuis le 2026-10-01)
+
+Deux délais souhaités par courrier reçu, **en jours ouvrés** (week-ends et onze fériés de
+métropole exclus — pas ceux d'Alsace-Moselle ni d'outre-mer) :
+
+- **Accusé de réception** : tenu par la **première réponse envoyée**, c.-à-d. la première réponse
+  entrée dans un état `processed` (le type « Accusé de réception » choisi pour la rédaction IA
+  n'est pas enregistré et ne compte pas). Une **résolution vaut accusé** : un courrier clos sans
+  réponse n'est pas compté en retard d'accusé au-delà du jour où il a été clos.
+- **Résolution** : tenue par l'entrée dans un état `processed` ou `archived`. Réouvrir le
+  courrier (ou le transférer, ce qui le remet à l'état initial) efface la date.
+
+Le jour de réception ne compte pas ; est dans les délais ce qui est fait au plus tard le jour de
+l'échéance (jours civils de Paris, pas de tranches de 24 h).
+
+- **Où on les fixe** : fenêtre « Paramétrer » d'une organisation (Paramètres → Organisations).
+  Le nœud **racine** porte les délais de la collectivité ; une sous-organisation ne renseigne que
+  ce qui diffère — chaque délai vide remonte **indépendamment** au parent. Un courrier sans
+  organisation prend ceux de la racine (s'il n'y en a qu'une).
+- **Où on les voit** : colonne « Échéance » des listes *En instruction* et *Traités* (l'accusé
+  tant qu'il reste à faire, préfixé « AR », puis la résolution ; groupable par statut) et carte
+  « Délais de traitement » de la fiche courrier (affichée seulement si un objectif s'applique).
+- **Calcul** : `src/lib/courier-sla.ts` (pur, testé dans `src/test/lib/courier-sla.test.ts`),
+  hook `useCourierSla`. Les échéances ne sont **jamais stockées** : modifier un objectif vaut
+  aussitôt pour les courriers en cours. Seuls les faits datés le sont, par trigger (voir
+  `docs/data-model.md`, `couriers.acknowledged_at` / `resolved_at`).
+- **Pas encore** : filtre « en retard » côté serveur, statistiques de respect des délais,
+  alertes. Les deux premiers demanderont le calcul des jours ouvrés en SQL.
+
 ## 4. Actions issues d'un courrier
 
 Clara ne remplace pas les applications métier qui exécutent les demandes d'action. Elle sert de point de suivi côté courrier :

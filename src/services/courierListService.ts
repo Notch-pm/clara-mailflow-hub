@@ -100,6 +100,10 @@ export interface CourierListRow {
   is_transferred: boolean;
   /** Courrier reçu au-delà du seuil « volumineux » (2 Mo) — typiquement un scan. */
   is_large_email: boolean;
+  /** Première réponse envoyée — posée par trigger (`couriers_track_acknowledgement`). */
+  acknowledged_at: string | null;
+  /** Entrée dans un état clos, `null` s'il en est ressorti (`couriers_track_resolution`). */
+  resolved_at: string | null;
   match_in: string[];
   total_count: number;
 }

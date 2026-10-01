@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
   listOrgMemberIds,
+  listOrgsWithConfig,
   listOrgSignatoryIds,
   setImapBoxOrganization,
   setOrgMembers,
@@ -34,6 +35,7 @@ import {
 } from "@/components/ui/select";
 import { Loader2, Building2, Home, Mail, Phone } from "lucide-react";
 import { toast } from "sonner";
+import { inheritedSlaTargets } from "@/lib/courier-sla";
 
 const NONE = "__none__";
 
@@ -60,6 +62,16 @@ export default function OrganizationConfigDialog({ open, onOpenChange, org, orgI
   const [imapSettingsId, setImapSettingsId] = useState<string>(NONE);
   const [signatoryIds, setSignatoryIds] = useState<string[]>([]);
   const [memberIds, setMemberIds] = useState<string[]>([]);
+  const [slaAck, setSlaAck] = useState("");
+  const [slaResolution, setSlaResolution] = useState("");
+
+  // Toutes les organisations du tenant : sert à dire ce qu'un délai laissé vide
+  // hérite du parent. Même clé et même fonction que les listes (cache partagé).
+  const { data: allOrgs = [] } = useQuery({
+    queryKey: ["socle-orgs-config", orgId],
+    queryFn: () => listOrgsWithConfig(orgId),
+    enabled: open && !!orgId,
+  });
 
   // ── Référentiels ──
   const { data: workflows = [] } = useQuery({
@@ -128,6 +140,10 @@ export default function OrganizationConfigDialog({ open, onOpenChange, org, orgI
     setImapSettingsId(org.imap_configs?.[0]?.id ?? NONE);
     setSignatoryIds([]);
     setMemberIds([]);
+    setSlaAck(org.sla_ack_business_days != null ? String(org.sla_ack_business_days) : "");
+    setSlaResolution(
+      org.sla_resolution_business_days != null ? String(org.sla_resolution_business_days) : "",
+    );
   }, [open, org?.id]);
 
   useEffect(() => {
@@ -143,6 +159,8 @@ export default function OrganizationConfigDialog({ open, onOpenChange, org, orgI
       await updateOrgConfig(org.id, {
         workflow_id: workflowId !== NONE ? workflowId : null,
         reply_workflow_id: replyWorkflowId !== NONE ? replyWorkflowId : null,
+        sla_ack_business_days: parseBusinessDays(slaAck, 365, "L'accusé de réception"),
+        sla_resolution_business_days: parseBusinessDays(slaResolution, 3650, "La résolution"),
       });
 
       // Boîte IMAP : détache l'ancienne si elle change, rattache la nouvelle.
@@ -177,6 +195,9 @@ export default function OrganizationConfigDialog({ open, onOpenChange, org, orgI
   if (!org) return null;
 
   const activeMembers = orgMembers.filter((m) => m.membership_active !== false);
+  const inherited = inheritedSlaTargets(allOrgs, org);
+  const inheritedHint = (days: number | null) =>
+    isRoot ? "Aucun objectif" : days ? `Hérité : ${days} j` : "Hérité : aucun";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -241,6 +262,55 @@ export default function OrganizationConfigDialog({ open, onOpenChange, org, orgI
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="space-y-2 rounded-lg border p-3">
+            <div>
+              <Label className="text-sm font-medium">Délais de traitement des courriers reçus</Label>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {isRoot
+                  ? "Délais de la collectivité, en jours ouvrés (hors week-ends et jours fériés). Les organisations les reprennent, sauf si elles fixent les leurs."
+                  : "En jours ouvrés (hors week-ends et jours fériés). Laissez vide pour reprendre le délai de l'organisation parente."}
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="sla-ack" className="text-xs text-muted-foreground">
+                  Accusé de réception
+                </Label>
+                <Input
+                  id="sla-ack"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={365}
+                  step={1}
+                  value={slaAck}
+                  onChange={(e) => setSlaAck(e.target.value)}
+                  placeholder={inheritedHint(inherited.ackDays)}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="sla-resolution" className="text-xs text-muted-foreground">
+                  Résolution
+                </Label>
+                <Input
+                  id="sla-resolution"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={3650}
+                  step={1}
+                  value={slaResolution}
+                  onChange={(e) => setSlaResolution(e.target.value)}
+                  placeholder={inheritedHint(inherited.resolutionDays)}
+                />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              L'accusé de réception est tenu par la première réponse envoyée ; la résolution, par le
+              passage du courrier dans un état traité ou archivé.
+            </p>
           </div>
 
           <div className="space-y-2">
@@ -368,6 +438,17 @@ export default function OrganizationConfigDialog({ open, onOpenChange, org, orgI
       </DialogContent>
     </Dialog>
   );
+}
+
+/** Délai saisi → entier de jours ouvrés, `null` si vide (hérite du parent). */
+function parseBusinessDays(value: string, max: number, label: string): number | null {
+  const t = value.trim();
+  if (!t) return null;
+  const n = Number(t);
+  if (!Number.isInteger(n) || n < 1 || n > max) {
+    throw new Error(`${label} : un nombre entier de jours ouvrés entre 1 et ${max}.`);
+  }
+  return n;
 }
 
 // ── Paramètres globaux du tenant, portés par l'organisation principale ──

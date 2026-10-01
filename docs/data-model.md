@@ -131,6 +131,8 @@ Table centrale. Tags stockés dans `metadata->'tags'` (tableau JSON de strings).
 | `assigned_service` | varchar | nom de l'organisation gestionnaire — **pure dénormalisation d'affichage** (toujours écrite en double, mais plus aucune logique ne compare ce texte) |
 | `socle_organization_id` | uuid FK → socle_organizations | organisation gestionnaire — **clé de toute la logique** : RPC `stats_*` (`p_socle_organization_id`), `search_couriers`, filtres de droits (`useUserServiceFilter` → UUIDs via `socle_organization_members`), résolutions dans le panneau courrier/composer |
 | `metadata` | jsonb | `tags: string[]`, `body_text`, etc. — voir clés d'ingestion ci-dessous |
+| `acknowledged_at` | timestamptz | Courrier reçu : **première réponse envoyée** (réponse entrée dans un état `processed`). Posée par le trigger `couriers_track_acknowledgement` (AFTER, sur la réponse), jamais réécrite. Délais de traitement — `docs/features.md` § 3 |
+| `resolved_at` | timestamptz | Courrier reçu : entrée dans un état `processed`/`archived` ; **remise à NULL** s'il en ressort. Trigger `couriers_track_resolution` (BEFORE). Passer de traité à archivé ne la déplace pas |
 | `consents` | jsonb NOT NULL défaut `[]` | Consentements RGPD recueillis **au dépôt portail** : `[{kind, granted, statement, collected_at}]`. Écrit par `portal-form` seul, **immuable** ensuite. Voir ci-dessous. |
 | `fts_subject` / `fts_body` | tsvector | index full-text français |
 
@@ -419,6 +421,7 @@ Miroir de la **hiérarchie d'organisations** du Socle (sous-arbre du `socle_org_
 | `phone` / `email` / `address` / `logo_url` | text | coordonnées Socle affichées dans l'arbre |
 | `workflow_id` | uuid FK → workflows | **config Clara** : workflow des courriers reçus |
 | `reply_workflow_id` | uuid FK → workflows | **config Clara** : workflow des réponses |
+| `sla_ack_business_days` / `sla_resolution_business_days` | integer (1-365 / 1-3650) | **config Clara** : délais souhaités avant accusé de réception / résolution, en jours ouvrés. **NULL = hérite du parent** ; la racine porte ceux de la collectivité. Voir `docs/features.md` § 3 |
 | `synced_at` / `obsoleted_at` | timestamptz | |
 
 La boîte IMAP d'une org est rattachée via `imap_settings.socle_organization_id`. Arbre + panneau de config : `src/components/SocleOrganizationTree.tsx` + `OrganizationConfigDialog.tsx` (sections « Organisations » de SettingsPage et OrgSettings) ; le nœud **racine** porte l'UI des paramètres globaux du tenant (fichier domiciliaire, « Différencier les adresses mail de réception par organisation » = `organizations.multiple_imap`, rétention/purge — stockage inchangé sur `organizations`). Service client : `src/services/socleOrgConfigService.ts`.

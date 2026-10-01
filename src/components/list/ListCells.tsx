@@ -58,6 +58,8 @@ const DOT_TONE = {
   warning: "bg-warning",
   primary: "bg-primary",
   muted: "bg-muted-foreground",
+  success: "bg-success",
+  destructive: "bg-destructive",
 } as const;
 
 export type StatusTone = keyof typeof DOT_TONE;

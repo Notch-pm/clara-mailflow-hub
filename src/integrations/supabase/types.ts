@@ -732,6 +732,7 @@ export type Database = {
       }
       couriers: {
         Row: {
+          acknowledged_at: string | null
           ai_suggested_links: Json
           assigned_service: string | null
           channel: Database["public"]["Enums"]["courier_channel"]
@@ -748,6 +749,7 @@ export type Database = {
           organization_id: string
           parent_courier_id: string | null
           received_at: string | null
+          resolved_at: string | null
           sent_at: string | null
           socle_organization_id: string | null
           subject: string | null
@@ -755,6 +757,7 @@ export type Database = {
           workflow_state_id: string | null
         }
         Insert: {
+          acknowledged_at?: string | null
           ai_suggested_links?: Json
           assigned_service?: string | null
           channel: Database["public"]["Enums"]["courier_channel"]
@@ -771,6 +774,7 @@ export type Database = {
           organization_id: string
           parent_courier_id?: string | null
           received_at?: string | null
+          resolved_at?: string | null
           sent_at?: string | null
           socle_organization_id?: string | null
           subject?: string | null
@@ -778,6 +782,7 @@ export type Database = {
           workflow_state_id?: string | null
         }
         Update: {
+          acknowledged_at?: string | null
           ai_suggested_links?: Json
           assigned_service?: string | null
           channel?: Database["public"]["Enums"]["courier_channel"]
@@ -794,6 +799,7 @@ export type Database = {
           organization_id?: string
           parent_courier_id?: string | null
           received_at?: string | null
+          resolved_at?: string | null
           sent_at?: string | null
           socle_organization_id?: string | null
           subject?: string | null
@@ -1923,6 +1929,8 @@ export type Database = {
           organization_id: string
           phone: string | null
           reply_workflow_id: string | null
+          sla_ack_business_days: number | null
+          sla_resolution_business_days: number | null
           slug: string | null
           socle_id: string
           socle_parent_id: string | null
@@ -1943,6 +1951,8 @@ export type Database = {
           organization_id: string
           phone?: string | null
           reply_workflow_id?: string | null
+          sla_ack_business_days?: number | null
+          sla_resolution_business_days?: number | null
           slug?: string | null
           socle_id: string
           socle_parent_id?: string | null
@@ -1963,6 +1973,8 @@ export type Database = {
           organization_id?: string
           phone?: string | null
           reply_workflow_id?: string | null
+          sla_ack_business_days?: number | null
+          sla_resolution_business_days?: number | null
           slug?: string | null
           socle_id?: string
           socle_parent_id?: string | null

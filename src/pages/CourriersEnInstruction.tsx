@@ -11,6 +11,7 @@ import { useUserServiceFilter } from "@/hooks/useUserServiceFilter";
 import { useCourierList } from "@/hooks/useCourierList";
 import { useCourierFacets } from "@/hooks/useCourierFacets";
 import { useCourierCsvExport } from "@/hooks/useCourierCsvExport";
+import { useCourierSla } from "@/hooks/useCourierSla";
 import type { CourierListFilters, CourierListRow } from "@/services/courierListService";
 import { DataTable } from "@/components/data-table/data-table";
 import { DataTableColumnToggle } from "@/components/data-table/data-table-column-toggle";
@@ -22,6 +23,7 @@ import { CourierFacetFields } from "@/components/courier/CourierFacetFields";
 import {
   dateColumn,
   organisationColumn,
+  slaColumn,
   recipientColumn,
   stateColumn,
   subjectColumn,
@@ -108,6 +110,8 @@ export default function CourriersEnInstruction() {
     defaultSort: { key: "updated_at", dir: "desc" },
   });
 
+  const slaOf = useCourierSla(organizationId);
+
   const [tableInstance, onTableInstanceChange] = useDataTableInstance<CourierListRow>();
   const { exportCsv, isExporting } = useCourierCsvExport(list.filters, tableInstance, "courriers-en-instruction");
 
@@ -115,6 +119,7 @@ export default function CourriersEnInstruction() {
     () => [
       subjectColumn("sender"),
       stateColumn(stateById, "warning"),
+      slaColumn(slaOf),
       organisationColumn(),
       recipientColumn(),
       tagsColumn(tagByName),
@@ -127,7 +132,7 @@ export default function CourriersEnInstruction() {
         sortable: true,
       }),
     ],
-    [stateById, tagByName],
+    [stateById, tagByName, slaOf],
   );
 
   return (

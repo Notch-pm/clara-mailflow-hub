@@ -51,6 +51,9 @@ import {
 import { TAG_GROUPS, type TagGroup } from "@/services/courierTagService";
 import { assignableOrgs } from "@/services/socleOrgConfigService";
 import { getWorkflowStateChain } from "@/services/workflowService";
+import { getCourierSlaFacts } from "@/services/courierService";
+import { useCourierSla } from "@/hooks/useCourierSla";
+import { CourierSlaDetails } from "./SlaStatus";
 import { cn } from "@/lib/utils";
 import { readableTextColor } from "@/lib/tag-color";
 import { categoryTone } from "@/lib/workflow-category";
@@ -269,6 +272,18 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
     queryFn: () => getWorkflowStateChain(currentService!.workflow_id!),
     enabled: !!currentService?.workflow_id,
   });
+
+  // Délais de traitement : relus à chaque transition du courrier ou de ses
+  // réponses, puisque c'est le trigger qui date l'accusé et la résolution.
+  const replyStatesKey = replyList.map((r) => r.workflow_state_id ?? "").join(",");
+  const { data: slaFacts } = useQuery({
+    queryKey: ["courier-sla-facts", courier.id, localWorkflowStateId, replyStatesKey],
+    queryFn: () => getCourierSlaFacts(organizationId, courier.id),
+    enabled: !isOutbound,
+  });
+  const slaOf = useCourierSla(organizationId);
+  const sla = slaFacts ? slaOf({ ...slaFacts, socle_organization_id: localSocleOrgId ?? null }) : null;
+  const hasSlaTarget = !!sla && (sla.ack.kind !== "none" || sla.resolution.kind !== "none");
 
   const tabItems: ResponsiveTabItem[] = useMemo(() => {
     const items: ResponsiveTabItem[] = [{ value: "detail", label: "Détail du courrier" }];
@@ -881,6 +896,12 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
                   </Popover>
                 )}
               </RailCard>
+
+              {!isOutbound && hasSlaTarget && sla && (
+                <RailCard title="Délais de traitement">
+                  <CourierSlaDetails sla={sla} />
+                </RailCard>
+              )}
 
               <RailCard title="Classement">
                 <div className="space-y-3">

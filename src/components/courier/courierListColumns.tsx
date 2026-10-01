@@ -5,6 +5,15 @@ import { ListCellDate, ListCellText, ListCellTitle, StatusDot, type StatusTone }
 import { readableTextColor } from "@/lib/tag-color";
 import type { CourierListRow } from "@/services/courierListService";
 import type { CourierChannel } from "@/types/courier";
+import { SlaStatusDot } from "@/components/courier/SlaStatus";
+import {
+  SLA_AXIS_LABELS,
+  parisDay,
+  primarySla,
+  slaLabel,
+  type CourierSla,
+  type SlaKind,
+} from "@/lib/courier-sla";
 
 /*
  * Colonnes partagées des listes de courriers (instruction, traités, archivés,
@@ -225,3 +234,47 @@ export function dateColumn({
     meta: { label: title, exportLabel, groupLabel, width: 108, align: "right" },
   };
 }
+
+/**
+ * Échéance du courrier (délais de traitement) : l'accusé de réception tant qu'il
+ * reste à faire, puis la résolution. Groupée, elle range par statut — « En
+ * retard » d'abord, c'est la question qu'on pose à la liste.
+ */
+export function slaColumn(
+  slaOf: (c: CourierListRow) => CourierSla | null,
+): CourierColumn {
+  const primary = (c: CourierListRow) => {
+    const sla = slaOf(c);
+    return sla ? primarySla(sla) : null;
+  };
+  const today = parisDay(new Date())!;
+  return {
+    id: "sla",
+    accessorFn: (c) => {
+      const p = primary(c);
+      return p ? `${SLA_AXIS_LABELS[p.axis]} : ${slaLabel(p.status, today)}` : "";
+    },
+    getGroupingValue: (c) => SLA_GROUP_LABELS[primary(c)?.status.kind ?? "none"],
+    enableSorting: false,
+    header: "Échéance",
+    cell: ({ row }) => {
+      const p = primary(row.original);
+      if (!p) return <ListCellText>—</ListCellText>;
+      return (
+        <span title={SLA_AXIS_LABELS[p.axis]} className="block min-w-0">
+          <SlaStatusDot status={p.status} prefix={p.axis === "ack" ? "AR" : undefined} />
+        </span>
+      );
+    },
+    meta: { exportLabel: "Échéance", groupLabel: "Échéance", width: 220 },
+  };
+}
+
+const SLA_GROUP_LABELS: Record<SlaKind, string> = {
+  overdue: "En retard",
+  due_soon: "Échéance proche",
+  pending: "Dans les temps",
+  met: "Tenu",
+  missed: "Hors délai",
+  none: "Sans objectif",
+};

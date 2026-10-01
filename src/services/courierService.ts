@@ -38,6 +38,23 @@ export async function getCourierById(organizationId: string, courierId: string) 
     .single();
 }
 
+/**
+ * Ce qu'il faut pour calculer les échéances d'un courrier (délais de traitement).
+ * Relu à part, et non pris dans le courrier chargé à l'ouverture : les deux
+ * dates sont posées par trigger, au gré des transitions du courrier et de ses
+ * réponses.
+ */
+export async function getCourierSlaFacts(organizationId: string, courierId: string) {
+  const { data, error } = await supabase
+    .from("couriers")
+    .select("received_at, created_at, acknowledged_at, resolved_at")
+    .eq("organization_id", organizationId)
+    .eq("id", courierId)
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 export async function createCourier(data: CourierInsert) {
   return supabase
     .from("couriers")
