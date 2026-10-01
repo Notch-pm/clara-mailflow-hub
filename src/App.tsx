@@ -23,6 +23,7 @@ const DemandeDetail = lazyRoute(() => import("@/pages/DemandeDetail"));
 const EluIndicateurs = lazyRoute(() => import("@/pages/EluIndicateurs"));
 import Dashboard from "@/pages/Dashboard";
 import BoiteAuxLettres, { recordLogin } from "@/pages/BoiteAuxLettres";
+const CourrierEntrant = lazyRoute(() => import("@/pages/CourrierEntrant"));
 import CourriersEnInstruction from "@/pages/CourriersEnInstruction";
 import CourriersTraites from "@/pages/CourriersTraites";
 import CourriersArchives from "@/pages/CourriersArchives";
@@ -199,6 +200,7 @@ const App = () => (
                   <Route element={<AppLayout />}>
                     <Route path="/" element={<Dashboard />} />
                     <Route path="/boite-aux-lettres" element={<BoiteAuxLettres />} />
+                    <Route path="/courrier-entrant" element={<Suspense fallback={<LoadingScreen />}><CourrierEntrant /></Suspense>} />
                     <Route path="/courriers-en-instruction" element={<CourriersEnInstruction />} />
                     <Route path="/courriers-traites" element={<CourriersTraites />} />
                     <Route path="/courriers-archives" element={<CourriersArchives />} />

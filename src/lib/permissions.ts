@@ -58,3 +58,51 @@ export function canAccessStats(profile: Profile, membership: Membership): boolea
 export function isElu(membership: Membership): boolean {
   return membership?.role === "elu";
 }
+
+/**
+ * Gestionnaire courrier (service courrier) : qualifie, route et suit les
+ * courriers reçus depuis l'écran « Courrier entrant ». Attribut transverse,
+ * indépendant du rôle (comme `is_signataire`) ; il n'ouvre aucun droit
+ * d'écriture — c'est `canEditCouriers` qui en décide.
+ */
+export function isServiceCourrier(membership: { is_service_courrier?: boolean | null } | null | undefined): boolean {
+  return membership?.is_service_courrier === true;
+}
+
+/** Écran « Courrier entrant » : gestionnaire courrier, administrateur ou superadmin. */
+export function canAccessMailroom(
+  profile: Profile,
+  membership: (Membership & { is_service_courrier?: boolean | null }) | null | undefined,
+): boolean {
+  return isSuperAdmin(profile) || isOrgAdmin(membership) || isServiceCourrier(membership);
+}
+
+/**
+ * Boîte aux lettres dans la navigation : un gestionnaire courrier qui n'est pas
+ * administrateur ne la voit plus — « Courrier entrant » la remplace pour lui.
+ * Les services la gardent (leurs courriers routés, pas encore pris en charge).
+ */
+export function showsMailbox(
+  profile: Profile,
+  membership: (Membership & { is_service_courrier?: boolean | null }) | null | undefined,
+): boolean {
+  return !isServiceCourrier(membership) || isOrgAdmin(membership) || isSuperAdmin(profile);
+}
+
+/** Visibilité d'une entrée de navigation (rail et barre mobile). */
+export function navItemVisible(
+  url: string,
+  profile: Profile,
+  membership: (Membership & { is_service_courrier?: boolean | null }) | null | undefined,
+): boolean {
+  switch (url) {
+    case "/statistiques":
+      return canAccessStats(profile, membership);
+    case "/courrier-entrant":
+      return canAccessMailroom(profile, membership);
+    case "/boite-aux-lettres":
+      return showsMailbox(profile, membership);
+    default:
+      return true;
+  }
+}

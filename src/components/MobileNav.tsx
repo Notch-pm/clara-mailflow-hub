@@ -1,7 +1,7 @@
 import { NavLink } from "@/components/NavLink";
-import { Home, Send, FileClock, CheckCircle2, Archive, Mailbox, BarChart3, LucideIcon } from "lucide-react";
+import { Home, Send, FileClock, CheckCircle2, Archive, Mailbox, Inbox, BarChart3, LucideIcon } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { canAccessStats } from "@/lib/permissions";
+import { isServiceCourrier, navItemVisible } from "@/lib/permissions";
 
 interface NavItem {
   title: string;
@@ -11,6 +11,7 @@ interface NavItem {
 
 const baseNavItems: NavItem[] = [
   { title: "Accueil", url: "/", icon: Home },
+  { title: "Entrant", url: "/courrier-entrant", icon: Inbox },
   { title: "Boîte", url: "/boite-aux-lettres", icon: Mailbox },
   { title: "Instruction", url: "/courriers-en-instruction", icon: FileClock },
   { title: "Traités", url: "/courriers-traites", icon: CheckCircle2 },
@@ -21,8 +22,12 @@ const baseNavItems: NavItem[] = [
 
 export function MobileNav() {
   const { profile, membership } = useAuth();
-  const navItems = baseNavItems.filter((it) =>
-    it.url === "/statistiques" ? canAccessStats(profile, membership) : true,
+  // Barre étroite : « Entrant » n'y figure que pour le gestionnaire courrier,
+  // pas pour l'administrateur qui garde la boîte aux lettres.
+  const navItems = baseNavItems.filter(
+    (it) =>
+      navItemVisible(it.url, profile, membership) &&
+      (it.url !== "/courrier-entrant" || isServiceCourrier(membership)),
   );
   return (
     <nav aria-label="Navigation principale" className="fixed bottom-0 left-0 right-0 z-40 border-t py-1.5 md:hidden bg-rail">

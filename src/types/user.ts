@@ -31,6 +31,7 @@ export interface OrganizationUser {
   is_active: boolean | null;
   is_signataire: boolean;
   signataire_title: string | null;
+  is_service_courrier: boolean;
   created_at: string;
 }
 
@@ -42,6 +43,7 @@ export interface OrganizationUserInsert {
   is_active?: boolean | null;
   is_signataire?: boolean;
   signataire_title?: string | null;
+  is_service_courrier?: boolean;
 }
 
 export interface OrgRole {
@@ -62,6 +64,8 @@ export interface OrgMember {
   role: string;
   is_signataire: boolean;
   signataire_title: string | null;
+  /** Profil « gestionnaire courrier » (écran Courrier entrant), indépendant du rôle. */
+  is_service_courrier: boolean;
   membership_id: string; // organization_users.id
   membership_active: boolean | null;
 }

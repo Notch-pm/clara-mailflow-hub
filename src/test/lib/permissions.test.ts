@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  canAccessMailroom,
   canAccessSettings,
   canAccessStats,
   canEditCouriers,
@@ -101,5 +102,25 @@ describe("isSuperAdmin", () => {
     expect(isSuperAdmin(superadmin)).toBe(true);
     expect(isSuperAdmin(nobody)).toBe(false);
     expect(isSuperAdmin(null)).toBe(false);
+  });
+});
+
+describe("canAccessMailroom", () => {
+  it("gestionnaire courrier, quel que soit son rôle", () => {
+    expect(canAccessMailroom(null, { role: "gestionnaire", is_service_courrier: true })).toBe(true);
+    expect(canAccessMailroom(null, { role: "consultant", is_service_courrier: true })).toBe(true);
+  });
+
+  it("administrateur et superadmin sans le profil", () => {
+    expect(canAccessMailroom(null, { role: "administrateur" })).toBe(true);
+    expect(canAccessMailroom(null, { role: "admin" })).toBe(true);
+    expect(canAccessMailroom({ is_superadmin: true }, null)).toBe(true);
+  });
+
+  it("refusé aux autres rôles sans le profil", () => {
+    for (const role of ["gestionnaire", "elu", "superviseur", "consultant"]) {
+      expect(canAccessMailroom(null, { role, is_service_courrier: false })).toBe(false);
+    }
+    expect(canAccessMailroom(null, null)).toBe(false);
   });
 });

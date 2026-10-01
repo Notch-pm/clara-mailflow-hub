@@ -9,6 +9,7 @@ import {
   ExternalLink,
   Tag as TagIcon,
   X,
+  Undo2,
 } from "lucide-react";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { ResponsiveTabsList, type ResponsiveTabItem } from "@/components/courier/ResponsiveTabsList";
@@ -74,6 +75,7 @@ import ParticipantManager from "./ParticipantManager";
 import ReplyComposer from "./ReplyComposer";
 import LinkedCouriersSection from "./LinkedCouriersSection";
 import CloseLinkedCouriersDialog from "./CloseLinkedCouriersDialog";
+import ReturnToMailroomDialog from "./ReturnToMailroomDialog";
 import {
   channelLabels,
   useCourierWorkspace,
@@ -184,6 +186,7 @@ const EMPTY = <span className="font-normal italic text-muted-foreground">—</sp
 export default function CourierWorkspacePage({ courier, organizationId, onClose }: Props) {
   const [tagPopoverGroup, setTagPopoverGroup] = useState<TagGroup | null>(null);
   const [servicePopoverOpen, setServicePopoverOpen] = useState(false);
+  const [returnOpen, setReturnOpen] = useState(false);
   const [rail, setRail] = useState<"courrier" | "workflow">("courrier");
 
   const ws = useCourierWorkspace({
@@ -231,6 +234,8 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
     userServiceFilter,
     serviceMutation,
     transferMutation,
+    returnMutation,
+    canReturnToMailroom,
     transferTargetServiceId,
     setTransferTargetServiceId,
     transferConfirmOpen,
@@ -912,6 +917,19 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
                           </Select>
                         </>
                       )}
+                      {canReturnToMailroom && (
+                        <button
+                          type="button"
+                          className="flex w-full items-center gap-1.5 border-t pt-2 text-left text-xs font-semibold text-primary hover:underline"
+                          onClick={() => {
+                            setServicePopoverOpen(false);
+                            setReturnOpen(true);
+                          }}
+                        >
+                          <Undo2 className="h-3.5 w-3.5 shrink-0" />
+                          Je ne sais pas — renvoyer au service courrier
+                        </button>
+                      )}
                     </PopoverContent>
                   </Popover>
                 )}
@@ -1137,6 +1155,13 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <ReturnToMailroomDialog
+        open={returnOpen}
+        onOpenChange={setReturnOpen}
+        pending={returnMutation.isPending}
+        onConfirm={(note) => returnMutation.mutate(note, { onSuccess: () => setReturnOpen(false) })}
+      />
 
       <CloseLinkedCouriersDialog
         open={closeLinkedOpen}

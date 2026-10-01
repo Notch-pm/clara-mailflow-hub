@@ -1,5 +1,5 @@
 import { NavLink } from "@/components/NavLink";
-import { Home, Send, FileClock, Users, CheckCircle2, Archive, Search, Mailbox, BarChart3, LucideIcon } from "lucide-react";
+import { Home, Send, FileClock, Users, CheckCircle2, Archive, Search, Mailbox, Inbox, BarChart3, LucideIcon } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -7,7 +7,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useAuth } from "@/contexts/AuthContext";
-import { canAccessStats } from "@/lib/permissions";
+import { navItemVisible } from "@/lib/permissions";
 
 interface NavItem {
   title: string;
@@ -17,6 +17,7 @@ interface NavItem {
 
 const baseNavItems: NavItem[] = [
   { title: "Tableau de bord", url: "/", icon: Home },
+  { title: "Courrier entrant", url: "/courrier-entrant", icon: Inbox },
   { title: "Boîte aux lettres", url: "/boite-aux-lettres", icon: Mailbox },
   { title: "Courriers en instruction", url: "/courriers-en-instruction", icon: FileClock },
   { title: "Courriers traités", url: "/courriers-traites", icon: CheckCircle2 },
@@ -53,9 +54,7 @@ function SidebarItem({ item }: { item: NavItem }) {
 
 export function AppSidebar() {
   const { profile, membership } = useAuth();
-  const navItems = baseNavItems.filter((it) =>
-    it.url === "/statistiques" ? canAccessStats(profile, membership) : true,
-  );
+  const navItems = baseNavItems.filter((it) => navItemVisible(it.url, profile, membership));
   return (
     <TooltipProvider delayDuration={150}>
       <nav aria-label="Navigation principale" className="hidden md:flex flex-col items-center w-[52px] shrink-0 py-3 bg-rail h-full relative">

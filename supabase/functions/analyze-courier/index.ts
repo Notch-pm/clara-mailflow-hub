@@ -757,6 +757,10 @@ ${jsonSchemaInstruction(call.tool.toolParameters as Record<string, unknown>)}`;
         suggested_service_name: serviceSuggestion?.name ?? null,
         suggested_socle_organization_id: serviceSuggestion?.id ?? null,
         suggested_service_reason: serviceSuggestion?.reason ?? null,
+        // Confiance et alternatives (2026-10-01) : l'écran « Courrier entrant »
+        // en tire « À valider » / « À qualifier » et le routage en lot ≥ 90 %.
+        suggested_service_confidence: serviceSuggestion?.confidence ?? null,
+        suggested_service_alternatives: serviceSuggestion?.alternativeIds ?? [],
         suggested_recipient_name: safeSuggestedRecipient,
         suggested_sender: safeSuggestedSender,
         // ⚠️ NI MODÈLE NI JETONS : Clara ne les connaît plus, et c'est

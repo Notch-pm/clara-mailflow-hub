@@ -30,6 +30,14 @@ export function NotificationBell() {
       navigate(`/courrier/${resourceId}?tab=actions`);
       return;
     }
+    if (type === "courier_returned") {
+      navigate(`/courrier-entrant?open=${resourceId}`);
+      return;
+    }
+    if (type === "courier_reminder") {
+      navigate(`/courrier/${resourceId}`);
+      return;
+    }
     navigate(`/boite-aux-lettres?open=${resourceId}`);
   }
 
@@ -110,6 +118,16 @@ export function NotificationBell() {
                               transféré
                             </span>
                           )}
+                          {notif.type === "courier_returned" && (
+                            <span className="inline-flex items-center rounded px-1 py-0 text-[10px] font-medium bg-warning/15 text-warning-foreground border border-warning/30">
+                              à réorienter
+                            </span>
+                          )}
+                          {notif.type === "courier_reminder" && (
+                            <span className="inline-flex items-center rounded px-1 py-0 text-[10px] font-medium bg-destructive/10 text-destructive border border-destructive/30">
+                              relance
+                            </span>
+                          )}
                           {notif.type === "action_assigned" && (
                             <span className="inline-flex items-center rounded px-1 py-0 text-[10px] font-medium bg-primary/15 text-primary border border-primary/30">
                               action
@@ -127,6 +145,10 @@ export function NotificationBell() {
                         )}>
                           {notif.type === "courier_transferred"
                             ? ((notif.title ?? "").replace(/^Transféré : /, "") || "Courrier transféré")
+                            : notif.type === "courier_returned"
+                            ? ((notif.title ?? "").replace(/^Renvoyé : /, "") || "Courrier à réorienter")
+                            : notif.type === "courier_reminder"
+                            ? ((notif.title ?? "").replace(/^Relance : /, "") || "Relance du service courrier")
                             : notif.type === "action_assigned"
                             ? ((notif.title ?? "").replace(/^Action affectée : /, "") || "Action affectée")
                             : notif.type === "action_unassigned"

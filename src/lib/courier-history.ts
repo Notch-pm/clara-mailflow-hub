@@ -13,6 +13,9 @@ export const COURIER_EVENT_LABELS: Record<string, string> = {
   document_deleted: "Document supprimé",
   service_changed: "Changement de service",
   service_transferred: "Transfert de service",
+  courier_routed: "Routé par le service courrier",
+  service_returned: "Renvoyé au service courrier",
+  service_reminded: "Relance du service",
   state_changed: "Changement d'état",
   reply_created: "Réponse créée",
   reply_deleted: "Réponse supprimée",
@@ -38,6 +41,17 @@ export function describeCourierEvent(type: string, payload: Payload): { title: s
       break;
     case "service_transferred":
       detail = p.from && p.to ? `${p.from} → ${p.to}` : p.to ?? null;
+      break;
+    case "courier_routed":
+      detail = p.to ? `→ ${p.to}` : null;
+      break;
+    case "service_returned":
+      detail = [p.from ? `Par ${p.from}` : null, p.done ? `Déjà traité : ${p.done}` : null, p.todo ? `Reste à faire : ${p.todo}` : null]
+        .filter(Boolean)
+        .join(" · ") || null;
+      break;
+    case "service_reminded":
+      detail = p.to ?? null;
       break;
     case "state_changed":
       detail = p.to_name ? `${p.from_name ?? "—"} → ${p.to_name}` : null;

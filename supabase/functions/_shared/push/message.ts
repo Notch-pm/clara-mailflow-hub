@@ -40,6 +40,8 @@ export interface PushMessageInput {
 export const PUSH_TITLES: Record<string, string> = {
   new_courier: "Nouveau courrier",
   courier_transferred: "Courrier transféré",
+  courier_returned: "Courrier à réorienter",
+  courier_reminder: "Relance du service courrier",
   action_assigned: "Action affectée",
   action_unassigned: "Affectation retirée",
 };
@@ -54,6 +56,8 @@ export const PUSH_TITLE_FALLBACK = "Notification";
  */
 const TITLE_PREFIXES: Record<string, RegExp> = {
   courier_transferred: /^Transféré\s*:\s*/,
+  courier_returned: /^Renvoyé\s*:\s*/,
+  courier_reminder: /^Relance\s*:\s*/,
   action_assigned: /^Action affectée\s*:\s*/,
   action_unassigned: /^Affectation retirée\s*:\s*/,
 };
@@ -62,6 +66,8 @@ const TITLE_PREFIXES: Record<string, RegExp> = {
 const EMPTY_BODY: Record<string, string> = {
   new_courier: "Un courrier vient d'arriver.",
   courier_transferred: "Un courrier vous a été transféré.",
+  courier_returned: "Un service vous a renvoyé un courrier à réorienter.",
+  courier_reminder: "Le service courrier vous relance sur un courrier.",
   action_assigned: "Une action vous a été affectée.",
   action_unassigned: "Une affectation vous a été retirée.",
 };

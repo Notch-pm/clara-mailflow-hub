@@ -179,6 +179,8 @@ export type Database = {
           suggested_recipient_name: string | null
           suggested_sender: Json | null
           suggested_service_name: string | null
+          suggested_service_alternatives: string[]
+          suggested_service_confidence: number | null
           suggested_service_reason: string | null
           suggested_socle_organization_id: string | null
           suggested_subject: string | null
@@ -198,6 +200,8 @@ export type Database = {
           suggested_recipient_name?: string | null
           suggested_sender?: Json | null
           suggested_service_name?: string | null
+          suggested_service_alternatives?: string[]
+          suggested_service_confidence?: number | null
           suggested_service_reason?: string | null
           suggested_socle_organization_id?: string | null
           suggested_subject?: string | null
@@ -217,6 +221,8 @@ export type Database = {
           suggested_recipient_name?: string | null
           suggested_sender?: Json | null
           suggested_service_name?: string | null
+          suggested_service_alternatives?: string[]
+          suggested_service_confidence?: number | null
           suggested_service_reason?: string | null
           suggested_socle_organization_id?: string | null
           suggested_subject?: string | null
@@ -1049,6 +1055,7 @@ export type Database = {
           id: string
           is_active: boolean | null
           is_signataire: boolean
+          is_service_courrier: boolean
           organization_id: string
           role: string
           signataire_title: string | null
@@ -1059,6 +1066,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           is_signataire?: boolean
+          is_service_courrier?: boolean
           organization_id: string
           role: string
           signataire_title?: string | null
@@ -1069,6 +1077,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           is_signataire?: boolean
+          is_service_courrier?: boolean
           organization_id?: string
           role?: string
           signataire_title?: string | null
@@ -2302,6 +2311,44 @@ export type Database = {
       is_member_of: { Args: { _org: string }; Returns: boolean }
       is_superadmin: { Args: { _user_id: string }; Returns: boolean }
       is_transition_guard_bypassed: { Args: never; Returns: boolean }
+      mailroom_couriers: {
+        Args: { p_organization_id: string; p_since?: string }
+        Returns: {
+          acknowledged_at: string
+          analysis_status: string
+          assigned_service: string
+          channel: string
+          chrono: string
+          created_at: string
+          first_intent: string
+          has_analysis: boolean
+          id: string
+          last_reminder_at: string
+          received_at: string
+          reminder_count: number
+          resolved_at: string
+          returned_at: string
+          returned_done: string
+          returned_from: string
+          returned_todo: string
+          routed_at: string
+          sender_name: string
+          socle_organization_id: string
+          state_category: string
+          state_is_initial: boolean
+          subject: string
+          suggested_service_alternatives: string[]
+          suggested_service_confidence: number
+          suggested_service_reason: string
+          suggested_socle_organization_id: string
+          taken_at: string
+          workflow_state_id: string
+        }[]
+      }
+      mailroom_member_ids: {
+        Args: { p_organization_id: string }
+        Returns: string[]
+      }
       notification_push_max_attempts: { Args: never; Returns: number }
       partner_integration_status: {
         Args: { p_organization_id: string; p_provider?: string }

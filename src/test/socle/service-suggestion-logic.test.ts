@@ -93,7 +93,32 @@ describe("resolveSuggestedService", () => {
       id: "ccas",
       name: "CCAS",
       reason: "Demande d'aide.",
+      confidence: null,
+      alternativeIds: [],
     });
+  });
+
+  it("borne la confiance et accepte une fraction", () => {
+    const conf = (confidence: unknown) =>
+      resolveSuggestedService({ socle_organization_id: "ccas", confidence }, candidates)?.confidence;
+    expect(conf(92)).toBe(92);
+    expect(conf(0.85)).toBe(85);
+    expect(conf("77")).toBe(77);
+    expect(conf(140)).toBe(100);
+    expect(conf(-3)).toBe(0);
+    expect(conf("beaucoup")).toBeNull();
+    expect(conf(undefined)).toBeNull();
+  });
+
+  it("revalide les alternatives : catalogue seul, sans doublon ni la proposition, deux au plus", () => {
+    const s = resolveSuggestedService(
+      { socle_organization_id: "ccas", alternative_ids: ["ccas", "zzz", "[tech]", "Services techniques", 3] },
+      candidates,
+    );
+    expect(s?.alternativeIds).toEqual(["tech"]);
+    expect(
+      resolveSuggestedService({ socle_organization_id: "ccas", alternative_ids: "tech" }, candidates)?.alternativeIds,
+    ).toEqual([]);
   });
 
   it("refuse un identifiant inventé ou hors catalogue", () => {

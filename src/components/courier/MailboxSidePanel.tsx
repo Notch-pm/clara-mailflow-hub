@@ -12,6 +12,7 @@ import {
   StickyNote,
   Trash2,
   X,
+  Undo2,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -64,6 +65,7 @@ import DocumentViewer from "./DocumentViewer";
 import InlineEditField from "./InlineEditField";
 import LinkedCouriersSection from "./LinkedCouriersSection";
 import CloseLinkedCouriersDialog from "./CloseLinkedCouriersDialog";
+import ReturnToMailroomDialog from "./ReturnToMailroomDialog";
 import {
   channelLabels,
   useCourierWorkspace,
@@ -163,6 +165,7 @@ export default function MailboxSidePanel({
   // Un sélecteur par groupe : l'état porte le groupe ouvert, pas un booléen.
   const [tagPopoverGroup, setTagPopoverGroup] = useState<TagGroup | null>(null);
   const [servicePopoverOpen, setServicePopoverOpen] = useState(false);
+  const [returnOpen, setReturnOpen] = useState(false);
 
   const {
     effectiveReadOnly,
@@ -183,6 +186,8 @@ export default function MailboxSidePanel({
     userServiceFilter,
     serviceMutation,
     transferMutation,
+    returnMutation,
+    canReturnToMailroom,
     transferTargetServiceId,
     setTransferTargetServiceId,
     transferConfirmOpen,
@@ -566,6 +571,19 @@ export default function MailboxSidePanel({
                       </Select>
                     </>
                   )}
+                  {canReturnToMailroom && (
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-1.5 border-t pt-2 text-left text-xs font-semibold text-primary hover:underline"
+                      onClick={() => {
+                        setServicePopoverOpen(false);
+                        setReturnOpen(true);
+                      }}
+                    >
+                      <Undo2 className="h-3.5 w-3.5 shrink-0" />
+                      Je ne sais pas — renvoyer au service courrier
+                    </button>
+                  )}
                 </PopoverContent>
               </Popover>
             )}
@@ -779,6 +797,13 @@ export default function MailboxSidePanel({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <ReturnToMailroomDialog
+        open={returnOpen}
+        onOpenChange={setReturnOpen}
+        pending={returnMutation.isPending}
+        onConfirm={(note) => returnMutation.mutate(note, { onSuccess: () => setReturnOpen(false) })}
+      />
 
       <CloseLinkedCouriersDialog
         open={closeLinkedOpen}

@@ -27,6 +27,10 @@ export interface ServiceSuggestion {
   id: string;
   name: string;
   reason: string | null;
+  /** Confiance du modèle, entier 0–100 ; null s'il ne l'a pas donnée. */
+  confidence: number | null;
+  /** Autres organisations plausibles (ids du catalogue), au plus deux. */
+  alternativeIds: string[];
 }
 
 /**
@@ -104,39 +108,76 @@ export const SERVICE_SUGGESTION_PROPERTY = {
         type: "string",
         description: "Une phrase : ce qui, dans le courrier, relève de ses attributions",
       },
+      confidence: {
+        type: "integer",
+        description: "Confiance dans ce choix, de 0 à 100",
+      },
+      alternative_ids: {
+        type: "array",
+        items: { type: "string" },
+        description: "Jusqu'à deux autres identifiants du catalogue plausibles, du plus au moins probable",
+      },
     },
-    required: ["socle_organization_id", "reason"],
+    required: ["socle_organization_id", "reason", "confidence", "alternative_ids"],
     additionalProperties: false,
   },
 } as const;
 
 /** Consignes du prompt, avec l'organisation déjà désignée s'il y en a une. */
 export function serviceSuggestionPromptRules(current: { id: string; name: string } | null): string {
-  const base = `- suggested_service : l'organisation qui devrait INSTRUIRE ce courrier, choisie EXCLUSIVEMENT dans le catalogue des organisations ci-dessous (copie l'identifiant exact indiqué entre crochets). Fonde-toi sur ce que chacune déclare faire et sur les démarches qu'elle instruit, rapprochés du sujet du courrier — pas sur une ressemblance de nom. reason : une phrase factuelle qui cite ce qui, dans le courrier, relève de ses attributions. Si aucune ne s'impose, socle_organization_id = null.`;
+  const base = `- suggested_service : l'organisation qui devrait INSTRUIRE ce courrier, choisie EXCLUSIVEMENT dans le catalogue des organisations ci-dessous (copie l'identifiant exact indiqué entre crochets). Fonde-toi sur ce que chacune déclare faire et sur les démarches qu'elle instruit, rapprochés du sujet du courrier — pas sur une ressemblance de nom. reason : une phrase factuelle qui cite ce qui, dans le courrier, relève de ses attributions. Si aucune ne s'impose, socle_organization_id = null.
+  confidence : de 0 à 100, ta confiance que CE service est le bon — 90 et plus seulement si le courrier relève sans ambiguïté de ses attributions (il pourra être routé sans relecture détaillée) ; moins de 70 si deux services sont plausibles, si le courrier mêle plusieurs demandes relevant de services différents ou si le contenu est peu lisible. alternative_ids : jusqu'à deux autres identifiants du catalogue plausibles, liste vide s'il n'y en a pas.`;
   if (!current) return base;
   return `${base}
   Le courrier est DÉJÀ confié à « ${current.name} » [${current.id}]. Reprends cet identifiant s'il convient. N'en propose un autre que si le contenu relève clairement des attributions d'une autre organisation du catalogue — un doute ne justifie pas un transfert.`;
 }
 
 const REASON_MAX_CHARS = 300;
+const MAX_ALTERNATIVES = 2;
+
+/** Identifiant (ou, à défaut, nom recopié) → candidat du catalogue. */
+function findCandidate(raw: unknown, candidates: ServiceCandidate[]): ServiceCandidate | null {
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  const key = raw.trim().replace(/^\[|\]$/g, "");
+  const lower = key.toLowerCase();
+  return candidates.find((c) => c.id === key) ?? candidates.find((c) => c.name.toLowerCase() === lower) ?? null;
+}
+
+/** Score borné 0–100, arrondi. Accepte « 85 » comme 0.85 (le modèle confond parfois). */
+function toConfidence(raw: unknown): number | null {
+  const n = typeof raw === "string" && raw.trim() ? Number(raw.trim()) : raw;
+  if (typeof n !== "number" || !Number.isFinite(n)) return null;
+  const pct = n > 0 && n < 1 ? n * 100 : n;
+  return Math.min(100, Math.max(0, Math.round(pct)));
+}
 
 /**
  * Réponse du modèle → proposition revalidée, ou `null`. Tolère un nom à la place
  * de l'identifiant (le modèle recopie parfois le libellé), jamais une
- * organisation absente du catalogue.
+ * organisation absente du catalogue — pour la proposition comme pour les
+ * alternatives (doublons et proposition elle-même écartés).
  */
 export function resolveSuggestedService(
   raw: unknown,
   candidates: ServiceCandidate[],
 ): ServiceSuggestion | null {
   if (!raw || typeof raw !== "object") return null;
-  const { socle_organization_id: rawId, reason: rawReason } = raw as Record<string, unknown>;
-  if (typeof rawId !== "string" || !rawId.trim()) return null;
-  const key = rawId.trim().replace(/^\[|\]$/g, "");
-  const lower = key.toLowerCase();
-  const match =
-    candidates.find((c) => c.id === key) ?? candidates.find((c) => c.name.toLowerCase() === lower);
+  const {
+    socle_organization_id: rawId,
+    reason: rawReason,
+    confidence: rawConfidence,
+    alternative_ids: rawAlternatives,
+  } = raw as Record<string, unknown>;
+  const match = findCandidate(rawId, candidates);
   if (!match) return null;
   const reason = typeof rawReason === "string" && rawReason.trim() ? cut(rawReason.trim(), REASON_MAX_CHARS) : null;
-  return { id: match.id, name: match.name, reason };
+  const alternativeIds: string[] = [];
+  if (Array.isArray(rawAlternatives)) {
+    for (const alt of rawAlternatives) {
+      if (alternativeIds.length >= MAX_ALTERNATIVES) break;
+      const found = findCandidate(alt, candidates);
+      if (found && found.id !== match.id && !alternativeIds.includes(found.id)) alternativeIds.push(found.id);
+    }
+  }
+  return { id: match.id, name: match.name, reason, confidence: toConfidence(rawConfidence), alternativeIds };
 }

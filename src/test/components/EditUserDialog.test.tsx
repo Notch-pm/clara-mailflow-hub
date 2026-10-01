@@ -28,6 +28,7 @@ const fakeMember = {
   avatar_url: null,
   is_signataire: false,
   signataire_title: null,
+  is_service_courrier: false,
 };
 
 beforeEach(() => {

@@ -1,0 +1,94 @@
+import { CircleCheck, ClockAlert, List, Route, Sparkles, TriangleAlert, Undo2, type LucideIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { MAILROOM_VIEW_ORDER, MAILROOM_VIEWS, type MailroomCounts, type MailroomView } from "@/lib/mailroom";
+
+const ICONS: Record<MailroomView, LucideIcon> = {
+  aq: TriangleAlert,
+  av: Sparkles,
+  retour: Undo2,
+  cours: Route,
+  retard: ClockAlert,
+  traites: CircleCheck,
+  tous: List,
+};
+
+function hint(view: MailroomView, counts: MailroomCounts): string {
+  switch (view) {
+    case "aq":
+      return "Action requise";
+    case "av":
+      return "Propositions à contrôler";
+    case "retour":
+      return "Travail restant à confier";
+    case "cours":
+      return "Routés, non clôturés";
+    case "retard":
+      return "Délai dépassé";
+    case "traites":
+      return `aujourd'hui · ${counts.traites} sur la période`;
+    case "tous":
+      return "Circulation";
+  }
+}
+
+interface Props {
+  counts: MailroomCounts;
+  view: MailroomView;
+  onChange: (view: MailroomView) => void;
+}
+
+/**
+ * Compteurs-onglets : chaque carte est un compteur ET l'onglet de sa vue.
+ * « À qualifier » est mise en avant — c'est le travail qui ne se fera pas seul.
+ */
+export default function MailroomCounters({ counts, view, onChange }: Props) {
+  return (
+    <div
+      role="tablist"
+      aria-label="Étapes du courrier"
+      className="grid shrink-0 grid-cols-2 gap-2.5 border-b px-4 py-3 sm:grid-cols-4 md:px-5 xl:grid-cols-[1.3fr_repeat(6,minmax(0,1fr))]"
+    >
+      {MAILROOM_VIEW_ORDER.map((key) => {
+        const Icon = ICONS[key];
+        const on = view === key;
+        const hero = key === "aq";
+        const n = key === "traites" ? counts.traitesToday : counts[key];
+        const alarm = (key === "retard" && n > 0 && "destructive") || (key === "retour" && n > 0 && "warning") || null;
+        return (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={on}
+            onClick={() => onChange(key)}
+            className={cn(
+              "flex min-w-0 flex-col items-start gap-0.5 rounded-lg border px-3.5 py-2.5 text-left transition-shadow hover:shadow-airbnb-lg",
+              hero ? "border-warning/50 bg-secondary/25" : "bg-card",
+              on && "border-primary ring-1 ring-primary",
+            )}
+          >
+            <span
+              className={cn(
+                "flex max-w-full items-center gap-1.5 truncate text-[13px] font-bold",
+                hero ? "text-secondary-foreground" : alarm === "destructive" ? "text-destructive" : alarm === "warning" ? "text-warning" : "text-muted-foreground",
+              )}
+            >
+              <Icon className="h-3.5 w-3.5 shrink-0" />
+              {MAILROOM_VIEWS[key].label}
+            </span>
+            <span
+              className={cn(
+                "font-extrabold leading-tight tabular-nums",
+                hero ? "text-[30px]" : "text-[24px]",
+                alarm === "destructive" ? "text-destructive" : alarm === "warning" ? "text-warning" : "text-foreground",
+              )}
+            >
+              {n.toLocaleString("fr-FR")}
+            </span>
+            <span className="max-w-full truncate text-xs text-muted-foreground">{hint(key, counts)}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}

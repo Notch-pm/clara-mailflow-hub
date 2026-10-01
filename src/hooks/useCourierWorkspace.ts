@@ -12,8 +12,10 @@ import {
   assignOrganization,
   listOrgsWithConfig,
 } from "@/services/socleOrgConfigService";
+import { transferCourier, returnToMailroom } from "@/services/courierRoutingService";
+import { fetchMailroomMemberIds } from "@/services/mailroomService";
 import { useUserServiceFilter } from "@/hooks/useUserServiceFilter";
-import { getDocuments } from "@/services/courierDocumentService";
+import { useCourierDisplayDocuments } from "@/hooks/useCourierDisplayDocuments";
 import { addParticipant, updateParticipant } from "@/services/courierParticipantService";
 import {
   contactRelationLines,
@@ -295,6 +297,17 @@ export function useCourierWorkspace({
   const isFinalState = currentStateInfo?.is_final === true;
   const isInitialState = !localWorkflowStateId || currentStateInfo?.is_initial === true;
 
+  // « Renvoyer au service courrier » : proposé à un service qui détient le
+  // courrier, si la collectivité a un service courrier pour le recevoir.
+  const { data: mailroomMemberIds = [] } = useQuery({
+    queryKey: ["mailroom-members", organizationId],
+    queryFn: () => fetchMailroomMemberIds(organizationId),
+    enabled: !!organizationId && open,
+    staleTime: 5 * 60_000,
+  });
+  const canReturnToMailroom =
+    !effectiveReadOnly && !!localSocleOrgId && !isFinalState && mailroomMemberIds.length > 0;
+
   const serviceMutation = useMutation({
     mutationFn: async (newOrgId: string) => {
       if (!courier) return null;
@@ -310,6 +323,7 @@ export function useCourierWorkspace({
       setLocalWorkflowStateId(result?.initialStateId ?? null);
       queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
       queryClient.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
+      queryClient.invalidateQueries({ queryKey: ["mailroom-couriers"] });
       queryClient.invalidateQueries({ queryKey: ["courier-events", courier?.id] });
       toast.success("Organisation gestionnaire mise à jour");
     },
@@ -321,62 +335,15 @@ export function useCourierWorkspace({
       if (!courier) return null;
       const targetOrg = services?.find((o) => o.id === targetServiceId);
       if (!targetOrg) throw new Error("Organisation introuvable");
-
-      // Fetch initial state of target organization's workflow
-      let initial: { id: string; name: string; category: string } | null = null;
-      if (targetOrg.workflow_id) {
-        const { data, error: stateErr } = await supabase
-          .from("workflow_states")
-          .select("id, name, category")
-          .eq("workflow_id", targetOrg.workflow_id)
-          .eq("is_initial", true)
-          .maybeSingle();
-        if (stateErr) throw stateErr;
-        initial = data as typeof initial;
-      }
-
-      const previousService = courier.assigned_service ?? null;
-      const currentMeta = courier.metadata ?? {};
-      const { error: updateErr } = await updateCourier(organizationId, courier.id, {
-        assigned_service: targetOrg.name,
-        socle_organization_id: targetOrg.id,
-        workflow_state_id: initial?.id ?? null,
-        metadata: { ...currentMeta, socle_organization_id: targetOrg.id },
-      });
-      if (updateErr) throw updateErr;
-
-      await logEvent(organizationId, courier.id, "service_transferred", {
-        from: previousService,
-        to: targetOrg.name,
-      });
-
-      // Notify all members of the target organization
-      const { data: members } = await supabase
-        .from("socle_organization_members")
-        .select("user_id")
-        .eq("socle_organization_id", targetOrg.id);
-      if (members && (members as { user_id: string }[]).length > 0) {
-        const subject = (courier as any).subject ?? "(sans objet)";
-        const notifs = (members as { user_id: string }[]).map((m) => ({
-          organization_id: organizationId,
-          user_id: m.user_id,
-          type: "courier_transferred",
-          title: `Transféré : ${subject}`,
-          resource_id: courier.id,
-        }));
-        const { error: notifError } = await supabase.from("notifications").insert(notifs);
-        // Non-bloquant (le transfert lui-même a réussi) mais plus silencieux :
-        // c'est ce silence qui a masqué l'absence de policy INSERT.
-        if (notifError) console.error("Notifications de transfert non créées :", notifError);
-      }
-
-      return { id: targetOrg.id, name: targetOrg.name, initialStateId: initial?.id ?? null, loseAccess };
+      const result = await transferCourier(organizationId, courier, targetOrg);
+      return { ...result, loseAccess };
     },
     onSuccess: (result) => {
       setTransferConfirmOpen(false);
       setTransferTargetServiceId("");
       queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
       queryClient.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
+      queryClient.invalidateQueries({ queryKey: ["mailroom-couriers"] });
       queryClient.invalidateQueries({ queryKey: ["instruction-couriers"] });
       queryClient.invalidateQueries({ queryKey: ["courier", courier?.id] });
       toast.success("Courrier transféré");
@@ -391,6 +358,27 @@ export function useCourierWorkspace({
       if (result?.name) setLocalAssignedService(result.name);
       if (result?.id) setLocalSocleOrgId(result.id);
       setLocalWorkflowStateId(result?.initialStateId ?? null);
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  // Renvoi au service courrier (« je ne sais pas à qui le confier ») : le
+  // courrier quitte l'organisation et rejoint « À réorienter ».
+  const returnMutation = useMutation({
+    mutationFn: async (note: { done: string; todo: string }) => {
+      if (!courier) return;
+      await returnToMailroom(organizationId, courier, note);
+    },
+    onSuccess: () => {
+      setTransferConfirmOpen(false);
+      setTransferTargetServiceId("");
+      queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
+      queryClient.invalidateQueries({ queryKey: ["mailroom-couriers"] });
+      queryClient.invalidateQueries({ queryKey: ["instruction-couriers"] });
+      queryClient.invalidateQueries({ queryKey: ["courier", courier?.id] });
+      queryClient.invalidateQueries({ queryKey: ["courier-events", courier?.id] });
+      toast.success("Courrier renvoyé au service courrier");
+      onOpenChange(false);
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -466,6 +454,7 @@ export function useCourierWorkspace({
       if (!result) return;
       queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
       queryClient.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
+      queryClient.invalidateQueries({ queryKey: ["mailroom-couriers"] });
       queryClient.invalidateQueries({ queryKey: ["instruction-couriers"] });
       queryClient.invalidateQueries({ queryKey: ["courier-events", courier?.id] });
       queryClient.invalidateQueries({ queryKey: ["courier-participants", courier?.id] });
@@ -506,6 +495,7 @@ export function useCourierWorkspace({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
       queryClient.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
+      queryClient.invalidateQueries({ queryKey: ["mailroom-couriers"] });
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -529,36 +519,8 @@ export function useCourierWorkspace({
     tagMutation.mutate(next, { onError: () => setSelectedTags(previous) });
   }
 
-  // Documents for this courier
-  const { data: documents = [] } = useQuery({
-    queryKey: ["courier-documents", courier?.id],
-    queryFn: () => getDocuments(courier!.id),
-    enabled: !!courier?.id && open,
-  });
-
-  // If the courier metadata holds an email body (body_html / body_text), inject it as
-  // a synthetic "first document" so it appears in the Aperçu just like an attachment.
-  const displayDocuments = useMemo(() => {
-    const meta = courier?.metadata ?? {};
-    const html = (meta.body_html as string | undefined) ?? null;
-    const text = (meta.body_text as string | undefined) ?? null;
-    if (!html && !text) return documents;
-    const inlineDoc = {
-      id: `inline:email-body:${courier?.id}`,
-      courier_id: courier?.id,
-      organization_id: organizationId,
-      file_name: "Corps de l'email",
-      mime_type: html ? "text/html" : "text/plain",
-      file_size: null,
-      document_type: "original",
-      storage_key: "",
-      checksum: null,
-      created_at: new Date().toISOString(),
-      inline_html: html,
-      inline_text: text,
-    };
-    return [inlineDoc, ...documents];
-  }, [documents, courier?.id, courier?.metadata, organizationId]);
+  // Documents du courrier, corps d'email en tête (aperçu).
+  const { documents, displayDocuments } = useCourierDisplayDocuments(courier, organizationId, open);
 
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
   useEffect(() => {
@@ -576,6 +538,7 @@ export function useCourierWorkspace({
     }
     queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
     queryClient.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
+    queryClient.invalidateQueries({ queryKey: ["mailroom-couriers"] });
     toast.success(successMsg);
   }
 
@@ -604,6 +567,7 @@ export function useCourierWorkspace({
       }
       queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
       queryClient.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
+      queryClient.invalidateQueries({ queryKey: ["mailroom-couriers"] });
       queryClient.invalidateQueries({ queryKey: ["courier", courier.id] });
       queryClient.invalidateQueries({ queryKey: ["courier-participants", courier.id] });
       toast.success(successMsg);
@@ -701,6 +665,8 @@ export function useCourierWorkspace({
     userServiceFilter,
     serviceMutation,
     transferMutation,
+    returnMutation,
+    canReturnToMailroom,
     transferTargetServiceId,
     setTransferTargetServiceId,
     transferConfirmOpen,

@@ -26,6 +26,7 @@ const editSchema = z
     last_name: z.string().min(1, "Nom obligatoire").max(100),
     role: z.enum(ORG_ROLE_VALUES, { required_error: "Rôle obligatoire" }),
     is_signataire: z.boolean().default(false),
+    is_service_courrier: z.boolean().default(false),
     signataire_title: z.string().max(150, "150 caractères maximum").optional().or(z.literal("")),
   })
   .refine((d) => !d.is_signataire || (d.signataire_title && d.signataire_title.trim().length > 0), {
@@ -52,8 +53,9 @@ export function EditUserDialog({ member, organizationId, onClose }: Props) {
           role: member.role as OrgUserRole,
           is_signataire: member.is_signataire ?? false,
           signataire_title: member.signataire_title ?? "",
+          is_service_courrier: member.is_service_courrier ?? false,
         }
-      : { first_name: "", last_name: "", role: "consultant" as const, is_signataire: false, signataire_title: "" },
+      : { first_name: "", last_name: "", role: "consultant" as const, is_signataire: false, signataire_title: "", is_service_courrier: false },
   });
 
   const isSignataire = form.watch("is_signataire");
@@ -73,6 +75,7 @@ export function EditUserDialog({ member, organizationId, onClose }: Props) {
         role: values.role,
         is_signataire: values.is_signataire,
         signataire_title: values.is_signataire ? (values.signataire_title?.trim() || null) : null,
+        is_service_courrier: values.is_service_courrier,
       });
     },
     onSuccess: () => {
@@ -230,6 +233,19 @@ export function EditUserDialog({ member, organizationId, onClose }: Props) {
                     </FormItem>
                   )} />
                 )}
+                <FormField control={form.control} name="is_service_courrier" render={({ field }) => (
+                  <FormItem className="flex items-center justify-between rounded-md border p-3">
+                    <div className="space-y-0.5">
+                      <FormLabel className="text-sm">Gestionnaire courrier</FormLabel>
+                      <p className="text-xs text-muted-foreground">
+                        Qualifie, route et suit les courriers reçus depuis l'écran « Courrier entrant ».
+                      </p>
+                    </div>
+                    <FormControl>
+                      <Switch checked={field.value} onCheckedChange={field.onChange} />
+                    </FormControl>
+                  </FormItem>
+                )} />
                 <Button type="submit" className="w-full" disabled={updateMutation.isPending}>
                   {updateMutation.isPending ? "Enregistrement..." : "Enregistrer"}
                 </Button>

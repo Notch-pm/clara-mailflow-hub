@@ -124,6 +124,7 @@ export interface CourierListPage {
  */
 export const COURIER_LIST_QUERY_PREFIXES = [
   "mailbox-couriers",
+  "mailroom-couriers",
   "instruction-couriers",
   "traites-couriers",
   "archives-couriers",
