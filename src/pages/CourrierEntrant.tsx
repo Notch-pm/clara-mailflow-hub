@@ -35,6 +35,7 @@ import {
   batchCandidates,
   countViews,
   inView,
+  MAILROOM_VIEWS,
   matchesFilters,
   sortForView,
   type MailroomFilters,
@@ -69,7 +70,11 @@ export default function CourrierEntrant() {
   const splitView = useMediaQuery(SPLIT_VIEW_QUERY);
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const [view, setView] = useState<MailroomView>("aq");
+  // `?vue=av` : arrivée depuis une carte du tableau de bord, sur le bon onglet.
+  const [view, setView] = useState<MailroomView>(() => {
+    const requested = searchParams.get("vue");
+    return requested && Object.prototype.hasOwnProperty.call(MAILROOM_VIEWS, requested) ? (requested as MailroomView) : "aq";
+  });
   const [period, setPeriod] = useState<MailroomPeriod>(30);
   const [filters, setFilters] = useState<MailroomFilters>({ query: "", channels: [], serviceId: null });
   const [selectedId, setSelectedId] = useState<string | null>(null);

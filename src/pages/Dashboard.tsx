@@ -1,386 +1,425 @@
-import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { MailOpen, Clock, FileText, FileCheck, PenLine, Stamp } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Check, CheckCheck } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { supabase } from "@/integrations/supabase/client";
-import { useOrganization } from "@/contexts/OrganizationContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { useUserServiceFilter, applyServiceFilter } from "@/hooks/useUserServiceFilter";
-import { listMyVisaQueue } from "@/services/courierVisaService";
+import { useOrganization } from "@/contexts/OrganizationContext";
+import { useDashboard } from "@/hooks/useDashboard";
+import { canAccessStats, isOrgAdmin } from "@/lib/permissions";
+import { cn } from "@/lib/utils";
+import {
+  longDate,
+  monthKpis,
+  monthLabels,
+  ROLE_SOURCE_LABELS,
+  scopeLabel,
+  type DashboardList,
+  type DashboardRole,
+  type Kpi,
+  type TodoCard,
+  type Tone,
+} from "@/lib/dashboard";
 
-// ─── KPI card ────────────────────────────────────────────────────────────────
+// ─── Tons ────────────────────────────────────────────────────────────────────
 
-function KpiCard({
-  label,
-  value,
-  sub,
-  Icon,
-  iconColor,
-  href,
-  loading,
-}: {
-  label: string;
-  value: number;
-  sub?: string;
-  Icon: React.ElementType;
-  iconColor: string;
-  href?: string;
-  loading: boolean;
-}) {
-  const inner = (
-    // `flex flex-col` + `mt-auto` sur le contenu : deux cartes voisines dont le
-    // libellé tient sur un nombre de lignes différent gardent malgré tout leurs
-    // valeurs sur la même ligne de fond.
-    <Card
-      className={`flex h-full flex-col ${href ? "hover:shadow-airbnb transition-shadow cursor-pointer" : ""}`}
+const CARD_BORDER: Record<Tone, string> = {
+  urgent: "border-destructive/35",
+  attention: "border-secondary/80",
+  neutral: "border-border",
+  good: "border-primary/30",
+};
+
+const DOT: Record<Tone, string> = {
+  urgent: "bg-destructive",
+  attention: "bg-warning",
+  neutral: "bg-muted-foreground/40",
+  good: "bg-primary",
+};
+
+const PILL: Record<Tone, string> = {
+  urgent: "bg-destructive/10 text-destructive",
+  attention: "bg-secondary/45 text-secondary-foreground",
+  neutral: "bg-muted text-muted-foreground",
+  good: "bg-primary/10 text-primary",
+};
+
+// ─── « À faire » ─────────────────────────────────────────────────────────────
+
+function TodoTile({ card, showSource }: { card: TodoCard; showSource: boolean }) {
+  return (
+    <Link
+      to={card.href}
+      className={cn(
+        "flex max-w-[320px] flex-[1_0_230px] snap-start flex-col gap-1.5 rounded-lg border bg-card p-4 text-card-foreground shadow-airbnb-sm transition-shadow hover:shadow-airbnb-lg",
+        CARD_BORDER[card.tone],
+      )}
     >
-      {/* `space-y-0` neutralise l'espacement vertical de `CardHeader`, qui
-          décalerait l'icône vers le bas une fois la rangée passée en `flex-row`. */}
-      <CardHeader className="flex flex-row items-start justify-between gap-2 space-y-0 p-4 pb-2 md:p-6 md:pb-2">
-        <CardTitle className="min-w-0 text-[13px] font-medium leading-snug text-muted-foreground md:text-sm">
-          {label}
-        </CardTitle>
-        <Icon className={`h-4 w-4 shrink-0 md:h-5 md:w-5 ${iconColor}`} />
-      </CardHeader>
-      <CardContent className="mt-auto p-4 pt-0 md:p-6 md:pt-0">
-        {loading ? (
-          <Skeleton className="h-8 w-14 md:h-9 md:w-16" />
-        ) : (
-          <div className="text-2xl font-bold md:text-3xl">{value}</div>
+      <div className="flex items-center gap-2">
+        <span className={cn("h-2 w-2 shrink-0 rounded-full", DOT[card.tone])} aria-hidden />
+        <span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold text-foreground/85">{card.label}</span>
+        {showSource && (
+          <span className="shrink-0 whitespace-nowrap rounded-full bg-muted px-[7px] py-px text-[11px] font-semibold text-muted-foreground">
+            {ROLE_SOURCE_LABELS[card.role]}
+          </span>
         )}
-        {sub && <p className="mt-1 truncate text-xs capitalize text-muted-foreground">{sub}</p>}
-      </CardContent>
-    </Card>
+      </div>
+      <span
+        className={cn(
+          "text-[30px] font-extrabold leading-tight tracking-tight tabular-nums",
+          card.tone === "urgent" && "text-destructive",
+        )}
+      >
+        {card.count}
+      </span>
+      <span className="truncate text-[12.5px] text-muted-foreground">{card.sub}</span>
+      <span className="text-[12.5px] font-semibold text-primary">{card.cta} →</span>
+    </Link>
   );
-  return href ? <Link to={href} className="block h-full">{inner}</Link> : inner;
 }
 
-// ─── Dashboard ───────────────────────────────────────────────────────────────
-
-export default function Dashboard() {
-  const { organizationId } = useOrganization();
-  const { user } = useAuth();
-  const serviceFilter = useUserServiceFilter();
-
-  const now = new Date();
-  const startOfCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-  const startOfPrevMonth    = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
-  const startOfNextMonth    = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
-  const currentMonthLabel   = now.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
-  const prevMonthLabel      = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-    .toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
-
-  // ── Inbound couriers (lightweight) ────────────────────────────────────────
-  // PostgREST plafonne toute requête sans .range() au "Max Rows" du projet
-  // (1000 par défaut) : au-delà, la page se pagine explicitement pour ne pas
-  // tronquer silencieusement les KPI sur les organisations à fort volume.
-  const { data: rawInbound, isLoading: loadingCouriers } = useQuery({
-    queryKey: ["dashboard-inbound", organizationId],
-    queryFn: async () => {
-      const fetchPage = (from: number, to: number) =>
-        supabase
-          .from("couriers")
-          .select("id, subject, received_at, created_at, updated_at, workflow_state_id, assigned_service, socle_organization_id")
-          .eq("organization_id", organizationId!)
-          .eq("direction", "inbound")
-          .order("id")
-          .range(from, to);
-
-      const pageSize = 1000;
-      const rows: NonNullable<Awaited<ReturnType<typeof fetchPage>>["data"]> = [];
-      let offset = 0;
-      let hasMore = true;
-      while (hasMore) {
-        const { data, error } = await fetchPage(offset, offset + pageSize - 1);
-        if (error) throw error;
-        rows.push(...(data ?? []));
-        hasMore = (data?.length ?? 0) === pageSize;
-        offset += pageSize;
-      }
-      return rows;
-    },
-    enabled: !!organizationId,
-  });
-
-  // ── Workflow states (RLS-scoped to org via x-org-id header) ───────────────
-  const { data: workflowStates, isLoading: loadingStates } = useQuery({
-    queryKey: ["dashboard-workflow-states", organizationId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("workflow_states")
-        .select("id, category, is_initial");
-      if (error) throw error;
-      return data ?? [];
-    },
-    enabled: !!organizationId,
-  });
-
-  // ── Current user's signatory ───────────────────────────────────────────────
-  const { data: userSignatory } = useQuery({
-    queryKey: ["dashboard-signatory", user?.id, organizationId],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("signatories")
-        .select("id, first_name, last_name")
-        .eq("organization_id", organizationId!)
-        .eq("user_id", user!.id)
-        .maybeSingle();
-      return data ?? null;
-    },
-    enabled: !!user?.id && !!organizationId,
-  });
-
-  // ── Outbound couriers awaiting signature (only if user is a signatory) ────
-  const { data: pendingSignature } = useQuery({
-    queryKey: ["dashboard-pending-signature", userSignatory?.id, organizationId],
-    queryFn: async () => {
-      // 1. Workflow states named "signature" (reply workflows)
-      const { data: sigStates } = await supabase
-        .from("workflow_states")
-        .select("id")
-        .ilike("name", "%signature%");
-      const sigStateIds = (sigStates ?? []).map((s) => s.id);
-      if (!sigStateIds.length) return [];
-
-      // 2. Outbound couriers in those states
-      const { data, error } = await supabase
-        .from("couriers")
-        .select("id, subject, created_at, metadata, parent_courier_id")
-        .eq("organization_id", organizationId!)
-        .eq("direction", "outbound")
-        .in("workflow_state_id", sigStateIds);
-      if (error) throw error;
-
-      // 3. Filter by signataire
-      return (data ?? []).filter((c) => {
-        const meta = (c.metadata ?? {}) as Record<string, unknown>;
-        return meta.signatory_id === userSignatory!.id;
-      });
-    },
-    enabled: !!userSignatory?.id && !!organizationId,
-  });
-
-  // ── Réponses en attente de mon visa (viseur de l'organisation gestionnaire) ─
-  const { data: pendingVisa = [] } = useQuery({
-    queryKey: ["visa-queue", organizationId, user?.id],
-    queryFn: () => listMyVisaQueue(organizationId!, user!.id),
-    enabled: !!user?.id && !!organizationId,
-  });
-
-  // ── Derived state ID sets ──────────────────────────────────────────────────
-  const initialStateIds   = useMemo(() => (workflowStates ?? []).filter((s) => s.is_initial).map((s) => s.id), [workflowStates]);
-  const processingStateIds = useMemo(() => (workflowStates ?? []).filter((s) => s.category === "processing").map((s) => s.id), [workflowStates]);
-  const processedStateIds  = useMemo(() => (workflowStates ?? []).filter((s) => s.category === "processed").map((s) => s.id), [workflowStates]);
-
-  // ── Apply service filter ───────────────────────────────────────────────────
-  const couriers = useMemo(
-    () => applyServiceFilter(rawInbound ?? [], serviceFilter),
-    [rawInbound, serviceFilter],
-  );
-
-  // ── KPIs ──────────────────────────────────────────────────────────────────
-  const loading = loadingCouriers || loadingStates;
-
-  const recusMoisEnCours = useMemo(() =>
-    couriers.filter((c) => {
-      const d = c.received_at ?? c.created_at;
-      return d >= startOfCurrentMonth && d < startOfNextMonth;
-    }).length,
-  [couriers, startOfCurrentMonth, startOfNextMonth]);
-
-  const recusMoisPrecedent = useMemo(() =>
-    couriers.filter((c) => {
-      const d = c.received_at ?? c.created_at;
-      return d >= startOfPrevMonth && d < startOfCurrentMonth;
-    }).length,
-  [couriers, startOfPrevMonth, startOfCurrentMonth]);
-
-  const courriersEnAttente = useMemo(() =>
-    couriers
-      .filter((c) => !c.workflow_state_id || initialStateIds.includes(c.workflow_state_id))
-      .sort((a, b) => {
-        const da = a.received_at ?? a.created_at;
-        const db = b.received_at ?? b.created_at;
-        return new Date(db).getTime() - new Date(da).getTime();
-      }),
-  [couriers, initialStateIds]);
-
-  const enAttente = courriersEnAttente.length;
-
-  const enInstruction = useMemo(() =>
-    couriers.filter((c) => c.workflow_state_id && processingStateIds.includes(c.workflow_state_id)).length,
-  [couriers, processingStateIds]);
-
-  const traitesMoisEnCours = useMemo(() =>
-    couriers.filter((c) => {
-      if (!c.workflow_state_id || !processedStateIds.includes(c.workflow_state_id)) return false;
-      const d = c.updated_at ?? c.created_at;
-      return d >= startOfCurrentMonth && d < startOfNextMonth;
-    }).length,
-  [couriers, processedStateIds, startOfCurrentMonth, startOfNextMonth]);
-
-  const traitesMoisPrecedent = useMemo(() =>
-    couriers.filter((c) => {
-      if (!c.workflow_state_id || !processedStateIds.includes(c.workflow_state_id)) return false;
-      const d = c.updated_at ?? c.created_at;
-      return d >= startOfPrevMonth && d < startOfCurrentMonth;
-    }).length,
-  [couriers, processedStateIds, startOfPrevMonth, startOfCurrentMonth]);
-
-  const showSignature = !!userSignatory && (pendingSignature?.length ?? 0) > 0;
-  const showVisa = pendingVisa.length > 0;
-  const listCount = [courriersEnAttente.length > 0, showSignature, showVisa].filter(Boolean).length;
-
-  // ── Render ─────────────────────────────────────────────────────────────────
+function TodoSection({ cards, multi, loading }: { cards: TodoCard[]; multi: boolean; loading: boolean }) {
   return (
-    <div className="space-y-6 md:space-y-8">
-      {/* La recherche globale a quitté cet en-tête pour celui de l'application,
-          où elle reste accessible depuis tous les écrans. */}
-      <div className="min-w-0">
-        <h1 className="text-2xl font-bold tracking-tight">Tableau de bord</h1>
-        <p className="text-muted-foreground">Vue d'ensemble de votre gestion du courrier</p>
+    <section className="flex flex-col gap-3" aria-labelledby="dashboard-todo">
+      <div className="flex items-center gap-2.5">
+        <h2 id="dashboard-todo" className="text-base font-bold">À faire</h2>
+        <span className="flex-1" />
+        {cards.length > 4 && (
+          <span className="whitespace-nowrap text-[12.5px] text-muted-foreground">
+            {cards.length} tâches · faites défiler →
+          </span>
+        )}
       </div>
-
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
-        <KpiCard label="Courriers reçus"          value={recusMoisEnCours}    sub={currentMonthLabel} Icon={MailOpen}   iconColor="text-primary"         href="/boite-aux-lettres"        loading={loading} />
-        <KpiCard label="Courriers reçus (M−1)"    value={recusMoisPrecedent}  sub={prevMonthLabel}    Icon={MailOpen}   iconColor="text-muted-foreground"                                  loading={loading} />
-        <KpiCard label="En attente d'instruction" value={enAttente}                                   Icon={Clock}      iconColor="text-warning"          href="/boite-aux-lettres"        loading={loading} />
-        <KpiCard label="En instruction"           value={enInstruction}                               Icon={FileText}   iconColor="text-blue-500"         href="/courriers-en-instruction" loading={loading} />
-        <KpiCard label="Courriers traités"        value={traitesMoisEnCours}  sub={currentMonthLabel} Icon={FileCheck}  iconColor="text-secondary"        href="/courriers-traites"        loading={loading} />
-        <KpiCard label="Courriers traités (M−1)"  value={traitesMoisPrecedent} sub={prevMonthLabel}   Icon={FileCheck}  iconColor="text-muted-foreground"                                  loading={loading} />
-      </div>
-
-      {/* Listes côte à côte — chacune prend toute la largeur si l'autre est absente */}
-      {listCount > 0 && (
-        <div className={`grid grid-cols-1 items-start gap-4 md:gap-6 ${listCount > 1 ? "lg:grid-cols-2" : ""}`}>
-
-          {/* En attente de prise en charge */}
-          {courriersEnAttente.length > 0 && (
-            <section className="space-y-3">
-              {/* `flex-wrap` + `min-w-0` : sur un téléphone, « Voir tous »
-                  descend d'une ligne au lieu d'élargir la page. */}
-              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                <div className="flex min-w-0 items-center gap-2">
-                  <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  <h2 className="min-w-0 text-base font-semibold">En attente de prise en charge</h2>
-                  <Badge variant="secondary" className="shrink-0">{courriersEnAttente.length}</Badge>
-                </div>
-                {courriersEnAttente.length > 20 && (
-                  <Link to="/boite-aux-lettres" className="ml-auto shrink-0 text-xs text-muted-foreground transition-colors hover:text-foreground">
-                    Voir tous →
-                  </Link>
-                )}
-              </div>
-              <Card>
-                <div className="divide-y">
-                  {courriersEnAttente.slice(0, 20).map((c) => (
-                    <Link
-                      key={c.id}
-                      to={`/courrier/${c.id}`}
-                      className="flex items-center justify-between gap-3 px-3 py-3 transition-colors hover:bg-muted/50 md:px-4"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">{c.subject ?? "(sans objet)"}</p>
-                        <p className="truncate text-xs text-muted-foreground">
-                          {new Date(c.received_at ?? c.created_at).toLocaleDateString("fr-FR")}
-                          {c.assigned_service && (
-                            <span className="ml-2 text-muted-foreground/70">— {c.assigned_service}</span>
-                          )}
-                        </p>
-                      </div>
-                      <span className="shrink-0 text-muted-foreground">→</span>
-                    </Link>
-                  ))}
-                </div>
-              </Card>
-            </section>
-          )}
-
-          {/* En attente de visa */}
-          {showVisa && (
-            <section className="space-y-3">
-              <div className="flex min-w-0 items-center gap-2">
-                <Stamp className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <h2 className="min-w-0 text-base font-semibold">En attente de votre visa</h2>
-                <Badge variant="secondary" className="shrink-0">{pendingVisa.length}</Badge>
-              </div>
-              <Card>
-                <div className="divide-y">
-                  {pendingVisa.map((c) => (
-                    <Link
-                      key={c.id}
-                      to={
-                        c.parent_courier_id
-                          ? `/courrier/${c.parent_courier_id}?tab=response&replyId=${c.id}&edit=1`
-                          : `/courrier/${c.id}`
-                      }
-                      className="flex items-center justify-between gap-3 px-3 py-3 transition-colors hover:bg-muted/50 md:px-4"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">{c.subject ?? "(sans objet)"}</p>
-                        <p className="truncate text-xs text-muted-foreground">
-                          {c.chrono && <span className="mr-2">{c.chrono}</span>}
-                          Étape « {c.state_name} »
-                          {!c.designated_to_me && c.designated_user_id && (
-                            <span className="ml-2 text-muted-foreground/70">— désigné : un autre viseur</span>
-                          )}
-                        </p>
-                      </div>
-                      <span className="shrink-0 text-muted-foreground">→</span>
-                    </Link>
-                  ))}
-                </div>
-              </Card>
-            </section>
-          )}
-
-          {/* En attente de signature */}
-          {showSignature && (
-            <section className="space-y-3">
-              <div className="flex min-w-0 items-center gap-2">
-                <PenLine className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <h2 className="min-w-0 text-base font-semibold">En attente de votre signature</h2>
-                <Badge variant="secondary" className="shrink-0">{pendingSignature!.length}</Badge>
-              </div>
-              <Card>
-                <div className="divide-y">
-                  {pendingSignature!.map((c) => (
-                    <Link
-                      key={c.id}
-                      to={
-                        c.parent_courier_id
-                          ? `/courrier/${c.parent_courier_id}?tab=response&replyId=${c.id}&edit=1`
-                          : `/courrier/${c.id}`
-                      }
-                      className="flex items-center justify-between gap-3 px-3 py-3 transition-colors hover:bg-muted/50 md:px-4"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">{c.subject ?? "(sans objet)"}</p>
-                        <p className="truncate text-xs text-muted-foreground">
-                          {new Date(c.created_at).toLocaleDateString("fr-FR")}
-                        </p>
-                      </div>
-                      <span className="shrink-0 text-muted-foreground">→</span>
-                    </Link>
-                  ))}
-                </div>
-              </Card>
-            </section>
-          )}
-
+      {loading ? (
+        <div className="flex gap-3 overflow-hidden">
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="h-[136px] max-w-[320px] flex-[1_0_230px] rounded-lg" />
+          ))}
+        </div>
+      ) : cards.length ? (
+        <div className="-m-0.5 -mb-1.5 flex snap-x snap-mandatory gap-3 overflow-x-auto overscroll-x-contain p-0.5 pb-2.5 [scroll-padding:0_4px] [scrollbar-width:thin]">
+          {cards.map((card) => (
+            <TodoTile key={card.key} card={card} showSource={multi} />
+          ))}
+        </div>
+      ) : (
+        <div className="flex items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 px-5 py-4">
+          <span className="grid h-8 w-8 place-items-center rounded-full bg-primary/15 text-primary">
+            <Check className="h-4 w-4" strokeWidth={2.4} />
+          </span>
+          <span className="font-semibold">Rien ne vous attend. Vos files sont à jour.</span>
         </div>
       )}
+    </section>
+  );
+}
 
-      {!organizationId && (
+// ─── Liste ───────────────────────────────────────────────────────────────────
+
+const LIST_GRID = "grid grid-cols-[minmax(0,1fr)_auto] gap-3 sm:grid-cols-[minmax(0,1fr)_150px_120px]";
+
+function ListTabs({
+  lists,
+  current,
+  onChange,
+}: {
+  lists: DashboardList[];
+  current: DashboardRole;
+  onChange: (role: DashboardRole) => void;
+}) {
+  return (
+    <div role="tablist" aria-label="Listes" className="flex h-9 max-w-full overflow-x-auto rounded-full bg-muted p-[3px]">
+      {lists.map((list) => {
+        const on = list.role === current;
+        return (
+          <button
+            key={list.role}
+            type="button"
+            role="tab"
+            aria-selected={on}
+            onClick={() => onChange(list.role)}
+            className={cn(
+              "inline-flex h-[30px] shrink-0 items-center gap-[7px] whitespace-nowrap rounded-full px-3 text-[13px] transition-colors",
+              on ? "bg-card font-bold text-foreground shadow-airbnb-sm" : "font-semibold text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {list.tabLabel}
+            <span
+              className={cn(
+                "grid h-[18px] min-w-5 place-items-center rounded-full px-1.5 text-[11px] font-extrabold",
+                on ? "bg-secondary text-secondary-foreground" : "bg-border text-muted-foreground",
+              )}
+            >
+              {list.count}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function ListSection({
+  lists,
+  current,
+  onChange,
+  loading,
+}: {
+  lists: DashboardList[];
+  current: DashboardList;
+  onChange: (role: DashboardRole) => void;
+  loading: boolean;
+}) {
+  const tabs = lists.length > 1;
+  return (
+    <section className="flex min-w-0 flex-[2_1_560px] flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2.5">
+        {tabs ? (
+          <ListTabs lists={lists} current={current.role} onChange={onChange} />
+        ) : (
+          <>
+            <h2 className="text-base font-bold">{current.title}</h2>
+            <span className="rounded-full bg-muted px-[9px] py-0.5 text-xs font-bold text-muted-foreground">{current.count}</span>
+          </>
+        )}
+        <span className="flex-1" />
+        <Link to={current.link.href} className="whitespace-nowrap text-[13px] font-semibold text-primary hover:underline">
+          {current.link.label}
+        </Link>
+      </div>
+      <Card className="overflow-hidden shadow-airbnb" role={tabs ? "tabpanel" : undefined}>
+        <div className={cn(LIST_GRID, "border-b px-4 py-2.5 text-xs font-semibold text-muted-foreground")}>
+          <span>Courrier</span>
+          <span className="hidden sm:block">{current.columns[0]}</span>
+          <span className="text-right">{current.columns[1]}</span>
+        </div>
+        {loading ? (
+          <div className="space-y-3 p-4">
+            {[0, 1, 2].map((i) => (
+              <Skeleton key={i} className="h-10 w-full" />
+            ))}
+          </div>
+        ) : current.rows.length === 0 ? (
+          <p className="px-4 py-8 text-center text-sm text-muted-foreground">Aucun courrier dans cette liste.</p>
+        ) : (
+          <div className="divide-y divide-border/70">
+            {current.rows.map((row) => (
+              <Link
+                key={row.id}
+                to={row.href}
+                className={cn(LIST_GRID, "items-center px-4 py-3 transition-colors hover:bg-muted/50")}
+              >
+                <div className="flex min-w-0 flex-col gap-0.5">
+                  <span className="truncate font-bold">{row.title}</span>
+                  <span className="truncate text-[12.5px] text-muted-foreground">
+                    {row.chrono && <span className="font-mono text-[11.5px]">{row.chrono}</span>}
+                    {row.chrono && row.sender && " · "}
+                    {row.sender}
+                    {/* Sur téléphone, la colonne du milieu passe sous le titre. */}
+                    <span className="sm:hidden">{(row.chrono || row.sender) && " · "}{row.mid}</span>
+                  </span>
+                </div>
+                <span className="hidden truncate text-[12.5px] font-semibold text-foreground/85 sm:block">{row.mid}</span>
+                <div className="flex justify-end">
+                  <span className={cn("whitespace-nowrap rounded-full px-2.5 py-[3px] text-xs font-bold", PILL[row.tone])}>
+                    {row.end}
+                  </span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
+      </Card>
+    </section>
+  );
+}
+
+// ─── Indicateurs ─────────────────────────────────────────────────────────────
+
+function KpiPanel({
+  kpis,
+  title,
+  footer,
+  scopeToggle,
+  showStatsLink,
+  loading,
+}: {
+  kpis: Kpi[];
+  title: string;
+  footer: string;
+  scopeToggle: { mine: boolean; onChange: (mine: boolean) => void } | null;
+  showStatsLink: boolean;
+  loading: boolean;
+}) {
+  return (
+    <aside className="flex min-w-0 flex-[1_1_300px] flex-col gap-3">
+      <div className="flex items-center gap-2.5">
+        <h2 className="text-base font-bold">{title}</h2>
+        <span className="flex-1" />
+        {showStatsLink && (
+          <Link to="/statistiques" className="text-[13px] font-semibold text-primary hover:underline">
+            Statistiques
+          </Link>
+        )}
+      </div>
+      {scopeToggle && (
+        <div className="flex h-[34px] self-start rounded-full border p-[3px]" role="group" aria-label="Périmètre des indicateurs">
+          {[
+            { mine: true, label: "Mon service" },
+            { mine: false, label: "Toute l'organisation" },
+          ].map((option) => (
+            <button
+              key={option.label}
+              type="button"
+              aria-pressed={scopeToggle.mine === option.mine}
+              onClick={() => scopeToggle.onChange(option.mine)}
+              className={cn(
+                "h-[26px] whitespace-nowrap rounded-full px-3 text-[12.5px] font-semibold text-foreground",
+                scopeToggle.mine === option.mine && "bg-muted",
+              )}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      )}
+      <Card className="px-5 py-1 shadow-airbnb">
+        {kpis.map((kpi) => (
+          <div key={kpi.key} className="flex items-center gap-3 border-b border-border/70 py-3.5">
+            <span className="flex-1 text-[13.5px] text-muted-foreground">{kpi.label}</span>
+            {loading ? (
+              <Skeleton className="h-7 w-12" />
+            ) : (
+              <span className="text-[22px] font-extrabold tracking-tight tabular-nums">{kpi.value}</span>
+            )}
+            <span
+              className={cn(
+                "w-[58px] text-right text-xs font-bold tabular-nums",
+                kpi.trend === "good" && "text-primary",
+                kpi.trend === "bad" && "text-destructive",
+                kpi.trend === null && "text-muted-foreground",
+              )}
+            >
+              {loading ? "" : (kpi.delta ?? "—")}
+            </span>
+          </div>
+        ))}
+        <p className="py-3 text-xs text-muted-foreground">{footer}</p>
+      </Card>
+    </aside>
+  );
+}
+
+// ─── Page ────────────────────────────────────────────────────────────────────
+
+/**
+ * Accueil : ce qui attend l'utilisateur selon ses casquettes (agent d'un
+ * service, service courrier, viseur ou signataire), la liste de travail
+ * correspondante et les indicateurs du dernier mois complet.
+ */
+export default function Dashboard() {
+  const { organizationId } = useOrganization();
+  const { profile, membership } = useAuth();
+  const dashboard = useDashboard();
+  const { roles, lists, myScope } = dashboard;
+
+  const [listRole, setListRole] = useState<DashboardRole | null>(null);
+  const currentList = lists.find((l) => l.role === (listRole ?? dashboard.defaultList)) ?? lists[0];
+
+  // Indicateurs : l'organisation entière pour qui la regarde déjà (service
+  // courrier, parapheur, administrateur) ; son service pour un agent seul.
+  const orgWide = roles.includes("mailroom") || roles.includes("parapheur") || isOrgAdmin(membership);
+  const canToggleScope = !!myScope && orgWide;
+  const [kpiMine, setKpiMine] = useState<boolean | null>(null);
+  const mine = !!myScope && (kpiMine ?? !orgWide);
+
+  const kpis = useMemo(
+    () =>
+      monthKpis({
+        items: dashboard.items,
+        scope: mine ? myScope : null,
+        routing: roles.includes("mailroom") && !mine,
+      }),
+    [dashboard.items, mine, myScope, roles],
+  );
+
+  const months = useMemo(() => monthLabels(), []);
+  const kpiScopeName = mine ? dashboard.serviceNames.join(", ") || "Mon service" : "Toute l'organisation";
+  const multi = roles.length > 1;
+
+  if (!organizationId) {
+    return (
+      <Card>
+        <CardContent className="py-8 text-center text-muted-foreground">
+          Sélectionnez une organisation pour voir vos données.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="mx-auto flex max-w-[1280px] flex-col gap-6">
+      {/* La recherche globale vit dans l'en-tête de l'application. */}
+      <div className="flex flex-wrap items-end gap-4">
+        <div className="min-w-0 flex-[1_1_320px]">
+          <h1 className="text-2xl font-bold tracking-tight">
+            Bonjour{profile?.first_name ? ` ${profile.first_name}` : ""}
+          </h1>
+          <p className="mt-0.5 text-muted-foreground">
+            {longDate()}
+            {!dashboard.isLoading && ` · ${scopeLabel(roles, dashboard.serviceNames, membership?.organization_name ?? null)}`}
+          </p>
+        </div>
+        {dashboard.hero && (
+          <Button asChild className="h-10 gap-2 rounded-lg px-4 font-bold">
+            <Link to={dashboard.hero.href}>
+              <CheckCheck className="h-4 w-4" strokeWidth={2.2} />
+              {dashboard.hero.label}
+            </Link>
+          </Button>
+        )}
+      </div>
+
+      {dashboard.error ? (
         <Card>
-          <CardContent className="py-8 text-center text-muted-foreground">
-            Sélectionnez une organisation pour voir vos données.
+          <CardContent className="py-6 text-sm text-destructive">
+            Impossible de charger vos courriers. Rechargez la page dans un instant.
           </CardContent>
         </Card>
+      ) : (
+        <TodoSection
+          cards={dashboard.todo}
+          multi={multi}
+          loading={dashboard.isLoading || (roles.includes("parapheur") && dashboard.parapheurLoading)}
+        />
       )}
+
+      <div className="flex flex-wrap items-start gap-6">
+        {/* Tant que les rattachements ne sont pas lus, les casquettes (donc les
+            onglets) ne sont pas connues : un squelette plutôt qu'un onglet qui surgit. */}
+        {dashboard.isLoading ? (
+          <div className="flex min-w-0 flex-[2_1_560px] flex-col gap-3">
+            <Skeleton className="h-9 w-64 rounded-full" />
+            <Skeleton className="h-60 w-full rounded-lg" />
+          </div>
+        ) : currentList && (
+          <ListSection
+            lists={lists}
+            current={currentList}
+            onChange={setListRole}
+            loading={currentList.role === "parapheur" ? dashboard.parapheurLoading : dashboard.isLoading}
+          />
+        )}
+        <KpiPanel
+          kpis={kpis}
+          title={months.title}
+          footer={`${kpiScopeName}, comparé à ${months.previous}.`}
+          scopeToggle={canToggleScope ? { mine, onChange: setKpiMine } : null}
+          showStatsLink={canAccessStats(profile, membership)}
+          loading={dashboard.isLoading}
+        />
+      </div>
     </div>
   );
 }
