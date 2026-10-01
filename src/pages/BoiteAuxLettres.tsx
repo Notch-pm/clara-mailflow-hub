@@ -11,7 +11,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ArrowRightLeft, ChevronRight, Plus, Sparkles, Upload, Weight } from "lucide-react";
+import { ArrowRightLeft, ChevronRight, Sparkles, Weight } from "lucide-react";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { canEditCouriers } from "@/lib/permissions";
@@ -37,15 +37,16 @@ import {
   ListPage,
   ListSegmented,
   ListToolbar,
-  ToolbarButton,
-  ToolbarTooltip,
 } from "@/components/list/ListPage";
 import { ListScrollArea } from "@/components/list/ListScrollArea";
 import { CourierFacetFields } from "@/components/courier/CourierFacetFields";
 import { courierSenderName } from "@/components/courier/courierListColumns";
 import { toast } from "@/hooks/use-toast";
 import MailboxSidePanel from "@/components/courier/MailboxSidePanel";
+import AddCourierMenu from "@/components/courier/AddCourierMenu";
 import NewCourierDialog from "@/components/courier/NewCourierDialog";
+import MailboxOrganizationSelect from "@/components/courier/MailboxOrganizationSelect";
+import { UNASSIGNED_ORGANIZATION, useMailboxOrganization } from "@/hooks/useMailboxOrganization";
 import mailboxIcon from "@/assets/icons/mailbox.svg";
 import type { CourierWithRelations } from "@/types/courier";
 import { TRASH_RETENTION_DAYS } from "@/lib/trash";
@@ -134,16 +135,32 @@ export default function BoiteAuxLettres() {
   });
 
   const serviceFilter = useUserServiceFilter();
+  // La boîte se lit par bannette : une organisation, ou les courriers sans
+  // service désigné — jamais tous les courriers mélangés.
+  const mailbox = useMailboxOrganization(organizationId, initialStateIds, serviceFilter);
+  const unassignedBin = mailbox.selected === UNASSIGNED_ORGANIZATION;
   // Pas d'autre filtre dans la boîte : son panneau ne porte que la recherche,
   // qui y rejoint celle des autres listes de courriers.
   const facets = useCourierFacets({});
+
+  // Changer de bannette vide le panneau : le courrier ouvert n'y figure plus,
+  // et la sélection d'office reprend le premier de la nouvelle liste. Pas au
+  // premier choix de bannette : un courrier ouvert par `?open=` resterait sinon
+  // fermé aussitôt.
+  const previousBinRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (previousBinRef.current && previousBinRef.current !== mailbox.selected) {
+      setSelectedCourier(null);
+    }
+    previousBinRef.current = mailbox.selected;
+  }, [mailbox.selected]);
 
   // Une seule requête là où il y en avait deux (états initiaux + état NULL),
   // fusionnées puis retriées en JS sur 100 lignes chacune : le tri combiné
   // n'était donc pas celui des 200 courriers les plus récents.
   // COALESCE(received_at, created_at) côté SQL reproduit le repli de l'ancien tri.
   const filters = useMemo<CourierListFilters | null>(() => {
-    if (!organizationId || !initialStateIds?.length) return null;
+    if (!organizationId || !initialStateIds?.length || !mailbox.selected) return null;
     return {
       organizationId,
       direction: "inbound",
@@ -151,13 +168,17 @@ export default function BoiteAuxLettres() {
       includeNullState: true,
       keywords: facets.keywords || null,
       prefixMatch: true,
-      visibleSocleOrganizationIds: serviceFilter,
+      socleOrganizationId: unassignedBin ? null : mailbox.selected,
+      // Bannette « sans service désigné » : le RPC laisse toujours passer les
+      // courriers sans organisation, et un périmètre vide écarte tous les
+      // autres — il ne reste qu'eux. Ailleurs, le périmètre RBAC habituel.
+      visibleSocleOrganizationIds: unassignedBin ? [] : serviceFilter,
       // Onglet « Transférés » : filtre serveur, et non plus un partage de la
       // page en deux tableaux — paginé, ce partage n'aurait montré que les
       // transférés de la page courante.
       transferredOnly: tab === "transferred" ? true : null,
     };
-  }, [organizationId, initialStateIds, facets.keywords, serviceFilter, tab]);
+  }, [organizationId, initialStateIds, mailbox.selected, unassignedBin, facets.keywords, serviceFilter, tab]);
 
   const list = useCourierList(filters, {
     queryKeyPrefix: "mailbox-couriers",
@@ -351,29 +372,18 @@ export default function BoiteAuxLettres() {
         title="Boîte aux lettres"
         count={list.filters && !list.isLoading ? list.totalCount : null}
         countLabel="courriers en attente"
+        titleAside={
+          organizationId ? (
+            <MailboxOrganizationSelect
+              options={mailbox.options}
+              value={mailbox.selected}
+              onChange={mailbox.select}
+            />
+          ) : undefined
+        }
         primary={
           organizationId && canEdit ? (
-            <>
-              <ToolbarTooltip label="Importer en masse" hideFromXl>
-                <ToolbarButton
-                  icon={<Upload />}
-                  label="Importer en masse"
-                  text="Importer"
-                  showLabel
-                  onClick={() => navigate("/import-en-masse")}
-                />
-              </ToolbarTooltip>
-              <ToolbarTooltip label="Nouveau courrier" hideFromXl>
-                <ToolbarButton
-                  primary
-                  icon={<Plus />}
-                  label="Nouveau courrier"
-                  text="Nouveau"
-                  showLabel
-                  onClick={() => setNewDialogOpen(true)}
-                />
-              </ToolbarTooltip>
-            </>
+            <AddCourierMenu onNewCourier={() => setNewDialogOpen(true)} />
           ) : undefined
         }
       >
@@ -430,7 +440,7 @@ export default function BoiteAuxLettres() {
               </div>
             )}
             <ListScrollArea resetKey={`${list.page}:${list.pageSize}`}>
-              {list.isLoading ? (
+              {list.isLoading || !list.filters ? (
                 <ListMessage>Chargement…</ListMessage>
               ) : !list.rows.length ? (
                 <ListMessage>
@@ -438,7 +448,9 @@ export default function BoiteAuxLettres() {
                     ? "Aucun courrier en attente ne correspond à cette recherche."
                     : tab === "transferred"
                       ? "Aucun courrier transféré."
-                      : "Aucun courrier en attente dans la boîte aux lettres."}
+                      : unassignedBin
+                        ? "Aucun courrier en attente sans service désigné."
+                        : "Aucun courrier en attente pour cette organisation."}
                 </ListMessage>
               ) : (
                 list.rows.map((c) => renderRow(c))

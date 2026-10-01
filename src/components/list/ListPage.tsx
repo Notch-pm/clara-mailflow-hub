@@ -50,6 +50,8 @@ interface ListToolbarProps {
   /** Ce que compte `count`, pour les lecteurs d'écran (« courriers »). */
   countLabel?: string;
   search?: ReactNode;
+  /** Contrôle accolé au titre (la bannette de la boîte aux lettres). */
+  titleAside?: ReactNode;
   /** Action principale, calée à droite derrière un séparateur. */
   primary?: ReactNode;
   /** Actions secondaires : grouper, filtrer, densité, colonnes, export… */
@@ -68,6 +70,7 @@ export function ListToolbar({
   count,
   countLabel = "résultats",
   search,
+  titleAside,
   primary,
   children,
 }: ListToolbarProps) {
@@ -89,6 +92,7 @@ export function ListToolbar({
             <span className="sr-only"> {countLabel}</span>
           </span>
         )}
+        {titleAside && <div className="ml-1 flex min-w-0 shrink items-center">{titleAside}</div>}
       </div>
 
       {primary && (

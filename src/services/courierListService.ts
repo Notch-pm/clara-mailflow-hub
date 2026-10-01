@@ -214,3 +214,37 @@ export async function fetchAllCouriersForExport(
   }
   return { rows: all, truncated: true };
 }
+
+/** Clé des courriers sans organisation dans `countMailboxByOrganization`. */
+export const UNASSIGNED_ORGANIZATION = "__unassigned__";
+
+/**
+ * Courriers en attente dans la boîte aux lettres, par organisation destinataire
+ * (`UNASSIGNED_ORGANIZATION` pour ceux qui n'en ont pas) — les compteurs du
+ * sélecteur de bannette. Mêmes critères que la liste : entrants, non supprimés,
+ * à l'état initial ou sans état. On ne rapatrie que la colonne
+ * d'organisation : la boîte se compte en centaines, pas en milliers.
+ */
+export async function countMailboxByOrganization(
+  organizationId: string,
+  initialStateIds: string[],
+): Promise<Record<string, number>> {
+  const stateFilter = initialStateIds.length
+    ? `workflow_state_id.in.(${initialStateIds.join(",")}),workflow_state_id.is.null`
+    : "workflow_state_id.is.null";
+  const { data, error } = await supabase
+    .from("couriers")
+    .select("socle_organization_id")
+    .eq("organization_id", organizationId)
+    .eq("direction", "inbound")
+    .is("deleted_at", null)
+    .or(stateFilter)
+    .limit(10000);
+  if (error) throw error;
+  const counts: Record<string, number> = {};
+  for (const row of data ?? []) {
+    const key = row.socle_organization_id ?? UNASSIGNED_ORGANIZATION;
+    counts[key] = (counts[key] ?? 0) + 1;
+  }
+  return counts;
+}
