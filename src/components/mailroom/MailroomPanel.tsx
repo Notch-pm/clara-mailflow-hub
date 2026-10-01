@@ -33,6 +33,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { CourierChannel } from "@/types/courier";
 import OrgChoice from "./OrgChoice";
+import SubjectSuggestion from "./SubjectSuggestion";
 import { TONE_CHIP, TONE_DOT, TONE_TEXT, businessDays, fullDate, stageLabel, type Tone } from "./mailroomDisplay";
 
 interface Props {
@@ -199,6 +200,15 @@ export default function MailroomPanel({
           {[row.sender_name || "Expéditeur non identifié", channel, `reçu le ${fullDate(row.received_at ?? row.created_at)}`].join(" · ")}
         </p>
       </div>
+
+      {row.has_analysis && (
+        <SubjectSuggestion
+          organizationId={organizationId}
+          courierId={row.id}
+          currentSubject={row.subject}
+          canEdit={canEdit}
+        />
+      )}
 
       <div className="grid grid-cols-2 overflow-hidden rounded-lg border sm:grid-cols-4">
         {dims.map((d, i) => (
