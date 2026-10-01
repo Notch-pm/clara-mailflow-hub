@@ -82,15 +82,7 @@ function TodoTile({ card, showSource }: { card: TodoCard; showSource: boolean })
 function TodoSection({ cards, multi, loading }: { cards: TodoCard[]; multi: boolean; loading: boolean }) {
   return (
     <section className="flex flex-col gap-3" aria-labelledby="dashboard-todo">
-      <div className="flex items-center gap-2.5">
-        <h2 id="dashboard-todo" className="text-base font-bold">À faire</h2>
-        <span className="flex-1" />
-        {cards.length > 4 && (
-          <span className="whitespace-nowrap text-[12.5px] text-muted-foreground">
-            {cards.length} tâches · faites défiler →
-          </span>
-        )}
-      </div>
+      <h2 id="dashboard-todo" className="text-base font-bold">À faire</h2>
       {loading ? (
         <div className="flex gap-3 overflow-hidden">
           {[0, 1, 2].map((i) => (
