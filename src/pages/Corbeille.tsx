@@ -211,7 +211,14 @@ export default function Corbeille() {
         title="Corbeille et spam"
         count={trash.isLoading ? null : total}
         countLabel={total > 1 ? "courriers" : "courrier"}
-        search={<ListSearch value={query} onChange={setQuery} placeholder="Rechercher un courrier, un expéditeur…" />}
+        search={
+          <ListSearch
+            value={query}
+            onChange={setQuery}
+            placeholder="Objet, expéditeur…"
+            ariaLabel="Rechercher un courrier, un expéditeur"
+          />
+        }
         primary={
           canEdit ? (
             <Button

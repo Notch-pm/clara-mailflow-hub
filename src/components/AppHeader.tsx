@@ -75,11 +75,12 @@ export function AppHeader() {
         <GlobalSearch />
       </div>
 
-      {/* Produit courant, calé à droite contre le bloc utilisateur */}
+      {/* Produit courant, calé à droite contre le bloc utilisateur. Sur
+          téléphone, sa pastille laisse la place à la recherche. */}
       <div className="flex shrink-0 items-center gap-2">
         <span
           aria-hidden="true"
-          className="grid h-6 w-6 place-items-center rounded-[7px] bg-primary/10 text-xs font-extrabold text-primary"
+          className="hidden h-6 w-6 place-items-center rounded-[7px] bg-primary/10 text-xs font-extrabold text-primary sm:grid"
         >
           {CURRENT_APP.initial}
         </span>
@@ -88,7 +89,7 @@ export function AppHeader() {
         </span>
       </div>
 
-      <Separator orientation="vertical" className="h-6 shrink-0" />
+      <Separator orientation="vertical" className="hidden h-6 shrink-0 sm:block" />
 
       {/* Right: Notifications + Settings + Profile */}
       <div className="flex items-center gap-2 shrink-0">

@@ -162,7 +162,8 @@ export default function CourrierEntrant() {
           <ListSearch
             value={filters.query}
             onChange={(query) => setFilters((f) => ({ ...f, query }))}
-            placeholder="Rechercher un courrier, un expéditeur…"
+            placeholder="Objet, expéditeur…"
+            ariaLabel="Rechercher un courrier, un expéditeur"
           />
         }
         primary={

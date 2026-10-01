@@ -81,7 +81,7 @@ export function subjectColumn(correspondent: "sender" | "recipient"): CourierCol
     // Colonne principale : c'est elle qui absorbe la largeur, on ne la masque pas.
     enableHiding: false,
     enableGrouping: false,
-    meta: { exportLabel: "Objet", minWidth: 280, exportExtra: [{ header: exportLabel, accessor: who }] },
+    meta: { exportLabel: "Objet", minWidth: 240, exportExtra: [{ header: exportLabel, accessor: who }] },
   };
 }
 
@@ -123,7 +123,7 @@ export function organisationColumn(): CourierColumn {
     accessorKey: "assigned_service",
     header: ({ column }) => <DataTableColumnHeader column={column} title="Organisation" />,
     cell: ({ row }) => <ListCellText>{row.original.assigned_service ?? "—"}</ListCellText>,
-    meta: { exportLabel: "Organisation", width: 180 },
+    meta: { exportLabel: "Organisation", width: 160 },
   };
 }
 
@@ -134,7 +134,7 @@ export function recipientColumn(): CourierColumn {
     enableSorting: false,
     header: "Destinataire",
     cell: ({ row }) => <ListCellText>{row.original.recipient_name ?? "—"}</ListCellText>,
-    meta: { exportLabel: "Destinataire", width: 160 },
+    meta: { exportLabel: "Destinataire", width: 140 },
   };
 }
 
@@ -194,7 +194,7 @@ export function tagsColumn(tagByName: Map<string, { color: string | null }>): Co
         </div>
       );
     },
-    meta: { exportLabel: "Tags", width: 190 },
+    meta: { exportLabel: "Tags", width: 150 },
   };
 }
 

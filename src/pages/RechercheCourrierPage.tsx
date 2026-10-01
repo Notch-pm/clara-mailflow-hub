@@ -284,8 +284,8 @@ export default function RechercheCourrierPage() {
           <ListSearch
             value={keywords}
             onChange={setKeywords}
-            placeholder="Rechercher dans les objets, expéditeurs, destinataires, textes…"
-            className="md:max-w-[520px]"
+            placeholder="Objet, correspondant…"
+            ariaLabel="Rechercher dans les objets, expéditeurs, destinataires, textes"
           />
         }
       >

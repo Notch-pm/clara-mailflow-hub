@@ -117,7 +117,10 @@ export function ListToolbar({
       {search ? (
         <>
           <div aria-hidden="true" className="basis-full md:hidden" />
-          <div className="flex min-w-0 flex-1 md:min-w-[150px] md:justify-center">{search}</div>
+          {/* Recherche propre à la liste, discrète : la recherche globale
+              occupe déjà le centre de l'en-tête juste au-dessus. Calée à
+              droite contre les actions, plafonnée à 240 px. */}
+          <div className="flex min-w-0 flex-1 md:min-w-[150px] md:justify-end md:[&>*]:max-w-[240px]">{search}</div>
         </>
       ) : (
         <div aria-hidden="true" className="hidden flex-1 md:block" />
