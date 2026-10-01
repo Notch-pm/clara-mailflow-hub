@@ -23,6 +23,7 @@ import {
 } from "../_shared/courierFieldSuggestions.ts";
 import {
   buildServiceCatalog,
+  noServiceSuggestionNote,
   resolveSuggestedService,
   selectServiceCandidates,
   serviceSuggestionPromptRules,
@@ -386,7 +387,11 @@ ${combinedText}`;
 
     // Validate and sanitize against org data (same pattern as analyze-courier)
     // L'écran attend toujours un NOM : on le déduit de l'identifiant revalidé.
-    const suggestedService = resolveSuggestedService(extracted.suggested_service, serviceCandidates)?.name ?? null;
+    const serviceSuggestion = resolveSuggestedService(extracted.suggested_service, serviceCandidates);
+    // Sans proposition, l'écran dit pourquoi plutôt que de se taire.
+    const serviceNote = serviceSuggestion
+      ? null
+      : noServiceSuggestionNote(extracted.suggested_service, serviceCandidates);
 
     const allowed = new Set(tagNames.map((n) => n.toLowerCase()));
     const suggestedTags = (extracted.suggested_tag_names ?? []).filter(
@@ -429,7 +434,11 @@ ${combinedText}`;
       suggested_subject: nullIfEmpty(extracted.suggested_subject),
       sender,
       recipient_name: nullIfEmpty(extracted.recipient_name),
-      suggested_service_name: suggestedService,
+      suggested_service_name: serviceSuggestion?.name ?? null,
+      suggested_socle_organization_id: serviceSuggestion?.id ?? null,
+      suggested_service_reason: serviceSuggestion?.reason ?? null,
+      suggested_service_confidence: serviceSuggestion?.confidence ?? null,
+      service_suggestion_note: serviceNote,
       suggested_tag_names: suggestedTags,
       // Compat : rempli seulement quand le contact est sélectionné d'office.
       matched_contact: senderMatch?.status === "matched" ? senderMatch.contact : null,

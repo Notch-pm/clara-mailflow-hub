@@ -90,6 +90,14 @@ export interface ExtractCourierInfoResult {
   sender: SuggestedSender;
   recipient_name: string | null;
   suggested_service_name: string | null;
+  /** Organisation proposée (revalidée contre le catalogue) ; absent d'une edge function antérieure. */
+  suggested_socle_organization_id?: string | null;
+  /** Pourquoi cette organisation, en une phrase. */
+  suggested_service_reason?: string | null;
+  /** Confiance du modèle, 0–100. */
+  suggested_service_confidence?: number | null;
+  /** Sans proposition : pourquoi (courrier ambigu, référentiel peu décrit…). */
+  service_suggestion_note?: string | null;
   suggested_tag_names: string[];
   /** Contact Socle sélectionné d'office (= `sender_match.contact` quand `status === "matched"`). */
   matched_contact: SocleContact | null;

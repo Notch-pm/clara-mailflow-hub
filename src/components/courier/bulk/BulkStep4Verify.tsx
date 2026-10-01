@@ -356,9 +356,7 @@ export default function BulkStep4Verify({
               <TableHead className="min-w-[180px]">Titre</TableHead>
               <TableHead className="min-w-[220px]">Expéditeur</TableHead>
               <TableHead className="min-w-[120px]">Destinataire</TableHead>
-              <TableHead className="min-w-[160px]">
-                Organisation gestionnaire <span className="text-destructive">*</span>
-              </TableHead>
+              <TableHead className="min-w-[160px]">Organisation gestionnaire</TableHead>
               <TableHead className="min-w-[140px]">Tags</TableHead>
               <TableHead className="min-w-[160px]">Documents</TableHead>
               <TableHead className="w-20 text-center">IA</TableHead>
@@ -367,7 +365,6 @@ export default function BulkStep4Verify({
           </TableHeader>
           <TableBody>
             {drafts.map((draft, idx) => {
-              const hasMissingService = draft.flags.includes("missing-service");
               const hasMissingCivility = draft.flags.includes("missing-civility");
               const linked = linkedSenderContact(draft);
               const hasDuplicate = draft.flags.includes("duplicate");
@@ -376,8 +373,7 @@ export default function BulkStep4Verify({
                   key={draft.id}
                   className={cn(
                     "align-top",
-                    hasMissingService && "bg-destructive/5 hover:bg-destructive/10",
-                    !hasMissingService && hasDuplicate && "bg-yellow-50 hover:bg-yellow-100 dark:bg-yellow-900/10 dark:hover:bg-yellow-900/20"
+                    hasDuplicate &&"bg-yellow-50 hover:bg-yellow-100 dark:bg-yellow-900/10 dark:hover:bg-yellow-900/20"
                   )}
                 >
                   <TableCell className="text-sm font-medium text-muted-foreground pt-3">
@@ -496,20 +492,17 @@ export default function BulkStep4Verify({
                         updateDraft(draft.id, {
                           serviceId: svc?.id ?? "",
                           serviceName: svc?.name ?? "",
+                          // La raison de l'IA ne vaut plus pour un choix de l'agent.
+                          serviceHint: undefined,
                         });
                       }}
                     >
-                      <SelectTrigger
-                        className={cn(
-                          "h-8 text-xs",
-                          hasMissingService && "border-destructive focus:ring-destructive"
-                        )}
-                      >
-                        <SelectValue placeholder="Sélectionner…" />
+                      <SelectTrigger aria-label="Organisation gestionnaire" className="h-8 text-xs">
+                        <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="__none__" disabled>
-                          Sélectionner un service
+                        <SelectItem value="__none__" className="text-xs text-muted-foreground">
+                          À affecter plus tard
                         </SelectItem>
                         {services.map((s) => (
                           <SelectItem key={s.id} value={s.id} className="text-xs">
@@ -518,8 +511,13 @@ export default function BulkStep4Verify({
                         ))}
                       </SelectContent>
                     </Select>
-                    {hasMissingService && (
-                      <p className="text-[10px] text-destructive mt-0.5">Requis</p>
+                    {draft.serviceHint && (
+                      <p
+                        className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2"
+                        title={draft.serviceHint}
+                      >
+                        {draft.serviceHint}
+                      </p>
                     )}
                   </TableCell>
                   <TableCell className="pt-2">

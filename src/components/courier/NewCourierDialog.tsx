@@ -37,6 +37,7 @@ import { cn } from "@/lib/utils";
 import { readableTextColor } from "@/lib/tag-color";
 import { useAuth } from "@/contexts/AuthContext";
 import { canEditCouriers } from "@/lib/permissions";
+import { findSuggestedOrg } from "@/lib/service-suggestion";
 import { supabase } from "@/integrations/supabase/client";
 import { createCourier } from "@/services/courierService";
 import { addParticipant } from "@/services/courierParticipantService";
@@ -72,8 +73,10 @@ const schema = z.object({
   channel: z.enum(["paper", "email", "portal"]),
   received_at: z.string().min(1, "Date obligatoire"),
   recipient_name: z.string().trim().max(150).optional(),
-  service_id: z.string().uuid("Service obligatoire"),
 });
+
+/** Valeur du choix « à affecter plus tard » (un SelectItem ne peut valoir ""). */
+const NO_SERVICE = "__none__";
 
 interface Props {
   open: boolean;
@@ -108,6 +111,9 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
   const [extractedCivility, setExtractedCivility] = useState<SocleContactCivility | "">("");
   const [recipientName, setRecipientName] = useState("");
   const [serviceId, setServiceId] = useState<string>("");
+  // Ce que l'analyse a dit de l'organisation gestionnaire : sa proposition et
+  // pourquoi, ou pourquoi elle n'en fait pas. Se taire laissait croire à une panne.
+  const [serviceHint, setServiceHint] = useState<{ orgId: string | null; text: string } | null>(null);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tagPopoverGroup, setTagPopoverGroup] = useState<TagGroup | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -135,6 +141,7 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
     setExtractedCivility("");
     setRecipientName("");
     setServiceId("");
+    setServiceHint(null);
     setSelectedTags([]);
     setErrors({});
     setBodyText("");
@@ -216,7 +223,6 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
         channel,
         received_at: receivedAt,
         recipient_name: recipientName,
-        service_id: serviceId,
       });
       // Expéditeur inconnu du référentiel : sa fiche est créée avec le
       // courrier, et le Socle exige la civilité d'une personne.
@@ -236,11 +242,13 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
       }
       setErrors({});
 
-      const service = services?.find((s) => s.id === serviceId);
-      if (!service) throw new Error("Organisation introuvable");
+      // Facultative : sans organisation, le courrier attend dans la boîte aux
+      // lettres qu'on l'affecte (pas d'état de workflow avant).
+      const service = serviceId ? services?.find((s) => s.id === serviceId) : null;
+      if (serviceId && !service) throw new Error("Organisation introuvable");
 
       let initialState: { id: string } | null = null;
-      if (service.workflow_id) {
+      if (service?.workflow_id) {
         const { data, error: stateErr } = await supabase
           .from("workflow_states")
           .select("id")
@@ -278,12 +286,12 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
         channel,
         subject: subject.trim(),
         received_at: receivedAtIso,
-        assigned_service: service.name,
-        socle_organization_id: service.id,
+        assigned_service: service?.name ?? null,
+        socle_organization_id: service?.id ?? null,
         workflow_state_id: initialState?.id ?? null,
         metadata: {
           tags: selectedTags,
-          socle_organization_id: service.id,
+          socle_organization_id: service?.id ?? null,
           ...(bodyText.trim() ? { body_text: bodyText.trim() } : {}),
         } as any,
         created_by: user?.id ?? null,
@@ -419,15 +427,29 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
         filled.push("destinataire");
       }
 
-      // Pre-fill service
-      if (result.suggested_service_name) {
-        const match = services?.find(
-          (s) => s.name.toLowerCase() === result.suggested_service_name!.toLowerCase(),
-        );
-        if (match && !serviceId) {
-          setServiceId(match.id);
-          filled.push("service gestionnaire");
+      // Organisation gestionnaire : la proposition est pré-sélectionnée (sans
+      // écraser un choix de l'agent) et toujours expliquée, y compris son absence.
+      const suggestedOrg = findSuggestedOrg(result, services ?? []);
+      if (suggestedOrg) {
+        if (!serviceId) {
+          setServiceId(suggestedOrg.id);
+          filled.push("organisation gestionnaire");
         }
+        const confidence = result.suggested_service_confidence;
+        setServiceHint({
+          orgId: suggestedOrg.id,
+          text: [
+            `Proposée par l'IA${confidence != null ? ` (confiance ${confidence} %)` : ""}.`,
+            result.suggested_service_reason ?? "",
+          ].filter(Boolean).join(" "),
+        });
+      } else {
+        setServiceHint({
+          orgId: null,
+          text: `L'IA ne propose pas d'organisation. ${
+            result.service_suggestion_note ?? "Le contenu ne relève clairement d'aucune organisation."
+          }`,
+        });
       }
 
       // Pre-fill tags (compute toAdd outside the state updater to track filled)
@@ -961,12 +983,18 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
 
                 {/* Organisation gestionnaire — en bas de la colonne droite */}
                 <div className="space-y-2">
-                  <Label htmlFor="nc-service">Organisation gestionnaire *</Label>
-                  <Select value={serviceId} onValueChange={setServiceId}>
+                  <Label htmlFor="nc-service">Organisation gestionnaire</Label>
+                  <Select
+                    value={serviceId || NO_SERVICE}
+                    onValueChange={(v) => setServiceId(v === NO_SERVICE ? "" : v)}
+                  >
                     <SelectTrigger id="nc-service">
-                      <SelectValue placeholder="Sélectionner un service" />
+                      <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value={NO_SERVICE}>
+                        <span className="text-muted-foreground">À affecter plus tard</span>
+                      </SelectItem>
                       {(services ?? []).map((s) => (
                         <SelectItem key={s.id} value={s.id}>
                           {s.name}
@@ -977,13 +1005,17 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
                       ))}
                     </SelectContent>
                   </Select>
-                  {!services?.length && (
-                    <p className="text-xs text-muted-foreground">
-                      Aucun service défini. Créez-en un dans Paramètres → Services.
+                  {/* La raison de l'IA ne vaut que pour SA proposition, pas pour un autre choix. */}
+                  {serviceHint && (!serviceHint.orgId || serviceHint.orgId === serviceId) && (
+                    <p className="flex gap-1.5 text-xs text-muted-foreground">
+                      <Sparkles className="h-3.5 w-3.5 shrink-0 mt-px text-primary" />
+                      <span>{serviceHint.text}</span>
                     </p>
                   )}
-                  {errors.service_id && (
-                    <p className="text-xs text-destructive">{errors.service_id}</p>
+                  {!serviceId && (
+                    <p className="text-xs text-muted-foreground">
+                      Facultatif : le courrier pourra être affecté depuis la boîte aux lettres.
+                    </p>
                   )}
                 </div>
               </div>

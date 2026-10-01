@@ -17,7 +17,9 @@ export interface BulkFile {
   rejectReason?: string;
 }
 
-export type DraftFlag = "missing-service" | "missing-civility" | "duplicate";
+// Pas de « missing-service » : l'organisation gestionnaire est facultative, le
+// courrier peut être affecté ensuite depuis la boîte aux lettres.
+export type DraftFlag = "missing-civility" | "duplicate";
 
 /**
  * Choix de l'agent sur le rapprochement de l'expéditeur :
@@ -42,6 +44,8 @@ export interface DraftCourier {
   recipientName: string;
   serviceId: string;
   serviceName: string;
+  /** Ce que l'analyse IA a dit de l'organisation : sa raison, ou pourquoi elle n'en propose pas. */
+  serviceHint?: string;
   tags: string[];
   bodyText: string;
   fileIds: string[];
@@ -67,7 +71,7 @@ export function emptyDraft(fileIds: string[] = []): DraftCourier {
     bodyText: "",
     fileIds,
     confidence: 0,
-    flags: ["missing-service"],
+    flags: [],
   };
 }
 
@@ -101,7 +105,6 @@ export function senderNeedsCreation(d: DraftCourier): boolean {
 export function refreshFlags(drafts: DraftCourier[]): DraftCourier[] {
   return drafts.map((d) => {
     const flags: DraftFlag[] = [];
-    if (!d.serviceName) flags.push("missing-service");
     // Le Socle refuse une personne sans civilité.
     if (senderNeedsCreation(d) && !d.senderCivility) flags.push("missing-civility");
     const title = d.title.trim();

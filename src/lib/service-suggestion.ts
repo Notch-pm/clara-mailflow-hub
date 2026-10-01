@@ -39,3 +39,20 @@ export function serviceSuggestionKind(args: {
   }
   return transferableIds.includes(suggestedId) ? "transfer" : "unavailable";
 }
+
+/**
+ * Organisation proposée par la PRÉ-SAISIE (`extract-courier-info`) → entrée de
+ * la liste de l'écran. Par identifiant d'abord ; par nom pour une edge function
+ * antérieure qui ne renvoyait que le nom. Une proposition hors de la liste
+ * (organisation devenue obsolète entre-temps) est ignorée.
+ */
+export function findSuggestedOrg<T extends { id: string; name: string }>(
+  result: { suggested_socle_organization_id?: string | null; suggested_service_name?: string | null },
+  orgs: readonly T[],
+): T | null {
+  const id = result.suggested_socle_organization_id;
+  if (id) return orgs.find((o) => o.id === id) ?? null;
+  const name = result.suggested_service_name?.trim().toLowerCase();
+  if (!name) return null;
+  return orgs.find((o) => o.name.toLowerCase() === name) ?? null;
+}

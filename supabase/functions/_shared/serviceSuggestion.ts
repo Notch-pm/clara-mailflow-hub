@@ -159,7 +159,7 @@ export const SERVICE_SUGGESTION_PROPERTY = {
 
 /** Consignes du prompt, avec l'organisation déjà désignée s'il y en a une. */
 export function serviceSuggestionPromptRules(current: { id: string; name: string } | null): string {
-  const base = `- suggested_service : l'organisation qui devrait INSTRUIRE ce courrier, choisie EXCLUSIVEMENT dans le catalogue des organisations ci-dessous (copie l'identifiant exact indiqué entre crochets). Fonde-toi D'ABORD sur les « attributions » quand une organisation en a (ce qu'elle traite ET ce qu'elle ne traite pas : une exclusion explicite l'écarte), puis sur les démarches qu'elle instruit ; les « informations usager » ne viennent qu'en complément. Rapproche-les du sujet du courrier — pas d'une ressemblance de nom. reason : une phrase factuelle qui cite ce qui, dans le courrier, relève de ses attributions. Si aucune ne s'impose, socle_organization_id = null.
+  const base = `- suggested_service : l'organisation qui devrait INSTRUIRE ce courrier, choisie EXCLUSIVEMENT dans le catalogue des organisations ci-dessous (copie l'identifiant exact indiqué entre crochets). Fonde-toi D'ABORD sur les « attributions » quand une organisation en a (ce qu'elle traite ET ce qu'elle ne traite pas : une exclusion explicite l'écarte), puis sur les démarches qu'elle instruit ; les « informations usager » ne viennent qu'en complément. Rapproche-les du sujet du courrier — pas d'une ressemblance de nom. reason : une phrase factuelle qui cite ce qui, dans le courrier, relève de ses attributions. Si aucune ne s'impose, socle_organization_id = null et reason dit en une phrase pourquoi (sujet ambigu, demandes relevant de plusieurs organisations, aucune attribution correspondante…).
   confidence : de 0 à 100, ta confiance que CE service est le bon — 90 et plus seulement si le courrier relève sans ambiguïté de ses attributions (il pourra être routé sans relecture détaillée) ; moins de 70 si deux services sont plausibles, si le courrier mêle plusieurs demandes relevant de services différents ou si le contenu est peu lisible. alternative_ids : jusqu'à deux autres identifiants du catalogue plausibles, liste vide s'il n'y en a pas.`;
   if (!current) return base;
   return `${base}
@@ -214,4 +214,29 @@ export function resolveSuggestedService(
     }
   }
   return { id: match.id, name: match.name, reason, confidence: toConfidence(rawConfidence), alternativeIds };
+}
+
+/**
+ * Pourquoi aucune organisation n'est proposée — phrase destinée à l'agent qui
+ * saisit le courrier (`extract-courier-info`). Se taire laissait croire à une
+ * panne : l'agent doit savoir si le courrier est ambigu ou si c'est le
+ * référentiel qui ne dit pas assez de choses de ses organisations.
+ *
+ * Écrit pour l'écran : jamais « Socle », toujours « référentiel ».
+ */
+export function noServiceSuggestionNote(raw: unknown, candidates: ServiceCandidate[]): string {
+  if (candidates.length === 0) return "Aucune organisation n'est disponible dans le référentiel.";
+  const fields = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const rawId = fields.socle_organization_id;
+  const rawReason = typeof fields.reason === "string" ? fields.reason.trim() : "";
+  const why =
+    typeof rawId === "string" && rawId.trim()
+      ? "L'organisation envisagée par l'IA ne figure pas parmi celles qui instruisent le courrier."
+      : rawReason
+        ? cut(rawReason, REASON_MAX_CHARS)
+        : "Le contenu ne relève clairement d'aucune organisation.";
+  const described = candidates.some((c) => c.attributions?.trim());
+  return described
+    ? why
+    : `${why} Les organisations n'ont pas d'attributions renseignées dans le référentiel : l'IA ne connaît que leurs noms et leurs démarches.`;
 }

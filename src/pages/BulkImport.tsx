@@ -16,6 +16,7 @@ import { listTags } from "@/services/courierTagService";
 import { storage } from "@/services/storageService";
 import { extractCourierInfo } from "@/services/courierAnalysisService";
 import { enqueueCourierAnalyses } from "@/services/courierAnalysisJobService";
+import { findSuggestedOrg } from "@/lib/service-suggestion";
 import BulkStep1Channel from "@/components/courier/bulk/BulkStep1Channel";
 import BulkStep2Upload from "@/components/courier/bulk/BulkStep2Upload";
 import BulkStep3Assign from "@/components/courier/bulk/BulkStep3Assign";
@@ -224,10 +225,12 @@ export default function BulkImport() {
             result.sender_match ??
             (await matchSender(organizationId, s).catch(() => null));
         }
-        const matchedService = services.find(
-          (s) => result.suggested_service_name &&
-            s.name.toLowerCase() === result.suggested_service_name.toLowerCase()
-        );
+        const matchedService = findSuggestedOrg(result, services);
+        const serviceHint = matchedService
+          ? result.suggested_service_reason ?? undefined
+          : `L'IA ne propose pas d'organisation. ${
+              result.service_suggestion_note ?? "Le contenu ne relève clairement d'aucune organisation."
+            }`;
 
         // Proportion des champs clés que CETTE analyse a effectivement trouvés —
         // pas une constante : un courrier qui ne nomme aucun service doit se voir
@@ -262,8 +265,11 @@ export default function BulkImport() {
               ...sender,
               title: result.suggested_subject || d.title,
               recipientName: result.recipient_name || d.recipientName,
+              // Jamais un nom sans identifiant : il créerait un courrier « affecté »
+              // à une organisation que rien ne désigne.
               serviceId: matchedService?.id ?? d.serviceId,
-              serviceName: matchedService?.name ?? (result.suggested_service_name || d.serviceName),
+              serviceName: matchedService?.name ?? d.serviceName,
+              serviceHint,
               // Les tags proposés s'ajoutent à ceux déjà posés sur le brouillon,
               // ils ne les remplacent pas — relancer l'analyse ne doit rien effacer.
               tags: [
@@ -307,7 +313,9 @@ export default function BulkImport() {
 
     for (const draft of drafts) {
       try {
-        const service = services.find((s) => s.id === draft.serviceId || s.name === draft.serviceName);
+        // Facultative : sans organisation, le courrier attend dans la boîte aux
+        // lettres qu'on l'affecte.
+        const service = draft.serviceId ? services.find((s) => s.id === draft.serviceId) : undefined;
 
         let workflowStateId: string | null = null;
         if (service?.workflow_id) {
@@ -326,7 +334,7 @@ export default function BulkImport() {
           channel: channel as "paper" | "email" | "portal",
           subject: draft.title || "Courrier importé",
           received_at: new Date().toISOString(),
-          assigned_service: service?.name ?? draft.serviceName ?? null,
+          assigned_service: service?.name ?? null,
           socle_organization_id: service?.id ?? null,
           workflow_state_id: workflowStateId,
           metadata: {
@@ -418,9 +426,8 @@ export default function BulkImport() {
     }, 3000);
   }
 
-  const hasMissingService = drafts.some((d) => d.flags.includes("missing-service"));
   const hasMissingCivility = drafts.some((d) => d.flags.includes("missing-civility"));
-  const canConfirm = drafts.length > 0 && !hasMissingService && !hasMissingCivility && !confirming;
+  const canConfirm = drafts.length > 0 && !hasMissingCivility && !confirming;
 
   // Un consultant (lecteur seul) ne peut pas créer de courrier : la page ne
   // sert à rien pour lui, on l'informe plutôt que de le laisser dérouler un
@@ -507,11 +514,6 @@ export default function BulkImport() {
                     <Loader2 className="h-4 w-4 animate-spin shrink-0" />
                     <span>Analyse OCR en cours…</span>
                   </div>
-                )}
-                {hasMissingService && !analyzing && (
-                  <p className="text-sm text-destructive">
-                    Certains courriers n'ont pas de service gestionnaire.
-                  </p>
                 )}
                 {hasMissingCivility && !analyzing && (
                   <p className="text-sm text-destructive">

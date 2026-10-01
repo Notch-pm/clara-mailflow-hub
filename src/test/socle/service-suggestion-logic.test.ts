@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildServiceCatalog,
+  noServiceSuggestionNote,
   resolveSuggestedService,
   selectServiceCandidates,
   serviceSuggestionPromptRules,
@@ -276,5 +277,36 @@ describe("catalogue avec attributions", () => {
 
   it("le prompt demande de s'appuyer d'abord sur les attributions", () => {
     expect(serviceSuggestionPromptRules(null)).toContain("D'ABORD sur les « attributions »");
+  });
+});
+
+describe("noServiceSuggestionNote", () => {
+  const described = { ...ccas, attributions: "Aides sociales. Ne traite pas la voirie." };
+
+  it("relaie la raison du modèle quand il n'a rien choisi", () => {
+    expect(noServiceSuggestionNote({ socle_organization_id: null, reason: " Sujet ambigu. " }, [described])).toBe(
+      "Sujet ambigu.",
+    );
+  });
+
+  it("dit que la proposition est hors catalogue plutôt que de relayer sa raison", () => {
+    const note = noServiceSuggestionNote({ socle_organization_id: "zzz", reason: "Voirie" }, [described]);
+    expect(note).toContain("ne figure pas");
+    expect(note).not.toContain("Voirie");
+  });
+
+  it("a une phrase par défaut sans raison", () => {
+    expect(noServiceSuggestionNote(undefined, [described])).toBe("Le contenu ne relève clairement d'aucune organisation.");
+  });
+
+  it("signale un référentiel sans attributions — sans jamais nommer le Socle", () => {
+    const note = noServiceSuggestionNote({ socle_organization_id: null, reason: "" }, [mairie, tech]);
+    expect(note).toContain("attributions");
+    expect(note).toContain("référentiel");
+    expect(note).not.toMatch(/socle/i);
+  });
+
+  it("explique un catalogue vide", () => {
+    expect(noServiceSuggestionNote({}, [])).toContain("Aucune organisation");
   });
 });
