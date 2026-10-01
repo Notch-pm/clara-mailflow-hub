@@ -5,6 +5,16 @@ import { fr } from "date-fns/locale";
 import { ChevronDown, Files, Inbox, Info, PencilLine, Plus, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -33,6 +43,7 @@ import {
   matchesFilters,
   sortForView,
   type MailroomFilters,
+  type MailroomItem,
   type MailroomView,
 } from "@/lib/mailroom";
 
@@ -68,6 +79,7 @@ export default function CourrierEntrant() {
   const [filters, setFilters] = useState<MailroomFilters>({ query: "", channels: [], serviceId: null });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [newDialogOpen, setNewDialogOpen] = useState(false);
+  const [toDelete, setToDelete] = useState<MailroomItem | null>(null);
 
   const mailroom = useMailroom(organizationId, period);
   const actions = useMailroomActions(organizationId ?? "");
@@ -296,6 +308,7 @@ export default function CourrierEntrant() {
                     onRemind={(courierId) => actions.remind.mutate(courierId)}
                     onAnalyze={(courierId) => actions.analyze.mutate([courierId])}
                     analyzing={actions.analyze.isPending}
+                    onDelete={canEdit ? setToDelete : undefined}
                   />
                 ) : (
                   <ListMessage>Sélectionnez un courrier.</ListMessage>
@@ -305,6 +318,35 @@ export default function CourrierEntrant() {
           </div>
         </>
       )}
+
+      <AlertDialog open={!!toDelete} onOpenChange={(open) => !open && setToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer ce courrier ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Cette action est définitive. Le courrier
+              {toDelete?.row.subject ? ` « ${toDelete.row.subject} »` : ""} sera supprimé.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={actions.remove.isPending}>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={actions.remove.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (!toDelete) return;
+                const id = toDelete.row.id;
+                actions.remove.mutate(id, {
+                  onSettled: () => setToDelete(null),
+                  onSuccess: () => setSelectedId((current) => (current === id ? null : current)),
+                });
+              }}
+            >
+              {actions.remove.isPending ? "Suppression…" : "Supprimer"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {organizationId && (
         <NewCourierDialog

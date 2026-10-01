@@ -13,6 +13,7 @@ import {
   Route,
   Sparkles,
   TriangleAlert,
+  Trash2,
   Undo2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -45,6 +46,8 @@ interface Props {
   onRemind: (courierId: string) => void;
   onAnalyze: (courierId: string) => void;
   analyzing: boolean;
+  /** Fourni : bouton « Supprimer » dans l'en-tête (confirmation portée par la page). */
+  onDelete?: (item: MailroomItem) => void;
   busy: boolean;
 }
 
@@ -72,6 +75,7 @@ export default function MailroomPanel({
   onRemind,
   onAnalyze,
   analyzing,
+  onDelete,
   busy,
 }: Props) {
   const navigate = useNavigate();
@@ -175,6 +179,18 @@ export default function MailroomPanel({
         <Button variant="outline" size="icon" className="h-8 w-8" title="Ouvrir la fiche" onClick={() => navigate(`/courrier/${row.id}`)}>
           <Maximize2 className="h-4 w-4" />
         </Button>
+        {onDelete && (
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-8 w-8 text-muted-foreground hover:border-destructive/35 hover:bg-destructive/5 hover:text-destructive"
+            title="Supprimer le courrier"
+            aria-label="Supprimer le courrier"
+            onClick={() => onDelete(item)}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        )}
       </div>
 
       <div className="flex flex-col gap-1.5">

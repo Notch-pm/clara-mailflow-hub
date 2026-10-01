@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { getMailroomCourier } from "@/services/mailroomService";
 import { enqueueCourierAnalyses } from "@/services/courierAnalysisJobService";
+import { deleteCourier } from "@/services/courierService";
 import { remindService, routeCourier, routeCouriers, transferCourier } from "@/services/courierRoutingService";
 import type { SocleOrgWithConfig } from "@/services/socleOrgConfigService";
 
@@ -95,5 +96,25 @@ export function useMailroomActions(organizationId: string) {
     onError: (err: Error) => toast.error(err.message),
   });
 
-  return { route, routeBatch, reassign, remind, analyze };
+  // Même geste et même garde que la boîte aux lettres : un courrier qui a des
+  // réponses ne se supprime pas avant elles (contrainte parent_courier_id).
+  const remove = useMutation({
+    mutationFn: async (courierId: string) => {
+      const { error } = await deleteCourier(organizationId, courierId);
+      if (error) {
+        throw new Error(
+          error.message?.includes("parent_courier_id")
+            ? "Ce courrier a des réponses associées. Supprimez d'abord les réponses avant de supprimer le courrier parent."
+            : error.message,
+        );
+      }
+    },
+    onSuccess: () => {
+      refresh();
+      toast.success("Courrier supprimé");
+    },
+    onError: (err: Error) => toast.error("Suppression impossible", { description: err.message }),
+  });
+
+  return { route, routeBatch, reassign, remind, analyze, remove };
 }
