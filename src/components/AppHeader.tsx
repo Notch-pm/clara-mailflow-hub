@@ -14,6 +14,7 @@ import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/contexts/AuthContext";
 import { AppSwitcher } from "@/components/AppSwitcher";
 import { NotificationBell } from "@/components/NotificationBell";
+import { GlobalSearch } from "@/components/search/GlobalSearch";
 import { canAccessSettings } from "@/lib/permissions";
 import { CURRENT_APP } from "@/lib/apps";
 
@@ -51,23 +52,28 @@ export function AppHeader() {
 
         <Separator orientation="vertical" className="hidden h-6 shrink-0 md:block" />
 
-        {/* Client (organisation courante) : son logo, à défaut son nom */}
+        {/* Client (organisation courante) : son logo, à défaut son nom. Masqué
+            sur téléphone, où la place revient à la recherche. */}
         {organizationLogo ? (
           <img
             src={organizationLogo}
             alt={organizationName ?? ""}
-            className="h-7 max-w-[100px] shrink-0 object-contain sm:max-w-[140px]"
+            className="hidden h-8 max-w-[160px] shrink-0 object-contain sm:block"
           />
         ) : (
           organizationName && (
-            <span className="truncate text-sm font-medium text-muted-foreground" title={organizationName}>
+            <span className="hidden truncate text-sm font-medium text-muted-foreground sm:inline" title={organizationName}>
               {organizationName}
             </span>
           )
         )}
       </div>
 
-      <div className="flex-1" />
+      {/* Centre : recherche globale (courriers et usagers), présente sur tous
+          les écrans — même place et même visuel que dans Iris. */}
+      <div className="flex min-w-0 flex-1 justify-center md:px-4">
+        <GlobalSearch />
+      </div>
 
       {/* Produit courant, calé à droite contre le bloc utilisateur */}
       <div className="flex shrink-0 items-center gap-2">

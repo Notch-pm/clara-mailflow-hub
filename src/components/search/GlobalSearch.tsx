@@ -1,4 +1,4 @@
-// Barre de recherche du tableau de bord — un courrier OU un usager, résultats
+// Barre de recherche de l'en-tête — un courrier OU un usager, résultats
 // groupés par nature. Trois caractères suffisent à la lancer, temporisée le
 // temps que la frappe se pose (`SEARCH_DEBOUNCE_MS`).
 //
@@ -139,7 +139,7 @@ export function GlobalSearch() {
 
   let cursor = -1;
   return (
-    <div ref={boxRef} className="relative w-full max-w-[560px]">
+    <div ref={boxRef} className="relative w-full max-w-[520px]">
       <Search
         className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
         aria-hidden="true"
@@ -155,7 +155,7 @@ export function GlobalSearch() {
         aria-controls={showList ? LIST_ID : undefined}
         aria-autocomplete="list"
         aria-activedescendant={showList ? `${LIST_ID}-${index}` : undefined}
-        className="h-10 rounded-full border-transparent bg-muted/70 pl-9 pr-9 focus-visible:border-ring focus-visible:bg-background md:text-[13.5px]"
+        className="h-9 rounded-full border-transparent bg-muted/70 pl-9 pr-9 text-base focus-visible:border-ring focus-visible:bg-background md:text-[13px]"
         onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
         onKeyDown={onKeyDown}
@@ -171,11 +171,11 @@ export function GlobalSearch() {
         </button>
       )}
 
-      {/* Sous lg le panneau épouse le champ ; au-dessus il s'aligne sur son bord
-          DROIT — calé à gauche, ses 600 px débordaient de la page, le champ
-          étant lui-même collé à droite de l'en-tête. */}
+      {/* Calé sur le bord gauche du champ, comme dans Iris. Sur téléphone le
+          champ est trop étroit pour porter le panneau : celui-ci occupe alors
+          la largeur de l'écran, sous l'en-tête. */}
       {showPanel && (
-        <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-40 max-h-[70vh] overflow-y-auto rounded-xl border border-border bg-popover p-1.5 shadow-airbnb-lg lg:left-auto lg:w-[600px] lg:max-w-[calc(100vw-7rem)]">
+        <div className="fixed inset-x-2 top-[62px] z-40 max-h-[70vh] overflow-y-auto rounded-xl border border-border bg-popover p-1.5 shadow-airbnb-lg sm:absolute sm:inset-x-auto sm:left-0 sm:top-[calc(100%+6px)] sm:w-[min(560px,calc(100vw-2rem))]">
           {!searchable ? (
             <p className="px-2.5 py-2 text-[12.5px] text-muted-foreground">
               Saisissez au moins {MIN_QUERY_LENGTH} caractères.

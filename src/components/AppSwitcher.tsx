@@ -23,9 +23,11 @@ export function AppSwitcher() {
         <button
           type="button"
           aria-label="Changer d'application"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[10px] text-foreground transition-colors hover:bg-muted active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <LayoutGrid className="h-5 w-5" aria-hidden="true" />
+          {/* Mesures d'Iris (tuile 34 px, icône 19 px, trait 1,9) : la gamme
+              partage la même bascule. */}
+          <LayoutGrid className="h-[19px] w-[19px]" strokeWidth={1.9} aria-hidden="true" />
         </button>
       </DropdownMenuTrigger>
 

@@ -5,7 +5,6 @@ import { MailOpen, Clock, FileText, FileCheck, PenLine } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { GlobalSearch } from "@/components/search/GlobalSearch";
 import { supabase } from "@/integrations/supabase/client";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -226,18 +225,11 @@ export default function Dashboard() {
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6 md:space-y-8">
-      {/* La recherche ne se range à côté du titre qu'à partir de lg : sur une
-          tablette, ses 560 px ne laissaient au sous-titre qu'une colonne de
-          130 px, qui se cassait en deux lignes contre le champ. */}
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-bold tracking-tight">Tableau de bord</h1>
-          <p className="text-muted-foreground">Vue d'ensemble de votre gestion du courrier</p>
-        </div>
-        {/* Panneau flottant : il doit passer AU-DESSUS des cartes de KPI. */}
-        <div className="relative z-30 w-full lg:max-w-[560px]">
-          <GlobalSearch />
-        </div>
+      {/* La recherche globale a quitté cet en-tête pour celui de l'application,
+          où elle reste accessible depuis tous les écrans. */}
+      <div className="min-w-0">
+        <h1 className="text-2xl font-bold tracking-tight">Tableau de bord</h1>
+        <p className="text-muted-foreground">Vue d'ensemble de votre gestion du courrier</p>
       </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
