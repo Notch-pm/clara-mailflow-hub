@@ -18,9 +18,9 @@ export interface ParapheurRow {
   service: string | null;
   /** Étape attendue (« Visa du DGS », « À signer ») ou action faite (« Visée »). */
   step: string;
-  /** Attente en jours (files) ; null dans « Traitées par moi ». */
+  /** Attente en jours (files) ; null dans « Traités ». */
   waitingDays: number | null;
-  /** Date de mon action (« Traitées par moi »). */
+  /** Date de mon action (« Traités »). */
   handledAt: string | null;
   /** Un autre viseur est attendu : je vise à sa place si je vise. */
   designatedToOther: boolean;

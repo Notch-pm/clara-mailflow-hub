@@ -178,7 +178,7 @@ export default function Parapheur() {
           <div role="group" aria-label="Périmètre" className="flex h-9 rounded-full border p-[3px]">
             {(
               [
-                ["mine", "Désignées à moi"],
+                ["mine", "Mes courriers"],
                 ["all", "Toute l'organisation"],
               ] as const
             ).map(([value, label]) => (

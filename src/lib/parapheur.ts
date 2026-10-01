@@ -8,13 +8,13 @@
 
 export type ParapheurTab = "visa" | "signature" | "done";
 
-/** « Désignées à moi » ou « Toute l'organisation » (onglet À viser). */
+/** « Mes courriers » ou « Toute l'organisation » (onglet À viser). */
 export type VisaScope = "mine" | "all";
 
 export const PARAPHEUR_TAB_LABELS: Record<ParapheurTab, string> = {
   visa: "À viser",
   signature: "À signer",
-  done: "Traitées par moi",
+  done: "Traités",
 };
 
 export function parapheurTabs(
@@ -28,7 +28,7 @@ export function parapheurTabs(
 }
 
 /**
- * « Désignées à moi » garde aussi les réponses sans viseur désigné : elles
+ * « Mes courriers » garde aussi les réponses sans viseur désigné : elles
  * attendent n'importe quel viseur, donc moi. Seules sortent celles qu'un autre
  * viseur est attendu pour viser — viser à sa place reste permis, mais c'est un
  * choix qu'on fait en élargissant la vue.
@@ -65,7 +65,7 @@ export function shortWaitLabel(days: number): string {
   return days <= 0 ? "Aujourd'hui" : `${days} j`;
 }
 
-/** Début du mois civil en cours : « Traitées par moi » couvre ce mois-ci. */
+/** Début du mois civil en cours : « Traités » couvre ce mois-ci. */
 export function startOfMonthIso(now: Date = new Date()): string {
   return new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
 }

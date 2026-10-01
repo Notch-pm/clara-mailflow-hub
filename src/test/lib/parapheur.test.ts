@@ -25,7 +25,7 @@ describe("parapheurTabs", () => {
 });
 
 describe("inVisaScope", () => {
-  it("« Désignées à moi » garde les réponses sans viseur désigné", () => {
+  it("« Mes courriers » garde les réponses sans viseur désigné", () => {
     expect(inVisaScope({ designatedToOther: false }, "mine")).toBe(true);
     expect(inVisaScope({ designatedToOther: true }, "mine")).toBe(false);
     expect(inVisaScope({ designatedToOther: true }, "all")).toBe(true);
