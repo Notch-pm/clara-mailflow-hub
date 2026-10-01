@@ -359,7 +359,7 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="mx-auto flex max-w-[1280px] flex-col gap-6">
+    <div className="flex flex-col gap-6">
       {/* La recherche globale vit dans l'en-tête de l'application. */}
       <div className="flex flex-wrap items-end gap-4">
         <div className="min-w-0 flex-[1_1_320px]">
