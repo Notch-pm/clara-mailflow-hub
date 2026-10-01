@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isFreeExitFromVisa, nominalPathReaches } from "@/lib/reply-visa";
+import { isContentFrozenByVisa, isFreeExitFromVisa, nominalPathReaches } from "@/lib/reply-visa";
 
 /**
  * Miroir écran du trigger `couriers_enforce_visa` : ce qui sort d'une étape de
@@ -84,5 +84,36 @@ describe("isFreeExitFromVisa — renvoi pour correction", () => {
   it("un cycle de transitions nominales ne boucle pas", () => {
     const cyc = [T("a", "b", "next"), T("b", "a", "next")];
     expect(nominalPathReaches("a", "visa", cyc)).toBe(false);
+  });
+});
+
+describe("isContentFrozenByVisa", () => {
+  // Workflow de test : rédaction → visa → signature → terminée ; « à corriger » ramène au visa.
+  const T = [
+    { from_state_id: "redaction", to_state_id: "signature", kind: "next" },
+    { from_state_id: "redaction", to_state_id: "visa", kind: null },
+    { from_state_id: "visa", to_state_id: "signature", kind: "next" },
+    { from_state_id: "visa", to_state_id: "corriger", kind: null },
+    { from_state_id: "visa", to_state_id: "redaction", kind: "previous" },
+    { from_state_id: "corriger", to_state_id: "visa", kind: "next" },
+    { from_state_id: "signature", to_state_id: "terminee", kind: "next" },
+  ];
+
+  it("fige pendant l'étape de visa, visée ou non", () => {
+    expect(isContentFrozenByVisa({ id: "visa", requires_visa: true }, [], T)).toBe(true);
+  });
+
+  it("fige APRÈS le visa, tant qu'il est en vigueur", () => {
+    expect(isContentFrozenByVisa({ id: "signature" }, ["visa"], T)).toBe(true);
+  });
+
+  it("rouvre en rédaction et « à corriger » : la réponse repassera par le visa", () => {
+    expect(isContentFrozenByVisa({ id: "redaction", is_initial: true }, ["visa"], T)).toBe(false);
+    expect(isContentFrozenByVisa({ id: "corriger" }, ["visa"], T)).toBe(false);
+  });
+
+  it("ne fige rien sans visa en vigueur", () => {
+    expect(isContentFrozenByVisa({ id: "signature" }, [], T)).toBe(false);
+    expect(isContentFrozenByVisa(null, ["visa"], T)).toBe(false);
   });
 });

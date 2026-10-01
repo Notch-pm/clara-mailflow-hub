@@ -61,7 +61,7 @@ import {
   visaPersonName,
 } from "@/services/courierVisaService";
 import { ReplyVisaTrail } from "./ReplyVisaTrail";
-import { isFreeExitFromVisa } from "@/lib/reply-visa";
+import { isContentFrozenByVisa, isFreeExitFromVisa } from "@/lib/reply-visa";
 import { Input } from "@/components/ui/input";
 import { appendSignature, buildSignatureBlock } from "@/lib/reply-signature";
 import { useAuth } from "@/contexts/AuthContext";
@@ -347,9 +347,8 @@ export default function ReplyComposer({
   const isFinal = currentState?.category === "processed" || currentState?.is_final === true;
   const isSignatureState = (currentState as any)?.requires_signature === true;
   const isSendState = (currentState as any)?.is_send === true;
-  // Étape de visa : le contenu est figé tant que la réponse s'y trouve — on vise
-  // ce qu'on a lu. Un retour en arrière rouvre la rédaction (et exigera un
-  // nouveau visa au prochain passage).
+  // Étape de visa : on y vise ce qu'on a lu (voir `isContentFrozenByVisa`
+  // pour le contenu, figé aussi APRÈS le visa).
   const isVisaState = currentState?.requires_visa === true;
   const replyVisas = useMemo(
     () => (reply ? visas.filter((v) => v.courier_id === reply.id) : []),
@@ -357,7 +356,18 @@ export default function ReplyComposer({
   );
   const activeVisa = reply ? activeVisaFor(visas, reply.id, currentState?.id) : null;
   const currentUserIsViseur = serviceViseurs.some((v) => v.id === currentUserId);
-  const editorDisabled = !!readOnly || isFinal || isSigned || isVisaState;
+  // Un visa en vigueur fige le contenu jusqu'au renvoi en rédaction ou « à
+  // corriger » — sinon on viserait un texte et on en signerait un autre.
+  const frozenByVisa = useMemo(
+    () =>
+      isContentFrozenByVisa(
+        currentState,
+        replyVisas.filter((v) => !v.superseded_at && v.workflow_state_id).map((v) => v.workflow_state_id!),
+        workflow?.transitions ?? [],
+      ),
+    [currentState, replyVisas, workflow],
+  );
+  const editorDisabled = !!readOnly || isFinal || isSigned || frozenByVisa;
 
   const selectedSignatory = useMemo(
     () => serviceSignatories.find((s) => s.id === signatoryId) ?? null,
@@ -1432,6 +1442,14 @@ export default function ReplyComposer({
         </div>
       )}
       {replyVisas.length > 0 && <ReplyVisaTrail visas={replyVisas} className="shrink-0" />}
+
+      {/* Figé par un visa déjà donné : on dit pourquoi, et comment rouvrir. */}
+      {frozenByVisa && !isVisaState && !isFinal && !isSigned && (
+        <p className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+          <Lock className="h-3 w-3 shrink-0" aria-hidden="true" />
+          Réponse visée : son contenu est figé. Pour le modifier, renvoyez-la en rédaction — un nouveau visa sera demandé.
+        </p>
+      )}
 
       {/* Objet : celui du courriel envoyé et de la ligne « Objet » de la lettre. */}
       <div className="flex shrink-0 items-center gap-2">

@@ -58,3 +58,25 @@ export function isFreeExitFromVisa(
   if (graph && choice.target.id) return nominalPathReaches(choice.target.id, graph.visaStateId, graph.transitions);
   return false;
 }
+
+/**
+ * Le contenu d'une réponse (corps, objet, canal) est-il figé par un visa ?
+ *
+ * Pendant l'étape de visa, toujours : on vise ce qu'on a lu. APRÈS le visa
+ * aussi, tant qu'il est en vigueur — sinon on vise un texte et on en signe ou
+ * on en envoie un autre, sous un visa qui ne dit plus vrai. Le texte ne se
+ * rouvre que si la réponse est revenue à une étape d'où elle repassera par ce
+ * visa : l'état initial (renvoi en rédaction) ou une étape dont la suite
+ * nominale y ramène (« À corriger »). Le passage suivant par l'étape périme le
+ * visa (trigger `couriers_supersede_visas`) et en exige un neuf.
+ */
+export function isContentFrozenByVisa(
+  currentState: { id: string; is_initial?: boolean | null; requires_visa?: boolean | null } | null | undefined,
+  activeVisaStateIds: readonly string[],
+  transitions: readonly VisaGraphTransition[],
+): boolean {
+  if (!currentState) return false;
+  if (currentState.requires_visa) return true;
+  if (currentState.is_initial) return false;
+  return activeVisaStateIds.some((visaStateId) => !nominalPathReaches(currentState.id, visaStateId, transitions));
+}
