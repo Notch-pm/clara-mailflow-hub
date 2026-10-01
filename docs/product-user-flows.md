@@ -151,7 +151,7 @@ Les réponses ont leur propre workflow, paramétrable par organisation. Ce workf
 
 - brouillon ;
 - relecture ;
-- validation ;
+- validation — **visa** (une ou plusieurs étapes, voir parcours 4 bis) ;
 - signature ;
 - envoi ;
 - archivage.
@@ -171,6 +171,22 @@ Permettre à un élu, dirigeant ou signataire autorisé d'apposer une signature 
 - La signature est une apposition simple d'une image paramétrée pour le signataire.
 - La réponse peut être envoyée sous forme d'email ou produite en PDF.
 - Pour les PDF, Clara utilise un template aux couleurs du client, avec variables de fusion.
+
+## Parcours critique 4 bis — Viser une réponse
+
+### Objectif
+
+Faire valider une réponse par la hiérarchie (« j'ai vu, je valide ») avant qu'elle n'avance — typiquement chef de service, puis DGS, puis signature de l'élu. Demande prospect du 2026-10-01.
+
+### Règles métier
+
+- Le visa n'appose rien sur le document : c'est une validation tracée, sans image ni modification du texte.
+- Une ou plusieurs étapes du workflow réponse sont marquées « étape de visa » ; une même étape ne peut pas être à la fois visa et signature (ni envoi).
+- Le viseur est **désigné sur la réponse**, étape par étape. Tout autre viseur de l'organisation gestionnaire peut viser à sa place ; la trace le dit (« à la place de … »).
+- Viser exige l'attribut « Viseur » (indépendant du rôle) **et** le rattachement à l'organisation gestionnaire, paramétrés par un administrateur.
+- Pendant l'étape, le texte est figé : on vise ce qu'on a lu. Un renvoi en rédaction rouvre le texte ; le visa déjà donné reste dans la trace mais est à refaire au prochain passage.
+- Sans visa, la réponse ne peut ni avancer ni être envoyée — même par appel direct à la base. Le renvoi en arrière et l'abandon restent possibles.
+- Le visa est visible dans l'onglet Réponse du courrier entrant, sur l'écran du courrier sortant et dans l'historique ; le viseur retrouve ce qui l'attend au tableau de bord (« En attente de votre visa »).
 
 ## Parcours critique 5 — Archiver et retrouver les courriers
 

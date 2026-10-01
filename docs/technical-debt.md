@@ -80,6 +80,11 @@
 3. **131 casts `as any`/`as never`** alors que le client Supabase est typé (`Database`) — la majorité date d'avant la régénération des types. Cible < 30.
 4. `couriers.metadata` fourre-tout (tags, body, imap_settings_id, socle_organization_id dupliqué) — schéma à documenter, puis promouvoir les champs stables en colonnes.
 5. ~~**Rapprochement de contacts à faire porter par le Socle**~~ ✅ 2026-07-17 — le Socle expose `POST /v1/contacts/match` (`pg_trgm` + `unaccent` en SQL). Clara délègue : un seul appel par saisie (action `match` du proxy), plus de moteur de comparaison local, les trois angles morts (téléphone seul, début du nom, accents) sont levés. Voir `docs/features.md` § Détection de doublons.
+6. **Suites du visa des réponses** (livré le 2026-10-01, `3aef8b8`) — hors périmètre de la première version :
+   - espace élu mobile : pas d'onglet « À viser » (`useSignAndAdvance` ne connaît que signature/envoi ; dans une étape de visa, l'action principale y tombe sur le refus serveur) ;
+   - aucune notification (cloche, push, mail) au viseur désigné — il découvre la réponse au tableau de bord ;
+   - « Autres actions » du composeur propose encore les sorties vers l'avant depuis une étape de visa : le serveur les refuse (toast d'erreur), l'UI pourrait les griser ;
+   - verrou du contenu pendant le visa côté UI seulement (même choix que la signature).
 
 ## Config audit
 
