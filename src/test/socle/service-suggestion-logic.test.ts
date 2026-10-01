@@ -7,6 +7,10 @@ import {
   type ServiceCandidate,
 } from "../../../supabase/functions/_shared/serviceSuggestion";
 import {
+  ATTRIBUTIONS_MAX_CHARS,
+  attributionsOutcome,
+  parseAttributionsResponse,
+  planAttributions,
   planPublicDescriptions,
   plainPublicDescription,
   PUBLIC_DESCRIPTION_MAX_CHARS,
@@ -166,5 +170,111 @@ describe("descriptifs publics (sync)", () => {
       { id: "1", public_description: "Nouveau" },
       { id: "2", public_description: null },
     ]);
+  });
+});
+
+describe("attributions (sync)", () => {
+  it("lit la réponse en tolérant les entrées incomplètes", () => {
+    expect(
+      parseAttributionsResponse([
+        {
+          id: "a",
+          name: "Services techniques",
+          is_internal_service: true,
+          attributions: "**Traite** :\n- voirie\n- éclairage",
+          updated_at: null,
+        },
+        { id: "b", name: "Sans texte" },
+        { id: "c", attributions: "   " },
+        { attributions: "Sans identifiant" },
+        null,
+        "x",
+        { id: " d ", attributions: "Traite l'état civil." },
+      ]),
+    ).toEqual([
+      { id: "a", attributions: "Traite : • voirie • éclairage" },
+      { id: "d", attributions: "Traite l'état civil." },
+    ]);
+  });
+
+  it("borne le texte", () => {
+    const [item] = parseAttributionsResponse([{ id: "a", attributions: "a".repeat(5000) }])!;
+    expect(item.attributions.length).toBe(ATTRIBUTIONS_MAX_CHARS);
+  });
+
+  it("[] s'applique (rien d'écrit) ; un statut d'erreur ou un corps mal formé gardent l'existant", () => {
+    expect(attributionsOutcome(200, [])).toEqual({ kind: "apply", items: [] });
+    expect(attributionsOutcome(404, null)).toEqual({ kind: "keep", reason: "le Socle répond 404" });
+    expect(attributionsOutcome(400, null).kind).toBe("keep");
+    expect(attributionsOutcome(503, null).kind).toBe("keep");
+    expect(attributionsOutcome(200, { items: [] })).toEqual({ kind: "keep", reason: "réponse inattendue (pas un tableau)" });
+    expect(attributionsOutcome(200, null).kind).toBe("keep");
+  });
+
+  it("aligne le miroir : absents remis à NULL, pas d'héritage du parent, inchangés ignorés", () => {
+    const mirror = [
+      { id: "1", socle_id: "mairie", attributions: null },
+      { id: "2", socle_id: "tech", attributions: "Ancien" },
+      { id: "3", socle_id: "ccas", attributions: "Stable" },
+      { id: "4", socle_id: "voirie", attributions: null },
+    ];
+    expect(
+      planAttributions(mirror, [
+        { id: "mairie", attributions: "Tout ce qui n'a pas de service désigné." },
+        { id: "ccas", attributions: "Stable" },
+      ]),
+    ).toEqual([
+      { id: "1", attributions: "Tout ce qui n'a pas de service désigné." },
+      { id: "2", attributions: null },
+    ]);
+    expect(planAttributions(mirror, [])).toEqual([
+      { id: "2", attributions: null },
+      { id: "3", attributions: null },
+    ]);
+  });
+});
+
+describe("catalogue avec attributions", () => {
+  const techInterne = org({
+    id: "tech",
+    name: "Services techniques",
+    socle_parent_id: "s-mairie",
+    attributions: "Traite : • voirie • éclairage public. Ne traite pas : • espaces verts",
+  });
+  const ccasDecrit = org({
+    id: "ccas",
+    name: "CCAS",
+    socle_parent_id: "s-mairie",
+    public_description: "Aides financières, domiciliation, seniors.",
+    attributions: "Traite : • aides sociales • domiciliation",
+  });
+
+  it("service interne : bloc « attributions » sans descriptif", () => {
+    expect(buildServiceCatalog([techInterne], new Map(), [mairie, techInterne])).toBe(
+      "- [tech] Services techniques (rattachée à Mairie) — attributions : Traite : • voirie • éclairage public. Ne traite pas : • espaces verts",
+    );
+  });
+
+  it("attributions d'abord, descriptif étiqueté « informations usager » ensuite, puis démarches", () => {
+    expect(buildServiceCatalog([ccasDecrit], new Map([["ccas", ["Aide d'urgence"]]]), [mairie, ccasDecrit])).toBe(
+      "- [ccas] CCAS (rattachée à Mairie) — attributions : Traite : • aides sociales • domiciliation — informations usager : Aides financières, domiciliation, seniors. — démarches instruites : Aide d'urgence",
+    );
+  });
+
+  it("sans attributions : la ligne d'avant, inchangée", () => {
+    expect(buildServiceCatalog([ccas], new Map(), [mairie, ccas])).toBe(
+      "- [ccas] CCAS (rattachée à Mairie) — Aides financières, domiciliation, seniors.",
+    );
+  });
+
+  it("au-delà du budget, le descriptif part avant que les attributions ne raccourcissent", () => {
+    const longDesc = { ...ccasDecrit, public_description: "d".repeat(400) };
+    const catalog = buildServiceCatalog([longDesc], new Map(), [mairie, longDesc], 200);
+    expect(catalog).toContain("attributions : Traite : • aides sociales • domiciliation");
+    expect(catalog).not.toContain("informations usager");
+  });
+
+  it("le prompt demande de s'appuyer d'abord sur les attributions", () => {
+    expect(serviceSuggestionPromptRules(null)).toContain("D'ABORD sur les « attributions »");
   });
 });

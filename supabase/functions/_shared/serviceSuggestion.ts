@@ -5,11 +5,19 @@
 // Deno : testée dans `src/test/socle/service-suggestion-logic.test.ts`.
 //
 // Le modèle reçoit un CATALOGUE décrit — pas une liste de noms nus : pour
-// chaque organisation, ce qu'elle dit faire au public (« informations usager »
-// du Socle, `socle_organizations.public_description`) et les démarches qu'elle
-// instruit (`procedure_organizations`). Un service interne n'a pas de
-// descriptif au Socle : son nom, sa place dans l'arbre et ses démarches sont
-// alors tout ce que le modèle sait de lui.
+// chaque organisation,
+// - ses ATTRIBUTIONS (`socle_organizations.attributions`, Socle ≥ 1.33.0) : texte
+//   interne de ce qu'elle traite et ne traite pas, services internes compris —
+//   la source la plus fiable, présentée en premier ;
+// - ce qu'elle dit faire au public (« informations usager »,
+//   `public_description`), en complément ;
+// - les démarches qu'elle instruit (`procedure_organizations`).
+// Une organisation sans attributions garde la ligne d'avant (descriptif non
+// étiqueté). Un service interne sans attributions n'a que son nom, sa place dans
+// l'arbre et ses démarches.
+//
+// ⚠️ Les attributions sont INTERNES : elles ne vont qu'au modèle et aux agents,
+// jamais dans un texte destiné à l'usager (brouillon de réponse, portail).
 //
 // Il répond par IDENTIFIANT, revalidé ici : un id inventé ou hors catalogue ne
 // passe pas.
@@ -20,6 +28,8 @@ export interface ServiceCandidate {
   socle_id: string;
   socle_parent_id: string | null;
   public_description: string | null;
+  /** Attributions internes (ce qu'elle traite / ne traite pas) — absent ou null : rien d'écrit. */
+  attributions?: string | null;
   workflow_id: string | null;
 }
 
@@ -44,8 +54,25 @@ export function selectServiceCandidates(orgs: ServiceCandidate[]): ServiceCandid
   return withWorkflow.length > 0 ? withWorkflow : orgs;
 }
 
-/** Budget du catalogue dans le prompt, tous services confondus. */
-export const SERVICE_CATALOG_MAX_CHARS = 8000;
+/**
+ * Budget du catalogue dans le prompt, tous services confondus. Relevé de 8000 à
+ * 16000 avec les attributions (jusqu'à 2000 caractères par organisation).
+ */
+export const SERVICE_CATALOG_MAX_CHARS = 16000;
+
+/**
+ * Paliers de réduction, du plus riche au plus sobre : le descriptif public
+ * raccourcit puis disparaît AVANT que les attributions, plus fiables, ne
+ * raccourcissent à leur tour.
+ */
+const CATALOG_STEPS: { attributionsMax: number; descriptionMax: number }[] = [
+  { attributionsMax: 2000, descriptionMax: 400 },
+  { attributionsMax: 2000, descriptionMax: 150 },
+  { attributionsMax: 2000, descriptionMax: 0 },
+  { attributionsMax: 800, descriptionMax: 0 },
+  { attributionsMax: 400, descriptionMax: 0 },
+  { attributionsMax: 200, descriptionMax: 0 },
+];
 const MAX_PROCEDURES_PER_SERVICE = 10;
 
 function cut(text: string, max: number): string {
@@ -54,10 +81,14 @@ function cut(text: string, max: number): string {
 
 /**
  * Une ligne par organisation :
- * `- [id] Nom (rattachée à Parent) — descriptif — démarches instruites : A, B`.
+ * - avec attributions :
+ *   `- [id] Nom (rattachée à Parent) — attributions : … — informations usager : … — démarches instruites : A, B`
+ * - sans (comportement d'avant, inchangé) :
+ *   `- [id] Nom (rattachée à Parent) — descriptif — démarches instruites : A, B`
  *
- * Au-delà du budget, les descriptifs raccourcissent, puis disparaissent : le nom
- * et les démarches restent, c'est le minimum pour choisir.
+ * Au-delà du budget (voir `CATALOG_STEPS`), les descriptifs raccourcissent puis
+ * disparaissent, ensuite seulement les attributions raccourcissent : le nom et les
+ * démarches restent, c'est le minimum pour choisir.
  */
 export function buildServiceCatalog(
   candidates: ServiceCandidate[],
@@ -68,14 +99,17 @@ export function buildServiceCatalog(
   if (candidates.length === 0) return "(aucune organisation)";
   const nameBySocleId = new Map(allOrgs.map((o) => [o.socle_id, o.name]));
 
-  const render = (descriptionMax: number) =>
+  const render = ({ attributionsMax, descriptionMax }: (typeof CATALOG_STEPS)[number]) =>
     candidates
       .map((o) => {
         const parts = [`- [${o.id}] ${o.name}`];
         const parent = o.socle_parent_id ? nameBySocleId.get(o.socle_parent_id) : undefined;
         if (parent) parts[0] += ` (rattachée à ${parent})`;
+        const attributions = o.attributions?.trim();
+        if (attributions) parts.push(`attributions : ${cut(attributions, attributionsMax)}`);
         if (descriptionMax > 0 && o.public_description?.trim()) {
-          parts.push(cut(o.public_description.trim(), descriptionMax));
+          const description = cut(o.public_description.trim(), descriptionMax);
+          parts.push(attributions ? `informations usager : ${description}` : description);
         }
         const procedures = proceduresByOrgId.get(o.id) ?? [];
         if (procedures.length > 0) {
@@ -87,11 +121,11 @@ export function buildServiceCatalog(
       })
       .join("\n");
 
-  for (const descriptionMax of [400, 150, 0]) {
-    const catalog = render(descriptionMax);
+  for (const step of CATALOG_STEPS) {
+    const catalog = render(step);
     if (catalog.length <= maxChars) return catalog;
   }
-  return cut(render(0), maxChars);
+  return cut(render(CATALOG_STEPS[CATALOG_STEPS.length - 1]), maxChars);
 }
 
 /** Propriété du schéma de sortie (via `objectSchema` / `jsonSchemaInstruction`). */
@@ -125,7 +159,7 @@ export const SERVICE_SUGGESTION_PROPERTY = {
 
 /** Consignes du prompt, avec l'organisation déjà désignée s'il y en a une. */
 export function serviceSuggestionPromptRules(current: { id: string; name: string } | null): string {
-  const base = `- suggested_service : l'organisation qui devrait INSTRUIRE ce courrier, choisie EXCLUSIVEMENT dans le catalogue des organisations ci-dessous (copie l'identifiant exact indiqué entre crochets). Fonde-toi sur ce que chacune déclare faire et sur les démarches qu'elle instruit, rapprochés du sujet du courrier — pas sur une ressemblance de nom. reason : une phrase factuelle qui cite ce qui, dans le courrier, relève de ses attributions. Si aucune ne s'impose, socle_organization_id = null.
+  const base = `- suggested_service : l'organisation qui devrait INSTRUIRE ce courrier, choisie EXCLUSIVEMENT dans le catalogue des organisations ci-dessous (copie l'identifiant exact indiqué entre crochets). Fonde-toi D'ABORD sur les « attributions » quand une organisation en a (ce qu'elle traite ET ce qu'elle ne traite pas : une exclusion explicite l'écarte), puis sur les démarches qu'elle instruit ; les « informations usager » ne viennent qu'en complément. Rapproche-les du sujet du courrier — pas d'une ressemblance de nom. reason : une phrase factuelle qui cite ce qui, dans le courrier, relève de ses attributions. Si aucune ne s'impose, socle_organization_id = null.
   confidence : de 0 à 100, ta confiance que CE service est le bon — 90 et plus seulement si le courrier relève sans ambiguïté de ses attributions (il pourra être routé sans relecture détaillée) ; moins de 70 si deux services sont plausibles, si le courrier mêle plusieurs demandes relevant de services différents ou si le contenu est peu lisible. alternative_ids : jusqu'à deux autres identifiants du catalogue plausibles, liste vide s'il n'y en a pas.`;
   if (!current) return base;
   return `${base}

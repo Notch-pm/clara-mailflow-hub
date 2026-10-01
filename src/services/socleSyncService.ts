@@ -51,6 +51,10 @@ export interface SocleSyncCounters {
    * runs antérieurs au 2026-09-13 ; 0 = charte illisible, miroir laissé en l'état.
    */
   charte_synchronisee?: number;
+  /** Descriptifs publics (« informations usager ») réécrits. Absent avant le 2026-10-01. */
+  descriptifs_synchronises?: number;
+  /** Attributions internes réécrites (services internes compris). Absent avant le 2026-10-01. */
+  attributions_synchronisees?: number;
   /**
    * Ce qui n'a pas pu être fait sans faire échouer la synchronisation
    * (ex. relais illisible : clé sans le scope requis, organisation hors

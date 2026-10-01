@@ -610,19 +610,26 @@ export const PUBLIC_DESCRIPTION_MAX_CHARS = 1500;
  * coûtent des caractères.
  */
 export function plainPublicDescription(markdown: unknown): string | null {
+  return plainMarkdown(markdown, PUBLIC_DESCRIPTION_MAX_CHARS);
+}
+
+/**
+ * Markdown → texte brut d'une ligne, borné à `max` caractères. `listMarker` :
+ * ce qui remplace la puce d'un élément de liste (rien pour le descriptif ; « • »
+ * pour les attributions, dont les listes « traite / ne traite pas » portent le sens).
+ */
+function plainMarkdown(markdown: unknown, max: number, listMarker = ""): string | null {
   if (typeof markdown !== "string") return null;
   const text = markdown
     .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/^\s{0,3}#{1,6}\s+/gm, "")
-    .replace(/^\s*[-*+]\s+/gm, "")
+    .replace(/^\s*[-*+]\s+/gm, listMarker)
     .replace(/(\*\*|__|\*|_|`)/g, "")
     .replace(/\s+/g, " ")
     .trim();
   if (!text) return null;
-  return text.length > PUBLIC_DESCRIPTION_MAX_CHARS
-    ? `${text.slice(0, PUBLIC_DESCRIPTION_MAX_CHARS - 1).trimEnd()}…`
-    : text;
+  return text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text;
 }
 
 /**
@@ -643,6 +650,73 @@ export function planPublicDescriptions(
   return mirror
     .map((row) => ({ id: row.id, public_description: bySocleId.get(row.socle_id) ?? null }))
     .filter((next, i) => next.public_description !== (mirror[i].public_description ?? null));
+}
+
+// ── Attributions internes des organisations ──
+// Lues sur `GET /v1/organizations/attributions?tenant_id=` (public-api ≥ 1.33.0) :
+// un tableau nu, une entrée par organisation ACTIVE du sous-arbre qui a écrit un
+// texte — services internes COMPRIS, contrairement au descriptif public. Texte
+// interne (ce que l'organisation traite et ne traite pas) : il nourrit le
+// catalogue de la proposition du service instructeur, jamais un écran usager.
+// Pas d'héritage : une organisation absente n'a rien écrit.
+
+/** Ce que Clara lit d'un élément de `/v1/organizations/attributions`. */
+export interface SocleOrganizationAttributions {
+  id: string;
+  attributions: string;
+}
+
+/** Le Socle borne le texte à 2000 caractères ; le miroir garde la même borne, en texte brut. */
+export const ATTRIBUTIONS_MAX_CHARS = 2000;
+
+/**
+ * Réponse brute → entrées exploitables, ou `null` si la réponse n'a pas la forme
+ * attendue (pas un tableau) : c'est alors une erreur, et le miroir ne bouge pas —
+ * surtout pas un effacement général sur une réponse mal formée. Une entrée sans
+ * identifiant ou sans texte est ignorée ; `[]` est un cas normal (rien d'écrit).
+ */
+export function parseAttributionsResponse(body: unknown): SocleOrganizationAttributions[] | null {
+  if (!Array.isArray(body)) return null;
+  const items: SocleOrganizationAttributions[] = [];
+  for (const raw of body) {
+    if (!raw || typeof raw !== "object") continue;
+    const { id, attributions } = raw as Record<string, unknown>;
+    if (typeof id !== "string" || !id.trim()) continue;
+    const text = plainMarkdown(attributions, ATTRIBUTIONS_MAX_CHARS, "• ");
+    if (text) items.push({ id: id.trim(), attributions: text });
+  }
+  return items;
+}
+
+/**
+ * Que faire d'une réponse de `/v1/organizations/attributions` : l'appliquer, ou
+ * garder les dernières valeurs connues. Tout statut ≠ 200 (400 tenant invalide,
+ * 404 hors périmètre de la clé, 5xx) et tout corps mal formé gardent l'existant ;
+ * `200 []` s'applique (rien d'écrit : les textes repassent à NULL).
+ */
+export function attributionsOutcome(
+  status: number,
+  body: unknown,
+): { kind: "apply"; items: SocleOrganizationAttributions[] } | { kind: "keep"; reason: string } {
+  if (status !== 200) return { kind: "keep", reason: `le Socle répond ${status}` };
+  const items = parseAttributionsResponse(body);
+  if (!items) return { kind: "keep", reason: "réponse inattendue (pas un tableau)" };
+  return { kind: "apply", items };
+}
+
+/**
+ * Attributions à réécrire dans le miroir. Comme le descriptif : la réponse est la
+ * vérité du moment — une organisation absente repasse à `null`. Ne rend que ce
+ * qui change.
+ */
+export function planAttributions(
+  mirror: { id: string; socle_id: string; attributions: string | null }[],
+  items: SocleOrganizationAttributions[],
+): { id: string; attributions: string | null }[] {
+  const bySocleId = new Map(items.map((item) => [item.id, item.attributions]));
+  return mirror
+    .map((row) => ({ id: row.id, attributions: bySocleId.get(row.socle_id) ?? null }))
+    .filter((next, i) => next.attributions !== (mirror[i].attributions ?? null));
 }
 
 export function countersFromOrgPlan(plan: OrgSyncPlan): EntityCounters {

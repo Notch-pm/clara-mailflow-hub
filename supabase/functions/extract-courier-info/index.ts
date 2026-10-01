@@ -295,7 +295,7 @@ Deno.serve(async (req) => {
     const [{ data: socleOrgRows }, { data: orgTags }, { data: activationRows }] = await Promise.all([
       admin
         .from("socle_organizations")
-        .select("id, name, socle_id, socle_parent_id, public_description, workflow_id")
+        .select("id, name, socle_id, socle_parent_id, public_description, attributions, workflow_id")
         .eq("organization_id", orgId)
         .eq("status", "active")
         .is("obsoleted_at", null),

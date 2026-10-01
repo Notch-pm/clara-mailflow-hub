@@ -1943,6 +1943,7 @@ export type Database = {
           obsoleted_at: string | null
           organization_id: string
           phone: string | null
+          attributions: string | null
           public_description: string | null
           reply_workflow_id: string | null
           sla_ack_business_days: number | null
@@ -1966,6 +1967,7 @@ export type Database = {
           obsoleted_at?: string | null
           organization_id: string
           phone?: string | null
+          attributions?: string | null
           public_description?: string | null
           reply_workflow_id?: string | null
           sla_ack_business_days?: number | null
@@ -1989,6 +1991,7 @@ export type Database = {
           obsoleted_at?: string | null
           organization_id?: string
           phone?: string | null
+          attributions?: string | null
           public_description?: string | null
           reply_workflow_id?: string | null
           sla_ack_business_days?: number | null
