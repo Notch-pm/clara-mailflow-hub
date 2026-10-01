@@ -51,6 +51,7 @@ import {
 } from "@/components/ui/command";
 import { TAG_GROUPS, type TagGroup } from "@/services/courierTagService";
 import { assignableOrgs } from "@/services/socleOrgConfigService";
+import ServiceSuggestion from "./ServiceSuggestion";
 import { cn } from "@/lib/utils";
 import { readableTextColor } from "@/lib/tag-color";
 import { categoryTone } from "@/lib/workflow-category";
@@ -568,6 +569,26 @@ export default function MailboxSidePanel({
                 </PopoverContent>
               </Popover>
             )}
+            {/* C'est ici qu'on oriente le courrier : la proposition de l'analyse
+                se lit à côté du choix, et s'applique d'un clic. */}
+            <ServiceSuggestion
+              variant="inline"
+              courierId={courier.id}
+              currentOrgId={currentService?.id ?? null}
+              isInitialState={isInitialState}
+              readOnly={effectiveReadOnly}
+              orgs={services ?? []}
+              assignableIds={availableServices.map((o) => o.id)}
+              transferableIds={assignableOrgs(services ?? [])
+                .filter((o) => o.id !== currentService?.id)
+                .map((o) => o.id)}
+              onAssign={(id) => serviceMutation.mutate(id)}
+              onTransfer={(id) => {
+                setTransferTargetServiceId(id);
+                setTransferConfirmOpen(true);
+              }}
+              busy={serviceMutation.isPending || transferMutation.isPending}
+            />
           </Field>
 
           {TAG_GROUPS.map((group) => {

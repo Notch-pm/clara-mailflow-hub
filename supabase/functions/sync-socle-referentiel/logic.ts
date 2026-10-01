@@ -588,6 +588,63 @@ export function planTenantIdentityUpdate(
   return Object.keys(fields).length > 0 ? fields : null;
 }
 
+// ── Descriptif public des organisations (« informations usager ») ──
+// Lu sur `GET /v1/portal/organizations?tenant_id=` (public-api ≥ 1.30.0) : un
+// tableau nu, tout le sous-arbre en un appel. La route n'y met que les
+// organismes ACTIFS, ouverts au public, qui ont écrit quelque chose — un
+// service interne n'y figure jamais. Clara s'en sert pour décrire à l'IA ce que
+// fait chaque organisation (proposition du service instructeur).
+
+/** Ce que Clara lit d'un élément de `/v1/portal/organizations`. */
+export interface SoclePortalOrganization {
+  id: string;
+  info?: { description?: unknown } | null;
+}
+
+/** Budget d'un descriptif dans le miroir — il finit dans un prompt, une ligne par organisation. */
+export const PUBLIC_DESCRIPTION_MAX_CHARS = 1500;
+
+/**
+ * Markdown du Socle → texte brut d'une ligne, borné. `null` si rien d'exploitable.
+ * Gras, italique, titres, liens et listes n'apportent rien au modèle et
+ * coûtent des caractères.
+ */
+export function plainPublicDescription(markdown: unknown): string | null {
+  if (typeof markdown !== "string") return null;
+  const text = markdown
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+    .replace(/^\s*[-*+]\s+/gm, "")
+    .replace(/(\*\*|__|\*|_|`)/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) return null;
+  return text.length > PUBLIC_DESCRIPTION_MAX_CHARS
+    ? `${text.slice(0, PUBLIC_DESCRIPTION_MAX_CHARS - 1).trimEnd()}…`
+    : text;
+}
+
+/**
+ * Descriptifs à réécrire dans le miroir. Une organisation absente de la
+ * réponse (service interne, rien d'écrit) repasse à `null` : la route est la
+ * vérité du moment, pas une suite d'ajouts. Ne rend que ce qui change.
+ */
+export function planPublicDescriptions(
+  mirror: { id: string; socle_id: string; public_description: string | null }[],
+  portal: SoclePortalOrganization[],
+): { id: string; public_description: string | null }[] {
+  const bySocleId = new Map<string, string | null>();
+  for (const item of portal) {
+    if (item && typeof item.id === "string") {
+      bySocleId.set(item.id, plainPublicDescription(item.info?.description));
+    }
+  }
+  return mirror
+    .map((row) => ({ id: row.id, public_description: bySocleId.get(row.socle_id) ?? null }))
+    .filter((next, i) => next.public_description !== (mirror[i].public_description ?? null));
+}
+
 export function countersFromOrgPlan(plan: OrgSyncPlan): EntityCounters {
   return {
     created: plan.toInsert.length,

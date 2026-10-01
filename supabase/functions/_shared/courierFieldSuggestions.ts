@@ -1,5 +1,7 @@
 // Fragments partagés entre `extract-courier-info` et `analyze-courier` pour la
-// suggestion de champs structurés (titre, expéditeur, destinataire, service)
+// suggestion de champs structurés (titre, expéditeur, destinataire). Le service
+// instructeur a son propre module depuis le 2026-10-01 (`serviceSuggestion.ts`) :
+// il se choisit dans un catalogue décrit, par identifiant
 // à partir du contenu d'un courrier. Les deux edge functions utilisent le même
 // agent Mistral et le même idiome de tool-calling : toutes les propriétés sont
 // `required`, avec une chaîne vide comme sentinelle "absent" (plus fiable que
@@ -21,13 +23,11 @@ export const SUGGESTED_FIELDS_PROPERTIES: Record<string, { type: "string"; descr
   sender_email: { type: "string", description: "Email de l'expéditeur (chaîne vide si absent)" },
   sender_phone: { type: "string", description: "Téléphone de l'expéditeur (chaîne vide si absent)" },
   recipient_name: { type: "string", description: "Nom du destinataire (chaîne vide si absent)" },
-  suggested_service_name: { type: "string", description: "Service le plus pertinent parmi ceux disponibles (chaîne vide si aucun)" },
 };
 
 export const SUGGESTED_FIELDS_KEYS = Object.keys(SUGGESTED_FIELDS_PROPERTIES);
 
 export const SUGGESTED_FIELDS_PROMPT_RULES = `- suggested_subject : titre court et factuel résumant l'objet du courrier. Une proposition, pas une copie du corps.
-- suggested_service_name : choisis UNIQUEMENT parmi la liste de services fournie (copie exacte du nom, sensible à la casse), ou chaîne vide si aucun ne correspond clairement.
 - Pour le destinataire (recipient_name) : la personne ou le service à qui s'adresse le courrier (ex: "Monsieur le Maire", "Direction des Travaux").
 - Pour l'expéditeur (sender_*) : l'auteur/signataire du courrier. Prénom et nom dans leurs champs respectifs, jamais réunis dans sender_last_name.
 - sender_civility : seulement si le courrier l'indique (« Madame X », « M. X », formule de signature) — ne la déduis pas du prénom.`;

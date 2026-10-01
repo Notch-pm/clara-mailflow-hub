@@ -51,7 +51,34 @@ Les chemins d'**ingestion** ne peuvent pas océriser en ligne : c'est long, coû
 - Crédit IA épuisé → job reporté **à la date de renouvellement rendue par le Socle**, sans consommer de tentative. ⚠️ Depuis le 2026-08-29 le guichet renvoie **deux refus distincts en 429** : le plafond (rien à tenter avant le mois prochain) et la **cadence** (`ai_rate_limited` — le crédit est intact, replanification à 5 min). Les confondre endormirait un mois durant un courrier simplement arrivé dans une rafale. Autres erreurs → 3 tentatives espacées de 5 min.
 - Indispensable à la numérisation : personne n'est devant l'écran pour cliquer « Analyser ».
 
-Les suggestions (`suggested_subject`, `suggested_sender`, `suggested_service_name`) sont exposées sur un courrier existant dans l'onglet « Contenu » (`ContentIntentsTab`), le titre étant applicable en un clic — c'est ce qui permet de qualifier un courrier numérisé arrivé sans titre exploitable.
+Les suggestions (`suggested_subject`, `suggested_sender`, service instructeur) sont exposées sur un courrier existant dans l'onglet « Contenu » (`ContentIntentsTab`), le titre étant applicable en un clic — c'est ce qui permet de qualifier un courrier numérisé arrivé sans titre exploitable.
+
+### Proposition du service instructeur (depuis le 2026-10-01)
+
+L'analyse propose l'**organisation gestionnaire** ; l'agent l'applique ou l'écarte — comme les tags.
+
+- **Ce que le modèle sait de chaque organisation** : un catalogue décrit
+  (`_shared/serviceSuggestion.ts`, `buildServiceCatalog`) — nom, organisation parente, **descriptif
+  « informations usager » du Socle** (`socle_organizations.public_description`, synchronisé chaque
+  nuit) et **démarches qu'elle instruit** (`procedure_organizations`). Ne sont candidates que les
+  organisations qui ont un workflow (sans lui, un courrier n'est jamais instruit).
+- ⚠️ **Les services internes n'ont pas de descriptif** : le Socle ne publie « informations usager »
+  que pour les organismes ouverts au public (onglet masqué et route filtrée pour
+  `is_internal_service`). Pour eux, le modèle ne dispose que du nom, de la place dans l'arbre et des
+  démarches — c'est la limite connue de la proposition, à lever côté Socle.
+- **Réponse par identifiant** (`suggested_service: {socle_organization_id, reason}`), revalidée par
+  `resolveSuggestedService` : un id hors catalogue est écarté. Stockée dans
+  `courier_analyses.suggested_socle_organization_id` + `suggested_service_reason`
+  (`suggested_service_name` reste écrit, dérivé de l'id).
+- **Courrier déjà confié** : le prompt nomme l'organisation en place et demande de la **garder si
+  elle convient** — un doute ne justifie pas un transfert.
+- **Écran** (`ServiceSuggestion.tsx`, état par `src/lib/service-suggestion.ts`) : onglet Contenu et
+  panneau de tri de la boîte aux lettres. Aucune organisation ou état initial → bouton
+  **« Affecter à X »** (affectation directe) ; courrier en cours → **« Transférer à X… »**, qui
+  ouvre la confirmation de transfert existante. Rien ne s'applique sans le geste de l'agent. Une
+  organisation que l'agent ne peut pas choisir (droits, boîte IMAP) est montrée sans bouton.
+- `extract-courier-info` (pré-saisie de `NewCourierDialog` / `BulkImport`) utilise le même
+  catalogue, et renvoie toujours un nom à l'écran.
 
 ### Rédaction de réponse IA
 - Edge function `draft-reply` : prend `courier_id`, `response_type`, instructions additionnelles → renvoie du HTML prêt à coller dans l'éditeur Tiptap.

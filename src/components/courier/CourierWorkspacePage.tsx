@@ -62,6 +62,7 @@ import AdvanceBlockedButton from "./AdvanceBlockedButton";
 import { advanceBlockedReason } from "./advance-blocked-reason";
 import ContactPicker from "./ContactPicker";
 import ContentIntentsTab from "./ContentIntentsTab";
+import ServiceSuggestion from "./ServiceSuggestion";
 import CourierHistoryTab from "./CourierHistoryTab";
 import CourierLinksTab from "./CourierLinksTab";
 import DocumentManager from "./DocumentManager";
@@ -647,6 +648,25 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
                   organizationId={organizationId}
                   readOnly={effectiveReadOnly || isFinalState}
                   isInitialState={isInitialState}
+                  serviceSuggestion={
+                    <ServiceSuggestion
+                      courierId={courier.id}
+                      currentOrgId={currentService?.id ?? null}
+                      isInitialState={isInitialState}
+                      readOnly={effectiveReadOnly || isFinalState}
+                      orgs={services ?? []}
+                      assignableIds={availableServices.map((o) => o.id)}
+                      transferableIds={assignableOrgs(services ?? [])
+                        .filter((o) => o.id !== currentService?.id)
+                        .map((o) => o.id)}
+                      onAssign={(id) => serviceMutation.mutate(id)}
+                      onTransfer={(id) => {
+                        setTransferTargetServiceId(id);
+                        setTransferConfirmOpen(true);
+                      }}
+                      busy={serviceMutation.isPending || transferMutation.isPending}
+                    />
+                  }
                 />
               </TabsContent>
             )}

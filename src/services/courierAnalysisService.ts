@@ -67,6 +67,10 @@ export interface CourierAnalysis {
   suggested_actions: SuggestedAction[];
   suggested_subject: string | null;
   suggested_service_name: string | null;
+  /** Organisation gestionnaire proposée (revalidée contre le catalogue) — une proposition. */
+  suggested_socle_organization_id: string | null;
+  /** Pourquoi cette organisation, en une phrase. */
+  suggested_service_reason: string | null;
   suggested_recipient_name: string | null;
   suggested_sender: SuggestedSender | null;
   model: string | null;

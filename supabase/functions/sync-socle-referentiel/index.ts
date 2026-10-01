@@ -41,6 +41,8 @@ import {
   planOrganizationSync,
   planProcedureSync,
   planTenantIdentityUpdate,
+  planPublicDescriptions,
+  type SoclePortalOrganization,
   type ActivationItem,
   type ActivationRow,
   type EntityCounters,
@@ -269,6 +271,93 @@ async function fetchSocleBranding(
   }
 }
 
+/**
+ * Organismes publics du sous-arbre d'un tenant, avec leur « informations
+ * usager » — mêmes règles que `fetchSocleSmtp` : pas de retry, un statut
+ * d'erreur n'est pas une exception, seul le 401 est fatal. Tableau nu.
+ */
+async function fetchSoclePortalOrganizations(
+  tenantSocleId: string,
+): Promise<{ status: number; dto: SoclePortalOrganization[] | null }> {
+  const apiKey = Deno.env.get("SOCLE_API_KEY")?.trim();
+  if (!apiKey) throw new Error("Secret SOCLE_API_KEY manquant — configurez-le dans les secrets de la fonction");
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SOCLE_TIMEOUT_MS);
+  try {
+    const response = await fetch(
+      `${socleBaseUrl()}/v1/portal/organizations?tenant_id=${encodeURIComponent(tenantSocleId)}`,
+      {
+        headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
+        signal: controller.signal,
+      },
+    );
+    if (response.status === 401) {
+      await response.body?.cancel();
+      throw new SocleAuthError(
+        "Clé API Socle invalide ou révoquée (401) — synchronisation interrompue",
+      );
+    }
+    if (!response.ok) {
+      await response.body?.cancel();
+      return { status: response.status, dto: null };
+    }
+    const body = await response.json();
+    return { status: 200, dto: Array.isArray(body) ? (body as SoclePortalOrganization[]) : [] };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Réécrit `socle_organizations.public_description` du tenant. Lu APRÈS le miroir
+ * des organisations : une organisation créée ce soir reçoit son descriptif ce
+ * soir. Une organisation absente de la réponse (service interne, rien d'écrit)
+ * repasse à NULL.
+ */
+async function syncPublicDescriptions(
+  supabaseAdmin: AdminClient,
+  org: ClaraOrg,
+  dryRun: boolean,
+): Promise<{ synchronises: number; warnings: string[] }> {
+  try {
+    const { status, dto } = await fetchSoclePortalOrganizations(org.socle_org_id);
+    if (status !== 200 || !dto) {
+      return {
+        synchronises: 0,
+        warnings: [`descriptifs des organisations (${org.name}) : le Socle répond ${status} — miroir inchangé.`],
+      };
+    }
+    const { data: mirror, error } = await supabaseAdmin
+      .from("socle_organizations")
+      .select("id, socle_id, public_description")
+      .eq("organization_id", org.id);
+    if (error) throw new Error(error.message);
+
+    const updates = planPublicDescriptions(
+      (mirror ?? []) as { id: string; socle_id: string; public_description: string | null }[],
+      dto,
+    );
+    if (!dryRun) {
+      for (const u of updates) {
+        const { error: updateError } = await supabaseAdmin
+          .from("socle_organizations")
+          .update({ public_description: u.public_description })
+          .eq("id", u.id);
+        if (updateError) throw new Error(updateError.message);
+      }
+    }
+    return { synchronises: updates.length, warnings: [] };
+  } catch (e) {
+    if (e instanceof SocleAuthError) throw e;
+    const message = e instanceof Error ? e.message : String(e);
+    console.error(`[sync-socle] org ${org.name}: descriptifs: ${message}`);
+    return {
+      synchronises: 0,
+      warnings: [`descriptifs des organisations (${org.name}) : ${message} — miroir inchangé.`],
+    };
+  }
+}
+
 // ── Auth (calqué sur sync-arpege-services) ──
 
 type AuthContext = { authorized: boolean; isPrivileged: boolean; userId?: string };
@@ -431,6 +520,8 @@ interface OrgSyncResult {
     smtp_retires: number;
     /** Charte graphique (logo + couleurs) relue et appliquée (0 ou 1) — 0 = miroir laissé en l'état. */
     charte_synchronisee: number;
+    /** Descriptifs publics (« informations usager ») réécrits dans le miroir des organisations. */
+    descriptifs_synchronises: number;
   };
   warnings?: string[];
   error?: string;
@@ -528,6 +619,11 @@ async function syncOrg(
     dryRun,
     syncedAt,
   );
+
+  // 0a) Descriptif public de chaque organisation (« informations usager »),
+  // pour que l'analyse IA sache ce que fait chacune. Flux séparé, comme le SMTP :
+  // un échec laisse le miroir en l'état et se dit en avertissement.
+  const descriptions = await syncPublicDescriptions(supabaseAdmin, org, dryRun);
 
   // 0bis) Identité du tenant : l'org Socle mappée fixe nom et slug de
   // l'organisation Clara. Le logo, lui, appartient à la charte (0ter).
@@ -687,7 +783,7 @@ async function syncOrg(
     ? { created: 0, updated: 0, adopted: 0, obsoleted: 0, unchanged: 0 }
     : await syncActivations(supabaseAdmin, org, activations, muteOrgs, syncedAt);
 
-  const warnings = [...smtp.warnings, ...branding.warnings, ...plan.warnings];
+  const warnings = [...smtp.warnings, ...branding.warnings, ...descriptions.warnings, ...plan.warnings];
   if (muteOrgs.length > 0) {
     warnings.push(
       `Démarches illisibles pour ${muteOrgs.length} organisation(s) (${muteOrgs.join(", ")}) — leur miroir est inchangé.`,
@@ -704,6 +800,7 @@ async function syncOrg(
       smtp_synchronises: smtp.synchronises,
       smtp_retires: smtp.retires,
       charte_synchronisee: branding.synchronisee,
+      descriptifs_synchronises: descriptions.synchronises,
     },
     warnings,
   };

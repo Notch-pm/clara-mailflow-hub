@@ -23,10 +23,17 @@ import {
   SUGGESTED_FIELDS_KEYS,
   SUGGESTED_FIELDS_PROMPT_RULES,
   nullIfEmpty,
-  validateAgainstNames,
   cleanSenderFields,
   hasSenderData,
 } from "../_shared/courierFieldSuggestions.ts";
+import {
+  buildServiceCatalog,
+  resolveSuggestedService,
+  selectServiceCandidates,
+  serviceSuggestionPromptRules,
+  SERVICE_SUGGESTION_PROPERTY,
+  type ServiceCandidate,
+} from "../_shared/serviceSuggestion.ts";
 import {
   attachSoclePrefill,
   buildProcedureCatalog,
@@ -356,7 +363,7 @@ async function analyzeCourier(
   // Get courier subject + extracts
   const { data: courier } = await admin
     .from("couriers")
-    .select("id, subject, organization_id, channel, metadata")
+    .select("id, subject, organization_id, channel, metadata, socle_organization_id")
     .eq("id", courierId)
     .single();
   if (!courier || courier.organization_id !== orgId) throw new Error("Courier not found");
@@ -402,11 +409,11 @@ async function analyzeCourier(
     ProcedureCatalogEntry & PrefillProcedureSource
   >;
 
-  // Organisations disponibles (miroir Socle) — pour suggérer l'organisation gestionnaire.
-  // Fallback services (legacy) si le miroir est vide.
+  // Organisations disponibles (miroir Socle) : destinataires des démarches, et
+  // catalogue décrit pour proposer le service instructeur.
   const { data: socleOrgRows } = await admin
     .from("socle_organizations")
-    .select("id, name")
+    .select("id, name, socle_id, socle_parent_id, public_description, workflow_id")
     .eq("organization_id", orgId)
     .eq("status", "active")
     .is("obsoleted_at", null);
@@ -432,18 +439,25 @@ async function analyzeCourier(
   for (const proc of procedureList) {
     proc.organizations = orgsByProcedure.get(proc.id) ?? [];
   }
-  let serviceNames: string[] = (socleOrgRows ?? [])
-    .map((s: { name: string }) => s.name)
-    .filter((n: string) => typeof n === "string" && n.trim().length > 0);
-  if (serviceNames.length === 0) {
-    const { data: orgServices } = await admin
-      .from("services")
-      .select("id, name")
-      .eq("organization_id", orgId);
-    serviceNames = (orgServices ?? [])
-      .map((s: { name: string }) => s.name)
-      .filter((n: string) => typeof n === "string" && n.trim().length > 0);
+
+  // Service instructeur : le catalogue dit ce que fait chaque organisation
+  // (descriptif du Socle + démarches qu'elle instruit). L'organisation déjà
+  // désignée y reste toujours, pour que le modèle puisse la confirmer.
+  const allServiceOrgs = (socleOrgRows ?? []) as ServiceCandidate[];
+  const currentServiceOrg = allServiceOrgs.find((o) => o.id === courier.socle_organization_id) ?? null;
+  const serviceCandidates = selectServiceCandidates(allServiceOrgs);
+  if (currentServiceOrg && !serviceCandidates.some((o) => o.id === currentServiceOrg.id)) {
+    serviceCandidates.push(currentServiceOrg);
   }
+  const procedureNamesByOrg = new Map<string, string[]>();
+  for (const proc of procedureList) {
+    for (const o of proc.organizations ?? []) {
+      const list = procedureNamesByOrg.get(o.id) ?? [];
+      list.push(proc.name);
+      procedureNamesByOrg.set(o.id, list);
+    }
+  }
+  const serviceCatalogForPrompt = buildServiceCatalog(serviceCandidates, procedureNamesByOrg, allServiceOrgs);
 
   // Corps de l'email (si présent dans metadata)
   const meta = (courier.metadata ?? {}) as Record<string, unknown>;
@@ -497,6 +511,7 @@ async function analyzeCourier(
   • socle_organization_id: organisation à qui adresser la demande. Choisis-la EXCLUSIVEMENT parmi celles listées après « assurée par » sur la démarche retenue (copie l'id exact indiqué par « [org: … ] »), en te fondant sur le lieu ou le service concerné par le courrier. Si aucune ne s'impose, ou si l'action ne porte aucune démarche, renvoie null. N'invente jamais d'organisation.
   • prefill: si des données personnelles sont identifiables dans le courrier (nom, prénom, email, téléphone, date de naissance, civilité), extrais-les ici pour pré-remplir le formulaire. N'invente aucune donnée absente du courrier.
 ${SUGGESTED_FIELDS_PROMPT_RULES}
+${serviceSuggestionPromptRules(currentServiceOrg ? { id: currentServiceOrg.id, name: currentServiceOrg.name } : null)}
 Sois factuel, en français. Si le corps de l'email et les pièces jointes coexistent, traite-les comme un tout cohérent. Ne retourne que ce qui est clairement identifiable — ne devine rien.
 
 Thèmes disponibles pour intents :
@@ -508,8 +523,8 @@ ${sentimentListForPrompt}
 Procédures disponibles (utilise l'id exact pour procedure_id) :
 ${procedureListForPrompt}
 
-Services disponibles pour suggested_service_name :
-${serviceNames.length ? serviceNames.join(", ") : "(aucun)"}`;
+Organisations (catalogue pour suggested_service) :
+${serviceCatalogForPrompt}`;
 
   const sections: string[] = [`Sujet du courrier : ${courier.subject ?? "(aucun)"}`];
   if (emailBody.trim()) {
@@ -541,6 +556,7 @@ ${serviceNames.length ? serviceNames.join(", ") : "(aucun)"}`;
       intents: intentsSchema,
       sentiments: sentimentsSchema,
       ...SUGGESTED_FIELDS_PROPERTIES,
+      ...SERVICE_SUGGESTION_PROPERTY,
       suggested_actions: {
         type: "array",
         items: {
@@ -573,7 +589,7 @@ ${serviceNames.length ? serviceNames.join(", ") : "(aucun)"}`;
         },
       },
     },
-    ["summary", "intents", "sentiments", "suggested_actions", ...SUGGESTED_FIELDS_KEYS],
+    ["summary", "intents", "sentiments", "suggested_actions", "suggested_service", ...SUGGESTED_FIELDS_KEYS],
   );
 
   type ParsedAnalysis = {
@@ -587,7 +603,7 @@ ${serviceNames.length ? serviceNames.join(", ") : "(aucun)"}`;
       prefill?: Record<string, string>;
     }>;
     suggested_subject?: string;
-    suggested_service_name?: string;
+    suggested_service?: unknown;
     recipient_name?: string;
     sender_first_name?: string;
     sender_last_name?: string;
@@ -716,8 +732,8 @@ ${jsonSchemaInstruction(call.tool.toolParameters as Record<string, unknown>)}`;
     actionsToStore = attachSoclePrefill(safeActions, sanitizedAll);
   }
 
-  // Sécurité : le service suggéré doit appartenir aux services de l'org.
-  const safeSuggestedService = validateAgainstNames(parsed.suggested_service_name, serviceNames);
+  // Sécurité : le service proposé doit appartenir au catalogue (id revalidé).
+  const serviceSuggestion = resolveSuggestedService(parsed.suggested_service, serviceCandidates);
   const safeSuggestedSubject = nullIfEmpty(parsed.suggested_subject);
   const safeSuggestedRecipient = nullIfEmpty(parsed.recipient_name);
   const cleanSender = cleanSenderFields(parsed);
@@ -736,7 +752,11 @@ ${jsonSchemaInstruction(call.tool.toolParameters as Record<string, unknown>)}`;
         // colonne subsiste pour les analyses antérieures.
         suggested_actions: actionsToStore,
         suggested_subject: safeSuggestedSubject,
-        suggested_service_name: safeSuggestedService,
+        // Le nom reste écrit pour l'existant ; l'identifiant et la raison
+        // portent la proposition depuis le 2026-10-01.
+        suggested_service_name: serviceSuggestion?.name ?? null,
+        suggested_socle_organization_id: serviceSuggestion?.id ?? null,
+        suggested_service_reason: serviceSuggestion?.reason ?? null,
         suggested_recipient_name: safeSuggestedRecipient,
         suggested_sender: safeSuggestedSender,
         // ⚠️ NI MODÈLE NI JETONS : Clara ne les connaît plus, et c'est

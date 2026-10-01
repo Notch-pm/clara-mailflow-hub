@@ -19,9 +19,16 @@ import {
   SUGGESTED_FIELDS_KEYS,
   SUGGESTED_FIELDS_PROMPT_RULES,
   nullIfEmpty,
-  validateAgainstNames,
   cleanSenderFields,
 } from "../_shared/courierFieldSuggestions.ts";
+import {
+  buildServiceCatalog,
+  resolveSuggestedService,
+  selectServiceCandidates,
+  serviceSuggestionPromptRules,
+  SERVICE_SUGGESTION_PROPERTY,
+  type ServiceCandidate,
+} from "../_shared/serviceSuggestion.ts";
 import { contactsApiKeyForOrg, fetchContactsApi } from "../_shared/socleContactsClient.ts";
 import { assertEditor } from "../_shared/authz.ts";
 import {
@@ -57,7 +64,7 @@ interface ExtractedInfo {
   sender_email: string | null;
   sender_phone: string | null;
   recipient_name: string | null;
-  suggested_service_name: string | null;
+  suggested_service?: unknown;
   suggested_tag_names: string[];
 }
 
@@ -283,25 +290,37 @@ Deno.serve(async (req) => {
     const extractedText = texts.join("\n\n===\n\n");
     const combinedText = extractedText.slice(0, 30_000);
 
-    // Load org context for the LLM — organisations (miroir Socle), fallback services legacy
-    const [{ data: socleOrgRows }, { data: orgTags }] = await Promise.all([
+    // Contexte de l'organisation pour le modèle : catalogue décrit des
+    // organisations (descriptif du Socle + démarches instruites), et tags.
+    const [{ data: socleOrgRows }, { data: orgTags }, { data: activationRows }] = await Promise.all([
       admin
         .from("socle_organizations")
-        .select("name")
+        .select("id, name, socle_id, socle_parent_id, public_description, workflow_id")
         .eq("organization_id", orgId)
         .eq("status", "active")
         .is("obsoleted_at", null),
       admin.from("courier_tags").select("name, tag_group").eq("organization_id", orgId),
+      admin
+        .from("procedure_organizations")
+        .select("socle_organization_id, procedures!inner(name, is_displayed, obsoleted_at)")
+        .eq("organization_id", orgId)
+        .is("obsoleted_at", null),
     ]);
 
-    let serviceNames: string[] = (socleOrgRows ?? []).map((s: { name: string }) => s.name);
-    if (serviceNames.length === 0) {
-      const { data: orgServices } = await admin
-        .from("services")
-        .select("name")
-        .eq("organization_id", orgId);
-      serviceNames = (orgServices ?? []).map((s: { name: string }) => s.name);
+    const allServiceOrgs = (socleOrgRows ?? []) as ServiceCandidate[];
+    const serviceCandidates = selectServiceCandidates(allServiceOrgs);
+    const procedureNamesByOrg = new Map<string, string[]>();
+    for (const row of (activationRows ?? []) as unknown as Array<{
+      socle_organization_id: string;
+      procedures: { name: string; is_displayed: boolean; obsoleted_at: string | null } | null;
+    }>) {
+      const proc = row.procedures;
+      if (!proc || !proc.is_displayed || proc.obsoleted_at) continue;
+      const list = procedureNamesByOrg.get(row.socle_organization_id) ?? [];
+      list.push(proc.name);
+      procedureNamesByOrg.set(row.socle_organization_id, list);
     }
+    const serviceCatalogForPrompt = buildServiceCatalog(serviceCandidates, procedureNamesByOrg, allServiceOrgs);
     // Deux groupes, deux listes dans le prompt : le thème dit de quoi parle le
     // courrier, le sentiment sur quel ton. La sortie, elle, reste UNE liste de
     // noms — le groupe est une propriété du tag, pas de son application.
@@ -325,8 +344,8 @@ Deno.serve(async (req) => {
       : { type: "array", items: { type: "string" } };
 
     const responseSchema = objectSchema(
-      { ...SUGGESTED_FIELDS_PROPERTIES, suggested_tag_names: tagsSchema },
-      [...SUGGESTED_FIELDS_KEYS, "suggested_tag_names"],
+      { ...SUGGESTED_FIELDS_PROPERTIES, ...SERVICE_SUGGESTION_PROPERTY, suggested_tag_names: tagsSchema },
+      [...SUGGESTED_FIELDS_KEYS, "suggested_service", "suggested_tag_names"],
     );
 
     const systemPrompt = `Tu es un assistant expert en gestion de courrier administratif français.
@@ -334,9 +353,11 @@ Analyse le texte extrait d'un courrier et restitue les informations structurées
 Règles :
 - Ne retourne QUE ce qui est clairement identifiable dans le texte. Ne devine rien.
 ${SUGGESTED_FIELDS_PROMPT_RULES}
+${serviceSuggestionPromptRules(null)}
 - suggested_tag_names : choisis EXCLUSIVEMENT dans les deux listes ci-dessous (copie exacte du nom, sensible à la casse). N'invente AUCUN tag. Retiens les thèmes qui qualifient le sujet, et AU PLUS UN sentiment pour le ton du rédacteur. Liste vide si rien ne correspond.
 
-Services disponibles : ${serviceNames.length ? serviceNames.join(", ") : "(aucun)"}
+Organisations (catalogue pour suggested_service) :
+${serviceCatalogForPrompt}
 
 Thèmes disponibles (sujet du courrier) :
 ${listForPrompt(themeTagNames, "(aucun thème défini)")}
@@ -364,7 +385,8 @@ ${combinedText}`;
     const extracted = parseJsonAnswer<ExtractedInfo>(answer);
 
     // Validate and sanitize against org data (same pattern as analyze-courier)
-    const suggestedService = validateAgainstNames(extracted.suggested_service_name, serviceNames);
+    // L'écran attend toujours un NOM : on le déduit de l'identifiant revalidé.
+    const suggestedService = resolveSuggestedService(extracted.suggested_service, serviceCandidates)?.name ?? null;
 
     const allowed = new Set(tagNames.map((n) => n.toLowerCase()));
     const suggestedTags = (extracted.suggested_tag_names ?? []).filter(

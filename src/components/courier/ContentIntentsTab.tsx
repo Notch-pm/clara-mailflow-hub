@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { ChevronDown, ChevronRight, FileText, Sparkles, Loader2, RefreshCw, X, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,11 @@ interface Props {
   readOnly?: boolean;
   /** Service gestionnaire modifiable uniquement à l'état initial du workflow. */
   isInitialState?: boolean;
+  /**
+   * Proposition de service instructeur (`ServiceSuggestion`), construite par
+   * l'écran qui détient les gestes d'affectation et de transfert.
+   */
+  serviceSuggestion?: ReactNode;
 }
 
 function formatDate(iso: string) {
@@ -42,7 +47,13 @@ function formatDate(iso: string) {
   });
 }
 
-export default function ContentIntentsTab({ courierId, organizationId, readOnly = false, isInitialState = true }: Props) {
+export default function ContentIntentsTab({
+  courierId,
+  organizationId,
+  readOnly = false,
+  isInitialState = true,
+  serviceSuggestion,
+}: Props) {
   const qc = useQueryClient();
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
@@ -415,7 +426,7 @@ export default function ContentIntentsTab({ courierId, organizationId, readOnly 
           </Card>
         ) : (
           <div className="space-y-3">
-            {(canApplySubject || suggestedSenderName || analysis.suggested_service_name) && (
+            {(canApplySubject || suggestedSenderName || analysis.suggested_service_name || serviceSuggestion) && (
               <Card className="p-3">
                 <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
                   Champs suggérés
@@ -443,21 +454,25 @@ export default function ContentIntentsTab({ courierId, organizationId, readOnly 
                       </Button>
                     </div>
                   )}
-                  {/* Expéditeur et service restent indicatifs : les rattacher
-                      suppose un rapprochement avec le référentiel du Socle, qui
-                      se fait au passage en instruction. */}
+                  {/* L'expéditeur reste indicatif : le rattacher suppose un
+                      rapprochement avec le référentiel du Socle, qui se fait au
+                      passage en instruction. */}
                   {suggestedSenderName && (
                     <div>
                       <p className="text-xs text-muted-foreground">Expéditeur détecté</p>
                       <p className="text-sm">{suggestedSenderName}</p>
                     </div>
                   )}
-                  {analysis.suggested_service_name && (
-                    <div>
-                      <p className="text-xs text-muted-foreground">Service suggéré</p>
-                      <p className="text-sm">{analysis.suggested_service_name}</p>
-                    </div>
-                  )}
+                  {/* Service instructeur : proposé par identifiant, appliqué par
+                      l'agent (affectation, ou transfert confirmé). Une analyse
+                      antérieure au 2026-10-01 n'a qu'un nom : il reste affiché. */}
+                  {serviceSuggestion ??
+                    (analysis.suggested_service_name && !analysis.suggested_socle_organization_id && (
+                      <div>
+                        <p className="text-xs text-muted-foreground">Service suggéré</p>
+                        <p className="text-sm">{analysis.suggested_service_name}</p>
+                      </div>
+                    ))}
                 </div>
               </Card>
             )}

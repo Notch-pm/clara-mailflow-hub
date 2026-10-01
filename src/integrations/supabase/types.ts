@@ -179,6 +179,8 @@ export type Database = {
           suggested_recipient_name: string | null
           suggested_sender: Json | null
           suggested_service_name: string | null
+          suggested_service_reason: string | null
+          suggested_socle_organization_id: string | null
           suggested_subject: string | null
           summary: string | null
           tokens_used: number | null
@@ -196,6 +198,8 @@ export type Database = {
           suggested_recipient_name?: string | null
           suggested_sender?: Json | null
           suggested_service_name?: string | null
+          suggested_service_reason?: string | null
+          suggested_socle_organization_id?: string | null
           suggested_subject?: string | null
           summary?: string | null
           tokens_used?: number | null
@@ -213,6 +217,8 @@ export type Database = {
           suggested_recipient_name?: string | null
           suggested_sender?: Json | null
           suggested_service_name?: string | null
+          suggested_service_reason?: string | null
+          suggested_socle_organization_id?: string | null
           suggested_subject?: string | null
           summary?: string | null
           tokens_used?: number | null
@@ -1928,6 +1934,7 @@ export type Database = {
           obsoleted_at: string | null
           organization_id: string
           phone: string | null
+          public_description: string | null
           reply_workflow_id: string | null
           sla_ack_business_days: number | null
           sla_resolution_business_days: number | null
@@ -1950,6 +1957,7 @@ export type Database = {
           obsoleted_at?: string | null
           organization_id: string
           phone?: string | null
+          public_description?: string | null
           reply_workflow_id?: string | null
           sla_ack_business_days?: number | null
           sla_resolution_business_days?: number | null
@@ -1972,6 +1980,7 @@ export type Database = {
           obsoleted_at?: string | null
           organization_id?: string
           phone?: string | null
+          public_description?: string | null
           reply_workflow_id?: string | null
           sla_ack_business_days?: number | null
           sla_resolution_business_days?: number | null

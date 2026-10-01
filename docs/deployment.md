@@ -112,6 +112,18 @@ bunx supabase functions deploy <nom> --project-ref aullweizxcjbvtdspjli
 bun run build && npx wrangler deploy --dry-run
 ```
 
+### Lot « proposition du service instructeur » (2026-10-01)
+
+L'analyse propose l'organisation gestionnaire à partir d'un catalogue décrit (voir
+`docs/features.md` § 2).
+
+| # | Action | Pourquoi cet ordre | État |
+|---|---|---|---|
+| 1 | `20261001072433_proposition_service_instructeur.sql` (`socle_organizations.public_description`, `courier_analyses.suggested_socle_organization_id` + `suggested_service_reason`) | La sync et l'analyse écrivent ces colonnes | À faire |
+| 2 | Déployer `sync-socle-referentiel`, puis la lancer (`x-cron-secret`) | Remplit les descriptifs avant la première analyse | À faire |
+| 3 | Déployer `analyze-courier` et `extract-courier-info` (`_shared/serviceSuggestion.ts` dans le lot) | Lisent `public_description`, écrivent la proposition | À faire |
+| 4 | Publier le frontend | Bouton « Affecter / Transférer » ; avant lui, la proposition n'est qu'un nom | À faire |
+
 ### Lot « délais de traitement » (2026-10-01) — appliqué le 2026-10-01
 
 Objectifs d'accusé de réception et de résolution par organisation, échéances dans les listes et

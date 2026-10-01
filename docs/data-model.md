@@ -258,6 +258,9 @@ Analyse LLM par courrier (cache).
 | `intents` | jsonb array |
 | `sentiment` | text |
 | `suggested_actions` | jsonb array |
+| `suggested_service_name` | text — nom de l'organisation proposée (dérivé de l'id depuis le 2026-10-01) |
+| `suggested_socle_organization_id` | uuid FK → socle_organizations, `ON DELETE SET NULL` — organisation gestionnaire **proposée** par l'IA, revalidée contre le catalogue. L'agent l'applique ou non |
+| `suggested_service_reason` | text — la justification, une phrase |
 | `model` / `tokens_used` | text / integer |
 
 #### `courier_analysis_jobs`
@@ -421,6 +424,7 @@ Miroir de la **hiérarchie d'organisations** du Socle (sous-arbre du `socle_org_
 | `phone` / `email` / `address` / `logo_url` | text | coordonnées Socle affichées dans l'arbre |
 | `workflow_id` | uuid FK → workflows | **config Clara** : workflow des courriers reçus |
 | `reply_workflow_id` | uuid FK → workflows | **config Clara** : workflow des réponses |
+| `public_description` | text | **miroir Socle** : descriptif « informations usager » (`GET /v1/portal/organizations`), en texte brut borné à 1 500 caractères. Écrit par la sync seule ; NULL pour un service interne (le Socle ne publie rien pour eux). Catalogue de la proposition de service instructeur |
 | `sla_ack_business_days` / `sla_resolution_business_days` | integer (1-365 / 1-3650) | **config Clara** : délais souhaités avant accusé de réception / résolution, en jours ouvrés. **NULL = hérite du parent** ; la racine porte ceux de la collectivité. Voir `docs/features.md` § 3 |
 | `synced_at` / `obsoleted_at` | timestamptz | |
 
