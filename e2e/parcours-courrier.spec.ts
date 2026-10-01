@@ -16,13 +16,15 @@ test.beforeEach(async ({ page }) => {
 
 async function openBoiteAuxLettres(page: Page) {
   await page.goto("/boite-aux-lettres");
-  await expect(page.getByRole("button", { name: "Nouveau courrier" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Ajouter du courrier/ })).toBeVisible();
 }
 
 test("saisie : création manuelle d'un courrier avec organisation gestionnaire", async ({ page }) => {
   await openBoiteAuxLettres(page);
 
-  await page.getByRole("button", { name: "Nouveau courrier" }).click();
+  // « Ajouter du courrier » est un menu (saisie / import en masse) depuis le 2026-10-01.
+  await page.getByRole("button", { name: /Ajouter du courrier/ }).click();
+  await page.getByRole("menuitem", { name: /Saisir un courrier/ }).click();
   await page.getByRole("button", { name: "Saisir manuellement" }).click();
 
   await page.locator("#nc-subject").fill(SUBJECT);
@@ -62,6 +64,11 @@ test("réponse : création d'un brouillon rattaché au courrier", async ({ page 
   await expect(page.getByText("[TEST] Courrier Alpha racine").first()).toBeVisible({
     timeout: 15_000,
   });
+
+  // Ni action ni réponse depuis la boîte aux lettres (2026-09-24) : le
+  // courrier seedé est à l'état initial, on le passe d'abord en instruction.
+  await page.getByRole("button", { name: "Instruire" }).click();
+  await expect(page.getByText("En instruction").first()).toBeVisible({ timeout: 15_000 });
 
   // Onglet Réponse
   await page.getByRole("tab", { name: /Réponses?/ }).click();

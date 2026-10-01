@@ -55,7 +55,7 @@ Défense en profondeur côté edge (fonctions en `service_role`, hors RLS) : gar
 superadmin, que les demandes des organisations Socle de l'appelant et celles sans organisme.
 Contrairement aux courriers, ce filtre n'est **pas** UI-only : ce sont les données d'Iris.
 
-**Hors périmètre (inchangé) — filtre intra-tenant par organisation Socle** : toujours appliqué **UI-only** (`useUserServiceFilter`) ; la RLS SELECT reste `is_member_of` (visibilité à l'échelle du tenant). Un membre — consultant compris — peut donc *lire* tout le tenant via appel direct. Risque pré-existant, à traiter dans un ticket dédié.
+**Hors périmètre (inchangé) — filtre intra-tenant par organisation Socle** : toujours appliqué **UI-only** (`useUserServiceFilter`) ; la RLS SELECT reste `is_member_of` (visibilité à l'échelle du tenant). Un membre — consultant compris — peut donc *lire* tout le tenant via appel direct. Risque pré-existant, à traiter dans un ticket dédié. Conséquence : **toute requête de courriers d'un écran doit poser le périmètre** — les suggestions « Courriers liés » et la recherche du dialogue de liaison l'oubliaient et montraient l'objet de courriers d'autres organisations (repéré par l'E2E `droits-membre`, corrigé le 2026-10-01 : `scopeFilter` dans `courierRelationService.ts`). Les liens déjà posés restent affichés quel que soit le périmètre.
 
 ---
 

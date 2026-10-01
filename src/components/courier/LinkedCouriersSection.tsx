@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link as RouterLink } from "react-router-dom";
 import { ChevronDown, Link2, X } from "lucide-react";
 import { toast } from "sonner";
+import { useUserServiceFilter } from "@/hooks/useUserServiceFilter";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -94,10 +95,18 @@ export default function LinkedCouriersSection({
     [relations],
   );
 
+  // Périmètre de l'utilisateur : sans lui, la suggestion montrait l'objet d'un
+  // courrier d'une organisation dont l'agent n'est pas membre (E2E
+  // droits-membre, 2026-10-01).
+  const scope = useUserServiceFilter();
   const { data: suggestions = [] } = useQuery({
-    queryKey: ["link-suggestions-bal", organizationId, courierId, linkedIds.join(",")],
+    queryKey: ["link-suggestions-bal", organizationId, courierId, linkedIds.join(","), scope === null ? "all" : scope.join(",")],
     queryFn: () =>
-      computeSimilarCouriers(organizationId, courierId, { excludeIds: linkedIds, limit: 5 }),
+      computeSimilarCouriers(organizationId, courierId, {
+        excludeIds: linkedIds,
+        limit: 5,
+        visibleSocleOrganizationIds: scope,
+      }),
     enabled: !disabled,
   });
 

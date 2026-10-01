@@ -22,8 +22,8 @@ test("un admin du tenant Beta ne voit jamais les données du tenant Alpha", asyn
   await expect(page.getByText("[TEST] Cabinet Alpha")).toHaveCount(0);
 
   // Recherche plein texte : rien du tenant Alpha
-  await page.goto("/recherche");
-  await page.getByPlaceholder(/Rechercher dans les objets/).fill("[TEST] Courrier Alpha");
-  await page.waitForTimeout(1500);
-  await expect(page.getByText("[TEST] Courrier Alpha racine")).toHaveCount(0);
+  // (la recherche lit `?q=` ; le champ vit dans le panneau « Filtres »)
+  await page.goto(`/recherche?q=${encodeURIComponent("[TEST] Courrier")}`);
+  await expect(page.getByText(/\[TEST\] Courrier Beta/).first()).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(/\[TEST\] Courrier Alpha/)).toHaveCount(0);
 });

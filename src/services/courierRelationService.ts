@@ -126,12 +126,27 @@ export async function deleteRelation(id: string): Promise<void> {
   if (error) throw error;
 }
 
+/**
+ * Périmètre d'organisations de l'utilisateur (`useUserServiceFilter`) appliqué
+ * à une requête de courriers : les siens et les non assignés. `null` = aucune
+ * restriction (administrateur). Le filtre intra-tenant est UI-only (la RLS voit
+ * tout le tenant, cf. docs/permissions.md) : chaque écran qui liste des
+ * courriers doit donc le poser — y compris les suggestions et la recherche de
+ * liens, qui le laissaient passer jusqu'au 2026-10-01.
+ */
+export function scopeFilter(visibleSocleOrganizationIds: string[] | null | undefined): string | null {
+  if (visibleSocleOrganizationIds == null) return null;
+  if (visibleSocleOrganizationIds.length === 0) return "socle_organization_id.is.null";
+  return `socle_organization_id.is.null,socle_organization_id.in.(${visibleSocleOrganizationIds.join(",")})`;
+}
+
 /** Search couriers by chrono / subject / sender name for manual linking. */
 export async function searchCouriersForLinking(
   organizationId: string,
   query: string,
   excludeCourierId: string,
   limit = 20,
+  visibleSocleOrganizationIds: string[] | null = null,
 ): Promise<RelatedCourierSummary[]> {
   const trimmed = query.trim();
   let req = supabase
@@ -142,7 +157,8 @@ export async function searchCouriersForLinking(
     .neq("id", excludeCourierId)
     .order("created_at", { ascending: false })
     .limit(limit);
-
+  const scope = scopeFilter(visibleSocleOrganizationIds);
+  if (scope) req = req.or(scope);
 
   if (trimmed.length > 0) {
     // Match either subject or chrono. Sender name lookup via participants is
@@ -209,7 +225,14 @@ function extractSubjectTokens(subject: string | null | undefined): Set<string> {
 export async function computeSimilarCouriers(
   organizationId: string,
   courierId: string,
-  opts?: { windowDays?: number; limit?: number; minScore?: number; excludeIds?: string[] },
+  opts?: {
+    windowDays?: number;
+    limit?: number;
+    minScore?: number;
+    excludeIds?: string[];
+    /** Périmètre de l'utilisateur (`useUserServiceFilter`) — `null` : tout le tenant. */
+    visibleSocleOrganizationIds?: string[] | null;
+  },
 ): Promise<SimilarityCandidate[]> {
   const windowDays = opts?.windowDays ?? 180;
   const limit = opts?.limit ?? 10;
@@ -234,7 +257,7 @@ export async function computeSimilarCouriers(
 
   const sinceIso = new Date(Date.now() - windowDays * 86400 * 1000).toISOString();
 
-  const { data: candidates, error } = await supabase
+  let candidatesReq = supabase
     .from("couriers")
     .select(RELATED_SELECT)
     .eq("organization_id", organizationId)
@@ -242,6 +265,9 @@ export async function computeSimilarCouriers(
     .gte("created_at", sinceIso)
     .order("created_at", { ascending: false })
     .limit(500);
+  const scope = scopeFilter(opts?.visibleSocleOrganizationIds);
+  if (scope) candidatesReq = candidatesReq.or(scope);
+  const { data: candidates, error } = await candidatesReq;
   if (error) throw error;
 
 

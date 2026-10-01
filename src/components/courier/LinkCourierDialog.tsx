@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { useUserServiceFilter } from "@/hooks/useUserServiceFilter";
 import { Search, Sparkles, Link2 } from "lucide-react";
 import {
   Dialog,
@@ -111,15 +112,21 @@ export default function LinkCourierDialog({
   );
   const [note, setNote] = useState("");
 
+  // Périmètre de l'utilisateur : la RLS voit tout le tenant, c'est l'écran qui
+  // borne aux organisations de l'agent (+ non assignés), comme les listes.
+  const scope = useUserServiceFilter();
+  const scopeKey = scope === null ? "all" : scope.join(",");
+
   const { data: searchResults = [], isFetching: searching } = useQuery({
-    queryKey: ["link-search", organizationId, courierId, query],
-    queryFn: () => searchCouriersForLinking(organizationId, query, courierId),
+    queryKey: ["link-search", organizationId, courierId, query, scopeKey],
+    queryFn: () => searchCouriersForLinking(organizationId, query, courierId, 20, scope),
     enabled: open && mode === "search",
   });
 
   const { data: suggestions = [], isFetching: loadingSuggestions } = useQuery({
-    queryKey: ["link-suggestions", organizationId, courierId, excludeIds.join(",")],
-    queryFn: () => computeSimilarCouriers(organizationId, courierId, { excludeIds }),
+    queryKey: ["link-suggestions", organizationId, courierId, excludeIds.join(","), scopeKey],
+    queryFn: () =>
+      computeSimilarCouriers(organizationId, courierId, { excludeIds, visibleSocleOrganizationIds: scope }),
     enabled: open && mode === "suggestions",
   });
 
