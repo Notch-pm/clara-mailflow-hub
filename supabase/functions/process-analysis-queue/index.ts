@@ -183,7 +183,22 @@ Deno.serve(async (req) => {
     try {
       let outcome: CallOutcome = { ok: true, kind: "ok" };
 
+      // Un courrier SANS pièce (email sans pièce jointe, saisie manuelle) n'a
+      // rien à océriser : son texte est dans le corps. `ocr-courier` refuse alors
+      // (400 « Aucun document à extraire ») — sans ce saut, un job `full` lancé
+      // depuis « Courrier entrant » échouait trois fois puis abandonnait un
+      // courrier parfaitement analysable.
+      let hasDocuments = true;
       if (job.kind === "full" || job.kind === "ocr") {
+        const { count, error: countErr } = await admin
+          .from("courier_documents")
+          .select("id", { count: "exact", head: true })
+          .eq("courier_id", job.courier_id);
+        if (countErr) throw new Error(countErr.message);
+        hasDocuments = (count ?? 0) > 0;
+      }
+
+      if ((job.kind === "full" || job.kind === "ocr") && hasDocuments) {
         outcome = await callAnalyzeCourier("ocr-courier", job.organization_id, job.courier_id, provided);
       }
       // L'analyse LLM n'a de sens qu'avec des extraits : on ne l'enchaîne que si
