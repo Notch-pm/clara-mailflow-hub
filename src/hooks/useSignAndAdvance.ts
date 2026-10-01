@@ -6,7 +6,7 @@ import { edgeError } from "@/lib/edge-error";
 import { signReply, transitionReplyState } from "@/services/courierReplyService";
 import { getSignatureDataUrl } from "@/services/signatoryService";
 import { grantVisa } from "@/services/courierVisaService";
-import { isFreeExitFromVisa } from "@/lib/reply-visa";
+import { isFreeExitFromVisa, type VisaGraphTransition } from "@/lib/reply-visa";
 import { appendSignature, buildSignatureBlock } from "@/lib/reply-signature";
 import type { EluTransitionChoice } from "@/hooks/useEluReply";
 import type { WorkflowState } from "@/types/courier";
@@ -39,6 +39,8 @@ export interface EluSignContext {
   hasActiveVisa?: boolean;
   /** L'utilisateur est viseur de l'organisation gestionnaire. */
   canVisa?: boolean;
+  /** Transitions du workflow réponse : un renvoi « À corriger » se reconnaît à sa suite nominale. */
+  workflowTransitions?: readonly VisaGraphTransition[];
   onDone: () => void;
 }
 
@@ -67,7 +69,7 @@ export interface EluAction {
  * Dans une étape de visa pas encore visée, l'action principale est « Viser »
  * (visa puis transition nominale, comme « Viser et avancer » du composeur), et
  * les secondaires se limitent aux sorties que la base laisse passer sans visa
- * — retour, abandon (`isFreeExitFromVisa`).
+ * — retour, abandon, renvoi pour correction (`isFreeExitFromVisa`).
  */
 export function useSignAndAdvance(ctx: EluSignContext): {
   primary: EluAction | null;
@@ -246,13 +248,22 @@ export function useSignAndAdvance(ctx: EluSignContext): {
       // Le retour en tête : c'est là que la plupart des collectivités
       // modéliseront « renvoyer au service ».
       [...(prevEntry ? [prevEntry] : []), ...others]
-        .filter((choice) => !visaPending || isFreeExitFromVisa(choice))
+        .filter(
+          (choice) =>
+            !visaPending ||
+            isFreeExitFromVisa(
+              choice,
+              ctx.currentState
+                ? { visaStateId: ctx.currentState.id, transitions: ctx.workflowTransitions ?? [] }
+                : undefined,
+            ),
+        )
         .map((choice) => ({
           id: choice.transitionId,
           label: choice.label,
           run: () => transition.mutate(choice.target),
         })),
-    [prevEntry, others, transition, visaPending],
+    [prevEntry, others, transition, visaPending, ctx.currentState, ctx.workflowTransitions],
   );
 
   return { primary, secondary, isPending };

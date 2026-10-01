@@ -44,6 +44,7 @@ export default function EluReponse() {
     isVisaState: detail.isVisaState,
     hasActiveVisa: !!detail.activeVisa,
     canVisa,
+    workflowTransitions: detail.workflow?.transitions,
     // On revient à la file d'où l'on vient : celle des visas pour un visa.
     onDone: () => navigate(visaPending ? "/elu/a-viser" : "/elu/a-signer", { replace: true }),
   });

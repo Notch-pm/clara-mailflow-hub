@@ -146,7 +146,7 @@ interface TenantFixture {
   workflowId: string;
   replyWorkflowId: string;
   states: { initial: string; processing: string; final: string };
-  replyStates: { initial: string; signature: string; final: string; visa: string; abandon: string };
+  replyStates: { initial: string; signature: string; final: string; visa: string; abandon: string; correction: string };
   signatoryId: string;
   couriers: { assigned: string; root: string; unassigned: string };
   tagId: string;
@@ -237,6 +237,19 @@ async function seedTenant(letter: "Alpha" | "Beta"): Promise<TenantFixture> {
   await insertOne("workflow_transitions", {
     organization_id: org.id, workflow_id: replyWf.id, name: "Terminer sans signature",
     from_state_id: rVisa.id, to_state_id: rFinal.id,
+  });
+  // Renvoi pour correction (cas SNA) : « À corriger » n'est ni previous ni
+  // initial, mais sa suite nominale ramène au visa — sortie libre sans visa.
+  const rCorrection = await insertOne<{ id: string }>("workflow_states", {
+    organization_id: org.id, workflow_id: replyWf.id, name: "À corriger", category: "processing",
+  });
+  await insertOne("workflow_transitions", {
+    organization_id: org.id, workflow_id: replyWf.id, name: "À corriger",
+    from_state_id: rVisa.id, to_state_id: rCorrection.id,
+  });
+  await insertOne("workflow_transitions", {
+    organization_id: org.id, workflow_id: replyWf.id, name: "Renvoyer au visa", kind: "next",
+    from_state_id: rCorrection.id, to_state_id: rVisa.id,
   });
 
   // Miroir socle : racine + sous-organisation (insert direct service_role,
@@ -330,7 +343,7 @@ async function seedTenant(letter: "Alpha" | "Beta"): Promise<TenantFixture> {
     rootSocleOrgId: rootSocle.id, subSocleOrgId: subSocle.id,
     workflowId: wf.id, replyWorkflowId: replyWf.id,
     states: { initial: stInitial.id, processing: stProcessing.id, final: stFinal.id },
-    replyStates: { initial: rInitial.id, signature: rSignature.id, final: rFinal.id, visa: rVisa.id, abandon: rAbandon.id },
+    replyStates: { initial: rInitial.id, signature: rSignature.id, final: rFinal.id, visa: rVisa.id, abandon: rAbandon.id, correction: rCorrection.id },
     signatoryId: signatory.id,
     couriers: { assigned: courierAssigned.id, root: courierRoot.id, unassigned: courierUnassigned.id },
     tagId: tag.id,

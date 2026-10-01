@@ -112,6 +112,13 @@ bunx supabase functions deploy <nom> --project-ref aullweizxcjbvtdspjli
 bun run build && npx wrangler deploy --dry-run
 ```
 
+### Lot « visa : renvoi à corriger » (2026-10-01) — appliqué le 2026-10-01
+
+| # | Action | Pourquoi cet ordre | État |
+|---|---|---|---|
+| 1 | `20261001193308_visa_renvoi_correction.sql` (`couriers_enforce_visa` : sortie libre vers un état dont la suite nominale ramène au visa) | Débloque « A corriger » chez SNA, refusé à tort ; l'écran proposera le bouton | **Appliqué** via `apply_migration` — registre `20261001193308` (fichier renommé pour coller). Vérifié sur le workflow SNA en bloc annulé : Visa → Signature sans visa refusé, Visa → A corriger accepté ; intégration `visa-guard` verte (cas « À corriger » ajouté au seed) |
+| 2 | Publier le frontend | Bouton « À corriger » sur mobile, « Autres actions » filtrées sur ordinateur | Push sur `main` |
+
 ### Lot « canal Relayé élu » (2026-10-01) — appliqué le 2026-10-01
 
 | # | Action | Pourquoi cet ordre | État |

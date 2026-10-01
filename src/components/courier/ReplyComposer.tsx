@@ -60,6 +60,7 @@ import {
   visaPersonName,
 } from "@/services/courierVisaService";
 import { ReplyVisaTrail } from "./ReplyVisaTrail";
+import { isFreeExitFromVisa } from "@/lib/reply-visa";
 import { Input } from "@/components/ui/input";
 import { appendSignature, buildSignatureBlock } from "@/lib/reply-signature";
 import { useAuth } from "@/contexts/AuthContext";
@@ -966,7 +967,19 @@ export default function ReplyComposer({
     const nextEntry = outgoingTransitions.find(({ transition }) => (transition as any).kind === "next");
     const prevEntry = outgoingTransitions.find(({ transition }) => (transition as any).kind === "previous");
     const nominalIds = new Set([nextEntry?.transition.id, prevEntry?.transition.id].filter(Boolean));
-    const others = outgoingTransitions.filter(({ transition }) => !nominalIds.has(transition.id));
+    // Étape de visa pas encore visée : seules les sorties que la base laisse
+    // passer sans visa (retour, abandon, renvoi pour correction) — les autres
+    // finiraient sur un refus serveur.
+    const others = outgoingTransitions.filter(
+      ({ transition, target }) =>
+        !nominalIds.has(transition.id) &&
+        (!isVisaState ||
+          !!activeVisa ||
+          isFreeExitFromVisa(
+            { kind: (transition.kind ?? null) as "next" | "previous" | null, target },
+            currentState && workflow ? { visaStateId: currentState.id, transitions: workflow.transitions } : undefined,
+          )),
+    );
 
     const runTransition = (target: { id: string; name: string; category: string | null; is_final?: boolean | null }) => {
       doTransition.mutate(target);

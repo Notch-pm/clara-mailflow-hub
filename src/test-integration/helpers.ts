@@ -31,7 +31,7 @@ export interface TenantFixture {
   workflowId: string;
   replyWorkflowId: string;
   states: { initial: string; processing: string; final: string };
-  replyStates: { initial: string; signature: string; final: string; visa: string; abandon: string };
+  replyStates: { initial: string; signature: string; final: string; visa: string; abandon: string; correction: string };
   signatoryId: string;
   couriers: { assigned: string; root: string; unassigned: string };
   tagId: string;

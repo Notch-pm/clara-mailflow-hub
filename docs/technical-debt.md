@@ -83,7 +83,7 @@
 6. **Suites du visa des réponses** (livré le 2026-10-01, `3aef8b8`) — hors périmètre de la première version :
    - ~~espace élu mobile : pas d'onglet « À viser »~~ ✅ 2026-10-01 — onglet et carte d'accueil pour le viseur, « Viser » (avec commentaire) sur l'écran de réponse, sorties vers l'avant masquées tant que l'étape n'est pas visée. Étendu le même jour à tout viseur, quel que soit son rôle ;
    - aucune notification (cloche, push, mail) au viseur désigné — il découvre la réponse au tableau de bord ;
-   - « Autres actions » du composeur propose encore les sorties vers l'avant depuis une étape de visa : le serveur les refuse (toast d'erreur), l'UI pourrait les griser ;
+   - ~~« Autres actions » du composeur propose encore les sorties vers l'avant depuis une étape de visa~~ ✅ 2026-10-01 — masquées tant que l'étape n'est pas visée (`isFreeExitFromVisa`, partagé avec l'espace élu) ; le renvoi « À corriger » de SNA, refusé à tort par la garde, est désormais libre (`20261001193308_visa_renvoi_correction`) ;
    - verrou du contenu pendant le visa côté UI seulement (même choix que la signature).
 
 ## Config audit

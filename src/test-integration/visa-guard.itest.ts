@@ -163,6 +163,13 @@ describe("Garde de visa — flux légitimes", () => {
     expect((await moveTo(adminAlpha, id, fx.alpha.replyStates.initial)).error).toBeNull();
   });
 
+  it("le renvoi « À corriger » (suite nominale qui ramène au visa) reste libre sans visa", async () => {
+    const id = await newReplyInVisa(fx.alpha.rootSocleOrgId);
+    expect((await moveTo(adminAlpha, id, fx.alpha.replyStates.correction)).error).toBeNull();
+    // …et la réponse corrigée repasse par le visa.
+    expect((await moveTo(adminAlpha, id, fx.alpha.replyStates.visa)).error).toBeNull();
+  });
+
   it("l'abandon (final non traité) reste libre sans visa", async () => {
     const id = await newReplyInVisa(fx.alpha.rootSocleOrgId);
     expect((await moveTo(adminAlpha, id, fx.alpha.replyStates.abandon)).error).toBeNull();
