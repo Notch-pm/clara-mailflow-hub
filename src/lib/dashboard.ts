@@ -24,7 +24,7 @@ import { LATE_AFTER_DAYS, shortWaitLabel } from "@/lib/parapheur";
 export type DashboardRole = "instruction" | "mailroom" | "parapheur";
 
 /** Ordre d'affichage des onglets, et d'arbitrage à urgence égale. */
-export const DASHBOARD_ROLES: DashboardRole[] = ["instruction", "parapheur", "mailroom"];
+export const DASHBOARD_ROLES: DashboardRole[] = ["mailroom", "instruction", "parapheur"];
 
 /** Pastille de provenance d'une carte, quand plusieurs casquettes se cumulent. */
 export const ROLE_SOURCE_LABELS: Record<DashboardRole, string> = {
@@ -375,8 +375,10 @@ export function instructionList(
   }));
   return {
     role: "instruction",
-    title: scope ? "Mes courriers en instruction" : "Courriers en instruction",
-    tabLabel: "Mes courriers",
+    // Les courriers du service (ou de l'organisation), pas ceux d'une personne :
+    // Clara n'attribue un courrier qu'à une organisation.
+    title: "À traiter",
+    tabLabel: "À traiter",
     count: rows.length,
     link: { label: "Tous les courriers en instruction", href: "/courriers-en-instruction" },
     columns: ["Étape", "Échéance"],

@@ -82,9 +82,9 @@ const voirieScope = new Set(["voirie"]);
 describe("dashboardRoles", () => {
   it("cumule les casquettes dans l'ordre des onglets", () => {
     expect(dashboardRoles({ memberOfServices: true, isServiceCourrier: true, canAccessParapheur: true })).toEqual([
+      "mailroom",
       "instruction",
       "parapheur",
-      "mailroom",
     ]);
   });
 
