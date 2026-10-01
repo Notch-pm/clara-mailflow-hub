@@ -42,7 +42,7 @@ export default function MailboxOrganizationSelect({ options, value, onChange }: 
     <Select value={value} onValueChange={onChange}>
       <SelectTrigger
         aria-label="Organisation"
-        className="h-8 w-auto min-w-0 max-w-[min(20rem,60vw)] gap-1.5 text-sm font-semibold [&>span]:min-w-0"
+        className="h-8 w-full min-w-0 gap-1.5 md:w-auto md:max-w-[20rem] text-sm font-semibold [&>span]:min-w-0"
       >
         <SelectValue />
       </SelectTrigger>

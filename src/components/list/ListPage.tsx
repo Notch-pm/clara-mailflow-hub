@@ -78,7 +78,13 @@ export function ListToolbar({
     <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b bg-card px-4 py-2.5 md:h-14 md:flex-nowrap md:px-5 md:py-0">
       {/* Sans recherche, base = largeur du titre : si les actions ne tiennent
           pas à côté, elles passent à la ligne au lieu de le tronquer. */}
-      <div className={cn("flex min-w-0 items-center gap-2.5 md:flex-initial", search ? "flex-1" : "flex-auto")}>
+      <div
+        className={cn(
+          "flex min-w-0 items-center gap-2.5 md:flex-initial",
+          search ? "flex-1" : "flex-auto",
+          titleAside && "flex-wrap gap-y-2 md:flex-nowrap",
+        )}
+      >
         <span
           aria-hidden="true"
           className="flex shrink-0 [&_img]:h-[18px] [&_img]:w-[18px] [&_svg]:h-[18px] [&_svg]:w-[18px]"
@@ -92,7 +98,11 @@ export function ListToolbar({
             <span className="sr-only"> {countLabel}</span>
           </span>
         )}
-        {titleAside && <div className="ml-1 flex min-w-0 shrink items-center">{titleAside}</div>}
+        {/* Sous `md`, le contrôle passe sous le titre : côte à côte, les deux
+            seraient tronqués. */}
+        {titleAside && (
+          <div className="flex w-full min-w-0 items-center md:ml-1 md:w-auto md:shrink">{titleAside}</div>
+        )}
       </div>
 
       {primary && (
