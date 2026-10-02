@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { useEluSignatureQueue } from "@/hooks/useEluSignatureQueue";
 import { useEluVisaQueue } from "@/hooks/useEluVisaQueue";
-import { canAccessParapheur, isOrgAdmin, isServiceCourrier } from "@/lib/permissions";
+import { canAccessParapheur, isServiceCourrier } from "@/lib/permissions";
 import { classifyCourier, type MailroomItem } from "@/lib/mailroom";
 import {
   dashboardRoles,
@@ -13,11 +13,7 @@ import {
   instructionList,
   instructionTodo,
   mailroomList,
-  mailroomTodo,
-  orgLateCount,
   parapheurList,
-  parapheurTodo,
-  sortTodo,
   trendCharts,
   type DashboardList,
   type ParapheurEntry,
@@ -152,19 +148,8 @@ export function useDashboard() {
     const orgName = (id: string | null) => (id ? (orgs?.find((o) => o.id === id)?.name ?? null) : null);
     const has = (r: (typeof roles)[number]) => roles.includes(r);
 
+    // Le bouton d'en-tête met en avant les retards de l'agent.
     const instructionCards = has("instruction") ? instructionTodo(items, myScope, draftsQuery.data ?? 0, mailroomActive) : [];
-    const todo = sortTodo([
-      ...instructionCards,
-      ...(has("mailroom") ? mailroomTodo(items) : []),
-      ...(has("parapheur")
-        ? parapheurTodo(
-            parapheurEntries,
-            // Les retards de l'organisation : pour un viseur administrateur que
-            // ni le service courrier ni un service ne les lui montre déjà.
-            isOrgAdmin(membership) && !has("mailroom") && !has("instruction") ? orgLateCount(items) : null,
-          )
-        : []),
-    ]);
 
     const lists: DashboardList[] = roles.map((role) =>
       role === "instruction"
@@ -176,12 +161,11 @@ export function useDashboard() {
 
     const instructionLate = instructionCards.find((c) => c.key === "instruction-late")?.count ?? 0;
     return {
-      todo,
       lists,
       defaultList: defaultListRole(lists),
       hero: heroAction({ roles, instructionLate, mailroomItems: items }),
     };
-  }, [roles, items, myScope, draftsQuery.data, mailroomActive, parapheurEntries, membership, statesQuery.data, orgs]);
+  }, [roles, items, myScope, draftsQuery.data, mailroomActive, parapheurEntries, statesQuery.data, orgs]);
 
   return {
     ...view,

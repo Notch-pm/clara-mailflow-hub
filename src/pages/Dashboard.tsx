@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Check, CheckCheck } from "lucide-react";
+import { CheckCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -12,31 +12,15 @@ import { cn } from "@/lib/utils";
 import {
   longDate,
   monthName,
-  ROLE_SOURCE_LABELS,
   scopeLabel,
   sparklinePaths,
   type DashboardList,
   type DashboardRole,
-  type TodoCard,
   type TrendChart,
   type Tone,
 } from "@/lib/dashboard";
 
 // ─── Tons ────────────────────────────────────────────────────────────────────
-
-const CARD_BORDER: Record<Tone, string> = {
-  urgent: "border-destructive/35",
-  attention: "border-secondary/80",
-  neutral: "border-border",
-  good: "border-primary/30",
-};
-
-const DOT: Record<Tone, string> = {
-  urgent: "bg-destructive",
-  attention: "bg-warning",
-  neutral: "bg-muted-foreground/40",
-  good: "bg-primary",
-};
 
 const PILL: Record<Tone, string> = {
   urgent: "bg-destructive/10 text-destructive",
@@ -44,68 +28,6 @@ const PILL: Record<Tone, string> = {
   neutral: "bg-muted text-muted-foreground",
   good: "bg-primary/10 text-primary",
 };
-
-// ─── « À faire » ─────────────────────────────────────────────────────────────
-
-function TodoTile({ card, showSource }: { card: TodoCard; showSource: boolean }) {
-  return (
-    <Link
-      to={card.href}
-      className={cn(
-        "flex max-w-[320px] flex-[1_0_230px] snap-start flex-col gap-1.5 rounded-lg border bg-card p-4 text-card-foreground shadow-airbnb-sm transition-shadow hover:shadow-airbnb-lg",
-        CARD_BORDER[card.tone],
-      )}
-    >
-      <div className="flex items-center gap-2">
-        <span className={cn("h-2 w-2 shrink-0 rounded-full", DOT[card.tone])} aria-hidden />
-        <span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold text-foreground/85">{card.label}</span>
-        {showSource && (
-          <span className="shrink-0 whitespace-nowrap rounded-full bg-muted px-[7px] py-px text-[11px] font-semibold text-muted-foreground">
-            {ROLE_SOURCE_LABELS[card.role]}
-          </span>
-        )}
-      </div>
-      <span
-        className={cn(
-          "text-[30px] font-extrabold leading-tight tracking-tight tabular-nums",
-          card.tone === "urgent" && "text-destructive",
-        )}
-      >
-        {card.count}
-      </span>
-      <span className="truncate text-[12.5px] text-muted-foreground">{card.sub}</span>
-      <span className="text-[12.5px] font-semibold text-primary">{card.cta} →</span>
-    </Link>
-  );
-}
-
-function TodoSection({ cards, multi, loading }: { cards: TodoCard[]; multi: boolean; loading: boolean }) {
-  return (
-    <section className="flex flex-col gap-3" aria-labelledby="dashboard-todo">
-      <h2 id="dashboard-todo" className="text-base font-bold">À faire</h2>
-      {loading ? (
-        <div className="flex gap-3 overflow-hidden">
-          {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-[136px] max-w-[320px] flex-[1_0_230px] rounded-lg" />
-          ))}
-        </div>
-      ) : cards.length ? (
-        <div className="-m-0.5 -mb-1.5 flex snap-x snap-mandatory gap-3 overflow-x-auto overscroll-x-contain p-0.5 pb-2.5 [scroll-padding:0_4px] [scrollbar-width:thin]">
-          {cards.map((card) => (
-            <TodoTile key={card.key} card={card} showSource={multi} />
-          ))}
-        </div>
-      ) : (
-        <div className="flex items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 px-5 py-4">
-          <span className="grid h-8 w-8 place-items-center rounded-full bg-primary/15 text-primary">
-            <Check className="h-4 w-4" strokeWidth={2.4} />
-          </span>
-          <span className="font-semibold">Rien ne vous attend. Vos files sont à jour.</span>
-        </div>
-      )}
-    </section>
-  );
-}
 
 // ─── Liste ───────────────────────────────────────────────────────────────────
 
@@ -434,7 +356,6 @@ export default function Dashboard() {
   const [trendsMine, setTrendsMine] = useState<boolean | null>(null);
   const mine = !!myScope && (trendsMine ?? !orgWide);
   const trendScope = useMemo(() => (mine && myScope ? [...myScope] : null), [mine, myScope]);
-  const multi = roles.length > 1;
 
   if (!organizationId) {
     return (
@@ -476,18 +397,12 @@ export default function Dashboard() {
         showStatsLink={canAccessStats(profile, membership)}
       />
 
-      {dashboard.error ? (
+      {dashboard.error && (
         <Card>
           <CardContent className="py-6 text-sm text-destructive">
             Impossible de charger vos courriers. Rechargez la page dans un instant.
           </CardContent>
         </Card>
-      ) : (
-        <TodoSection
-          cards={dashboard.todo}
-          multi={multi}
-          loading={dashboard.isLoading || (roles.includes("parapheur") && dashboard.parapheurLoading)}
-        />
       )}
 
       <div className="flex flex-wrap items-start gap-6">
