@@ -213,7 +213,8 @@ Type non précisé ou différent de ces trois : rédige une réponse sobre, adap
 
 FORMULES DE POLITESSE — pour tous les types de réponse
 - Le corps commence TOUJOURS par la formule d'appel indiquée dans le message, reprise telle quelle, seule dans son premier paragraphe.
-- Il se termine TOUJOURS par une phrase de politesse de clôture, seule dans son dernier paragraphe : sobre et courtoise, adaptée au type (par exemple « Nous restons à votre disposition pour tout complément d'information et vous prions d'agréer, Madame, l'expression de nos salutations distinguées. » ou « Bien cordialement. »). Reprends la civilité de la formule d'appel quand elle y figure ; n'en invente pas.
+- Il se termine TOUJOURS par une phrase de politesse de clôture, seule dans son dernier paragraphe : sobre et courtoise, adaptée au type (par exemple « Nous restons à votre disposition pour tout complément d'information et vous prions d'agréer, <civilité>, l'expression de nos salutations distinguées. » ou « Bien cordialement. »).
+- La civilité de la clôture est celle de la formule d'appel. Si la formule d'appel ne contient ni « Madame » ni « Monsieur », écris « Madame, Monsieur » : ne déduis JAMAIS une civilité ni un genre d'un prénom, et évite alors les accords qui en supposent un (« informé(e) », « satisfait(e) ») en tournant la phrase autrement.
 - Ces deux paragraphes ne comptent pas dans le nombre de paragraphes indiqué pour le type.
 - Pas de signature ni de nom de signataire : le modèle de courrier les ajoute.
 

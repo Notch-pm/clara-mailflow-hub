@@ -168,6 +168,9 @@ describe("formules de politesse", () => {
     expect(DRAFT_SYSTEM_PROMPT).toContain("se termine TOUJOURS par une phrase de politesse de clôture");
     // L'ancienne consigne inverse ne doit pas survivre ailleurs dans le prompt.
     expect(DRAFT_SYSTEM_PROMPT).not.toContain("ni la formule d'appel");
+    // Constaté : sans civilité, le modèle la tirait du prénom (« Madame », « informée »).
+    expect(DRAFT_SYSTEM_PROMPT).toContain("ne déduis JAMAIS une civilité ni un genre d'un prénom");
+    expect(DRAFT_SYSTEM_PROMPT).not.toContain("agréer, Madame,");
   });
 });
 
