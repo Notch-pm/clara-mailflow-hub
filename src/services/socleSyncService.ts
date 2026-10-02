@@ -46,6 +46,8 @@ export interface SocleSyncCounters {
   smtp_synchronises?: number;
   /** Serveur d'envoi effacé, le référentiel n'en déclarant plus (0 ou 1). */
   smtp_retires?: number;
+  /** Configuration Arpège recopiée depuis le référentiel (0 ou 1). Absente avant le 2026-10-02. */
+  arpege_synchronise?: number;
   /**
    * Charte graphique (logo + couleurs) relue et appliquée (0 ou 1). Absente des
    * runs antérieurs au 2026-09-13 ; 0 = charte illisible, miroir laissé en l'état.

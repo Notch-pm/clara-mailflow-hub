@@ -588,6 +588,7 @@ la table porte des secrets, l'UI ne les re-sert jamais au navigateur.
 | `socle_root_org_id` | uuid | **Iris** : organisation RACINE visée. Vérifiée par Iris contre le périmètre de la clé (403 en cas d'écart) — ne se déduit **pas** de `organizations.socle_org_id`, un tenant pouvant être mappé sur une sous-organisation |
 | `last_sync_at` | timestamptz | curseur de réconciliation : `updated_at` (horloge du **partenaire**) de la dernière demande relue |
 | `is_active` | boolean | suspension : coupe le **nouveau trafic**, jamais le suivi des demandes déjà déposées |
+| `socle_synced_at` / `socle_updated_at` | timestamptz | **Arpège** (2026-10-02) : recopie depuis le Socle (`sync-socle-referentiel` → RPC de service `sync_arpege_integration_from_socle`). `socle_synced_at` non nul = configuration **gérée dans le Socle**, en lecture seule dans l'écran ; nul = saisie manuelle d'avant la bascule, **conservée** tant que le Socle n'en déclare pas de complète |
 
 #### `action_tickets`
 Demandes dérivées d'un courrier. Depuis le 2026-09-11 elles sont **toujours** fondées sur une

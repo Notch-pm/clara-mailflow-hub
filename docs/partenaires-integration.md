@@ -104,7 +104,7 @@ déclencher d'écriture qui lui soit imputable (résout l'asymétrie d'auth actu
 | **L0** | Décommissionnement : suppression `sync-arpege-appointments` (morte), `DROP FUNCTION trigger_arpege_sync()` (orpheline), docs (2 edge non documentées, `features.md` §Arpège périmée, `permissions.md` Intégrations) | — |
 | **L1** | Hawk mutualisé dans `_shared/arpege.ts` (copié-collé ×5 aujourd'hui), refactor iso-comportement des 4 edges vivantes ; UI `OrgIntegrations` réalignée (requis = `api_base_url`+`client_id`+`client_secret` ; `access_token` legacy), activation gated par test réussi, secret non re-servi | — |
 | **L2** | Verrou RLS superadmin-only + `UNIQUE(organization_id, provider)` + `NOT NULL` + RPC `partner_integration_status` ; tests d'intégration AC-SRV-1/2/3 | — |
-| **L3** | Catalogue `integration_providers` + surface superadmin « sélection partenaire » (mince, différable) | — |
+| **L3** | ~~Catalogue `integration_providers`~~ — **remplacé le 2026-10-02 par le catalogue du Socle** (« Intégrations », fiche client du super admin) : la configuration Arpège se saisit dans le Socle et Clara la recopie (`sync-socle-referentiel`, scope `integrations`). Tant que le Socle n'en déclare pas pour un tenant, la ligne saisie dans Clara reste en service | — |
 | **L4** | Dédoublonnage (matching `external_reference_id`) + fusion conditionnelle | L1 souple |
 | **L5** | Réconciliation privilégiée du statut + suivi maintenu en suspension (retrait du gate `is_active` en lecture des identifiants pour `check-arpege-ticket-status`) | L1 |
 | **L6** | Table d'activations + toggle UI + enforcement serveur (ordre interne strict : table → repli opt-out → UI → enforcement) | L2 souple |

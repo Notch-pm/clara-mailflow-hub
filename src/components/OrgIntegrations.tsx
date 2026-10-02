@@ -58,6 +58,9 @@ export default function OrgIntegrations({ orgId }: OrgIntegrationsProps) {
     },
   });
 
+  // Recopiée depuis le Socle (sync du référentiel) : le Socle fait foi, une
+  // modification ici serait écrasée au passage suivant — lecture seule.
+  const managedBySocle = !!integration?.socle_synced_at;
   const hasStoredSecret = !!integration?.client_secret;
   const hasStoredAccessToken = !!integration?.access_token;
 
@@ -288,11 +291,25 @@ export default function OrgIntegrations({ orgId }: OrgIntegrationsProps) {
                   </Button>
                 </>
               )}
-              <Button variant="outline" size="sm" onClick={startEdit}>
-                {integration ? "Modifier" : "Configurer"}
-              </Button>
+              {managedBySocle ? null : (
+                <Button variant="outline" size="sm" onClick={startEdit}>
+                  {integration ? "Modifier" : "Configurer"}
+                </Button>
+              )}
             </div>
           </CardHeader>
+          {managedBySocle && (
+            <CardContent className="pt-0">
+              <p className="text-sm text-muted-foreground">
+                Configuration gérée dans le Socle (fiche du client, section « Intégrations ») et
+                recopiée à chaque synchronisation du référentiel
+                {integration.socle_synced_at
+                  ? ` — dernière le ${new Date(integration.socle_synced_at).toLocaleString("fr-FR")}`
+                  : ""}
+                .
+              </p>
+            </CardContent>
+          )}
           {(testResult || syncProceduresResult) && (
             <CardContent className="pt-0 space-y-2">
               {testResult && (

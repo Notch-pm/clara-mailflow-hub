@@ -112,6 +112,17 @@ bunx supabase functions deploy <nom> --project-ref aullweizxcjbvtdspjli
 bun run build && npx wrangler deploy --dry-run
 ```
 
+### Lot « configuration Arpège depuis le Socle » (2026-10-02)
+
+| # | Action | Pourquoi cet ordre | État |
+|---|---|---|---|
+| 1 | **Socle** : public-api 1.34.0 (`GET /v1/organizations/{id}/integrations/{slug}`, scope `integrations`) | Clara lit cette route | **Fait** |
+| 2 | `20261002154123_arpege_depuis_socle.sql` (colonnes `socle_synced_at`/`socle_updated_at`, RPC de service `sync_arpege_integration_from_socle`) | La sync écrit par la RPC | **Appliqué** via `apply_migration` — registre `20261002154123` (fichier renommé pour coller). Upsert éprouvé en transaction annulée |
+| 3 | `supabase functions deploy sync-socle-referentiel` | Sans configuration au Socle, ne change rien (ligne locale conservée) | **Fait** |
+| 4 | **Socle** : scope `integrations` sur la clé « Clara avec IA » ; configuration Arpège d'ACCM reprise de Clara (identifiants passés de base à base sans affichage), testée (`GET /v2/Hello` réussi) puis activée | Avant toute sync, sinon rien à recopier | **Fait** |
+| 5 | Sync déclenchée (`trigger_socle_sync()`) | Vérifier la bascule | **Fait** — ACCM `arpege_synchronise = 1`, empreinte des valeurs identique avant/après, toujours active ; Saint-Laurent sans configuration : inchangé, aucun avertissement |
+| 6 | Publier le frontend | Écran Arpège en lecture seule quand la ligne vient du Socle | Push sur `main` |
+
 ### Lot « Boîte aux lettres → À instruire » (2026-10-02)
 
 | # | Action | Pourquoi cet ordre | État |

@@ -15,6 +15,12 @@
 // Voir branding.ts pour la logique pure. L'identité (`planTenantIdentityUpdate`)
 // ne fixe plus que le nom et le slug.
 //
+// Et de la CONFIGURATION ARPÈGE depuis le 2026-10-02 :
+// `GET /v1/organizations/{racine}/integrations/arpege` (scope `integrations`)
+// est recopié dans `organization_integrations` par la RPC de service
+// sync_arpege_integration_from_socle. ⚠️ Transition : rien de déclaré côté
+// Socle ⇒ la ligne locale est CONSERVÉE (voir arpege.ts).
+//
 // Auth (3 voies, comme sync-arpege-services) :
 //   - x-cron-secret (pg_cron via trigger_socle_sync) → privilégié
 //   - Bearer SERVICE_ROLE_KEY → privilégié
@@ -64,6 +70,12 @@ import {
   type SmtpTenantRef,
   type SocleSmtpDto,
 } from "./smtp.ts";
+import {
+  arpegeMirrorArgs,
+  arpegeWarning,
+  type ArpegeTenantRef,
+  type SocleIntegrationDto,
+} from "./arpege.ts";
 import {
   brandingWarning,
   planBrandingUpdate,
@@ -228,6 +240,43 @@ async function fetchSocleSmtp(
       return { status: response.status, dto: null };
     }
     return { status: 200, dto: (await response.json()) as SocleSmtpDto };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Configuration Arpège d'une organisation racine — mêmes règles que
+ * `fetchSocleSmtp` : pas de retry, un statut d'erreur n'est pas une exception
+ * (403 sans le scope `integrations`, 404 sur un Socle antérieur à la route),
+ * seul le 401 est fatal.
+ */
+async function fetchSocleArpege(
+  socleOrgId: string,
+): Promise<{ status: number; dto: SocleIntegrationDto | null }> {
+  const apiKey = Deno.env.get("SOCLE_API_KEY")?.trim();
+  if (!apiKey) throw new Error("Secret SOCLE_API_KEY manquant — configurez-le dans les secrets de la fonction");
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SOCLE_TIMEOUT_MS);
+  try {
+    const response = await fetch(
+      `${socleBaseUrl()}/v1/organizations/${encodeURIComponent(socleOrgId)}/integrations/arpege`,
+      {
+        headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
+        signal: controller.signal,
+      },
+    );
+    if (response.status === 401) {
+      await response.body?.cancel();
+      throw new SocleAuthError(
+        "Clé API Socle invalide ou révoquée (401) — synchronisation interrompue",
+      );
+    }
+    if (!response.ok) {
+      await response.body?.cancel();
+      return { status: response.status, dto: null };
+    }
+    return { status: 200, dto: (await response.json()) as SocleIntegrationDto };
   } finally {
     clearTimeout(timer);
   }
@@ -579,6 +628,8 @@ interface OrgSyncResult {
     smtp_synchronises: number;
     /** Miroirs effacés faute de relais déclaré côté Socle (0 ou 1). */
     smtp_retires: number;
+    /** Configuration Arpège recopiée depuis le Socle (0 ou 1) — 0 = ligne locale laissée en l'état. */
+    arpege_synchronise: number;
     /** Charte graphique (logo + couleurs) relue et appliquée (0 ou 1) — 0 = miroir laissé en l'état. */
     charte_synchronisee: number;
     /** Descriptifs publics (« informations usager ») réécrits dans le miroir des organisations. */
@@ -732,6 +783,9 @@ async function syncOrg(
   // faire. Placé avant les démarches pour qu'un incident de catalogue ne prive
   // pas le tenant de son relais.
   const smtp = await syncSmtp(supabaseAdmin, org, rootId, dryRun);
+  // 1ter) Configuration Arpège : même motif, mais la ligne locale survit tant
+  // que le Socle n'en déclare pas de complète (transition, voir arpege.ts).
+  const arpege = await syncArpege(supabaseAdmin, org, rootId, dryRun);
 
   const categoriesCounters = await syncMirror(
     supabaseAdmin,
@@ -851,7 +905,7 @@ async function syncOrg(
     ? { created: 0, updated: 0, adopted: 0, obsoleted: 0, unchanged: 0 }
     : await syncActivations(supabaseAdmin, org, activations, muteOrgs, syncedAt);
 
-  const warnings = [...smtp.warnings, ...branding.warnings, ...descriptions.warnings, ...attributions.warnings, ...plan.warnings];
+  const warnings = [...smtp.warnings, ...arpege.warnings, ...branding.warnings, ...descriptions.warnings, ...attributions.warnings, ...plan.warnings];
   if (muteOrgs.length > 0) {
     warnings.push(
       `Démarches illisibles pour ${muteOrgs.length} organisation(s) (${muteOrgs.join(", ")}) — leur miroir est inchangé.`,
@@ -867,6 +921,7 @@ async function syncOrg(
       activations: activationsCounters,
       smtp_synchronises: smtp.synchronises,
       smtp_retires: smtp.retires,
+      arpege_synchronise: arpege.synchronise,
       charte_synchronisee: branding.synchronisee,
       descriptifs_synchronises: descriptions.synchronises,
       attributions_synchronisees: attributions.synchronises,
@@ -1074,6 +1129,62 @@ async function syncSmtp(
     console.error(`[sync-socle] org ${org.name}: serveur d'envoi: ${message}`);
     warnings.push(`serveur d'envoi (${org.name}) : ${message} — miroir inchangé.`);
     return { synchronises: 0, retires: 0, warnings };
+  }
+}
+
+// ── Configuration Arpège (miroir du Socle) ──
+
+/**
+ * Recopie dans `organization_integrations` (provider `arpege`) la configuration
+ * déclarée par le Socle pour la racine du tenant.
+ *
+ * ⚠️ À la différence du SMTP, l'absence côté Socle N'EFFACE RIEN : la ligne
+ * locale (saisie dans Clara avant la bascule) reste en service tant que le
+ * Socle ne déclare pas de configuration complète. Dès qu'il en déclare une, il
+ * fait foi — activation comprise.
+ *
+ * Les secrets ne font que passer d'ici vers la RPC de service : jamais
+ * journalisés, ni comptés, ni repris dans un message d'erreur.
+ */
+async function syncArpege(
+  supabaseAdmin: AdminClient,
+  org: ClaraOrg,
+  rootId: string | null,
+  dryRun: boolean,
+): Promise<{ synchronise: number; warnings: string[] }> {
+  const warnings: string[] = [];
+  // Sans racine connue : le SMTP a déjà averti, rien à ajouter.
+  if (!rootId) return { synchronise: 0, warnings };
+
+  const tenant: ArpegeTenantRef = {
+    organizationId: org.id,
+    organizationName: org.name,
+    rootSocleOrgId: rootId,
+  };
+
+  try {
+    const { status, dto } = await fetchSocleArpege(rootId);
+    if (status !== 200) {
+      warnings.push(arpegeWarning(tenant, status));
+      return { synchronise: 0, warnings };
+    }
+    const args = arpegeMirrorArgs(tenant, dto);
+    if (!args) return { synchronise: 0, warnings };
+
+    if (!dryRun) {
+      const { error } = await supabaseAdmin.rpc("sync_arpege_integration_from_socle", args);
+      if (error) throw new Error(error.message);
+    }
+    console.log(
+      `[sync-socle] org ${org.name}: configuration Arpège synchronisée depuis la racine Socle${dryRun ? " (dry-run)" : ""}`,
+    );
+    return { synchronise: 1, warnings };
+  } catch (e) {
+    if (e instanceof SocleAuthError) throw e;
+    const message = e instanceof Error ? e.message : String(e);
+    console.error(`[sync-socle] org ${org.name}: Arpège: ${message}`);
+    warnings.push(`Arpège (${org.name}) : ${message} — configuration locale inchangée.`);
+    return { synchronise: 0, warnings };
   }
 }
 
