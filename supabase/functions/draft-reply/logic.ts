@@ -129,6 +129,8 @@ export interface DraftPromptInput {
   senderFirstName?: string | null;
   senderLastName?: string | null;
   senderOrg?: string | null;
+  /** Civilité tenue par la fiche du Socle de l'usager, si elle est connue. */
+  senderCivility?: string | null;
   recipientName?: string | null;
   receivedAtLabel?: string | null;
   subject?: string | null;
@@ -209,6 +211,12 @@ CONSIGNES SELON LE TYPE DE RÉPONSE
 
 Type non précisé ou différent de ces trois : rédige une réponse sobre, adaptée à ce que le courrier demande, dans le respect de la règle absolue.
 
+FORMULES DE POLITESSE — pour tous les types de réponse
+- Le corps commence TOUJOURS par la formule d'appel indiquée dans le message, reprise telle quelle, seule dans son premier paragraphe.
+- Il se termine TOUJOURS par une phrase de politesse de clôture, seule dans son dernier paragraphe : sobre et courtoise, adaptée au type (par exemple « Nous restons à votre disposition pour tout complément d'information et vous prions d'agréer, Madame, l'expression de nos salutations distinguées. » ou « Bien cordialement. »). Reprends la civilité de la formule d'appel quand elle y figure ; n'en invente pas.
+- Ces deux paragraphes ne comptent pas dans le nombre de paragraphes indiqué pour le type.
+- Pas de signature ni de nom de signataire : le modèle de courrier les ajoute.
+
 TON
 - Registre administratif courtois, phrases claires, vocabulaire accessible, vouvoiement.
 - Adresse-toi directement à l'expéditeur ; parle au nom de la collectivité (« nous », « nos services »).
@@ -222,7 +230,7 @@ OBJET DE LA RÉPONSE
 FORMAT DE SORTIE
 - Commence par l'objet, seul sur la première ligne, entre balises : <objet>…</objet>
 - Puis le corps de la lettre en HTML, avec les balises <p>, <strong>, <em>, <ul>, <li> uniquement.
-- N'inclus dans le corps ni les coordonnées, ni la date, ni la ligne d'objet, ni la formule d'appel, ni la formule de politesse finale : le modèle de courrier les ajoute.
+- N'inclus dans le corps ni les coordonnées, ni la date, ni la ligne d'objet, ni la signature : le modèle de courrier les ajoute. La formule d'appel et la phrase de politesse de clôture, elles, font partie du corps.
 - Aucun commentaire avant ou après, pas de bloc de code.`;
 
 /** Longueur au-delà de laquelle un objet proposé n'en est plus un. */
@@ -265,8 +273,32 @@ export function splitDraftSubject(answer: string): { subject: string | null; htm
 export const NO_SOURCE_WARNING =
   `⚠️ AUCUN CONTENU DU COURRIER N'EST DISPONIBLE (ni corps de message, ni texte extrait des pièces jointes). N'invente ni son objet, ni sa demande, ni les faits qu'il rapporterait : rédige une lettre volontairement générique, conforme au type de réponse demandé, et place [à compléter] partout où un élément du dossier devrait figurer.`;
 
+/**
+ * Formule d'appel de la lettre, composée ICI plutôt que laissée au modèle :
+ * il ne connaît pas la civilité (un prénom ne la dit pas), et une formule
+ * fausse — « Monsieur » à une usagère — est l'erreur la plus visible qu'une
+ * lettre puisse faire. On ne nomme que ce que la fiche établit ; sinon, la
+ * formule neutre de l'administration.
+ */
+export function salutationFor(input: {
+  civility?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  isPerson?: boolean;
+}): string {
+  const civility = (input.civility ?? "").trim().toLowerCase();
+  const title = civility === "madame" ? "Madame" : civility === "monsieur" ? "Monsieur" : null;
+  const last = (input.lastName ?? "").trim();
+  const first = (input.firstName ?? "").trim();
+  if (title) return last ? `Bonjour ${title} ${last},` : `Bonjour ${title},`;
+  // Sans civilité, le nom complet d'une personne plutôt qu'un « Madame,
+  // Monsieur » qui sonne comme une lettre type.
+  if (input.isPerson !== false && first && last) return `Bonjour ${first} ${last},`;
+  return "Madame, Monsieur,";
+}
+
 const FINAL_INSTRUCTION =
-  `Donne maintenant l'objet de la réponse entre <objet></objet>, puis le corps de la lettre, en t'appuyant EXCLUSIVEMENT sur les éléments ci-dessus. Tout élément absent s'écrit [à compléter].`;
+  `Donne maintenant l'objet de la réponse entre <objet></objet>, puis le corps de la lettre — de la formule d'appel à la phrase de politesse de clôture —, en t'appuyant EXCLUSIVEMENT sur les éléments ci-dessus. Tout élément absent s'écrit [à compléter].`;
 
 // ── Blocs ───────────────────────────────────────────────────────────────────
 
@@ -359,7 +391,15 @@ export function buildDraftUserPrompt(input: DraftPromptInput): string {
     typeof t === "string" && t.trim() !== ""
   );
 
-  const headerLines = [`Type de réponse : ${responseType || "non précisé"}`];
+  const salutation = salutationFor({
+    civility: input.senderCivility,
+    firstName: input.senderFirstName,
+    lastName: input.senderLastName,
+  });
+  const headerLines = [
+    `Type de réponse : ${responseType || "non précisé"}`,
+    `Formule d'appel à reprendre en tête de lettre : ${salutation}`,
+  ];
   if (instructions) headerLines.push(`Instructions de l'agent (prioritaires) : ${instructions}`);
   if (bodyText.length === 0 && attachments.length === 0) headerLines.push(NO_SOURCE_WARNING);
   const header = headerLines.join("\n");

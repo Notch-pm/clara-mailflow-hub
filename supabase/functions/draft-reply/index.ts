@@ -10,6 +10,7 @@ import {
   socleOrgIdFor,
 } from "../_shared/socleAi.ts";
 import { assertEditor } from "../_shared/authz.ts";
+import { contactsApiKeyForOrg, fetchContactsApi } from "../_shared/socleContactsClient.ts";
 import {
   buildDraftUserPrompt,
   type DraftAttachment,
@@ -64,6 +65,29 @@ async function verifyAuth(req: Request) {
   return data.user;
 }
 
+/** Délai laissé au référentiel pour donner la civilité : la rédaction attend déjà le guichet. */
+const CIVILITY_TIMEOUT_MS = 4_000;
+
+async function socleCivility(contactId: string | null, socleOrgId: string): Promise<string | null> {
+  if (!contactId) return null;
+  const key = contactsApiKeyForOrg(socleOrgId);
+  if (!key) return null;
+  try {
+    const lookup = fetchContactsApi(key, {
+      method: "GET",
+      path: `/v1/contacts/${contactId}`,
+      idempotent: false,
+    }, { socleOrgId });
+    const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), CIVILITY_TIMEOUT_MS));
+    const res = await Promise.race([lookup, timeout]);
+    const civility = (res?.body as { civility?: string | null } | null)?.civility;
+    return typeof civility === "string" ? civility : null;
+  } catch (e) {
+    console.warn("draft-reply: civilité du référentiel indisponible:", e);
+    return null;
+  }
+}
+
 /**
  * Formes des lignes lues plus bas. Le client d'administration n'est pas typé
  * par `Database` (il vit côté Deno, hors du type généré) : ces interfaces sont
@@ -77,6 +101,7 @@ interface ParticipantRow {
   first_name: string | null;
   last_name: string | null;
   organization: string | null;
+  socle_contact_id: string | null;
 }
 
 interface CourierRow {
@@ -180,7 +205,7 @@ Deno.serve(async (req) => {
       .select(
         "subject, chrono, metadata, received_at, " +
           "assigned_org:socle_organizations(name), " +
-          "courier_participants(role, name, email, first_name, last_name, organization)",
+          "courier_participants(role, name, email, first_name, last_name, organization, socle_contact_id)",
       )
       .eq("id", courierId)
       .eq("organization_id", orgId)
@@ -197,6 +222,11 @@ Deno.serve(async (req) => {
     const senderFullName = [senderFirstName, senderLastName].filter(Boolean).join(" ").trim()
       || sender?.name || sender?.email || "Expéditeur inconnu";
     const senderOrg = sender?.organization ?? "";
+
+    // La civilité vit sur la fiche du Socle, pas sur le participant : elle
+    // fonde la formule d'appel. Best-effort et borné : un référentiel muet
+    // donne « Madame, Monsieur, », jamais une rédaction refusée.
+    const senderCivility = await socleCivility(sender?.socle_contact_id ?? null, socleOrgId);
 
     const recipientName = recipient
       ? [recipient.first_name, recipient.last_name].filter(Boolean).join(" ").trim() || recipient.name || recipient.email || ""
@@ -311,6 +341,7 @@ Deno.serve(async (req) => {
       senderFullName,
       senderFirstName,
       senderLastName,
+      senderCivility,
       senderOrg,
       recipientName,
       receivedAtLabel: formatDateFr(courierRow.received_at),

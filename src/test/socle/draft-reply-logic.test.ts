@@ -10,6 +10,7 @@ import {
   MAX_THREAD_REPLIES,
   NO_SOURCE_WARNING,
   RESPONSE_TYPES,
+  salutationFor,
   splitDraftSubject,
   stripHtml,
 } from "../../../supabase/functions/draft-reply/logic";
@@ -111,7 +112,7 @@ describe("prompt système — le garde-fou contre l'invention", () => {
 
   it("garde les contraintes de sortie, l'alias d'agent pouvant ne pas résoudre", () => {
     expect(DRAFT_SYSTEM_PROMPT).toContain("HTML");
-    expect(DRAFT_SYSTEM_PROMPT).toContain("formule de politesse");
+    expect(DRAFT_SYSTEM_PROMPT).toContain("formule d'appel");
   });
 });
 
@@ -138,6 +139,35 @@ describe("prompt système — le cahier des charges par type", () => {
   it("transmet le type choisi dans le message", () => {
     const prompt = buildDraftUserPrompt({ ...BASE, responseType: "Clôture", bodyText: "Bonjour," });
     expect(prompt).toContain("Type de réponse : Clôture");
+  });
+});
+
+describe("formules de politesse", () => {
+  it("compose la formule d'appel avec la civilité de la fiche et le nom", () => {
+    expect(salutationFor({ civility: "madame", firstName: "Marie", lastName: "Dupont" })).toBe("Bonjour Madame Dupont,");
+    expect(salutationFor({ civility: "monsieur", lastName: "Martin" })).toBe("Bonjour Monsieur Martin,");
+    expect(salutationFor({ civility: "madame" })).toBe("Bonjour Madame,");
+  });
+
+  it("ne devine jamais la civilité : nom complet, sinon formule neutre", () => {
+    expect(salutationFor({ firstName: "Marie", lastName: "Dupont" })).toBe("Bonjour Marie Dupont,");
+    expect(salutationFor({ lastName: "Dupont" })).toBe("Madame, Monsieur,");
+    expect(salutationFor({ civility: "autre", firstName: "Camille", lastName: "Roy" })).toBe("Bonjour Camille Roy,");
+    expect(salutationFor({})).toBe("Madame, Monsieur,");
+  });
+
+  it("donne la formule d'appel au modèle, quel que soit le type", () => {
+    for (const responseType of RESPONSE_TYPES) {
+      const prompt = buildDraftUserPrompt({ ...BASE, responseType, senderCivility: "madame", bodyText: "Bonjour," });
+      expect(prompt).toContain("Formule d'appel à reprendre en tête de lettre : Bonjour Madame Dupont,");
+    }
+  });
+
+  it("exige l'appel en tête et la politesse en clôture, sans signature", () => {
+    expect(DRAFT_SYSTEM_PROMPT).toContain("commence TOUJOURS par la formule d'appel");
+    expect(DRAFT_SYSTEM_PROMPT).toContain("se termine TOUJOURS par une phrase de politesse de clôture");
+    // L'ancienne consigne inverse ne doit pas survivre ailleurs dans le prompt.
+    expect(DRAFT_SYSTEM_PROMPT).not.toContain("ni la formule d'appel");
   });
 });
 
