@@ -6,19 +6,19 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOrganization } from "@/contexts/OrganizationContext";
-import { useDashboard } from "@/hooks/useDashboard";
+import { useDashboard, useDashboardTrends } from "@/hooks/useDashboard";
 import { canAccessStats, isOrgAdmin } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import {
   longDate,
-  monthKpis,
-  monthLabels,
+  monthName,
   ROLE_SOURCE_LABELS,
   scopeLabel,
+  sparklinePaths,
   type DashboardList,
   type DashboardRole,
-  type Kpi,
   type TodoCard,
+  type TrendChart,
   type Tone,
 } from "@/lib/dashboard";
 
@@ -227,82 +227,187 @@ function ListSection({
   );
 }
 
-// ─── Indicateurs ─────────────────────────────────────────────────────────────
+// ─── Tendances ───────────────────────────────────────────────────────────────
 
-function KpiPanel({
-  kpis,
-  title,
-  footer,
+function Sparkline({
+  chart,
+  active,
+  onActive,
+}: {
+  chart: TrendChart;
+  active: number | null;
+  onActive: (i: number | null) => void;
+}) {
+  const { line, area, y } = useMemo(() => sparklinePaths(chart.points.map((p) => p.value)), [chart.points]);
+  const n = chart.points.length;
+  const x = (i: number) => (n === 1 ? 50 : (i / (n - 1)) * 100);
+  const marker = active ?? (n && y[n - 1] !== null ? n - 1 : null);
+  return (
+    <div className="relative h-10" onMouseLeave={() => onActive(null)}>
+      <svg
+        viewBox="0 0 100 32"
+        preserveAspectRatio="none"
+        className="absolute inset-0 h-full w-full overflow-visible"
+        aria-hidden="true"
+      >
+        <path d={area} className="fill-primary/[0.08]" />
+        <path
+          d={line}
+          fill="none"
+          className="stroke-primary"
+          strokeWidth={2}
+          strokeLinejoin="round"
+          strokeLinecap="round"
+          style={{ vectorEffect: "non-scaling-stroke" }}
+        />
+      </svg>
+      {active !== null && (
+        <span
+          className="pointer-events-none absolute inset-y-0 w-px bg-border"
+          style={{ left: `${x(active)}%` }}
+          aria-hidden="true"
+        />
+      )}
+      {marker !== null && y[marker] !== null && (
+        <span
+          className="pointer-events-none absolute -ml-[3.5px] -mt-[3.5px] h-[7px] w-[7px] rounded-full bg-primary ring-2 ring-card"
+          style={{ left: `${x(marker)}%`, top: `${(y[marker]! / 32) * 100}%` }}
+          aria-hidden="true"
+        />
+      )}
+      {/* Zones de survol : une colonne par mois, plus large que le point. */}
+      <div className="absolute inset-0 flex" aria-hidden="true">
+        {chart.points.map((p, i) => (
+          <span key={p.label} className="h-full flex-1" onMouseEnter={() => onActive(i)} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TrendCard({ chart, loading }: { chart: TrendChart; loading: boolean }) {
+  const [active, setActive] = useState<number | null>(null);
+  const shown = active !== null ? chart.points[active] : chart.points[chart.points.length - 1];
+  return (
+    <div className="flex min-w-[200px] flex-[1_0_200px] flex-col gap-1 rounded-lg border bg-card px-4 py-3.5 shadow-sm">
+      <span className="truncate text-[13px] font-semibold text-muted-foreground">{chart.label}</span>
+      {loading || !shown ? (
+        <Skeleton className="mb-2 h-7 w-20" />
+      ) : (
+        <div className="mb-2 flex items-baseline gap-1.5">
+          <span className="text-[22px] font-extrabold tracking-tight tabular-nums">{shown.display}</span>
+          {/* Au survol, le mois suit l'unité et l'écart s'efface. */}
+          <span className="min-w-0 truncate text-[13px] text-muted-foreground">
+            {active !== null ? `${chart.unit} · ${shown.short}` : chart.unit}
+          </span>
+          <span className="flex-1" />
+          {active === null && (
+            <span
+              className={cn(
+                "shrink-0 whitespace-nowrap text-xs font-bold tabular-nums",
+                chart.trend === "good" && "text-primary",
+                chart.trend === "bad" && "text-destructive",
+                chart.trend === null && "text-muted-foreground",
+              )}
+            >
+              {chart.delta ?? "—"}
+            </span>
+          )}
+        </div>
+      )}
+      {loading ? <Skeleton className="h-10 w-full" /> : <Sparkline chart={chart} active={active} onActive={setActive} />}
+      <table className="sr-only">
+        <caption>{chart.label}, par mois</caption>
+        <tbody>
+          {chart.points.map((p) => (
+            <tr key={p.label}>
+              <th scope="row">{p.label}</th>
+              <td>{p.display}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+const TREND_PLACEHOLDERS = [
+  "Courriers reçus",
+  "En cours",
+  "Courriers répondus",
+  "Délai moyen de réponse",
+  "Délai moyen de traitement",
+];
+
+function TrendsSection({
+  pending,
+  scopeIds,
   scopeToggle,
   showStatsLink,
-  loading,
 }: {
-  kpis: Kpi[];
-  title: string;
-  footer: string;
+  /** Périmètre pas encore connu (rattachements en lecture) : squelettes, sans requête. */
+  pending: boolean;
+  scopeIds: string[] | null;
   scopeToggle: { mine: boolean; onChange: (mine: boolean) => void } | null;
   showStatsLink: boolean;
-  loading: boolean;
 }) {
+  const trends = useDashboardTrends(scopeIds, !pending);
+  const { charts, lastMonth, error } = trends;
+  const isLoading = pending || trends.isLoading;
+  const shown: TrendChart[] = charts.length
+    ? charts
+    : TREND_PLACEHOLDERS.map((label) => ({ key: label, label, unit: "", points: [], delta: null, trend: null }));
+
   return (
-    <aside className="flex min-w-0 flex-[1_1_300px] flex-col gap-3">
-      <div className="flex items-center gap-2.5">
-        <h2 className="text-base font-bold">{title}</h2>
+    <section className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2.5">
+        <h2 className="text-base font-bold">Tendances</h2>
+        <span className="text-[12.5px] text-muted-foreground">
+          12 derniers mois
+          {lastMonth && ` · valeur de ${monthName(lastMonth)}, écart avec le mois d'avant`}
+        </span>
         <span className="flex-1" />
+        {scopeToggle && (
+          <div
+            className="flex h-[34px] shrink-0 rounded-full border p-[3px]"
+            role="group"
+            aria-label="Périmètre des tendances"
+          >
+            {[
+              { mine: true, label: "Mon service" },
+              { mine: false, label: "Toute l'organisation" },
+            ].map((option) => (
+              <button
+                key={option.label}
+                type="button"
+                aria-pressed={scopeToggle.mine === option.mine}
+                onClick={() => scopeToggle.onChange(option.mine)}
+                className={cn(
+                  "h-[26px] whitespace-nowrap rounded-full px-3 text-[12.5px] font-semibold text-foreground",
+                  scopeToggle.mine === option.mine && "bg-muted",
+                )}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        )}
         {showStatsLink && (
-          <Link to="/statistiques" className="text-[13px] font-semibold text-primary hover:underline">
+          <Link to="/statistiques" className="whitespace-nowrap text-[13px] font-semibold text-primary hover:underline">
             Statistiques
           </Link>
         )}
       </div>
-      {scopeToggle && (
-        <div className="flex h-[34px] self-start rounded-full border p-[3px]" role="group" aria-label="Périmètre des indicateurs">
-          {[
-            { mine: true, label: "Mon service" },
-            { mine: false, label: "Toute l'organisation" },
-          ].map((option) => (
-            <button
-              key={option.label}
-              type="button"
-              aria-pressed={scopeToggle.mine === option.mine}
-              onClick={() => scopeToggle.onChange(option.mine)}
-              className={cn(
-                "h-[26px] whitespace-nowrap rounded-full px-3 text-[12.5px] font-semibold text-foreground",
-                scopeToggle.mine === option.mine && "bg-muted",
-              )}
-            >
-              {option.label}
-            </button>
+      {error ? (
+        <p className="text-sm text-muted-foreground">Les tendances n'ont pas pu être chargées.</p>
+      ) : (
+        <div className="-m-0.5 flex gap-3 overflow-x-auto p-0.5 pb-2">
+          {shown.map((chart) => (
+            <TrendCard key={chart.key} chart={chart} loading={isLoading} />
           ))}
         </div>
       )}
-      <Card className="px-5 py-1 shadow-airbnb">
-        {kpis.map((kpi) => (
-          <div key={kpi.key} className="flex items-center gap-3 border-b border-border/70 py-3.5">
-            <span className="flex min-w-0 flex-1 flex-col">
-              <span className="text-[13.5px] text-muted-foreground">{kpi.label}</span>
-              {kpi.detail && !loading && <span className="text-[11.5px] text-muted-foreground/80">{kpi.detail}</span>}
-            </span>
-            {loading ? (
-              <Skeleton className="h-7 w-12" />
-            ) : (
-              <span className="text-[22px] font-extrabold tracking-tight tabular-nums">{kpi.value}</span>
-            )}
-            <span
-              className={cn(
-                "w-[58px] text-right text-xs font-bold tabular-nums",
-                kpi.trend === "good" && "text-primary",
-                kpi.trend === "bad" && "text-destructive",
-                kpi.trend === null && "text-muted-foreground",
-              )}
-            >
-              {loading ? "" : (kpi.delta ?? "—")}
-            </span>
-          </div>
-        ))}
-        <p className="py-3 text-xs text-muted-foreground">{footer}</p>
-      </Card>
-    </aside>
+    </section>
   );
 }
 
@@ -311,7 +416,7 @@ function KpiPanel({
 /**
  * Accueil : ce qui attend l'utilisateur selon ses casquettes (agent d'un
  * service, service courrier, viseur ou signataire), la liste de travail
- * correspondante et les indicateurs du dernier mois complet.
+ * correspondante et les tendances des douze derniers mois.
  */
 export default function Dashboard() {
   const { organizationId } = useOrganization();
@@ -322,25 +427,13 @@ export default function Dashboard() {
   const [listRole, setListRole] = useState<DashboardRole | null>(null);
   const currentList = lists.find((l) => l.role === (listRole ?? dashboard.defaultList)) ?? lists[0];
 
-  // Indicateurs : l'organisation entière pour qui la regarde déjà (service
+  // Tendances : l'organisation entière pour qui la regarde déjà (service
   // courrier, parapheur, administrateur) ; son service pour un agent seul.
   const orgWide = roles.includes("mailroom") || roles.includes("parapheur") || isOrgAdmin(membership);
   const canToggleScope = !!myScope && orgWide;
-  const [kpiMine, setKpiMine] = useState<boolean | null>(null);
-  const mine = !!myScope && (kpiMine ?? !orgWide);
-
-  const kpis = useMemo(
-    () =>
-      monthKpis({
-        items: dashboard.items,
-        scope: mine ? myScope : null,
-        routing: roles.includes("mailroom") && !mine,
-      }),
-    [dashboard.items, mine, myScope, roles],
-  );
-
-  const months = useMemo(() => monthLabels(), []);
-  const kpiScopeName = mine ? dashboard.serviceNames.join(", ") || "Mon service" : "Toute l'organisation";
+  const [trendsMine, setTrendsMine] = useState<boolean | null>(null);
+  const mine = !!myScope && (trendsMine ?? !orgWide);
+  const trendScope = useMemo(() => (mine && myScope ? [...myScope] : null), [mine, myScope]);
   const multi = roles.length > 1;
 
   if (!organizationId) {
@@ -376,6 +469,13 @@ export default function Dashboard() {
         )}
       </div>
 
+      <TrendsSection
+        pending={dashboard.isLoading}
+        scopeIds={trendScope}
+        scopeToggle={canToggleScope ? { mine, onChange: setTrendsMine } : null}
+        showStatsLink={canAccessStats(profile, membership)}
+      />
+
       {dashboard.error ? (
         <Card>
           <CardContent className="py-6 text-sm text-destructive">
@@ -406,14 +506,6 @@ export default function Dashboard() {
             loading={currentList.role === "parapheur" ? dashboard.parapheurLoading : dashboard.isLoading}
           />
         )}
-        <KpiPanel
-          kpis={kpis}
-          title={months.title}
-          footer={`${kpiScopeName}, comparé à ${months.previous}.`}
-          scopeToggle={canToggleScope ? { mine, onChange: setKpiMine } : null}
-          showStatsLink={canAccessStats(profile, membership)}
-          loading={dashboard.isLoading}
-        />
       </div>
     </div>
   );

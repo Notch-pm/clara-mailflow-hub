@@ -2434,6 +2434,22 @@ export type Database = {
         Returns: boolean
       }
       current_user_orgs: { Args: never; Returns: string[] }
+      dashboard_trends: {
+        Args: {
+          p_months?: number
+          p_organization_id: string
+          p_socle_organization_ids?: string[]
+        }
+        Returns: {
+          answered: number
+          avg_days_to_answer: number
+          avg_days_to_resolve: number
+          month: string
+          open_at_end: number
+          received: number
+          resolved: number
+        }[]
+      }
       disable_push_subscription: {
         Args: { p_id: string; p_reason: string }
         Returns: undefined

@@ -8,17 +8,18 @@ import {
   heroAction,
   instructionList,
   instructionTodo,
-  kpiMonths,
   longDate,
   mailroomList,
-  monthKpis,
-  monthLabels,
+  monthName,
   parapheurList,
   parapheurTodo,
   scopeLabel,
   sortTodo,
+  sparklinePaths,
+  trendCharts,
   waitingSub,
   type ParapheurEntry,
+  type TrendRow,
 } from "@/lib/dashboard";
 
 // Jeudi 1er octobre 2026, midi à Paris.
@@ -239,43 +240,57 @@ describe("heroAction", () => {
   });
 });
 
-describe("indicateurs", () => {
-  it("compare le dernier mois complet au précédent", () => {
-    expect(kpiMonths(NOW)).toEqual({ current: "2026-09", previous: "2026-08" });
-    expect(monthLabels(NOW)).toEqual({ title: "Septembre 2026", previous: "août" });
+describe("tendances", () => {
+  const row = (month: string, over: Partial<TrendRow> = {}): TrendRow => ({
+    month,
+    received: 10,
+    open_at_end: 20,
+    answered: 5,
+    avg_days_to_answer: 10,
+    resolved: 8,
+    avg_days_to_resolve: 2,
+    ...over,
   });
 
-  it("compte reçus, traités et délais", () => {
-    const items = [
-      item({ ...inVoirie, received_at: "2026-09-01T08:00:00Z", created_at: "2026-09-01T08:00:00Z", resolved_at: "2026-09-03T08:00:00Z" }),
-      item({ ...inVoirie, received_at: "2026-09-02T08:00:00Z", created_at: "2026-09-02T08:00:00Z" }),
-      item({ ...inVoirie, received_at: "2026-08-03T08:00:00Z", created_at: "2026-08-03T08:00:00Z", resolved_at: "2026-09-30T08:00:00Z" }),
-    ];
-    const kpis = monthKpis({ items, scope: null, routing: false, now: NOW });
-    expect(kpis.map((k) => [k.key, k.value])).toEqual([
-      ["received", "2"],
-      ["resolved", "2"],
-      ["on-time", "50 %"],
+  it("valeur du dernier mois, écart avec le précédent, quel que soit l'ordre reçu", () => {
+    const charts = trendCharts([
+      row("2026-09", { received: 15, open_at_end: 18, answered: 4, avg_days_to_answer: 8.4, avg_days_to_resolve: 2.5 }),
+      row("2026-08"),
     ]);
-    expect(kpis[0].delta).toBe("+100 %");
-    // Échéances de septembre : l'une tenue, l'autre dépassée et toujours ouverte.
-    expect(kpis[2]).toMatchObject({ label: "Respect des délais", detail: "sur 2 échéances", delta: "+50 pts" });
+    const by = Object.fromEntries(charts.map((c) => [c.key, c]));
+    expect(charts.map((c) => c.key)).toEqual(["received", "open", "answered", "answer-delay", "resolve-delay"]);
+    expect(by.received.points.map((p) => p.label)).toEqual(["août 2026", "septembre 2026"]);
+    expect(by.received.points[1].short).toBe("sept. 2026");
+    // Le volume reçu ne se juge pas.
+    expect(by.received).toMatchObject({ delta: "+50 %", trend: null });
+    expect(by.open).toMatchObject({ delta: "−10 %", trend: "good" });
+    expect(by.answered).toMatchObject({ delta: "−20 %", trend: "bad" });
+    expect(by["answer-delay"]).toMatchObject({ delta: "−1,6 j", trend: "good" });
+    expect(by["answer-delay"].points[1].display).toBe("8,4");
+    expect(by["resolve-delay"]).toMatchObject({ delta: "+0,5 j", trend: "bad" });
   });
 
-  it("un service qui ne clôt rien n'affiche pas 100 %", () => {
-    const items = [
-      item({ ...inVoirie, received_at: "2026-09-01T08:00:00Z", created_at: "2026-09-01T08:00:00Z", resolved_at: "2026-09-03T08:00:00Z" }),
-      ...[1, 2, 3].map(() => item({ ...inVoirie, received_at: "2026-09-02T08:00:00Z", created_at: "2026-09-02T08:00:00Z" })),
-    ];
-    expect(monthKpis({ items, scope: null, routing: false, now: NOW })[2]).toMatchObject({ value: "25 %", detail: "sur 4 échéances" });
+  it("un mois sans réponse : pas de délai, pas d'écart", () => {
+    const [, , , delay] = trendCharts([row("2026-08"), row("2026-09", { avg_days_to_answer: null })]);
+    expect(delay.points[1].display).toBe("—");
+    expect(delay).toMatchObject({ delta: null, trend: null });
   });
 
-  it("service courrier : part des routés en moins d'un jour ouvré", () => {
-    const items = [
-      item({ received_at: "2026-09-01T08:00:00Z", routed_at: "2026-09-01T15:00:00Z", socle_organization_id: "voirie" }),
-      item({ received_at: "2026-09-01T08:00:00Z", routed_at: "2026-09-08T15:00:00Z", socle_organization_id: "voirie" }),
-    ];
-    expect(monthKpis({ items, scope: null, routing: true, now: NOW })[1]).toMatchObject({ key: "routed", value: "50 %" });
+  it("un volume parti de zéro n'a pas d'écart en pourcentage", () => {
+    const [received] = trendCharts([row("2026-08", { received: 0 }), row("2026-09", { received: 3 })]);
+    expect(received.delta).toBeNull();
+  });
+
+  it("la courbe se coupe sur un mois sans valeur, une série plate tient au milieu", () => {
+    const gap = sparklinePaths([1, 2, null, 3]);
+    expect(gap.line.match(/M/g)).toHaveLength(2);
+    expect(gap.y[2]).toBeNull();
+    expect(sparklinePaths([4, 4, 4]).y).toEqual([16, 16, 16]);
+    expect(sparklinePaths([null, null]).line).toBe("");
+  });
+
+  it("nomme le mois de la légende", () => {
+    expect(monthName("2026-09")).toBe("septembre");
   });
 });
 

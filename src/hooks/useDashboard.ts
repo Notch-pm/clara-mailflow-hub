@@ -12,33 +12,35 @@ import {
   heroAction,
   instructionList,
   instructionTodo,
-  kpiSince,
   mailroomList,
   mailroomTodo,
   orgLateCount,
   parapheurList,
   parapheurTodo,
   sortTodo,
+  trendCharts,
   type DashboardList,
   type ParapheurEntry,
 } from "@/lib/dashboard";
 import { fetchMailroomCouriers, fetchMailroomMemberIds } from "@/services/mailroomService";
 import { assignableOrgs, listOrgsWithConfig } from "@/services/socleOrgConfigService";
-import { countMyDraftReplies, listMySocleOrganizationIds, listWorkflowStateNames } from "@/services/dashboardService";
+import { countMyDraftReplies, fetchDashboardTrends, listMySocleOrganizationIds, listWorkflowStateNames } from "@/services/dashboardService";
 
 const REFRESH_MS = 2 * 60_000;
 
+/** Fenêtre des courriers résolus encore lus : celle de « Courrier entrant ». */
+const RESOLVED_WINDOW_DAYS = 30;
+
 /**
  * Données de la page d'accueil. Une seule lecture des courriers reçus (RPC
- * `mailroom_couriers`, ouverts + résolus depuis le début du mois d'avant le
- * dernier mois complet), classée comme dans « Courrier entrant » ; les files
+ * `mailroom_couriers`, ouverts + résolus depuis 30 jours), classée comme dans « Courrier entrant » ; les files
  * du parapheur sous les clés de cache de l'espace élu et du rail.
  */
 export function useDashboard() {
   const { user, membership } = useAuth();
   const { organizationId } = useOrganization();
 
-  const since = useMemo(() => kpiSince(), []);
+  const since = useMemo(() => new Date(Date.now() - RESOLVED_WINDOW_DAYS * 86_400_000), []);
 
   const orgsQuery = useQuery({
     queryKey: ["socle-orgs-config", organizationId],
@@ -191,4 +193,23 @@ export function useDashboard() {
     parapheurLoading: visa.isLoading || signature.isLoading,
     error: rowsQuery.error ?? orgsQuery.error,
   };
+}
+
+/**
+ * Courbes des douze derniers mois complets : toute l'organisation (`null`)
+ * ou les organisations du Socle données. Les mois clos ne bougent plus guère :
+ * une lecture par heure suffit.
+ */
+export function useDashboardTrends(scopeIds: string[] | null, enabled = true) {
+  const { organizationId } = useOrganization();
+  const key = scopeIds ? [...scopeIds].sort().join(",") : "all";
+  const query = useQuery({
+    queryKey: ["dashboard-trends", organizationId, key],
+    queryFn: () => fetchDashboardTrends(organizationId!, scopeIds),
+    enabled: !!organizationId && enabled,
+    staleTime: 60 * 60_000,
+  });
+  const charts = useMemo(() => (query.data ? trendCharts(query.data) : []), [query.data]);
+  const lastMonth = query.data?.length ? query.data[query.data.length - 1].month : null;
+  return { charts, lastMonth, isLoading: query.isLoading, error: query.error };
 }

@@ -112,6 +112,13 @@ bunx supabase functions deploy <nom> --project-ref aullweizxcjbvtdspjli
 bun run build && npx wrangler deploy --dry-run
 ```
 
+### Lot « accueil : tendances sur 12 mois » (2026-10-02)
+
+| # | Action | Pourquoi cet ordre | État |
+|---|---|---|---|
+| 1 | `20261002073046_tendances_accueil.sql` (RPC `dashboard_trends` : reçus, en cours en fin de mois, répondus, délais moyens de réponse et de traitement, par mois complet, heure de Paris) | Le frontend appelle le RPC | **Appliqué** via `apply_migration` — registre `20261002073046` (fichier renommé pour coller). Requête éprouvée en lecture sur la plus grosse organisation avant application |
+| 2 | Publier le frontend | Bandeau « Tendances » à la place des indicateurs du mois | Push sur `main` |
+
 ### Lot « visa : renvoi à corriger » (2026-10-01) — appliqué le 2026-10-01
 
 | # | Action | Pourquoi cet ordre | État |

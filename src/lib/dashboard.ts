@@ -465,163 +465,161 @@ export function defaultListRole(lists: DashboardList[]): DashboardRole | null {
   )[0].role;
 }
 
-// ─── Indicateurs du mois écoulé ─────────────────────────────────────────────
+// ─── Tendances des douze derniers mois ──────────────────────────────────────
 
-/** Mois « YYYY-MM » à Paris. */
-function parisMonth(value: string | null | undefined): string | null {
-  return parisDay(value)?.slice(0, 7) ?? null;
+/** Une ligne du RPC `dashboard_trends` : un mois complet, heure de Paris. */
+export interface TrendRow {
+  month: string;
+  received: number;
+  open_at_end: number;
+  answered: number;
+  avg_days_to_answer: number | null;
+  resolved: number;
+  avg_days_to_resolve: number | null;
 }
 
-/** Le dernier mois complet et celui d'avant, en clés « YYYY-MM ». */
-export function kpiMonths(now: Date = new Date()): { current: string; previous: string } {
-  const [y, m] = parisDay(now)!.split("-").map(Number);
-  const shift = (offset: number) => {
-    const d = new Date(Date.UTC(y, m - 1 + offset, 1));
-    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
-  };
-  return { current: shift(-1), previous: shift(-2) };
+export interface TrendPoint {
+  /** « septembre 2026 » */
+  label: string;
+  /** « sept. 2026 », au survol. */
+  short: string;
+  value: number | null;
+  /** « 148 » / « 10,6 » — « — » sans valeur. */
+  display: string;
 }
 
-/**
- * Borne du RPC (« résolus depuis ») : 120 jours avant le mois d'avant le dernier
- * mois complet. Un courrier dont l'échéance tombe ce mois-là a pu être reçu,
- * et clos, bien avant (jusqu'à 40 jours ouvrés d'objectif) : sans cette marge,
- * le respect des délais du mois de comparaison serait faussé.
- */
-export function kpiSince(now: Date = new Date()): Date {
-  const { previous } = kpiMonths(now);
-  return new Date(Date.parse(`${previous}-01T00:00:00Z`) - 120 * 86_400_000);
-}
-
-const MONTH_FORMAT = new Intl.DateTimeFormat("fr-FR", { month: "long", year: "numeric", timeZone: "UTC" });
-const MONTH_ONLY = new Intl.DateTimeFormat("fr-FR", { month: "long", timeZone: "UTC" });
-
-/** « Septembre 2026 » / « août » */
-export function monthLabels(now: Date = new Date()): { title: string; previous: string } {
-  const { current, previous } = kpiMonths(now);
-  const title = MONTH_FORMAT.format(new Date(`${current}-15T12:00:00Z`));
-  return {
-    title: title.charAt(0).toUpperCase() + title.slice(1),
-    previous: MONTH_ONLY.format(new Date(`${previous}-15T12:00:00Z`)),
-  };
-}
-
-export interface Kpi {
+export interface TrendChart {
   key: string;
   label: string;
-  value: string;
+  unit: string;
+  points: TrendPoint[];
+  /** Écart du dernier mois avec le précédent ; `null` si l'un manque. */
   delta: string | null;
   /** `null` : l'écart n'est ni bon ni mauvais (volume reçu). */
   trend: "good" | "bad" | null;
-  /** Base du pourcentage (« sur 31 échéances ») : un 100 % sur deux courriers n'est pas une tendance. */
-  detail?: string;
 }
 
 const frNumber = new Intl.NumberFormat("fr-FR");
+const frDays = new Intl.NumberFormat("fr-FR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const MONTH_FORMAT = new Intl.DateTimeFormat("fr-FR", { month: "long", year: "numeric", timeZone: "UTC" });
+const MONTH_SHORT = new Intl.DateTimeFormat("fr-FR", { month: "short", year: "numeric", timeZone: "UTC" });
+const MONTH_ONLY = new Intl.DateTimeFormat("fr-FR", { month: "long", timeZone: "UTC" });
 
-function percentDelta(cur: number, prev: number): string | null {
-  if (prev === 0) return null;
-  const pct = Math.round(((cur - prev) / prev) * 100);
-  return `${pct > 0 ? "+" : pct < 0 ? "−" : ""}${Math.abs(pct)} %`;
+function monthDate(month: string): Date {
+  return new Date(`${month}-15T12:00:00Z`);
 }
 
-function pointsDelta(cur: number | null, prev: number | null): { delta: string | null; diff: number } {
+/** « septembre » pour la légende « valeur de septembre, écart avec août ». */
+export function monthName(month: string): string {
+  return MONTH_ONLY.format(monthDate(month));
+}
+
+const sign = (n: number) => (n > 0 ? "+" : n < 0 ? "−" : "");
+
+interface Metric {
+  key: string;
+  label: string;
+  unit: string;
+  pick: (r: TrendRow) => number | null;
+  days?: boolean;
+  /** Sens souhaitable : `null` pour un volume qui ne se juge pas. */
+  better: "up" | "down" | null;
+}
+
+const METRICS: Metric[] = [
+  { key: "received", label: "Courriers reçus", unit: "courriers", pick: (r) => r.received, better: null },
+  { key: "open", label: "En cours", unit: "en fin de mois", pick: (r) => r.open_at_end, better: "down" },
+  { key: "answered", label: "Courriers répondus", unit: "courriers", pick: (r) => r.answered, better: "up" },
+  {
+    key: "answer-delay",
+    label: "Délai moyen de réponse",
+    unit: "jours",
+    pick: (r) => r.avg_days_to_answer,
+    days: true,
+    better: "down",
+  },
+  {
+    key: "resolve-delay",
+    label: "Délai moyen de traitement",
+    unit: "jours",
+    pick: (r) => r.avg_days_to_resolve,
+    days: true,
+    better: "down",
+  },
+];
+
+function deltaOf(metric: Metric, cur: number | null, prev: number | null): { delta: string | null; diff: number } {
   if (cur === null || prev === null) return { delta: null, diff: 0 };
   const diff = cur - prev;
-  return { delta: `${diff > 0 ? "+" : diff < 0 ? "−" : ""}${Math.abs(diff)} pts`, diff };
-}
-
-function ratio(part: number, total: number): number | null {
-  return total ? Math.round((part / total) * 100) : null;
-}
-
-function trendOf(diff: number): Kpi["trend"] {
-  return diff > 0 ? "good" : diff < 0 ? "bad" : null;
+  if (metric.days) {
+    // Arrondi au dixième avant de juger : « +0,0 j » n'est pas une hausse.
+    const tenth = Math.round(diff * 10) / 10;
+    return { delta: `${sign(tenth)}${frDays.format(Math.abs(tenth))} j`, diff: tenth };
+  }
+  if (prev === 0) return { delta: null, diff };
+  const pct = Math.round((diff / prev) * 100);
+  return { delta: `${sign(pct)}${Math.abs(pct)} %`, diff: pct };
 }
 
 /**
- * Trois indicateurs du dernier mois complet, comparés au mois d'avant :
- * reçus, traités (ou routés en moins d'un jour pour le service courrier),
- * traités dans les délais (parmi les courriers qui ont un objectif).
+ * Les cinq courbes de l'accueil, du plus ancien mois au plus récent. La valeur
+ * affichée est celle du dernier mois complet, comparée au mois d'avant.
  */
-export function monthKpis(args: {
-  items: MailroomItem[];
-  scope: ReadonlySet<string> | null;
-  routing: boolean;
-  now?: Date;
-}): Kpi[] {
-  const { current, previous } = kpiMonths(args.now);
-  const items = args.items.filter((i) => inScope(i, args.scope));
-  const receivedIn = (month: string) =>
-    items.filter((i) => parisMonth(i.row.received_at ?? i.row.created_at) === month);
-  const resolvedIn = (month: string) => items.filter((i) => parisMonth(i.row.resolved_at) === month);
-
-  const received = { cur: receivedIn(current).length, prev: receivedIn(previous).length };
-  const kpis: Kpi[] = [
-    {
-      key: "received",
-      label: "Courriers reçus",
-      value: frNumber.format(received.cur),
-      delta: percentDelta(received.cur, received.prev),
-      trend: null,
-    },
-  ];
-
-  if (args.routing) {
-    // Routés en moins d'un jour ouvré, parmi les reçus du mois qui ont été routés.
-    const fastShare = (month: string) => {
-      const routed = receivedIn(month).filter((i) => i.row.routed_at);
-      const fast = routed.filter((i) => {
-        const from = parisDay(i.row.received_at ?? i.row.created_at)!;
-        return businessDaysBetween(from, parisDay(i.row.routed_at)!) <= 1;
-      });
-      return ratio(fast.length, routed.length);
-    };
-    const cur = fastShare(current);
-    const { delta, diff } = pointsDelta(cur, fastShare(previous));
-    kpis.push({
-      key: "routed",
-      label: "Routés en moins d'un jour",
-      value: cur === null ? "—" : `${cur} %`,
-      delta,
-      trend: trendOf(diff),
+export function trendCharts(rows: TrendRow[]): TrendChart[] {
+  const sorted = [...rows].sort((a, b) => a.month.localeCompare(b.month));
+  return METRICS.map((metric) => {
+    const points = sorted.map<TrendPoint>((r) => {
+      const value = metric.pick(r);
+      return {
+        label: MONTH_FORMAT.format(monthDate(r.month)),
+        short: MONTH_SHORT.format(monthDate(r.month)),
+        value,
+        display: value === null ? "—" : metric.days ? frDays.format(value) : frNumber.format(value),
+      };
     });
-  } else {
-    const cur = resolvedIn(current).length;
-    const prev = resolvedIn(previous).length;
-    kpis.push({
-      key: "resolved",
-      label: "Courriers traités",
-      value: frNumber.format(cur),
-      delta: percentDelta(cur, prev),
-      trend: trendOf(cur - prev),
-    });
-  }
-
-  // Respect des délais : parmi les courriers dont l'échéance de résolution
-  // tombait dans le mois, la part close à temps. Un courrier encore ouvert
-  // après son échéance compte comme un échec — sans quoi seuls les courriers
-  // clos seraient jugés, et un service qui ne clôt rien afficherait 100 %.
-  const dueIn = (month: string) =>
-    items.filter((i) => {
-      const { kind, dueDay } = i.sla.resolution;
-      return dueDay?.slice(0, 7) === month && (kind === "met" || kind === "missed" || kind === "overdue");
-    });
-  const onTime = (month: string) => {
-    const due = dueIn(month);
-    return { share: ratio(due.filter((i) => i.sla.resolution.kind === "met").length, due.length), base: due.length };
-  };
-  const cur = onTime(current);
-  const { delta, diff } = pointsDelta(cur.share, onTime(previous).share);
-  kpis.push({
-    key: "on-time",
-    label: "Respect des délais",
-    value: cur.share === null ? "—" : `${cur.share} %`,
-    delta,
-    trend: trendOf(diff),
-    detail: cur.base ? `sur ${frNumber.format(cur.base)} échéance${cur.base > 1 ? "s" : ""}` : "aucune échéance",
+    const n = points.length;
+    const { delta, diff } = deltaOf(metric, points[n - 1]?.value ?? null, points[n - 2]?.value ?? null);
+    const trend =
+      metric.better === null || diff === 0 || delta === null
+        ? null
+        : (diff > 0) === (metric.better === "up")
+          ? "good"
+          : "bad";
+    return { key: metric.key, label: metric.label, unit: metric.unit, points, delta, trend };
   });
-  return kpis;
+}
+
+/**
+ * Tracé d'une courbe dans un repère 100 × 32 (étiré par le SVG). Un mois sans
+ * valeur coupe la ligne plutôt que de la faire plonger à zéro.
+ */
+export function sparklinePaths(values: (number | null)[]): {
+  line: string;
+  area: string;
+  y: (number | null)[];
+} {
+  const known = values.filter((v): v is number => v !== null);
+  const n = values.length;
+  if (!known.length || n === 0) return { line: "", area: "", y: values.map(() => null) };
+  const min = Math.min(...known);
+  const range = Math.max(...known) - min;
+  const x = (i: number) => (n === 1 ? 50 : (i / (n - 1)) * 100);
+  // Une série plate tient au milieu, pas collée en bas.
+  const y = values.map((v) => (v === null ? null : range ? 29 - ((v - min) / range) * 26 : 16));
+
+  let line = "";
+  let area = "";
+  let run: number[] = [];
+  const flush = () => {
+    if (!run.length) return;
+    const seg = run.map((i, k) => `${k ? "L" : "M"}${x(i).toFixed(2)} ${y[i]!.toFixed(2)}`).join(" ");
+    line += (line ? " " : "") + seg;
+    area += `${area ? " " : ""}${seg} L${x(run[run.length - 1]).toFixed(2)} 32 L${x(run[0]).toFixed(2)} 32 Z`;
+    run = [];
+  };
+  values.forEach((v, i) => (v === null ? flush() : run.push(i)));
+  flush();
+  return { line, area, y };
 }
 
 // ─── En-tête ────────────────────────────────────────────────────────────────

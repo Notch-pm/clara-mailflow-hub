@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import type { TrendRow } from "@/lib/dashboard";
 
 /**
  * Lectures propres au tableau de bord. Les courriers eux-mêmes viennent du RPC
@@ -48,4 +49,30 @@ export async function listWorkflowStateNames(): Promise<Map<string, string>> {
   const { data, error } = await supabase.from("workflow_states").select("id, name");
   if (error) throw error;
   return new Map((data ?? []).map((s) => [s.id, s.name]));
+}
+
+/**
+ * Tendances des douze derniers mois complets (RPC `dashboard_trends`), sur
+ * toute l'organisation ou sur les organisations du Socle données.
+ */
+export async function fetchDashboardTrends(
+  organizationId: string,
+  socleOrganizationIds: string[] | null,
+): Promise<TrendRow[]> {
+  const { data, error } = await supabase.rpc("dashboard_trends", {
+    p_organization_id: organizationId,
+    p_socle_organization_ids: socleOrganizationIds ?? undefined,
+    p_months: 12,
+  });
+  if (error) throw error;
+  // Les moyennes sont NULL un mois sans réponse ou sans clôture.
+  return (data ?? []).map((r) => ({
+    month: r.month,
+    avg_days_to_answer: r.avg_days_to_answer ?? null,
+    avg_days_to_resolve: r.avg_days_to_resolve ?? null,
+    received: Number(r.received),
+    open_at_end: Number(r.open_at_end),
+    answered: Number(r.answered),
+    resolved: Number(r.resolved),
+  }));
 }
