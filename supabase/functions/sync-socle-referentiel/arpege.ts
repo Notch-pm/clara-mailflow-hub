@@ -7,11 +7,13 @@
 // déclare dans `organization_integrations` (provider `arpege`), que les quatre
 // fonctions Arpège lisent sans changement.
 //
-// ⚠️ TRANSITION, à la différence du SMTP : une déclaration absente ou
-// incomplète (`configured: false`) NE vide PAS le miroir — on renvoie `null`
-// et l'appelant laisse la ligne locale en l'état. Les configurations saisies
-// dans Clara avant la bascule (ACCM) survivent ainsi jusqu'à ce que le Socle
-// en déclare une.
+// Le Socle fait foi, sans règle de transition (retirée le 2026-10-02) :
+// une réponse 200 sans déclaration exploitable (`configured: false`, ou
+// incomplète) SUSPEND la ligne recopiée — `is_active = false`, identifiants
+// CONSERVÉS, à la différence du SMTP qui efface son miroir : une interface
+// Arpège suspendue continue de suivre les demandes déjà déposées (décision PO
+// L5, docs/partenaires-integration.md §5). Seule une réponse non-200 (403, 404,
+// 5xx) laisse la ligne en l'état, avec un avertissement.
 //
 // Les secrets ne font que traverser ce module, de la réponse HTTP vers la RPC
 // de service : ils n'apparaissent dans aucun journal, aucun compteur, aucun
@@ -58,7 +60,7 @@ function text(source: Record<string, unknown> | null | undefined, key: string): 
 
 /**
  * Déclaration du Socle → arguments de la RPC, ou `null` si le Socle ne déclare
- * rien d'exploitable (le miroir est alors laissé EN L'ÉTAT — transition).
+ * rien d'exploitable (voir `arpegePlan` : la ligne est alors suspendue).
  *
  * Exploitable = `configured`, une URL d'API, et de quoi signer en Hawk (même
  * règle que `resolveHawkCredentials` : identifiant ET clé, le jeton suppléant
@@ -88,6 +90,31 @@ export function arpegeMirrorArgs(
     p_is_active: dto.is_active === true,
     p_socle_updated_at: typeof dto.updated_at === "string" && dto.updated_at !== "" ? dto.updated_at : null,
   };
+}
+
+/** Ce que la sync fait de la ligne Arpège d'un tenant après une réponse 200 du Socle. */
+export type ArpegePlan =
+  | { action: "recopier"; args: ArpegeMirrorArgs }
+  /**
+   * Suspendre la ligne recopiée (RPC `suspend_arpege_integration_from_socle`),
+   * identifiants conservés. `warning` n'est renseigné que si le Socle se dit
+   * configuré mais que sa déclaration est inexploitable — un `configured: false`
+   * est un état normal, pas une anomalie.
+   */
+  | { action: "suspendre"; warning: string | null };
+
+/** Réponse 200 du Socle → recopier, ou suspendre (fin de la transition). */
+export function arpegePlan(
+  tenant: ArpegeTenantRef,
+  dto: SocleIntegrationDto | null | undefined,
+): ArpegePlan {
+  const args = arpegeMirrorArgs(tenant, dto);
+  if (args) return { action: "recopier", args };
+  const warning =
+    dto?.configured === true
+      ? `Arpège (${tenant.organizationName}) : le Socle déclare une configuration incomplète (URL d'API ou identifiants Hawk manquants) — interface suspendue, identifiants conservés.`
+      : null;
+  return { action: "suspendre", warning };
 }
 
 /**

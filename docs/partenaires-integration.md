@@ -14,6 +14,8 @@
 
 1. Intégrer des partenaires (Arpège en premier) depuis l'**espace superadmin uniquement** :
    sélection du partenaire, saisie des éléments de connexion API, **suspension** de l'interface.
+   **Depuis le 2026-10-02, cette saisie se fait dans le Socle** (fiche du client, section
+   « Intégrations », super admin seul) ; Clara n'en tient qu'un miroir en lecture seule (§3bis).
 2. Dans le produit, si l'interface est **active** : récupérer les démarches du partenaire (edge),
    **activer/désactiver les démarches par organisation**, créer des demandes chez le partenaire.
 
@@ -46,12 +48,31 @@ Verrou (lot L2) :
 - Secrets : restent en clair, **alignés sur la dette P1.1** (chantier Vault global IMAP/SMTP +
   intégrations) ; mais l'UI cesse de re-servir `client_secret` en clair au navigateur.
 
+## 3bis. Configuration servie par le Socle (2026-10-02)
+
+- Le Socle sert la configuration d'une racine par
+  `GET /v1/organizations/{racine}/integrations/arpege` (public-api ≥ 1.34.0, scope
+  `integrations`, secrets compris, `is_active` effectif). `sync-socle-referentiel` la recopie
+  par la RPC de service `sync_arpege_integration_from_socle` (logique pure
+  `sync-socle-referentiel/arpege.ts`).
+- **Plus aucune écriture cliente** des lignes `provider = 'arpege'`, superadmin compris
+  (migration `20261002161635_arpege_fin_transition.sql` : la policy superadmin est scindée,
+  ses écritures excluent Arpège ; Iris reste saisi par le superadmin). Seul le service role
+  écrit. L'écran `OrgIntegrations` n'affiche plus que le statut, l'URL, le client ID, l'URL
+  espace agent, et les boutons « Tester la connexion API » / « Récupérer les démarches ».
+- **Fin de la transition** : une réponse 200 sans configuration complète (`configured: false`,
+  ou déclaration inexploitable) **suspend** la ligne recopiée (`is_active = false`, RPC de
+  service `suspend_arpege_integration_from_socle`, compteur `arpege_suspendu`) **sans effacer
+  les identifiants** : le suivi des demandes déjà déposées continue (§5, lot L5). Les réponses
+  403, 404 et 5xx laissent la ligne inchangée, avec un avertissement.
+
 ## 4. Matrice des droits
 
 | Action | superadmin | administrateur | éditeurs (gest./élu/superv.) | consultant |
 |---|:---:|:---:|:---:|:---:|
-| Configurer / éditer la connexion | ✅ | ❌ | ❌ | ❌ |
-| Suspendre / réactiver / tester | ✅ | ❌ | ❌ | ❌ |
+| Configurer / éditer la connexion | ✅ **dans le Socle** (lecture seule dans Clara) | ❌ | ❌ | ❌ |
+| Suspendre / réactiver | ✅ **dans le Socle** | ❌ | ❌ | ❌ |
+| Tester la connexion | ✅ | ❌ | ❌ | ❌ |
 | Récupérer / rafraîchir les démarches | ✅ | ✅ (si active) | ❌ | ❌ |
 | Activer/désactiver une démarche **par organisation Socle** | ✅ | ✅ | ❌ | ❌ |
 | Créer une demande chez le partenaire | ✅ | ✅ | ✅ | ❌ |
@@ -104,7 +125,7 @@ déclencher d'écriture qui lui soit imputable (résout l'asymétrie d'auth actu
 | **L0** | Décommissionnement : suppression `sync-arpege-appointments` (morte), `DROP FUNCTION trigger_arpege_sync()` (orpheline), docs (2 edge non documentées, `features.md` §Arpège périmée, `permissions.md` Intégrations) | — |
 | **L1** | Hawk mutualisé dans `_shared/arpege.ts` (copié-collé ×5 aujourd'hui), refactor iso-comportement des 4 edges vivantes ; UI `OrgIntegrations` réalignée (requis = `api_base_url`+`client_id`+`client_secret` ; `access_token` legacy), activation gated par test réussi, secret non re-servi | — |
 | **L2** | Verrou RLS superadmin-only + `UNIQUE(organization_id, provider)` + `NOT NULL` + RPC `partner_integration_status` ; tests d'intégration AC-SRV-1/2/3 | — |
-| **L3** | ~~Catalogue `integration_providers`~~ — **remplacé le 2026-10-02 par le catalogue du Socle** (« Intégrations », fiche client du super admin) : la configuration Arpège se saisit dans le Socle et Clara la recopie (`sync-socle-referentiel`, scope `integrations`). Tant que le Socle n'en déclare pas pour un tenant, la ligne saisie dans Clara reste en service | — |
+| **L3** | ~~Catalogue `integration_providers`~~ — **remplacé le 2026-10-02 par le catalogue du Socle** (« Intégrations », fiche client du super admin) : la configuration Arpège se saisit dans le Socle et Clara la recopie (`sync-socle-referentiel`, scope `integrations`). Transition retirée le même jour (§3bis) : plus de saisie dans Clara, et un Socle sans configuration complète **suspend** la ligne recopiée, identifiants conservés | — |
 | **L4** | Dédoublonnage (matching `external_reference_id`) + fusion conditionnelle | L1 souple |
 | **L5** | Réconciliation privilégiée du statut + suivi maintenu en suspension (retrait du gate `is_active` en lecture des identifiants pour `check-arpege-ticket-status`) | L1 |
 | **L6** | Table d'activations + toggle UI + enforcement serveur (ordre interne strict : table → repli opt-out → UI → enforcement) | L2 souple |
@@ -117,7 +138,8 @@ vérifiée en base).
 ## 9. Critères d'acceptation (extraits — détail dans l'historique de spec)
 
 **Serveur** (harnais `src/test-integration/*.itest.ts`) : AC-SRV-1 admin tenant ne peut pas
-écrire `organization_integrations` ; AC-SRV-2 superadmin peut ; AC-SRV-3 aucune fuite
+écrire `organization_integrations` ; AC-SRV-2 superadmin peut (Iris — **plus Arpège**, AC-SRV-4/4bis/4ter :
+ni création, ni modification, ni suppression, ni renommage de provider vers Arpège) ; AC-SRV-3 aucune fuite
 cross-tenant de secrets ; AC-SRV-4 consultant 403 sur création (non-régression) ; AC-SRV-5
 suspension bloque création+sync en appel direct ; AC-SRV-6 le suivi des demandes existantes
 continue en suspension ; AC-SRV-7 rafraîchissement non attribuable au consultant ; AC-SRV-8

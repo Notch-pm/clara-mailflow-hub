@@ -49,8 +49,10 @@ function syncSummary(result: SocleSyncResult): string {
   // chercher pourquoi les mails partent (ou ne partent plus).
   if (counters.smtp_synchronises) parts.push("Serveur d'envoi : à jour");
   else if (counters.smtp_retires) parts.push("Serveur d'envoi : retiré (aucun dans le référentiel)");
-  // Arpège : la configuration vient du référentiel dès qu'il en déclare une.
+  // Arpège : la configuration vient du référentiel ; sans déclaration
+  // complète, l'interface est suspendue (identifiants conservés).
   if (counters.arpege_synchronise) parts.push("Arpège : à jour");
+  else if (counters.arpege_suspendu) parts.push("Arpège : suspendue (aucune configuration dans le référentiel)");
   // Idem pour la charte graphique : logo et couleurs viennent du référentiel,
   // un écran qui ne le dit pas laisse chercher où on les modifie.
   if (counters.charte_synchronisee) parts.push("Charte graphique : à jour");

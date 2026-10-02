@@ -18,8 +18,9 @@
 // Et de la CONFIGURATION ARPÈGE depuis le 2026-10-02 :
 // `GET /v1/organizations/{racine}/integrations/arpege` (scope `integrations`)
 // est recopié dans `organization_integrations` par la RPC de service
-// sync_arpege_integration_from_socle. ⚠️ Transition : rien de déclaré côté
-// Socle ⇒ la ligne locale est CONSERVÉE (voir arpege.ts).
+// sync_arpege_integration_from_socle. Rien de complet déclaré (200,
+// `configured: false`) ⇒ la ligne est SUSPENDUE, identifiants conservés, par
+// suspend_arpege_integration_from_socle (voir arpege.ts).
 //
 // Auth (3 voies, comme sync-arpege-services) :
 //   - x-cron-secret (pg_cron via trigger_socle_sync) → privilégié
@@ -71,7 +72,7 @@ import {
   type SocleSmtpDto,
 } from "./smtp.ts";
 import {
-  arpegeMirrorArgs,
+  arpegePlan,
   arpegeWarning,
   type ArpegeTenantRef,
   type SocleIntegrationDto,
@@ -628,8 +629,10 @@ interface OrgSyncResult {
     smtp_synchronises: number;
     /** Miroirs effacés faute de relais déclaré côté Socle (0 ou 1). */
     smtp_retires: number;
-    /** Configuration Arpège recopiée depuis le Socle (0 ou 1) — 0 = ligne locale laissée en l'état. */
+    /** Configuration Arpège recopiée depuis le Socle (0 ou 1). */
     arpege_synchronise: number;
+    /** Interface Arpège active suspendue faute de configuration déclarée au Socle (0 ou 1). */
+    arpege_suspendu: number;
     /** Charte graphique (logo + couleurs) relue et appliquée (0 ou 1) — 0 = miroir laissé en l'état. */
     charte_synchronisee: number;
     /** Descriptifs publics (« informations usager ») réécrits dans le miroir des organisations. */
@@ -783,8 +786,8 @@ async function syncOrg(
   // faire. Placé avant les démarches pour qu'un incident de catalogue ne prive
   // pas le tenant de son relais.
   const smtp = await syncSmtp(supabaseAdmin, org, rootId, dryRun);
-  // 1ter) Configuration Arpège : même motif, mais la ligne locale survit tant
-  // que le Socle n'en déclare pas de complète (transition, voir arpege.ts).
+  // 1ter) Configuration Arpège : même motif, mais l'absence côté Socle
+  // SUSPEND la ligne au lieu de l'effacer (suivi des demandes, voir arpege.ts).
   const arpege = await syncArpege(supabaseAdmin, org, rootId, dryRun);
 
   const categoriesCounters = await syncMirror(
@@ -922,6 +925,7 @@ async function syncOrg(
       smtp_synchronises: smtp.synchronises,
       smtp_retires: smtp.retires,
       arpege_synchronise: arpege.synchronise,
+      arpege_suspendu: arpege.suspendu,
       charte_synchronisee: branding.synchronisee,
       descriptifs_synchronises: descriptions.synchronises,
       attributions_synchronisees: attributions.synchronises,
@@ -1138,10 +1142,11 @@ async function syncSmtp(
  * Recopie dans `organization_integrations` (provider `arpege`) la configuration
  * déclarée par le Socle pour la racine du tenant.
  *
- * ⚠️ À la différence du SMTP, l'absence côté Socle N'EFFACE RIEN : la ligne
- * locale (saisie dans Clara avant la bascule) reste en service tant que le
- * Socle ne déclare pas de configuration complète. Dès qu'il en déclare une, il
- * fait foi — activation comprise.
+ * Le Socle fait foi : une réponse 200 sans configuration complète SUSPEND la
+ * ligne recopiée (`is_active = false`) sans effacer ses identifiants — une
+ * interface suspendue continue de suivre les demandes déjà déposées (décision
+ * PO L5). Seules les réponses 403, 404 et 5xx laissent la ligne en l'état,
+ * avec un avertissement.
  *
  * Les secrets ne font que passer d'ici vers la RPC de service : jamais
  * journalisés, ni comptés, ni repris dans un message d'erreur.
@@ -1151,10 +1156,10 @@ async function syncArpege(
   org: ClaraOrg,
   rootId: string | null,
   dryRun: boolean,
-): Promise<{ synchronise: number; warnings: string[] }> {
+): Promise<{ synchronise: number; suspendu: number; warnings: string[] }> {
   const warnings: string[] = [];
   // Sans racine connue : le SMTP a déjà averti, rien à ajouter.
-  if (!rootId) return { synchronise: 0, warnings };
+  if (!rootId) return { synchronise: 0, suspendu: 0, warnings };
 
   const tenant: ArpegeTenantRef = {
     organizationId: org.id,
@@ -1166,25 +1171,42 @@ async function syncArpege(
     const { status, dto } = await fetchSocleArpege(rootId);
     if (status !== 200) {
       warnings.push(arpegeWarning(tenant, status));
-      return { synchronise: 0, warnings };
+      return { synchronise: 0, suspendu: 0, warnings };
     }
-    const args = arpegeMirrorArgs(tenant, dto);
-    if (!args) return { synchronise: 0, warnings };
+    const plan = arpegePlan(tenant, dto);
+
+    if (plan.action === "suspendre") {
+      if (plan.warning) warnings.push(plan.warning);
+      let suspendu = 0;
+      if (!dryRun) {
+        const { data, error } = await supabaseAdmin.rpc("suspend_arpege_integration_from_socle", {
+          p_org_id: org.id,
+        });
+        if (error) throw new Error(error.message);
+        suspendu = data === true ? 1 : 0;
+      }
+      if (suspendu) {
+        console.log(
+          `[sync-socle] org ${org.name}: interface Arpège suspendue (aucune configuration complète au Socle)`,
+        );
+      }
+      return { synchronise: 0, suspendu, warnings };
+    }
 
     if (!dryRun) {
-      const { error } = await supabaseAdmin.rpc("sync_arpege_integration_from_socle", args);
+      const { error } = await supabaseAdmin.rpc("sync_arpege_integration_from_socle", plan.args);
       if (error) throw new Error(error.message);
     }
     console.log(
       `[sync-socle] org ${org.name}: configuration Arpège synchronisée depuis la racine Socle${dryRun ? " (dry-run)" : ""}`,
     );
-    return { synchronise: 1, warnings };
+    return { synchronise: 1, suspendu: 0, warnings };
   } catch (e) {
     if (e instanceof SocleAuthError) throw e;
     const message = e instanceof Error ? e.message : String(e);
     console.error(`[sync-socle] org ${org.name}: Arpège: ${message}`);
     warnings.push(`Arpège (${org.name}) : ${message} — configuration locale inchangée.`);
-    return { synchronise: 0, warnings };
+    return { synchronise: 0, suspendu: 0, warnings };
   }
 }
 

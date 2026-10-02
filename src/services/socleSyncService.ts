@@ -49,6 +49,12 @@ export interface SocleSyncCounters {
   /** Configuration Arpège recopiée depuis le référentiel (0 ou 1). Absente avant le 2026-10-02. */
   arpege_synchronise?: number;
   /**
+   * Interface Arpège suspendue, le référentiel n'en déclarant plus de
+   * configuration complète (0 ou 1, identifiants conservés). Absente avant la
+   * fin de la transition (2026-10-02).
+   */
+  arpege_suspendu?: number;
+  /**
    * Charte graphique (logo + couleurs) relue et appliquée (0 ou 1). Absente des
    * runs antérieurs au 2026-09-13 ; 0 = charte illisible, miroir laissé en l'état.
    */

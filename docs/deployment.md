@@ -112,6 +112,19 @@ bunx supabase functions deploy <nom> --project-ref aullweizxcjbvtdspjli
 bun run build && npx wrangler deploy --dry-run
 ```
 
+### Lot « Arpège : fin de la transition » (2026-10-02)
+
+Plus de saisie Arpège dans Clara ; un Socle sans configuration complète suspend la ligne
+recopiée (identifiants conservés). Pré-vol : `select count(*) from organization_integrations
+where provider = 'arpege' and socle_synced_at is null` → **0** (vérifié le 2026-10-02).
+
+| # | Action | Pourquoi cet ordre | État |
+|---|---|---|---|
+| 1 | `20261002161635_arpege_fin_transition.sql` (policy superadmin scindée : lecture inchangée, écritures `provider <> 'arpege'` ; RPC de service `suspend_arpege_integration_from_socle`) | La sync appelle la nouvelle RPC ; l'ancien écran (édition des seules lignes non recopiées) n'en souffre pas | **Appliqué** via `apply_migration` — registre `20261002161635` (fichier renommé pour coller) |
+| 2 | `supabase functions deploy sync-socle-referentiel` | Compteur `arpege_suspendu`, suspension au lieu de conservation | **Fait** le 2026-10-02 |
+| 3 | Publier le frontend | Écran Arpège en lecture seule, sans mode édition | Push sur `main` |
+| 4 | `select public.trigger_socle_sync();` puis `socle_sync_runs` | ACCM : `arpege_synchronise = 1`, aucun avertissement Arpège, ligne toujours active | **Fait** le 2026-10-02 — ACCM `arpege_synchronise = 1`, `arpege_suspendu = 0`, aucun avertissement, ligne active ; [TEST] et Saint-Laurent (sans ligne) : 0/0, rien d'écrit |
+
 ### Lot « configuration Arpège depuis le Socle » (2026-10-02)
 
 | # | Action | Pourquoi cet ordre | État |

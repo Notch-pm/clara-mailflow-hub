@@ -577,7 +577,10 @@ Plusieurs par org si `organizations.multiple_imap = true`. Réception automatiqu
 #### `organization_integrations`
 Connexions API par tenant : partenaires tiers (Arpège…) **et Iris** (autre produit de la
 gamme). Une ligne par `(organization_id, provider)`. **Superadmin + service_role uniquement** :
-la table porte des secrets, l'UI ne les re-sert jamais au navigateur.
+la table porte des secrets, l'UI ne les re-sert jamais au navigateur. **Lignes `arpege`** : écrites
+par le **seul service role** (recopie depuis le Socle) — le superadmin les lit mais ne peut ni
+les créer, ni les modifier, ni les supprimer (policies `integrations_superadmin_insert/update/delete`,
+`provider <> 'arpege'`, migration `20261002161635`).
 
 | Colonne | Type | Notes |
 |---|---|---|
@@ -588,7 +591,7 @@ la table porte des secrets, l'UI ne les re-sert jamais au navigateur.
 | `socle_root_org_id` | uuid | **Iris** : organisation RACINE visée. Vérifiée par Iris contre le périmètre de la clé (403 en cas d'écart) — ne se déduit **pas** de `organizations.socle_org_id`, un tenant pouvant être mappé sur une sous-organisation |
 | `last_sync_at` | timestamptz | curseur de réconciliation : `updated_at` (horloge du **partenaire**) de la dernière demande relue |
 | `is_active` | boolean | suspension : coupe le **nouveau trafic**, jamais le suivi des demandes déjà déposées |
-| `socle_synced_at` / `socle_updated_at` | timestamptz | **Arpège** (2026-10-02) : recopie depuis le Socle (`sync-socle-referentiel` → RPC de service `sync_arpege_integration_from_socle`). `socle_synced_at` non nul = configuration **gérée dans le Socle**, en lecture seule dans l'écran ; nul = saisie manuelle d'avant la bascule, **conservée** tant que le Socle n'en déclare pas de complète |
+| `socle_synced_at` / `socle_updated_at` | timestamptz | **Arpège** (2026-10-02) : recopie depuis le Socle (`sync-socle-referentiel` → RPC de service `sync_arpege_integration_from_socle`). `socle_synced_at` = dernière relecture au Socle. Plus aucune ligne manuelle (vérifié le 2026-10-02, transition retirée) : un Socle qui répond 200 sans configuration complète **suspend** la ligne (`is_active = false`, RPC de service `suspend_arpege_integration_from_socle`) sans effacer les identifiants, pour que le suivi des demandes déjà déposées continue |
 
 #### `action_tickets`
 Demandes dérivées d'un courrier. Depuis le 2026-09-11 elles sont **toujours** fondées sur une

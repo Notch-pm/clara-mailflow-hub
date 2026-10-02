@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   arpegeMirrorArgs,
+  arpegePlan,
   arpegeWarning,
   type ArpegeTenantRef,
   type SocleIntegrationDto,
@@ -10,9 +11,10 @@ import {
 
 // La configuration Arpège vient du Socle
 // (GET /v1/organizations/{id}/integrations/arpege) et Clara n'en tient qu'un
-// miroir. Ce module décide d'une seule chose : la déclaration est-elle
-// exploitable ? Si non, l'appelant laisse la ligne locale EN L'ÉTAT
-// (transition : les configurations saisies dans Clara survivent).
+// miroir. Ce module décide, pour une réponse 200, de recopier la déclaration
+// ou de SUSPENDRE la ligne (identifiants conservés : une interface suspendue
+// suit encore les demandes déjà déposées, décision PO L5). Les réponses
+// non-200 laissent la ligne en l'état, avec un avertissement.
 
 const TENANT: ArpegeTenantRef = {
   organizationId: "11111111-1111-1111-1111-111111111111",
@@ -48,7 +50,7 @@ describe("arpegeMirrorArgs", () => {
     });
   });
 
-  it("rien de déclaré, ou configured: false → null (ligne locale conservée)", () => {
+  it("rien de déclaré, ou configured: false → null (pas de recopie)", () => {
     expect(arpegeMirrorArgs(TENANT, null)).toBeNull();
     expect(arpegeMirrorArgs(TENANT, { configured: false, settings: {}, secrets: {} })).toBeNull();
   });
@@ -75,6 +77,35 @@ describe("arpegeMirrorArgs", () => {
   });
 });
 
+describe("arpegePlan (fin de la transition)", () => {
+  it("déclaration complète → recopier", () => {
+    const plan = arpegePlan(TENANT, COMPLET);
+    expect(plan.action).toBe("recopier");
+    expect(plan.action === "recopier" && plan.args.p_api_base_url).toBe("https://api.espace-citoyens.net/accm");
+  });
+
+  it("configured: false → suspendre, sans avertissement (état normal)", () => {
+    expect(arpegePlan(TENANT, { integration: "arpege", configured: false, settings: {}, secrets: {} })).toEqual({
+      action: "suspendre",
+      warning: null,
+    });
+    expect(arpegePlan(TENANT, null)).toEqual({ action: "suspendre", warning: null });
+  });
+
+  it("configured: true mais inexploitable → suspendre, avec un avertissement sans secret", () => {
+    const plan = arpegePlan(TENANT, {
+      ...COMPLET,
+      settings: { client_id: "cid" },
+      secrets: { client_secret: "s3cret", access_token: "jeton-secret" },
+    });
+    expect(plan.action).toBe("suspendre");
+    const warning = plan.action === "suspendre" ? plan.warning : null;
+    expect(warning).toContain("ACCM");
+    expect(warning).toContain("suspendue");
+    expect(warning).not.toMatch(/s3cret|jeton-secret|cid/);
+  });
+});
+
 describe("arpegeWarning", () => {
   it("dit quoi faire, sans jamais porter de secret", () => {
     expect(arpegeWarning(TENANT, 403)).toContain("scope « integrations »");
@@ -91,7 +122,12 @@ describe("sync-socle-referentiel — aucun secret Arpège dans les journaux", ()
   it("aucun console.* ne mentionne les arguments ou la réponse Arpège", () => {
     const logs = source.match(/console\.\w+\([^;]*\);/g) ?? [];
     for (const line of logs) {
-      expect(line).not.toMatch(/arpegeArgs|arpegeDto|client_secret|access_token|p_client_secret/);
+      expect(line).not.toMatch(/arpegeArgs|arpegeDto|plan\.args|\bdto\b|client_secret|access_token|p_client_secret/);
     }
+  });
+
+  it("la suspension passe par la RPC de service, jamais par une écriture directe", () => {
+    expect(source).toContain('rpc("suspend_arpege_integration_from_socle"');
+    expect(source).not.toMatch(/from\("organization_integrations"\)\s*\.(update|upsert|insert|delete)/);
   });
 });
