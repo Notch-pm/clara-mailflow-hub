@@ -76,6 +76,34 @@ export async function createEluRelayedCourier(input: EluRelayInput): Promise<Elu
     socle_contact_id: contact.id,
   });
 
+  // L'élu qui relaie : en copie, jamais expéditeur ni destinataire — la réponse
+  // part à l'usager (send-courier-reply ne lit que `sender`/`recipient`).
+  // Best-effort : son absence ne doit pas faire perdre la demande.
+  if (user) {
+    try {
+      const { data: profile } = await supabase
+        .from("users")
+        .select("first_name, last_name, email")
+        .eq("id", user.id)
+        .maybeSingle();
+      const first = profile?.first_name ?? null;
+      const last = profile?.last_name ?? null;
+      const email = profile?.email ?? user.email ?? null;
+      await addParticipant({
+        courier_id: courier.id,
+        organization_id: organizationId,
+        role: "cc",
+        name: [first, last].filter(Boolean).join(" ") || email,
+        first_name: first,
+        last_name: last,
+        email,
+        metadata: { relayed_by_elu: true, user_id: user.id },
+      });
+    } catch (err) {
+      console.error("Ajout de l'élu aux participants impossible", err);
+    }
+  }
+
   const failedFiles: EluRelayResult["failedFiles"] = [];
   for (const file of input.files) {
     try {

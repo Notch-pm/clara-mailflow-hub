@@ -40,7 +40,7 @@ beforeEach(() => {
   upload.mockResolvedValue({});
   createNote.mockResolvedValue({});
   enqueueCourierAnalysis.mockResolvedValue("job-1");
-  mockSupabase.from.mockImplementation(() => {
+  mockSupabase.from.mockImplementation((table: string) => {
     const b: Record<string, unknown> = {};
     b.insert = vi.fn((row: Record<string, unknown>) => {
       inserted = row;
@@ -48,8 +48,13 @@ beforeEach(() => {
     });
     b.select = vi.fn(() => b);
     b.single = vi.fn(() => b);
-    b.then = (resolve: (v: unknown) => unknown) =>
-      Promise.resolve({ data: { id: "courier-1" }, error: null }).then(resolve);
+    b.eq = vi.fn(() => b);
+    b.maybeSingle = vi.fn(() => b);
+    const data =
+      table === "users"
+        ? { first_name: "Jeanne", last_name: "Martin", email: "jeanne.martin@mairie.fr" }
+        : { id: "courier-1" };
+    b.then = (resolve: (v: unknown) => unknown) => Promise.resolve({ data, error: null }).then(resolve);
     return b;
   });
 });
@@ -78,6 +83,26 @@ describe("createEluRelayedCourier", () => {
     expect(addParticipant).toHaveBeenCalledWith(
       expect.objectContaining({ courier_id: "courier-1", role: "sender", socle_contact_id: "contact-1", name: "Marie Dupont" }),
     );
+  });
+
+  it("ajoute l'élu qui relaie en copie, jamais comme expéditeur", async () => {
+    await createEluRelayedCourier(base);
+    expect(addParticipant).toHaveBeenCalledWith(
+      expect.objectContaining({
+        courier_id: "courier-1",
+        role: "cc",
+        name: "Jeanne Martin",
+        email: "jeanne.martin@mairie.fr",
+        metadata: { relayed_by_elu: true, user_id: "user-1" },
+      }),
+    );
+  });
+
+  it("l'élu non ajouté ne défait pas le courrier", async () => {
+    addParticipant.mockResolvedValueOnce({}).mockRejectedValueOnce(new Error("RLS"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await createEluRelayedCourier(base);
+    expect(res.courierId).toBe("courier-1");
   });
 
   it("refuse une requête vide sans rien créer", async () => {
