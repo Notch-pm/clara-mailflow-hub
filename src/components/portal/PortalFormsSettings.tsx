@@ -141,7 +141,7 @@ export default function PortalFormsSettings() {
           <p className="text-sm text-muted-foreground">
             Intégrez un formulaire de contact sur votre site web via une balise{" "}
             <code className="text-xs bg-muted px-1 py-0.5 rounded">&lt;iframe&gt;</code>. Chaque
-            soumission crée un courrier entrant dans la boîte aux lettres Clara.
+            soumission crée un courrier entrant dans « À instruire » de Clara.
           </p>
         </div>
         {isAdmin && (

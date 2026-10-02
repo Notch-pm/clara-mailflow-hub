@@ -160,7 +160,7 @@ export default function CourrierEntrant() {
     setPeriod(30);
   };
 
-  if (profileLoaded && !canAccessMailroom(profile, membership)) return <Navigate to="/boite-aux-lettres" replace />;
+  if (profileLoaded && !canAccessMailroom(profile, membership)) return <Navigate to="/a-instruire" replace />;
 
   return (
     <ListPage>

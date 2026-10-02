@@ -20,7 +20,7 @@ interface NavItem {
 const baseNavItems: NavItem[] = [
   { title: "Tableau de bord", url: "/", icon: Home },
   { title: "Courrier entrant", url: "/courrier-entrant", icon: Inbox },
-  { title: "Boîte aux lettres", url: "/boite-aux-lettres", icon: Mailbox },
+  { title: "À instruire", url: "/a-instruire", icon: Mailbox },
   { title: "Courriers en instruction", url: "/courriers-en-instruction", icon: FileClock },
   { title: "Parapheur", url: "/parapheur", icon: Signature },
   { title: "Courriers traités", url: "/courriers-traites", icon: CheckCircle2 },

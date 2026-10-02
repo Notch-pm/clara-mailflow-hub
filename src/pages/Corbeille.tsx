@@ -206,7 +206,7 @@ export default function Corbeille() {
     [canEdit, busy, restore],
   );
 
-  if (profileLoaded && !canAccessMailroom(profile, membership)) return <Navigate to="/boite-aux-lettres" replace />;
+  if (profileLoaded && !canAccessMailroom(profile, membership)) return <Navigate to="/a-instruire" replace />;
 
   const total = trash.data?.length ?? 0;
   const trimmedQuery = query.trim();

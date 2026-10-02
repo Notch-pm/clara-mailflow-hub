@@ -105,7 +105,7 @@ function originList(category: string | null | undefined, isOutbound: boolean) {
     case "processing":
       return { label: "En instruction", href: "/courriers-en-instruction" };
     default:
-      return { label: "Boîte aux lettres", href: "/boite-aux-lettres" };
+      return { label: "À instruire", href: "/a-instruire" };
   }
 }
 

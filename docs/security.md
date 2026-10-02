@@ -20,7 +20,7 @@ Toutes les tables métier ont RLS activée (cf `docs/data-model.md`). Policies p
 - **Trigger `prevent_superadmin_escalation`** sur `public.users` : empêche un user d'updater son propre `is_superadmin` à `true`.
 - **Policy `users_update_own`** : `WITH CHECK (id = auth.uid() AND is_superadmin = false)` — ceinture + bretelles.
 - **Notifications** : policies scoppées au rôle `authenticated` + `user_id = auth.uid()`.
-- **Création d'action ou de réponse** (2026-09-24) : `trg_action_tickets_creation_guard` et `trg_couriers_reply_creation_guard` refusent toute action liée ou réponse sur un courrier sans organisation gestionnaire ou encore dans la boîte aux lettres — **service_role compris**, contrairement à `couriers_enforce_transition` ; seul le GUC `clara.bypass_transition_guard` y échappe. Détail : `docs/data-model.md` § `action_tickets`.
+- **Création d'action ou de réponse** (2026-09-24) : `trg_action_tickets_creation_guard` et `trg_couriers_reply_creation_guard` refusent toute action liée ou réponse sur un courrier sans organisation gestionnaire ou encore dans « À instruire » — **service_role compris**, contrairement à `couriers_enforce_transition` ; seul le GUC `clara.bypass_transition_guard` y échappe. Détail : `docs/data-model.md` § `action_tickets`.
 - **Consentements RGPD** (`couriers.consents`, 2026-09-22) : `trg_couriers_consents_insert_guard` refuse une trace posée hors contexte de service (seule `portal-form` a posé la question — un éditeur ne peut pas la forger par PostgREST), `trg_couriers_consents_immutable` refuse toute réécriture, service_role compris. Côté Socle, la phrase consignée est composée par le serveur (`socle-contacts`), jamais reçue du navigateur.
 
 ## Données confiées à l'IA

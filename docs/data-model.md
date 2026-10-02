@@ -210,7 +210,7 @@ Clés `metadata` posées par l'ingestion IMAP (`fetch-inbound-emails`) :
 | `source` | `'imap'` \| `'scan'` \| `'portal'` |
 | `imap_settings_id` | boîte d'origine |
 | `email_size_bytes` | taille du message |
-| `is_large_email` | `true` au-delà de 2 Mo. **Exposé en colonne par le RPC `search_couriers`** et affiché en icône dans la Boîte aux lettres — les listes ne rapatrient pas le jsonb. |
+| `is_large_email` | `true` au-delà de 2 Mo. **Exposé en colonne par le RPC `search_couriers`** et affiché en icône dans « À instruire » — les listes ne rapatrient pas le jsonb. |
 | `scan_device_email` | mode scan : adresse du copieur, jamais confondue avec l'expéditeur |
 | `needs_qualification` | mode scan : courrier à qualifier par un agent |
 | `ignored_attachments` | pièces jointes écartées (hors gabarit) |
@@ -610,7 +610,7 @@ d'avant (cf. `docs/features.md` § 4).
 trigger `trg_action_tickets_creation_guard` (BEFORE INSERT) — et son jumeau
 `trg_couriers_reply_creation_guard` sur `couriers`, pour une réponse sortante (`outbound` avec
 `parent_courier_id`) — refuse la création si le courrier parent n'a pas d'organisation
-gestionnaire, ou s'il est dans la boîte aux lettres : `workflow_state_id` nul, état introuvable,
+gestionnaire, ou s'il est dans « À instruire » : `workflow_state_id` nul, état introuvable,
 ou `is_initial IS TRUE` (un `is_initial` NULL compte comme « pas initial », comme le filtre de la
 boîte). Le motif vient de `courier_creation_block_reason(uuid)` (SECURITY DEFINER, `service_role`
 seulement — `create-arpege-demande` l'appelle AVANT d'écrire chez Arpège) et reprend mot pour mot

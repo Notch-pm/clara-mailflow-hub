@@ -10,7 +10,7 @@ const fx = loadFixtures();
 test("un admin du tenant Beta ne voit jamais les données du tenant Alpha", async ({ page }) => {
   await loginAs(page, fx.users.adminBeta, fx.password);
 
-  await page.goto("/boite-aux-lettres");
+  await page.goto("/a-instruire");
   await expect(page.getByText(/\[TEST\] Courrier Beta/).first()).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText(/\[TEST\] Courrier Alpha/)).toHaveCount(0);
   await expect(page.getByText(fx.alpha.name)).toHaveCount(0);

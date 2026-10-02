@@ -133,7 +133,7 @@ export function instructionTodo(
       count: mine.filter(awaitsPickup).length,
       sub: scope ? "arrivés dans votre service" : "arrivés dans l'organisation",
       cta: "Voir",
-      href: "/boite-aux-lettres",
+      href: "/a-instruire",
     }),
     card({
       key: "instruction-reminded",

@@ -27,7 +27,7 @@ describe("pushMessage", () => {
     });
     expect(m.title).toBe("Nouveau courrier · Mairie d'Arles");
     expect(m.body).toBe("Demande de subvention 2026");
-    expect(m.url).toBe("https://clara.edilumen.fr/boite-aux-lettres?open=c-1");
+    expect(m.url).toBe("https://clara.edilumen.fr/a-instruire?open=c-1");
   });
 
   // Le producteur préfixe `title` (« Transféré : … »), et la cloche retire ce
@@ -102,7 +102,7 @@ describe("pushMessage", () => {
     });
     expect(m.title).toBe("Notification");
     expect(m.body).toBe("Échéance");
-    expect(m.url).toBe("https://clara.edilumen.fr/boite-aux-lettres?open=c-7");
+    expect(m.url).toBe("https://clara.edilumen.fr/a-instruire?open=c-7");
   });
 
   it("un type inconnu SANS titre a quand même une phrase", () => {
@@ -129,7 +129,7 @@ describe("pushMessage", () => {
   // APP_ORIGIN absente ou mal formée : un chemin relatif reste cliquable, le
   // service worker le résout sur sa propre origine. Une URL « undefined/… »
   // ouvrirait une page d'erreur.
-  it.each([["", "/boite-aux-lettres?open=c-9"], ["pas-une-url", "/boite-aux-lettres?open=c-9"]])(
+  it.each([["", "/a-instruire?open=c-9"], ["pas-une-url", "/a-instruire?open=c-9"]])(
     "appUrl invalide (%s) ⇒ chemin relatif",
     (appUrl, expected) => {
       expect(pushMessage({ type: "new_courier", title: "x", resourceId: "c-9", organizationName: null, appUrl }).url)
@@ -141,7 +141,7 @@ describe("pushMessage", () => {
     const m = pushMessage({
       type: "new_courier", title: "x", resourceId: "c-10", organizationName: null, appUrl: "https://clara.edilumen.fr///",
     });
-    expect(m.url).toBe("https://clara.edilumen.fr/boite-aux-lettres?open=c-10");
+    expect(m.url).toBe("https://clara.edilumen.fr/a-instruire?open=c-10");
   });
 });
 
@@ -155,9 +155,9 @@ describe("notificationPath", () => {
     expect(notificationPath("action_unassigned", "c-1")).toBe("/courrier/c-1?tab=actions");
   });
 
-  it("tout le reste ouvre le courrier dans la boîte aux lettres", () => {
-    expect(notificationPath("new_courier", "c-1")).toBe("/boite-aux-lettres?open=c-1");
-    expect(notificationPath("courier_transferred", "c-1")).toBe("/boite-aux-lettres?open=c-1");
+  it("tout le reste ouvre le courrier dans « À instruire »", () => {
+    expect(notificationPath("new_courier", "c-1")).toBe("/a-instruire?open=c-1");
+    expect(notificationPath("courier_transferred", "c-1")).toBe("/a-instruire?open=c-1");
   });
 
   it("sans ressource, la racine — jamais une URL trouée", () => {

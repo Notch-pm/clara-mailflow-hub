@@ -88,7 +88,7 @@ traiter sa demande (obligatoire, sans quoi l'envoi est refusé) et leur partage 
 collectivité (facultatif, proposé coché). La phrase affichée est celle qui est consignée, mot
 pour mot, avec le nom de la collectivité.
 
-**Relayé par un élu.** Un élu rencontre un usager (permanence, marché, réunion de quartier) et saisit sa demande depuis son téléphone : l'usager (retrouvé ou créé dans le référentiel), sa requête en texte libre, des photos ou documents, un commentaire interne facultatif. Le courrier arrive en boîte aux lettres, canal « Relayé élu », sans organisation : c'est le service courrier qui l'oriente, l'élu n'a pas à connaître l'organigramme. Il retrouve aussitôt la fiche du courrier, et son suivi ensuite.
+**Relayé par un élu.** Un élu rencontre un usager (permanence, marché, réunion de quartier) et saisit sa demande depuis son téléphone : l'usager (retrouvé ou créé dans le référentiel), sa requête en texte libre, des photos ou documents, un commentaire interne facultatif. Le courrier arrive dans « À instruire », canal « Relayé élu », sans organisation : c'est le service courrier qui l'oriente, l'élu n'a pas à connaître l'organigramme. Il retrouve aussitôt la fiche du courrier, et son suivi ensuite.
 
 Résultat attendu : un courrier `portal` avec un expéditeur brut (non rapproché) et la trace
 immuable de ses consentements. Quand l'agent rattache l'expéditeur à une fiche du référentiel,
@@ -120,7 +120,7 @@ Une fois le courrier rattaché à une organisation, l'agent instructeur doit com
 3. Le courrier entre en instruction.
 4. L'analyse IA peut aider l'agent : résumé, extraction du contenu, suggestion de tags, recommandations d'actions ou de démarches.
 5. L'agent confirme ou corrige la qualification.
-6. Le courrier peut générer une ou plusieurs actions — **seulement une fois orienté et sorti de la boîte aux lettres** : sans organisation gestionnaire, ou à l'état initial de son workflow, ni action ni réponse ne peut être créée (règle tenue par l'écran et par la base).
+6. Le courrier peut générer une ou plusieurs actions — **seulement une fois orienté et sorti de « À instruire »** : sans organisation gestionnaire, ou à l'état initial de son workflow, ni action ni réponse ne peut être créée (règle tenue par l'écran et par la base).
 
 ### Actions issues d'un courrier
 

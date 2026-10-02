@@ -27,7 +27,7 @@ export function NotificationBell() {
     if (!resourceId) return;
     if (type === "action_assigned" || type === "action_unassigned") {
       // Même permalien que le mail : la page détail lit ?tab au montage, alors
-      // que /boite-aux-lettres?open= purge les paramètres d'URL à l'ouverture.
+      // que /a-instruire?open= purge les paramètres d'URL à l'ouverture.
       navigate(`/courrier/${resourceId}?tab=actions`);
       return;
     }
@@ -39,7 +39,7 @@ export function NotificationBell() {
       navigate(`/courrier/${resourceId}`);
       return;
     }
-    navigate(`/boite-aux-lettres?open=${resourceId}`);
+    navigate(`/a-instruire?open=${resourceId}`);
   }
 
   return (

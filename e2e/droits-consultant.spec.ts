@@ -15,8 +15,8 @@ test.beforeEach(async ({ page }) => {
   await loginAs(page, fx.users.consultantAlpha, fx.password);
 });
 
-test("boîte aux lettres : voit ses courriers, aucun bouton création/import", async ({ page }) => {
-  await page.goto("/boite-aux-lettres");
+test("À instruire : voit ses courriers, aucun bouton création/import", async ({ page }) => {
+  await page.goto("/a-instruire");
 
   // Parité de lecture avec un membre : sa sous-org + les non-assignés
   await expect(page.getByText("[TEST] Courrier Alpha assigné cabinet").first()).toBeVisible({

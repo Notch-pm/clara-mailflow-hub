@@ -1014,7 +1014,7 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
                   )}
                   {!serviceId && (
                     <p className="text-xs text-muted-foreground">
-                      Facultatif : le courrier pourra être affecté depuis la boîte aux lettres.
+                      Facultatif : le courrier pourra être affecté depuis « À instruire ».
                     </p>
                   )}
                 </div>

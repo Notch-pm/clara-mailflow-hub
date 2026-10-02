@@ -15,7 +15,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 async function openBoiteAuxLettres(page: Page) {
-  await page.goto("/boite-aux-lettres");
+  await page.goto("/a-instruire");
   await expect(page.getByRole("button", { name: /Ajouter du courrier/ })).toBeVisible();
 }
 

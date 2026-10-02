@@ -51,21 +51,21 @@ const { data, error } = await supabase
 
 ## Pages de liste
 
-Boîte aux lettres, courriers (instruction, traités, archivés, sortants), contacts et recherche
+À instruire, courriers (instruction, traités, archivés, sortants), contacts et recherche
 partagent un gabarit, `src/components/list/` (refonte du 2026-09-11) :
 
 - **`ListPage`** occupe toute la zone de contenu, bord à bord : `AppLayout` la reconnaît à
   `data-list-page`, retire sa gouttière et **cesse de défiler**. Seules les lignes défilent
   (`ListScrollArea`) — c'est ce qui supprime le double défilement page + tableau. Vrai à toutes
   les tailles : barre d'outils et pagination restent en place, et la barre de navigation mobile
-  ne recouvre jamais la liste. La boîte aux lettres n'y fait plus exception — sous `lg`, son
+  ne recouvre jamais la liste. « À instruire » n'y fait plus exception — sous `lg`, son
   panneau n'est plus empilé sous la liste mais remplacé par la page dédiée du courrier.
 - **`ListToolbar`** : une seule barre de 56 px — titre + compteur, `ListSearch` (contacts et page
   Recherche seulement), actions rondes (`ToolbarButton` + `ToolbarTooltip`, libellé visible à partir
   de `xl`), action principale à droite. Sous `md`, la recherche passe à la ligne ; sans recherche, les
   actions restent à côté du titre tant qu'elles y tiennent. Pas de sous-titre ni de carte « Recherche ».
 - **Filtres** : `ListFilterButton` (panneau dont chaque choix s'applique aussitôt) + `ListActiveFilters`
-  (pastilles retirables). Pour les courriers (boîte aux lettres comprise) : `useCourierFacets` +
+  (pastilles retirables). Pour les courriers (« À instruire » comprise) : `useCourierFacets` +
   `CourierFacetFields`, **recherche en tête du panneau** et non dans la barre — elle devient une
   pastille « Recherche : « … » » et compte dans le badge « Filtres ». Un champ `data-autofocus`
   (`ListSearch focusOnOpen`) reçoit le focus à l'ouverture, sauf sur écran tactile.

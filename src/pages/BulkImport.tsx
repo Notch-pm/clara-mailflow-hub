@@ -422,7 +422,7 @@ export default function BulkImport() {
     queryClient.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
 
     setTimeout(() => {
-      navigate("/boite-aux-lettres");
+      navigate("/a-instruire");
     }, 3000);
   }
 
@@ -445,8 +445,8 @@ export default function BulkImport() {
             administrateur si vous avez besoin d'importer des courriers en masse.
           </p>
         </div>
-        <Button variant="outline" onClick={() => navigate("/boite-aux-lettres")}>
-          Retour à la boîte aux lettres
+        <Button variant="outline" onClick={() => navigate("/a-instruire")}>
+          Retour à « À instruire »
         </Button>
       </div>
     );
@@ -556,11 +556,11 @@ export default function BulkImport() {
                 ✓ {createdCount} courrier{createdCount > 1 ? "s" : ""} créé{createdCount > 1 ? "s" : ""}
               </p>
               <p className="text-sm text-muted-foreground mt-1">
-                Redirection vers la boîte aux lettres dans 3 secondes…
+                Redirection vers « À instruire » dans 3 secondes…
               </p>
             </div>
-            <Button variant="outline" onClick={() => navigate("/boite-aux-lettres")}>
-              Aller à la boîte aux lettres
+            <Button variant="outline" onClick={() => navigate("/a-instruire")}>
+              Aller à « À instruire »
             </Button>
           </div>
         )}
@@ -572,7 +572,7 @@ export default function BulkImport() {
             variant="ghost"
             onClick={() => {
               if (step > 1) goToStep(step - 1);
-              else navigate("/boite-aux-lettres");
+              else navigate("/a-instruire");
             }}
           >
             {step === 1 ? "Annuler" : "Retour"}

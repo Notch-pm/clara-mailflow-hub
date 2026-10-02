@@ -12,7 +12,7 @@ interface NavItem {
 const baseNavItems: NavItem[] = [
   { title: "Accueil", url: "/", icon: Home },
   { title: "Entrant", url: "/courrier-entrant", icon: Inbox },
-  { title: "Boîte", url: "/boite-aux-lettres", icon: Mailbox },
+  { title: "À instruire", url: "/a-instruire", icon: Mailbox },
   { title: "Instruction", url: "/courriers-en-instruction", icon: FileClock },
   { title: "Traités", url: "/courriers-traites", icon: CheckCircle2 },
   { title: "Archivés", url: "/courriers-archives", icon: Archive },

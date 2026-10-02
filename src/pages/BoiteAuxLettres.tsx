@@ -369,7 +369,7 @@ export default function BoiteAuxLettres() {
     <ListPage>
       <ListToolbar
         icon={<img src={mailboxIcon} alt="" style={{ filter: "var(--icon-primary-filter, none)" }} />}
-        title="Boîte aux lettres"
+        title="À instruire"
         count={list.filters && !list.isLoading ? list.totalCount : null}
         countLabel="courriers en attente"
         titleAside={

@@ -118,7 +118,7 @@ export function navItemVisible(
     case "/courrier-entrant":
     case "/corbeille":
       return canAccessMailroom(profile, membership);
-    case "/boite-aux-lettres":
+    case "/a-instruire":
       return showsMailbox(profile, membership);
     default:
       return true;

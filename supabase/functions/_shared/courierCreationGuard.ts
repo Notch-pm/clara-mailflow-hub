@@ -17,7 +17,7 @@ export const NO_MANAGING_ORG_REASON =
   "Ce courrier n'a pas d'organisation gestionnaire : désignez-la avant de créer une action ou une réponse.";
 
 export const IN_MAILBOX_REASON =
-  "Ce courrier est encore dans la boîte aux lettres : faites-le avancer dans son workflow avant de créer une action ou une réponse.";
+  "Ce courrier est encore dans « À instruire » : faites-le avancer dans son workflow avant de créer une action ou une réponse.";
 
 export interface CourierCreationState {
   socleOrganizationId: string | null | undefined;

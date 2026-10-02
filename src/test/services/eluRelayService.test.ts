@@ -62,7 +62,7 @@ beforeEach(() => {
 const base = { organizationId: "org-1", contact, request: "Nid-de-poule rue des Lilas\nDevant le 12", files: [] };
 
 describe("createEluRelayedCourier", () => {
-  it("crée un courrier entrant « relaye_elu » en boîte aux lettres, requête dans le corps", async () => {
+  it("crée un courrier entrant « relaye_elu » dans « À instruire », requête dans le corps", async () => {
     const res = await createEluRelayedCourier(base);
 
     expect(res.courierId).toBe("courier-1");

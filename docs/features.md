@@ -13,15 +13,15 @@
 - Crée un `courier` `direction=inbound`, importe les pièces jointes dans le bucket `clara-documents`, crée les participants.
 - Déclenchée manuellement (bouton) ou par planification (à câbler côté cron si besoin).
 - Config UI : `src/components/ImapSettings.tsx`.
-- Plafond de 15 Mo par email (surchargeable par boîte). Au-delà de 2 Mo, le courrier porte `metadata.is_large_email` et s'affiche avec une icône « volumineux » dans la Boîte aux lettres.
+- Plafond de 15 Mo par email (surchargeable par boîte). Au-delà de 2 Mo, le courrier porte `metadata.is_large_email` et s'affiche avec une icône « volumineux » dans « À instruire ».
 
 ### Numérisation (copieur réseau)
 - **Pas d'accès matériel depuis le navigateur** : ni WebUSB, ni eSCL (pas de CORS côté scanner), et un agent local sur `localhost` se heurte au verrouillage réseau de Chrome (Local Network Access) et à l'interdiction de Safari. Le pont retenu est donc le **dépôt automatique**.
 - Le copieur est configuré en « scan vers email » sur une boîte dédiée, marquée **boîte de numérisation** (`imap_settings.is_scan_inbox`). Fonctionne avec tout scanner déjà installé, sans logiciel sur les postes ni licence.
-- **Relayé élu** (2026-10-01) : depuis l'espace élu mobile (`/elu/nouveau-courrier`), un élu saisit la demande d'un usager qu'il a rencontré — usager (choisi ou créé au Socle, `EluUsagerPicker`), requête (→ `metadata.body_text`, objet tiré de sa première ligne par `relaySubject`), photos ou fichiers, commentaire interne (→ `courier_notes`). Canal `relaye_elu`, `metadata.relayed_by`, ni organisation ni état : le courrier attend en boîte aux lettres que le service courrier l'oriente. Analyse mise en file côté serveur (`enqueueCourierAnalysis`). Service : `src/services/eluRelayService.ts`.
+- **Relayé élu** (2026-10-01) : depuis l'espace élu mobile (`/elu/nouveau-courrier`), un élu saisit la demande d'un usager qu'il a rencontré — usager (choisi ou créé au Socle, `EluUsagerPicker`), requête (→ `metadata.body_text`, objet tiré de sa première ligne par `relaySubject`), photos ou fichiers, commentaire interne (→ `courier_notes`). Canal `relaye_elu`, `metadata.relayed_by`, ni organisation ni état : le courrier attend dans « À instruire » que le service courrier l'oriente. Analyse mise en file côté serveur (`enqueueCourierAnalysis`). Service : `src/services/eluRelayService.ts`.
 - Ingestion en mode scan : canal `paper`, pas de participant `sender` (l'adresse du copieur va dans `metadata.scan_device_email`), sujet neutre remplacé ensuite par `suggested_subject`, allowlist `scan_allowed_senders` **fail-closed** : `NULL` ou vide → la boîte n'accepte **rien** (elle n'attend que ses copieurs). Logique testable : `fetch-inbound-emails/logic.ts` (`isInboundSenderAccepted`).
 - **Le refus doit rester visible** (incident du 2026-09-13, boîte « Scanner Mairie » de SNA) : une allowlist vide rejetait chaque courrier en silence — la relève se terminait sur `{ ok: true, processed: 0 }` et **remettait `last_error` à `null`**, donc la boîte s'affichait saine, et le bouton « Tester » ne valide que le LOGIN. Désormais : l'écran refuse d'enregistrer une boîte de numérisation sans expéditeur autorisé, « Tester » alerte sur ce cas (`scanInboxAcceptsNothing`), et une relève qui rejette écrit le détail dans `last_error` (`describeRejectedScanSenders`) au lieu de l'effacer.
-- L'OCR et l'analyse sont enfilés automatiquement (voir §2) — **pour la boîte de numérisation seulement** : un mail reçu sur une boîte classique n'est pas analysé d'office (décision PO du 2026-10-01), l'agent lance l'analyse au besoin. Puis l'agent qualifie le courrier depuis la Boîte aux lettres.
+- L'OCR et l'analyse sont enfilés automatiquement (voir §2) — **pour la boîte de numérisation seulement** : un mail reçu sur une boîte classique n'est pas analysé d'office (décision PO du 2026-10-01), l'agent lance l'analyse au besoin. Puis l'agent qualifie le courrier depuis « À instruire ».
 - Réglages copieur recommandés : PDF (pas TIFF, non géré par l'OCR), 200–300 dpi, niveaux de gris, « un fichier par document » pour limiter la découpe des lots — qui reste possible manuellement à l'import (voir Import en masse).
 
 ### Import en masse
@@ -89,7 +89,7 @@ L'analyse propose l'**organisation gestionnaire** ; l'agent l'applique ou l'éca
 - **Courrier déjà confié** : le prompt nomme l'organisation en place et demande de la **garder si
   elle convient** — un doute ne justifie pas un transfert.
 - **Écran** (`ServiceSuggestion.tsx`, état par `src/lib/service-suggestion.ts`) : onglet Contenu et
-  panneau de tri de la boîte aux lettres. Aucune organisation ou état initial → bouton
+  panneau de tri de « À instruire ». Aucune organisation ou état initial → bouton
   **« Affecter à X »** (affectation directe) ; courrier en cours → **« Transférer à X… »**, qui
   ouvre la confirmation de transfert existante. Rien ne s'applique sans le geste de l'agent. Une
   organisation que l'agent ne peut pas choisir (droits, boîte IMAP) est montrée sans bouton.
@@ -142,7 +142,7 @@ service gestionnaire, puis **suit et relance** ; il n'instruit pas. Écran `/cou
 
 ### Corbeille et spam (depuis le 2026-10-01)
 
-« Supprimer » (boîte aux lettres, courrier entrant) ne détruit plus rien : `deleteCourier` appelle
+« Supprimer » (« À instruire », courrier entrant) ne détruit plus rien : `deleteCourier` appelle
 le RPC `trash_courier`, qui pose `deleted_at` sur le courrier et ses réponses. Le courrier
 disparaît de toutes les listes, recherches, statistiques et de la file d'analyse
 (`process-analysis-queue` clôt sans dépense IA un job dont le courrier est passé à la corbeille).
@@ -244,7 +244,7 @@ Client unique : `supabase/functions/_shared/socleAi.ts`. Voir aussi `docs/edge-f
 - Deux types (`kind`) : workflow principal des courriers, et workflow des réponses.
 - Chaque `workflow_state` a une `category` : `draft`, `in_progress`, `processed`, `archived` — détermine l'onglet d'affichage (`CourriersEnInstruction`, `CourriersTraites`, `CourriersArchives`).
 - Transitions définies par `workflow_transitions`. La validité des transitions est vérifiée côté client (et idéalement par trigger DB pour les cas critiques).
-- **Changer d'organisation gestionnaire** (carte « Organisation gestionnaire », colonne de contexte de `/courrier/:id` et panneau de la boîte aux lettres) : à l'état initial c'est une simple affectation ; ensuite c'est un **transfert**, confirmé par un dialogue, qui **remet le courrier à l'état initial du workflow de l'organisation cible** (chaque organisation a son workflow), journalise `service_transferred` et notifie les membres de la cible. Le panneau de tri se referme après le transfert (le courrier quitte la pile à trier) ; l'écran d'instruction, lui, reste ouvert sur le courrier — sauf transfert vers une organisation hors du périmètre de l'agent, qui n'aurait plus rien à afficher.
+- **Changer d'organisation gestionnaire** (carte « Organisation gestionnaire », colonne de contexte de `/courrier/:id` et panneau de « À instruire ») : à l'état initial c'est une simple affectation ; ensuite c'est un **transfert**, confirmé par un dialogue, qui **remet le courrier à l'état initial du workflow de l'organisation cible** (chaque organisation a son workflow), journalise `service_transferred` et notifie les membres de la cible. Le panneau de tri se referme après le transfert (le courrier quitte la pile à trier) ; l'écran d'instruction, lui, reste ouvert sur le courrier — sauf transfert vers une organisation hors du périmètre de l'agent, qui n'aurait plus rien à afficher.
 
 ### Délais de traitement (SLA, depuis le 2026-10-01)
 
@@ -283,7 +283,7 @@ Clara ne remplace pas les applications métier qui exécutent les demandes d'act
 - l'analyse IA peut recommander des actions, mais l'agent reste responsable de la décision et du circuit retenu.
 
 **Pas d'action tant que le courrier n'est pas orienté** (depuis le 2026-09-24) : sans organisation
-gestionnaire, ou dans la boîte aux lettres (état initial du workflow, ou aucun état), l'onglet
+gestionnaire, ou dans « À instruire » (état initial du workflow, ou aucun état), l'onglet
 Actions grise « Créer », affiche le motif et retire la création depuis les actions suggérées. La
 base tient la même règle — voir § 5 et `docs/data-model.md` § `action_tickets`.
 
@@ -331,7 +331,7 @@ Détail complet — contrat, raccordement des champs, périmètre, exploitation 
 ## 5. Réponses (couriers sortants)
 
 - Modèle : un courrier `direction=outbound` avec `parent_courier_id` pointant l'inbound.
-- **Pas de réponse depuis la boîte aux lettres** (depuis le 2026-09-24) : tant que le courrier n'a
+- **Pas de réponse depuis « À instruire »** (depuis le 2026-09-24) : tant que le courrier n'a
   pas d'organisation gestionnaire, ou qu'il est à l'état initial ou sans état, « Créer une réponse »
   est grisé et le motif affiché. Règle unique pour les actions et les réponses :
   `_shared/courierCreationGuard.ts` (écran) et le trigger de création (base, pour tout appelant —
@@ -486,7 +486,7 @@ la même information sur l'écran verrouillé, **application fermée**.
   quitte déjà Clara par les e-mails de notification, et sans lui la carte ne distingue rien.
   Texte chiffré de bout en bout (RFC 8291) : le service de push ne le lit pas.
   `tag = clara:<resource_id>` — une carte par courrier, la plus récente remplace. Le clic mène
-  là où mène la cloche : `/courrier/<id>?tab=actions` pour une action, `/boite-aux-lettres?open=<id>`
+  là où mène la cloche : `/courrier/<id>?tab=actions` pour une action, `/a-instruire?open=<id>`
   sinon (parité figée par un test).
 - **Service worker `public/sw.js` — push SEUL** : aucun `fetch`, aucun cache (une GEC ne doit
   jamais servir un état de workflow périmé). Enregistré **à l'activation de l'interrupteur**,

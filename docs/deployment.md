@@ -112,6 +112,14 @@ bunx supabase functions deploy <nom> --project-ref aullweizxcjbvtdspjli
 bun run build && npx wrangler deploy --dry-run
 ```
 
+### Lot « Boîte aux lettres → À instruire » (2026-10-02)
+
+| # | Action | Pourquoi cet ordre | État |
+|---|---|---|---|
+| 1 | `20261002094155_garde_creation_a_instruire.sql` (`courier_creation_block_reason` : motif « encore dans « À instruire » ») | Le message de la base doit rester mot pour mot celui de l'écran (`IN_MAILBOX_REASON`) | **Appliqué** via `apply_migration` — registre `20261002094155` (fichier renommé pour coller) |
+| 2 | Publier le frontend | Route `/a-instruire` ; `/boite-aux-lettres` redirige (paramètres compris) | Push sur `main` |
+| 3 | Redéployer les fonctions qui embarquent `_shared/push/message.ts` et `_shared/courierCreationGuard.ts` | Liens push vers `/a-instruire` et motif à jour côté edge ; sans urgence, l'ancienne route redirige | À faire |
+
 ### Lot « accueil : tendances sur 12 mois » (2026-10-02)
 
 | # | Action | Pourquoi cet ordre | État |

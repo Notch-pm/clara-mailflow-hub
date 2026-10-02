@@ -16,8 +16,8 @@ test.beforeEach(async ({ page }) => {
   await loginAs(page, fx.users.membreAlpha, fx.password);
 });
 
-test("boîte aux lettres : uniquement sa sous-organisation", async ({ page }) => {
-  await page.goto("/boite-aux-lettres");
+test("À instruire : uniquement sa sous-organisation", async ({ page }) => {
+  await page.goto("/a-instruire");
 
   await expect(page.getByText("[TEST] Courrier Alpha assigné cabinet").first()).toBeVisible({
     timeout: 15_000,

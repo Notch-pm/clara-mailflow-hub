@@ -1,6 +1,6 @@
 import { useEffect, Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes, Navigate, Outlet } from "react-router-dom";
+import { BrowserRouter, Route, Routes, Navigate, Outlet, useLocation } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -53,6 +53,16 @@ import { PushBootstrap } from "@/hooks/usePushSubscription";
 import { Loader2 } from "lucide-react";
 
 const queryClient = new QueryClient();
+
+/**
+ * Ancienne adresse de « À instruire » (ex-« Boîte aux lettres »). Les liens
+ * déjà émis — notifications en base, push, mails, favoris — la portent encore,
+ * souvent avec `?open=<id>` : on la garde, paramètres compris.
+ */
+function LegacyMailboxRedirect() {
+  const { search } = useLocation();
+  return <Navigate to={`/a-instruire${search}`} replace />;
+}
 
 function LoadingScreen() {
   return (
@@ -203,7 +213,8 @@ const App = () => (
                 <Route element={<EluModeGate />}>
                   <Route element={<AppLayout />}>
                     <Route path="/" element={<Dashboard />} />
-                    <Route path="/boite-aux-lettres" element={<BoiteAuxLettres />} />
+                    <Route path="/a-instruire" element={<BoiteAuxLettres />} />
+                    <Route path="/boite-aux-lettres" element={<LegacyMailboxRedirect />} />
                     <Route path="/courrier-entrant" element={<Suspense fallback={<LoadingScreen />}><CourrierEntrant /></Suspense>} />
                     <Route path="/corbeille" element={<Suspense fallback={<LoadingScreen />}><Corbeille /></Suspense>} />
                     <Route path="/courriers-en-instruction" element={<CourriersEnInstruction />} />

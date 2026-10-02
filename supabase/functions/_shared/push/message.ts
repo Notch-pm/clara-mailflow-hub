@@ -107,7 +107,7 @@ export function notificationPath(type: string, resourceId: string | null): strin
   if (type === "action_assigned" || type === "action_unassigned") {
     return `/courrier/${id}?tab=actions`;
   }
-  return `/boite-aux-lettres?open=${id}`;
+  return `/a-instruire?open=${id}`;
 }
 
 /** `appUrl` invalide ⇒ chemin relatif : le service worker le résout sur son origine. */
