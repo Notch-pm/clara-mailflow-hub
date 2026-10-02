@@ -7,6 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { useNotifications } from "@/hooks/useNotifications";
+import { CHANNEL_LABELS } from "@/components/courier/courierListColumns";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
 
@@ -160,6 +161,7 @@ export function NotificationBell() {
                             addSuffix: true,
                             locale: fr,
                           })}
+                          {notif.channel && ` · ${CHANNEL_LABELS[notif.channel]}`}
                         </p>
                       </div>
                     </div>
