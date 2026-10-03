@@ -13,6 +13,8 @@ export async function createArpegeTicket(payload: {
   demandeur: Record<string, string>;
   formValues?: Array<{ id: string; valeur: unknown }>;
   pieceJointes?: Record<string, string[]>;
+  /** Organisation destinataire (miroir Socle) — exigée pour une démarche du référentiel. */
+  socleOrganizationId?: string | null;
 }): Promise<ActionTicket> {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) throw new Error("Non authentifié");
@@ -25,6 +27,7 @@ export async function createArpegeTicket(payload: {
       demandeur: payload.demandeur,
       form_values: payload.formValues ?? [],
       pieces_jointes: payload.pieceJointes ?? {},
+      socle_organization_id: payload.socleOrganizationId ?? null,
     },
   });
 

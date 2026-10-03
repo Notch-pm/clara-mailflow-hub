@@ -6,10 +6,13 @@
 //
 // Deux règles, et une seule exception assumée :
 //   • une démarche du référentiel n'est proposée QUE par les organisations qui
-//     l'ont activée (Iris refuse le dépôt sinon) ;
-//   • une démarche que le référentiel ne connaît pas — démarche Arpège, embryon
-//     local — n'a aucune ligne d'activation. La masquer partout fermerait le
-//     flux partenaire : elle reste donc proposée quelle que soit l'organisation.
+//     l'ont activée (Iris refuse le dépôt sinon). Les démarches Arpège en sont
+//     depuis le 2026-10-02 : activées au Socle comme les autres, filtrées de
+//     même (create-arpege-demande refuse aussi une organisation qui ne
+//     l'assure pas) ;
+//   • une démarche que le référentiel ne connaît pas — ancienne démarche
+//     Arpège importée localement, embryon local — n'a aucune ligne
+//     d'activation : elle reste proposée quelle que soit l'organisation.
 
 export interface ProcedureActivation {
   procedure_id: string;

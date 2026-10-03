@@ -407,10 +407,10 @@ Démarches administratives. **Source de vérité : le Socle** (référentiel cen
 | Colonne | Type | Notes |
 |---|---|---|
 | `name` | varchar | |
-| `external_reference_id` / `external_source` | varchar | `'socle'` (sync) ou `'arpege'` (legacy) ; les refs Arpège sont conservées après adoption |
+| `external_reference_id` / `external_source` | varchar | `'socle'` (sync) ou `'arpege'` (legacy, 36 démarches retirées chez ACCM, jamais adoptées par nom). Depuis le 2026-10-02 la sync écrit aussi `external_reference_id` (= `partner.reference`) pour une démarche Arpège **servie par le Socle** (`external_source` reste `'socle'`) et l'efface si `partner` est `null` |
 | `is_displayed` | boolean | masquage local (seul champ éditable côté Clara) |
 | `display_order` | integer | ← `order_index` Socle |
-| `arpege_config_fields` | jsonb | config formulaire Arpège (conservée pour `create-arpege-demande`) |
+| `arpege_config_fields` | jsonb | config formulaire Arpège (`CodeQualificationMetier`, `ConfigInfoUsagerObligs`, `FormComponents`) pour `create-arpege-demande` ; écrite par la sync depuis `partner.config` pour les démarches Arpège du Socle (effacée si `partner: null`) |
 | `socle_id` | uuid | UUID Socle — clé d'idempotence, index unique partiel `(organization_id, socle_id)` |
 | `type` | varchar | `interne` \| `externe` |
 | `keywords` | jsonb | tableau de mots-clés |
@@ -607,7 +607,7 @@ d'avant (cf. `docs/features.md` § 4).
 | `assignee_id` | uuid FK → users | **plus saisi** : l'affectation a disparu avec la demande libre ; affiché s'il est renseigné |
 | `status` | text | `'open'` par défaut |
 | `socle_data` | jsonb | démarche du référentiel : demandeur déclaré + réponses au formulaire + pièces sélectionnées (`src/lib/socle-form.ts`) |
-| `socle_organization_id` | uuid FK → socle_organizations | **organisation destinataire choisie par l'agent** — commande la liste des démarches proposées et l'organisme transmis à Iris. Nullable : à null, on retombe sur celle du courrier (tickets antérieurs au 2026-09-10). Adresser une demande à un service ne déplace pas le courrier |
+| `socle_organization_id` | uuid FK → socle_organizations | **organisation destinataire choisie par l'agent** — commande la liste des démarches proposées et l'organisme transmis à Iris. Nullable : à null, on retombe sur celle du courrier (tickets antérieurs au 2026-09-10). Adresser une demande à un service ne déplace pas le courrier. Posée aussi sur les tickets **Arpège** depuis le 2026-10-02 (`create-arpege-demande`) |
 | `arpege_demande_ref` / `arpege_demande_status` | text | |
 
 **Garde de création** (2026-09-24, `20260924190000_garde_creation_action_reponse.sql`) : le

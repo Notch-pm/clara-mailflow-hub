@@ -36,8 +36,23 @@ export interface SocleProcedure {
   form_schema: unknown;
   knowledge_base: unknown;
   translations: unknown;
+  /**
+   * Démarche d'un partenaire, servie par le Socle depuis public-api 1.35.0
+   * (2026-10-02) et à la seule clé de Clara. `null` = démarche du Socle,
+   * instruite par Iris ; clé ABSENTE = Socle antérieur, qui ne dit rien.
+   */
+  partner?: SocleProcedurePartner | null;
   created_at?: string | null;
   updated_at?: string | null;
+}
+
+export interface SocleProcedurePartner {
+  /** Partenaire qui instruit la démarche — seul « arpege » existe aujourd'hui. */
+  integration: string;
+  /** Arpège : le CodeQualificationTypeDemande. */
+  reference: string;
+  /** Arpège : exactement la forme de `procedures.arpege_config_fields`. */
+  config: unknown;
 }
 
 /**
@@ -89,6 +104,10 @@ export interface ProcedureRow {
   form_schema: unknown;
   knowledge_base: unknown;
   translations: unknown;
+  // Lus pour le flux partenaire (absents des anciens appelants : optionnels).
+  external_source?: string | null;
+  external_reference_id?: string | null;
+  arpege_config_fields?: unknown;
 }
 
 export interface MirrorRow {
@@ -126,9 +145,73 @@ export function normalizeName(s: string): string {
     .trim();
 }
 
+// ── Démarches partenaire (Arpège) servies par le Socle ──
+//
+// Depuis public-api 1.35.0, le Socle DIT si une démarche est celle d'un
+// partenaire (`partner`). C'est lui qui commande désormais le flux : Clara
+// écrit la référence et la config Arpège là où create-arpege-demande et le
+// dialogue de demande les lisent (`external_reference_id` +
+// `arpege_config_fields`, cf. src/lib/procedure-origin.ts), et les EFFACE
+// quand le Socle dit `partner: null` — sans quoi une démarche du Socle qui
+// aurait hérité de références Arpège (adoption d'un embryon par son nom)
+// partirait chez Arpège au lieu d'Iris.
+
+/** Partenaires que Clara sait instruire. */
+export const KNOWN_PARTNER_INTEGRATIONS = ["arpege"] as const;
+
+export function isArpegePartner(proc: Pick<SocleProcedure, "partner">): boolean {
+  return proc.partner?.integration === "arpege" && !!proc.partner.reference;
+}
+
+/** Démarche d'un partenaire que Clara ne connaît pas : ni Iris, ni Arpège. */
+export function hasUnknownPartner(proc: Pick<SocleProcedure, "partner">): boolean {
+  const p = proc.partner;
+  if (!p) return false;
+  return !(KNOWN_PARTNER_INTEGRATIONS as readonly string[]).includes(p.integration) || !p.reference;
+}
+
+export interface PartnerFields {
+  external_reference_id: string | null;
+  arpege_config_fields: Record<string, unknown> | null;
+}
+
+function asRecord(v: unknown): Record<string, unknown> | null {
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+}
+
+/**
+ * Colonnes partenaire à écrire pour une démarche du Socle, ou `null` pour
+ * n'y pas toucher (Socle antérieur à 1.35.0 : la clé `partner` manque).
+ *
+ * Le formulaire Arpège (`FormComponents`) peut manquer à l'import : il est
+ * alors récupéré à la volée par create-arpege-demande au premier dépôt et
+ * rangé dans la ligne. On le GARDE tant que le Socle n'en sert pas et que la
+ * référence n'a pas changé — sinon chaque nuit l'effacerait.
+ */
+export function partnerFieldsFor(
+  proc: SocleProcedure,
+  existing?: Pick<ProcedureRow, "external_reference_id" | "arpege_config_fields"> | null,
+): PartnerFields | null {
+  if (proc.partner === undefined) return null;
+  if (!isArpegePartner(proc)) {
+    return { external_reference_id: null, arpege_config_fields: null };
+  }
+  const partner = proc.partner!;
+  const config: Record<string, unknown> = { ...(asRecord(partner.config) ?? {}) };
+  const known = asRecord(existing?.arpege_config_fields);
+  if (
+    config.FormComponents == null &&
+    existing?.external_reference_id === partner.reference &&
+    Array.isArray(known?.FormComponents)
+  ) {
+    config.FormComponents = known!.FormComponents;
+  }
+  return { external_reference_id: partner.reference, arpege_config_fields: config };
+}
+
 // ── Mapping payload Socle → colonnes procedures ──
-// À l'update, ne touche NI is_displayed NI external_reference_id / arpege_config_fields
-// (les démarches adoptées gardent leur config Arpège pour create-arpege-demande).
+// Ne touche JAMAIS is_displayed. Les colonnes Arpège ne sont écrites que si le
+// Socle s'exprime (`partner` présent, cf. partnerFieldsFor).
 
 export interface MappedProcedureFields {
   name: string;
@@ -148,9 +231,16 @@ export interface MappedProcedureFields {
   socle_id: string;
   synced_at: string;
   obsoleted_at: null;
+  external_reference_id?: string | null;
+  arpege_config_fields?: Record<string, unknown> | null;
 }
 
-export function mapSocleProcedure(proc: SocleProcedure, syncedAt: string): MappedProcedureFields {
+export function mapSocleProcedure(
+  proc: SocleProcedure,
+  syncedAt: string,
+  existing?: Pick<ProcedureRow, "external_reference_id" | "arpege_config_fields"> | null,
+): MappedProcedureFields {
+  const partner = partnerFieldsFor(proc, existing);
   return {
     name: proc.name,
     description: proc.short_description ?? null,
@@ -169,6 +259,7 @@ export function mapSocleProcedure(proc: SocleProcedure, syncedAt: string): Mappe
     socle_id: proc.id,
     synced_at: syncedAt,
     obsoleted_at: null,
+    ...(partner ?? {}),
   };
 }
 
@@ -192,6 +283,10 @@ export function procedureNeedsUpdate(existing: ProcedureRow, mapped: MappedProce
     !jsonEq(existing.form_schema, mapped.form_schema) ||
     !jsonEq(existing.knowledge_base, mapped.knowledge_base) ||
     !jsonEq(existing.translations, mapped.translations) ||
+    ("external_reference_id" in mapped &&
+      (existing.external_reference_id ?? null) !== mapped.external_reference_id) ||
+    ("arpege_config_fields" in mapped &&
+      !jsonEq(existing.arpege_config_fields, mapped.arpege_config_fields)) ||
     existing.obsoleted_at !== null // réapparue après obsolescence → réactivation
   );
 }
@@ -237,6 +332,12 @@ export function planProcedureSync(
   for (const row of existing) {
     if (row.socle_id) {
       bySocleId.set(row.socle_id, row);
+    } else if (row.external_source === "arpege") {
+      // Ancienne démarche Arpège importée localement (sync-arpege-services,
+      // supprimée le 2026-10-02) : le Socle sert désormais les siennes sous
+      // leur propre socle_id. Jamais adoptée par son nom — on n'y touche
+      // plus (ses tickets y restent attachés), elle n'est que périmée.
+      continue;
     } else {
       const key = normalizeName(row.name);
       const list = embryosByName.get(key) ?? [];
@@ -247,10 +348,20 @@ export function planProcedureSync(
 
   const adoptedIds = new Set<string>();
 
-  for (const proc of socleProcs) {
+  // Une démarche d'un partenaire inconnu n'a personne pour l'instruire ici :
+  // ni Iris (ce n'est pas la sienne), ni un connecteur. Pas de miroir.
+  const unknownPartner = socleProcs.filter(hasUnknownPartner);
+  for (const proc of unknownPartner) {
+    plan.warnings.push(
+      `Démarche « ${proc.name} » ignorée : partenaire « ${proc.partner?.integration ?? "?"} » inconnu de Clara.`,
+    );
+  }
+  const offered = socleProcs.filter((p) => !hasUnknownPartner(p));
+
+  for (const proc of offered) {
     const known = bySocleId.get(proc.id);
     if (known) {
-      const mapped = mapSocleProcedure(proc, syncedAt);
+      const mapped = mapSocleProcedure(proc, syncedAt, known);
       if (procedureNeedsUpdate(known, mapped)) {
         plan.toUpdate.push({ existingId: known.id, proc, reactivate: known.obsoleted_at !== null });
       } else {
@@ -281,7 +392,7 @@ export function planProcedureSync(
   }
 
   // Obsolescence (seulement si pas déjà obsolète — idempotent).
-  const incomingIds = new Set(socleProcs.map((p) => p.id));
+  const incomingIds = new Set(offered.map((p) => p.id));
   for (const row of existing) {
     if (row.obsoleted_at !== null) continue;
     if (row.socle_id) {

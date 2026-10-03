@@ -59,12 +59,33 @@ Verrou (lot L2) :
   (migration `20261002161635_arpege_fin_transition.sql` : la policy superadmin est scindée,
   ses écritures excluent Arpège ; Iris reste saisi par le superadmin). Seul le service role
   écrit. L'écran `OrgIntegrations` n'affiche plus que le statut, l'URL, le client ID, l'URL
-  espace agent, et les boutons « Tester la connexion API » / « Récupérer les démarches ».
+  espace agent, et le bouton « Tester la connexion API » (« Récupérer les démarches » supprimé, §3ter).
 - **Fin de la transition** : une réponse 200 sans configuration complète (`configured: false`,
   ou déclaration inexploitable) **suspend** la ligne recopiée (`is_active = false`, RPC de
   service `suspend_arpege_integration_from_socle`, compteur `arpege_suspendu`) **sans effacer
   les identifiants** : le suivi des demandes déjà déposées continue (§5, lot L5). Les réponses
   403, 404 et 5xx laissent la ligne inchangée, avec un avertissement.
+
+## 3ter. Démarches servies par le Socle (2026-10-02)
+
+- Les démarches Arpège vivent dans le Socle (public-api 1.35.0) : importées d'Arpège sur la fiche
+  du client (Intégrations → Arpège), activées par organisation dans « Démarches activées ».
+  Elles arrivent par la sync habituelle `GET /v1/procedures?enabled_for=` avec
+  `partner: {integration: "arpege", reference: <CodeQualificationTypeDemande>, config:
+  {CodeQualificationMetier, ConfigInfoUsagerObligs, FormComponents}}` (`config` a la forme de
+  `procedures.arpege_config_fields`). `partner: null` = démarche Socle (Iris). Le Socle ne les
+  sert qu'à la clé de Clara, jamais à Iris ni au portail.
+- La sync écrit `external_reference_id` / `arpege_config_fields` (`external_source` reste
+  `'socle'`) ; `partner: null` les **efface** ; `partner` absent (Socle < 1.35) les laisse
+  intacts. Les 36 anciennes démarches locales `external_source='arpege'` d'ACCM (retirées, 13
+  tickets y pointent) ne sont plus adoptées par nom. Effet : 3 démarches Socle d'ACCM qui
+  avaient hérité d'une référence Arpège par adoption de nom (D_RDV_SCOL, MARIAGE2, NAISSANCE2)
+  routent désormais vers Iris.
+- `create-arpege-demande` applique l'activation par organisation (409 si non activée) et pose
+  `action_tickets.socle_organization_id` ; `push-iris-request` ne dépose jamais une démarche
+  Arpège (`skipped`, `reason: "partenaire"`). Ceci réalise l'enforcement visé au §6 et le
+  dédoublonnage du §7 (une seule ligne par démarche, plus de récupération côté Clara) ; le
+  grisage du dialogue (interface suspendue) est fait, le badge sur les demandes existantes non (L7).
 
 ## 4. Matrice des droits
 
@@ -73,7 +94,7 @@ Verrou (lot L2) :
 | Configurer / éditer la connexion | ✅ **dans le Socle** (lecture seule dans Clara) | ❌ | ❌ | ❌ |
 | Suspendre / réactiver | ✅ **dans le Socle** | ❌ | ❌ | ❌ |
 | Tester la connexion | ✅ | ❌ | ❌ | ❌ |
-| Récupérer / rafraîchir les démarches | ✅ | ✅ (si active) | ❌ | ❌ |
+| Récupérer / rafraîchir les démarches | ✅ **dans le Socle** (import) | ❌ | ❌ | ❌ |
 | Activer/désactiver une démarche **par organisation Socle** | ✅ | ✅ | ❌ | ❌ |
 | Créer une demande chez le partenaire | ✅ | ✅ | ✅ | ❌ |
 | Voir demandes + statut (à jour) | ✅ | ✅ | ✅ | ✅ |
@@ -108,8 +129,9 @@ déclencher d'écriture qui lui soit imputable (résout l'asymétrie d'auth actu
 
 ## 7. Dédoublonnage Socle/Arpège (lot L4)
 
-- Clé d'identité : `external_reference_id`. Le matching actuel de `sync-arpege-services`
-  (filtré `external_source='arpege'`) crée des doublons quand le Socle a adopté la démarche —
+- **Obsolète depuis le 2026-10-02** (`sync-arpege-services` supprimée, démarches servies par le
+  Socle : §3ter). Historique : clé d'identité `external_reference_id`. Le matching de
+  `sync-arpege-services` (filtré `external_source='arpege'`) créait des doublons quand le Socle a adopté la démarche —
   cause probable des 39 lignes résiduelles à `arpege_config_fields`.
 - Règle : si une `procedure` du tenant porte le même `external_reference_id` (quel que soit
   `external_source`), **mise à jour de `arpege_config_fields` uniquement** — jamais de 2ᵉ ligne,

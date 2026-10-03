@@ -4,6 +4,8 @@ description: Table procedures, page paramètres Démarches, sync nocturne Arpèg
 type: feature
 ---
 
+> **Obsolète depuis le 2026-10-02** : `sync-arpege-services` et le bouton « Récupérer les démarches » sont supprimés ; les démarches Arpège sont servies par le Socle (voir `docs/partenaires-integration.md` §3ter).
+
 # Démarches administratives
 
 ## Table `procedures`

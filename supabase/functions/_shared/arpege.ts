@@ -1,7 +1,8 @@
 /**
- * Authentification Hawk (HMAC-SHA256) et utilitaires HTTP partagés par les 4
+ * Authentification Hawk (HMAC-SHA256) et utilitaires HTTP partagés par les 3
  * edge functions Arpège (create-arpege-demande, check-arpege-ticket-status,
- * sync-arpege-services, test-arpege-connection). Web Crypto uniquement
+ * test-arpege-connection — sync-arpege-services est supprimée depuis le
+ * 2026-10-02 : les démarches Arpège viennent du Socle). Web Crypto uniquement
  * (`crypto.subtle`) — pas d'API Deno — donc importable aussi bien par ces
  * fonctions que par Vitest (testé dans src/test/arpege-shared.test.ts).
  *
@@ -155,8 +156,7 @@ export async function fetchWithHawk(
 /**
  * Extrait un tableau d'éléments d'une réponse Arpège, quel que soit
  * l'enveloppe (`Data.Results` / `Data.results` / `Data` / racine déjà un
- * tableau). Référence : create-arpege-demande (voir compte-rendu pour la
- * divergence avec l'ancienne version de sync-arpege-services).
+ * tableau). Référence : create-arpege-demande.
  */
 export function extractArray(data: any): any[] {
   if (Array.isArray(data)) return data;

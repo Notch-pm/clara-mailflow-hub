@@ -287,7 +287,7 @@ gestionnaire, ou dans « À instruire » (état initial du workflow, ou aucun é
 Actions grise « Créer », affiche le motif et retire la création depuis les actions suggérées. La
 base tient la même règle — voir § 5 et `docs/data-model.md` § `action_tickets`.
 
-**Plus d'action « libre » depuis le 2026-09-11** : la démarche est obligatoire dans le dialogue, qui ne propose que les démarches Iris ou partenaire (`src/lib/procedure-origin.ts` — une démarche sans origine, embryon local, n'est plus proposée). Avec elle disparaissent les champs que Clara ajoutait de son côté — **titre de l'action, affecté à, descriptif** — et la modification d'un ticket : une demande instruite ailleurs ne s'édite pas dans Clara (elle se supprime, ou se renvoie si le dépôt a échoué). Les colonnes `title` / `description` / `assignee_id` d'`action_tickets` ne servent plus qu'à afficher les tickets antérieurs ; l'edge `send-assignment-notification` n'a donc plus d'appelant.
+**Plus d'action « libre » depuis le 2026-09-11** : la démarche est obligatoire dans le dialogue, qui ne propose que les démarches Iris ou partenaire (`procedureOrigin`, `supabase/functions/_shared/procedure-origin.ts`, réexporté par `src/lib/procedure-origin.ts` — une démarche sans origine, embryon local, n'est plus proposée). Avec elle disparaissent les champs que Clara ajoutait de son côté — **titre de l'action, affecté à, descriptif** — et la modification d'un ticket : une demande instruite ailleurs ne s'édite pas dans Clara (elle se supprime, ou se renvoie si le dépôt a échoué). Les colonnes `title` / `description` / `assignee_id` d'`action_tickets` ne servent plus qu'à afficher les tickets antérieurs ; l'edge `send-assignment-notification` n'a donc plus d'appelant.
 
 ### Dépôt dans Iris (depuis le 2026-08-23)
 
@@ -322,8 +322,10 @@ demande » ouvre sur ce choix — suggestion de l'analyse IA, à défaut l'organ
 du courrier — et **n'offre ensuite que les démarches que cette organisation assure** dans le
 référentiel (miroir `procedure_organizations`). Adresser une demande aux services techniques ne
 déplace pas le courrier : l'organisation retenue est portée par l'action
-(`action_tickets.socle_organization_id`), pas par le courrier. Une démarche **Arpège** n'est pas
-connue du référentiel : sans activation, elle reste proposée quelle que soit l'organisation.
+(`action_tickets.socle_organization_id`), pas par le courrier. Une démarche **Arpège** est
+servie par le Socle depuis le 2026-10-02 et filtrée comme une démarche Iris (activation par
+organisation) ; elle est grisée (« Arpège · interface suspendue ») quand l'interface Arpège du
+tenant n'est pas configurée ou active (RPC `partner_integration_status`).
 
 Détail complet — contrat, raccordement des champs, périmètre, exploitation :
 `docs/iris-integration.md`.
@@ -429,8 +431,9 @@ Variables (à insérer par le menu « Variables » de l'éditeur) :
 ## 7. Démarches & intégration partenaire (Arpège)
 
 - Table `procedures` (multi-tenant, RLS via `is_member_of` / `is_admin_of`). **Source de vérité : le Socle** (sync nocturne `sync-socle-referentiel`, cf. §Socle) — Clara ne crée/modifie plus les démarches, hors toggle de visibilité `is_displayed`. Le catalogue est l'**union du sous-arbre d'organisations** du tenant, et `procedure_organizations` dit qui assure quoi (colonne « Assurée par » dans `ProceduresSettings.tsx`) : le filtre `enabled_for` du Socle n'étant pas récursif, la sync interroge chaque organisation.
-- Résidu partenaire : `external_reference_id` + `external_source` (`arpege` legacy) + `arpege_config_fields` (jsonb) — nécessaires pour **poster une demande** chez Arpège. UI : `ProceduresSettings.tsx` (badge « Arpège » sur les démarches d'origine partenaire).
-- **Intégration partenaire** (spec + refonte en cours : `docs/partenaires-integration.md`) : config de connexion par tenant **saisie dans le Socle** (fiche du client, section « Intégrations ») et recopiée dans `organization_integrations` par `sync-socle-referentiel` — l'écran `OrgIntegrations` (superadmin) n'en montre que le statut, l'URL, le client ID et l'URL espace agent, plus les boutons de test et de récupération des démarches ; un Socle sans configuration complète **suspend** l'interface sans effacer ses identifiants ; récupération manuelle des démarches via l'edge `sync-arpege-services` (bouton superadmin — le cron `sync-arpege-procedures-nightly` et sa fonction SQL `trigger_arpege_sync()` sont **décommissionnés**, migrations `20260711091000` + `20260723155049`), création de demandes via `create-arpege-demande` (tickets `action_tickets.arpege_demande_ref/status`), suivi de statut via `check-arpege-ticket-status` (badge dans `LinkedActionsTab`).
+- **Démarches Arpège servies par le Socle (depuis le 2026-10-02, public-api 1.35.0)** : importées d'Arpège sur la fiche du client dans le Socle (Intégrations → Arpège), activées par organisation dans « Démarches activées », puis reçues par la sync habituelle (`GET /v1/procedures?enabled_for=`, champ `partner`). Le Socle ne les sert qu'à la clé de Clara. Plus d'import ni de bouton dans Clara.
+- Résidu partenaire : `external_reference_id` + `external_source` (`arpege` legacy) + `arpege_config_fields` (jsonb) — nécessaires pour **poster une demande** chez Arpège ; pour les démarches Socle, écrits par la sync depuis `partner`. UI : `ProceduresSettings.tsx` (badge « Arpège » sur les démarches d'origine partenaire).
+- **Intégration partenaire** (spec + refonte en cours : `docs/partenaires-integration.md`) : config de connexion par tenant **saisie dans le Socle** (fiche du client, section « Intégrations ») et recopiée dans `organization_integrations` par `sync-socle-referentiel` — l'écran `OrgIntegrations` (superadmin) n'en montre que le statut, l'URL, le client ID et l'URL espace agent, plus le bouton de test ; un Socle sans configuration complète **suspend** l'interface sans effacer ses identifiants ; démarches **servies par le Socle** (l'edge `sync-arpege-services` et le bouton « Récupérer les démarches » sont **supprimés** le 2026-10-02 ; le cron `sync-arpege-procedures-nightly` et `trigger_arpege_sync()` l'étaient déjà, migrations `20260711091000` + `20260723155049`), création de demandes via `create-arpege-demande` (tickets `action_tickets.arpege_demande_ref/status`), suivi de statut via `check-arpege-ticket-status` (badge dans `LinkedActionsTab`).
 - `sync-arpege-appointments` (RDV) : **supprimée** (morte — aucun appelant, aucune écriture).
 
 ## 8. Notifications

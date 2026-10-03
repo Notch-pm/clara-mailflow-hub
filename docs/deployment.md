@@ -112,6 +112,19 @@ bunx supabase functions deploy <nom> --project-ref aullweizxcjbvtdspjli
 bun run build && npx wrangler deploy --dry-run
 ```
 
+### Lot « Démarches Arpège servies par le Socle » (2026-10-02)
+
+Public-api 1.35.0 (champ `partner`) ; suppression de `sync-arpege-services` et du bouton
+« Récupérer les démarches » ; garde de débit `socleFetch` dans la sync. **Aucune migration.**
+
+| # | Action | Pourquoi cet ordre | État |
+|---|---|---|---|
+| 1 | Déployer `sync-socle-referentiel` (champ `partner`, garde de débit) | Reçoit les démarches Arpège ; efface les références Arpège des démarches `partner: null` (3 démarches ACCM routent vers Iris, 0 ticket) | ✅ 2026-10-03 |
+| 2 | Déployer `create-arpege-demande` et `push-iris-request` (embarquent `_shared/procedure-origin.ts`) | Nouvelles règles ; sans la garde d'Iris, une démarche Arpège du Socle partirait chez Iris | ✅ 2026-10-03 |
+| 3 | Supprimer `sync-arpege-services` de la plateforme | Fonction retirée du dépôt | ✅ 2026-10-03 |
+| 4 | Publier le frontend | Dialogue (grisage, organisation requise), bouton retiré | Push sur `main` |
+| 5 | Recette : faire activer une démarche Arpège sur une organisation SNA dans le Socle (Laurent) ; `select public.trigger_socle_sync();`, vérifier `arpege_config_fields` ; depuis « Actions liées » d'un courrier SNA, créer la demande | Elle doit arriver chez Arpège et pas chez Iris | À faire |
+
 ### Lot « Arpège : fin de la transition » (2026-10-02)
 
 Plus de saisie Arpège dans Clara ; un Socle sans configuration complète suspend la ligne

@@ -22,7 +22,7 @@
 // `configured: false`) ⇒ la ligne est SUSPENDUE, identifiants conservés, par
 // suspend_arpege_integration_from_socle (voir arpege.ts).
 //
-// Auth (3 voies, comme sync-arpege-services) :
+// Auth (3 voies) :
 //   - x-cron-secret (pg_cron via trigger_socle_sync) → privilégié
 //   - Bearer SERVICE_ROLE_KEY → privilégié
 //   - JWT utilisateur : superadmin → privilégié ; admin d'org → restreint à son org.
@@ -93,7 +93,7 @@ const corsHeaders = {
 };
 
 const PROCEDURE_SYNC_COLUMNS =
-  "id, name, description, socle_id, is_displayed, display_order, obsoleted_at, type, keywords, user_description, agent_description, input_duration_minutes, socle_category_id, requester_config, form_schema, knowledge_base, translations";
+  "id, name, description, socle_id, is_displayed, display_order, obsoleted_at, type, keywords, user_description, agent_description, input_duration_minutes, socle_category_id, requester_config, form_schema, knowledge_base, translations, external_source, external_reference_id, arpege_config_fields";
 
 // ── Client HTTP Socle : timeout + retries avec backoff, arrêt net sur 401 ──
 
@@ -118,37 +118,55 @@ function socleBaseUrl(): string {
 const MAX_RATE_LIMIT_WAIT_MS = 45_000;
 
 /**
- * Délai demandé par un plafond de cadence, lu dans le message de l'erreur
- * (« Rate limit exceeded for trace …. Retry after 39185ms. » — l'erreur est
- * levée par le runtime, il n'y a pas de réponse HTTP à en-têtes à lire).
- * Rend `null` pour toute autre erreur : le backoff maison reprend la main.
+ * Délai demandé par un plafond de cadence. Le Socle est lui-même une edge
+ * function Supabase : chaque appel compte dans le budget « par trace » de la
+ * plateforme (appels de fonction à fonction issus d'une même exécution), et
+ * le runtime lève un `RateLimitError` (« Rate limit exceeded for trace ….
+ * Retry after 39185ms. ») — il n'y a pas de réponse HTTP à en-têtes à lire.
+ * Le délai est porté par `retryAfterMs`, à défaut lu dans le message.
+ * Rend `null` pour toute autre erreur.
  */
 function retryAfterMs(e: unknown): number | null {
   const message = e instanceof Error ? e.message : String(e);
-  if (!/rate limit/i.test(message)) return null;
+  const isRateLimit = /rate limit/i.test(message) || (e instanceof Error && e.name === "RateLimitError");
+  if (!isRateLimit) return null;
+  const property = (e as { retryAfterMs?: unknown } | null)?.retryAfterMs;
   const match = message.match(/retry after (\d+)\s*ms/i);
-  const hinted = match ? Number(match[1]) : NaN;
+  const hinted = typeof property === "number" ? property : match ? Number(match[1]) : NaN;
   if (!Number.isFinite(hinted) || hinted <= 0) return MAX_RATE_LIMIT_WAIT_MS;
   return Math.min(hinted + 500, MAX_RATE_LIMIT_WAIT_MS);
 }
 
-async function fetchSocle(path: string): Promise<unknown> {
+/**
+ * Espacement minimal entre deux appels au Socle. Un run enchaîne un appel par
+ * organisation du sous-arbre (démarches), plus serveur d'envoi, Arpège,
+ * charte, descriptifs et attributions par tenant : à pleine vitesse il
+ * épuisait le budget par trace (constaté les 2026-09-30, 10-01 et 10-02 :
+ * serveur d'envoi, Arpège et charte laissés en l'état).
+ */
+const SOCLE_CALL_SPACING_MS = 250;
+/** Plafonds de cadence encaissés par appel avant d'abandonner. */
+const RATE_LIMIT_RETRIES = 2;
+/** Aucun appel au Socle avant cet instant — PARTAGÉ par tous les appels du run. */
+let socleNotBefore = 0;
+
+/**
+ * Point de passage UNIQUE vers le Socle : espace les appels et, sur un plafond
+ * de cadence, attend le délai indiqué puis réessaie. L'attente est partagée :
+ * un plafond atteint suspend TOUS les appels suivants, au lieu que chacun le
+ * redécouvre à son tour. Les statuts HTTP sont rendus tels quels — à
+ * l'appelant d'en décider.
+ */
+async function socleFetch(url: string): Promise<Response> {
   // trim défensif : un espace/retour à la ligne collé au secret casserait le hash SHA-256 côté Socle
   const apiKey = Deno.env.get("SOCLE_API_KEY")?.trim();
   if (!apiKey) throw new Error("Secret SOCLE_API_KEY manquant — configurez-le dans les secrets de la fonction");
-  const url = `${socleBaseUrl()}${path}`;
+  for (let attempt = 0; ; attempt++) {
+    const wait = socleNotBefore - Date.now();
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    socleNotBefore = Date.now() + SOCLE_CALL_SPACING_MS;
 
-  let lastError: unknown = null;
-  let rateLimitWaitMs: number | null = null;
-  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
-    if (attempt > 0) {
-      // Un plafond de cadence dit COMBIEN attendre : le respecter est le seul
-      // moyen de repasser. Le backoff maison (1s/3s/9s) est bien trop court
-      // pour ça — les trois tentatives se consommeraient pour rien.
-      const delay = rateLimitWaitMs ?? RETRY_DELAYS_MS[attempt - 1];
-      rateLimitWaitMs = null;
-      await new Promise((r) => setTimeout(r, delay));
-    }
+    // Le délai d'expiration ne court qu'une fois l'attente passée.
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), SOCLE_TIMEOUT_MS);
     try {
@@ -156,8 +174,46 @@ async function fetchSocle(path: string): Promise<unknown> {
         headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
         signal: controller.signal,
       });
+      // Plafond posé par le Socle lui-même (HTTP 429) : même traitement.
+      if (response.status === 429 && attempt < RATE_LIMIT_RETRIES) {
+        const seconds = Number(response.headers.get("Retry-After"));
+        const hinted = Number.isFinite(seconds) && seconds > 0
+          ? Math.min(seconds * 1000 + 500, MAX_RATE_LIMIT_WAIT_MS)
+          : MAX_RATE_LIMIT_WAIT_MS;
+        await response.body?.cancel();
+        socleNotBefore = Date.now() + hinted;
+        console.warn(`[sync-socle] 429 du Socle — pause de ${Math.round(hinted / 1000)} s`);
+        continue;
+      }
+      return response;
+    } catch (e) {
+      const hinted = retryAfterMs(e);
+      if (hinted === null || attempt >= RATE_LIMIT_RETRIES) throw e;
+      socleNotBefore = Date.now() + hinted;
+      console.warn(
+        `[sync-socle] plafond de cadence de la plateforme — pause de ${Math.round(hinted / 1000)} s`,
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+}
+
+async function fetchSocle(path: string): Promise<unknown> {
+  const url = `${socleBaseUrl()}${path}`;
+
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+    if (attempt > 0) {
+      // Les plafonds de cadence s'attendent dans socleFetch : ce backoff ne
+      // couvre que les erreurs serveur et réseau.
+      await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt - 1]));
+    }
+    try {
+      const response = await socleFetch(url);
 
       if (response.status === 401) {
+        const apiKey = Deno.env.get("SOCLE_API_KEY")?.trim() ?? "";
         // Diagnostic non sensible : préfixe (déjà en clair dans api_keys.key_prefix) + longueur.
         console.error(
           `[sync-socle] 401 Socle — clé envoyée: préfixe="${apiKey.slice(0, 12)}" longueur=${apiKey.length}`,
@@ -188,14 +244,14 @@ async function fetchSocle(path: string): Promise<unknown> {
       return await response.json();
     } catch (e) {
       if (e instanceof SocleAuthError || e instanceof SocleApiError) throw e;
+      // Plafond de cadence persistant : socleFetch a déjà attendu, insister
+      // ne ferait qu'allonger le run.
+      if (retryAfterMs(e) !== null) throw e;
       // Erreur réseau ou timeout : on retente.
       lastError = e;
-      rateLimitWaitMs = retryAfterMs(e);
       console.warn(
         `[sync-socle] ${path} tentative ${attempt + 1} échouée: ${e instanceof Error ? e.message : e}`,
       );
-    } finally {
-      clearTimeout(timer);
     }
   }
   throw new Error(
@@ -212,38 +268,27 @@ async function fetchSocle(path: string): Promise<unknown> {
  * synchronisation du référentiel réussir, avec un avertissement. Seul le 401
  * (clé morte) reste fatal, comme partout ailleurs.
  *
- * Pas de retry : l'échec n'écrit rien, laisse le miroir en l'état et se voit
+ * Pas de retry (hors plafond de cadence, attendu par socleFetch) : l'échec
+ * n'écrit rien, laisse le miroir en l'état et se voit
  * dans les avertissements du journal de synchronisation.
  */
 async function fetchSocleSmtp(
   socleOrgId: string,
 ): Promise<{ status: number; dto: SocleSmtpDto | null }> {
-  const apiKey = Deno.env.get("SOCLE_API_KEY")?.trim();
-  if (!apiKey) throw new Error("Secret SOCLE_API_KEY manquant — configurez-le dans les secrets de la fonction");
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), SOCLE_TIMEOUT_MS);
-  try {
-    const response = await fetch(
-      `${socleBaseUrl()}/v1/organizations/${encodeURIComponent(socleOrgId)}/smtp`,
-      {
-        headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
-        signal: controller.signal,
-      },
+  const response = await socleFetch(
+    `${socleBaseUrl()}/v1/organizations/${encodeURIComponent(socleOrgId)}/smtp`,
+  );
+  if (response.status === 401) {
+    await response.body?.cancel();
+    throw new SocleAuthError(
+      "Clé API Socle invalide ou révoquée (401) — synchronisation interrompue",
     );
-    if (response.status === 401) {
-      await response.body?.cancel();
-      throw new SocleAuthError(
-        "Clé API Socle invalide ou révoquée (401) — synchronisation interrompue",
-      );
-    }
-    if (!response.ok) {
-      await response.body?.cancel();
-      return { status: response.status, dto: null };
-    }
-    return { status: 200, dto: (await response.json()) as SocleSmtpDto };
-  } finally {
-    clearTimeout(timer);
   }
+  if (!response.ok) {
+    await response.body?.cancel();
+    return { status: response.status, dto: null };
+  }
+  return { status: 200, dto: (await response.json()) as SocleSmtpDto };
 }
 
 /**
@@ -255,32 +300,20 @@ async function fetchSocleSmtp(
 async function fetchSocleArpege(
   socleOrgId: string,
 ): Promise<{ status: number; dto: SocleIntegrationDto | null }> {
-  const apiKey = Deno.env.get("SOCLE_API_KEY")?.trim();
-  if (!apiKey) throw new Error("Secret SOCLE_API_KEY manquant — configurez-le dans les secrets de la fonction");
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), SOCLE_TIMEOUT_MS);
-  try {
-    const response = await fetch(
-      `${socleBaseUrl()}/v1/organizations/${encodeURIComponent(socleOrgId)}/integrations/arpege`,
-      {
-        headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
-        signal: controller.signal,
-      },
+  const response = await socleFetch(
+    `${socleBaseUrl()}/v1/organizations/${encodeURIComponent(socleOrgId)}/integrations/arpege`,
+  );
+  if (response.status === 401) {
+    await response.body?.cancel();
+    throw new SocleAuthError(
+      "Clé API Socle invalide ou révoquée (401) — synchronisation interrompue",
     );
-    if (response.status === 401) {
-      await response.body?.cancel();
-      throw new SocleAuthError(
-        "Clé API Socle invalide ou révoquée (401) — synchronisation interrompue",
-      );
-    }
-    if (!response.ok) {
-      await response.body?.cancel();
-      return { status: response.status, dto: null };
-    }
-    return { status: 200, dto: (await response.json()) as SocleIntegrationDto };
-  } finally {
-    clearTimeout(timer);
   }
+  if (!response.ok) {
+    await response.body?.cancel();
+    return { status: response.status, dto: null };
+  }
+  return { status: 200, dto: (await response.json()) as SocleIntegrationDto };
 }
 
 /**
@@ -295,32 +328,20 @@ async function fetchSocleArpege(
 async function fetchSocleBranding(
   socleOrgId: string,
 ): Promise<{ status: number; dto: SocleBrandingDto | null }> {
-  const apiKey = Deno.env.get("SOCLE_API_KEY")?.trim();
-  if (!apiKey) throw new Error("Secret SOCLE_API_KEY manquant — configurez-le dans les secrets de la fonction");
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), SOCLE_TIMEOUT_MS);
-  try {
-    const response = await fetch(
-      `${socleBaseUrl()}/v1/organizations/${encodeURIComponent(socleOrgId)}/branding`,
-      {
-        headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
-        signal: controller.signal,
-      },
+  const response = await socleFetch(
+    `${socleBaseUrl()}/v1/organizations/${encodeURIComponent(socleOrgId)}/branding`,
+  );
+  if (response.status === 401) {
+    await response.body?.cancel();
+    throw new SocleAuthError(
+      "Clé API Socle invalide ou révoquée (401) — synchronisation interrompue",
     );
-    if (response.status === 401) {
-      await response.body?.cancel();
-      throw new SocleAuthError(
-        "Clé API Socle invalide ou révoquée (401) — synchronisation interrompue",
-      );
-    }
-    if (!response.ok) {
-      await response.body?.cancel();
-      return { status: response.status, dto: null };
-    }
-    return { status: 200, dto: (await response.json()) as SocleBrandingDto };
-  } finally {
-    clearTimeout(timer);
   }
+  if (!response.ok) {
+    await response.body?.cancel();
+    return { status: response.status, dto: null };
+  }
+  return { status: 200, dto: (await response.json()) as SocleBrandingDto };
 }
 
 /**
@@ -332,29 +353,18 @@ async function fetchSocleTenantList(
   path: string,
   tenantSocleId: string,
 ): Promise<{ status: number; body: unknown }> {
-  const apiKey = Deno.env.get("SOCLE_API_KEY")?.trim();
-  if (!apiKey) throw new Error("Secret SOCLE_API_KEY manquant — configurez-le dans les secrets de la fonction");
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), SOCLE_TIMEOUT_MS);
-  try {
-    const response = await fetch(`${socleBaseUrl()}${path}?tenant_id=${encodeURIComponent(tenantSocleId)}`, {
-      headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
-      signal: controller.signal,
-    });
-    if (response.status === 401) {
-      await response.body?.cancel();
-      throw new SocleAuthError(
-        "Clé API Socle invalide ou révoquée (401) — synchronisation interrompue",
-      );
-    }
-    if (!response.ok) {
-      await response.body?.cancel();
-      return { status: response.status, body: null };
-    }
-    return { status: 200, body: await response.json() };
-  } finally {
-    clearTimeout(timer);
+  const response = await socleFetch(`${socleBaseUrl()}${path}?tenant_id=${encodeURIComponent(tenantSocleId)}`);
+  if (response.status === 401) {
+    await response.body?.cancel();
+    throw new SocleAuthError(
+      "Clé API Socle invalide ou révoquée (401) — synchronisation interrompue",
+    );
   }
+  if (!response.ok) {
+    await response.body?.cancel();
+    return { status: response.status, body: null };
+  }
+  return { status: 200, body: await response.json() };
 }
 
 /** Organismes publics du sous-arbre d'un tenant, avec leur « informations usager ». Tableau nu. */
@@ -469,7 +479,7 @@ async function syncPublicDescriptions(
   }
 }
 
-// ── Auth (calqué sur sync-arpege-services) ──
+// ── Auth ──
 
 type AuthContext = { authorized: boolean; isPrivileged: boolean; userId?: string };
 
@@ -884,8 +894,11 @@ async function syncOrg(
 
     // Adoption d'un embryon ou mise à jour d'une démarche connue : mêmes champs,
     // is_displayed restauré uniquement en cas de réactivation post-obsolescence.
+    // La ligne existante est passée au mapping : un formulaire Arpège récupéré
+    // à la volée (create-arpege-demande) survit à la sync.
+    const existingById = new Map((existing as ProcedureRow[]).map((r) => [r.id, r]));
     for (const { existingId, proc, reactivate } of [...plan.toAdopt, ...plan.toUpdate]) {
-      const fields: Record<string, unknown> = mapSocleProcedure(proc, syncedAt);
+      const fields: Record<string, unknown> = mapSocleProcedure(proc, syncedAt, existingById.get(existingId));
       if (reactivate) fields.is_displayed = true;
       const { error } = await supabaseAdmin.from("procedures").update(fields).eq("id", existingId);
       if (error) throw new Error(`mise à jour « ${proc.name} »: ${error.message}`);

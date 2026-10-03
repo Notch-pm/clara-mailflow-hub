@@ -7,6 +7,7 @@ import {
   resolveArpegeUrl,
   resolveHawkCredentials,
 } from "../_shared/arpege.ts";
+import { procedureOrigin } from "../_shared/procedure-origin.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -45,13 +46,16 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const { organization_id, courier_id, procedure_id, demandeur, form_values } = body as {
-      organization_id: string;
-      courier_id: string;
-      procedure_id: string;
-      demandeur: Record<string, string>;
-      form_values?: Array<{ id: string; valeur: unknown }>;
-    };
+    const { organization_id, courier_id, procedure_id, demandeur, form_values, socle_organization_id } =
+      body as {
+        organization_id: string;
+        courier_id: string;
+        procedure_id: string;
+        demandeur: Record<string, string>;
+        form_values?: Array<{ id: string; valeur: unknown }>;
+        /** Organisation destinataire (id du miroir socle_organizations). */
+        socle_organization_id?: string | null;
+      };
 
     if (!organization_id || !courier_id || !procedure_id || !demandeur) {
       return new Response(JSON.stringify({ error: "Paramètres manquants" }), {
@@ -96,18 +100,70 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Récupérer la procédure et sa config Arpège
+    // Récupérer la démarche et sa config Arpège. Elle est reconnue comme
+    // Arpège par la MÊME règle que le dialogue (procedureOrigin) : depuis le
+    // 2026-10-02 les démarches Arpège viennent du Socle (`external_source =
+    // 'socle'`, références recopiées de `partner` par la sync).
     const { data: procedure, error: procErr } = await supabaseAdmin
       .from("procedures")
-      .select("external_reference_id, arpege_config_fields, name")
+      .select("id, name, socle_id, external_source, external_reference_id, arpege_config_fields, obsoleted_at")
       .eq("id", procedure_id)
       .eq("organization_id", organization_id)
-      .eq("external_source", "arpege")
-      .single();
-    if (procErr || !procedure) {
-      return new Response(JSON.stringify({ error: "Procédure Arpège introuvable" }), {
+      .maybeSingle();
+    if (procErr) throw procErr;
+    if (!procedure || procedureOrigin(procedure) !== "arpege" || !procedure.external_reference_id) {
+      return new Response(JSON.stringify({ error: "Démarche Arpège introuvable" }), {
         status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+    if (procedure.obsoleted_at) {
+      return new Response(
+        JSON.stringify({ error: `La démarche « ${procedure.name} » a été retirée du référentiel.` }),
+        { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // Organisation destinataire. Une démarche du référentiel n'est déposable
+    // que par une organisation qui l'a ACTIVÉE au Socle (miroir
+    // `procedure_organizations`) — comme pour Iris, l'écran filtre déjà ;
+    // le serveur ne s'y fie pas.
+    if (socle_organization_id) {
+      const { data: target } = await supabaseAdmin
+        .from("socle_organizations")
+        .select("id")
+        .eq("id", socle_organization_id)
+        .eq("organization_id", organization_id)
+        .maybeSingle();
+      if (!target) {
+        return new Response(JSON.stringify({ error: "Organisation destinataire inconnue" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+    if (procedure.socle_id) {
+      if (!socle_organization_id) {
+        return new Response(
+          JSON.stringify({ error: "Choisissez l'organisation destinataire de la demande." }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      const { data: activation, error: actErr } = await supabaseAdmin
+        .from("procedure_organizations")
+        .select("procedure_id")
+        .eq("organization_id", organization_id)
+        .eq("procedure_id", procedure.id)
+        .eq("socle_organization_id", socle_organization_id)
+        .is("obsoleted_at", null)
+        .maybeSingle();
+      if (actErr) throw actErr;
+      if (!activation) {
+        return new Response(
+          JSON.stringify({
+            error: `La démarche « ${procedure.name} » n'est pas activée pour cette organisation dans le référentiel.`,
+          }),
+          { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
     }
 
     // Récupérer les credentials Arpège de l'organisation
@@ -285,6 +341,7 @@ Deno.serve(async (req) => {
         created_by: user.id,
         arpege_demande_ref: arpegeRef,
         arpege_demande_status: "created",
+        socle_organization_id: socle_organization_id || null,
       })
       .select("*")
       .single();

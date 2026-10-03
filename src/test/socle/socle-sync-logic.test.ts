@@ -10,6 +10,7 @@ import {
   type ProcedureRow,
   type SocleProcedure,
 } from "../../../supabase/functions/sync-socle-referentiel/logic";
+import { procedureOrigin } from "@/lib/procedure-origin";
 
 const T0 = "2026-07-11T03:00:00.000Z";
 const T1 = "2026-07-12T03:00:00.000Z";
@@ -129,11 +130,131 @@ describe("mapSocleProcedure", () => {
     expect(mapped.form_schema).toBeNull();
   });
 
-  it("ne touche ni is_displayed ni les champs Arpège", () => {
+  it("Socle antérieur à 1.35 (pas de clé `partner`) : ne touche ni is_displayed ni les champs Arpège", () => {
     const mapped = mapSocleProcedure(makeSocleProcedure(), T0) as unknown as Record<string, unknown>;
     expect(mapped).not.toHaveProperty("is_displayed");
     expect(mapped).not.toHaveProperty("external_reference_id");
     expect(mapped).not.toHaveProperty("arpege_config_fields");
+  });
+});
+
+describe("démarches Arpège servies par le Socle (`partner`, public-api 1.35.0)", () => {
+  const arpegeConfig = {
+    CodeQualificationMetier: "ETAT_CIVIL",
+    ConfigInfoUsagerObligs: [{ Code: "NOM_USUEL", Obligatoire: true }],
+    FormComponents: null,
+  };
+  const arpegeProc = makeSocleProcedure({
+    id: "33333333-3333-3333-3333-333333333333",
+    name: "Demande d'acte (Arpège)",
+    partner: { integration: "arpege", reference: "NAISSANCE2", config: arpegeConfig },
+  });
+
+  it("écrit la référence et la config Arpège, garde external_source = socle et le socle_id", () => {
+    const mapped = mapSocleProcedure(arpegeProc, T0);
+    expect(mapped.external_source).toBe("socle");
+    expect(mapped.socle_id).toBe(arpegeProc.id);
+    expect(mapped.external_reference_id).toBe("NAISSANCE2");
+    expect(mapped.arpege_config_fields).toEqual(arpegeConfig);
+  });
+
+  it("le flux qui en découle est celui du partenaire (même règle que l'écran et le dépôt)", () => {
+    expect(procedureOrigin(mapSocleProcedure(arpegeProc, T0))).toBe("arpege");
+  });
+
+  it("`partner: null` = démarche du Socle : efface des références Arpège héritées", () => {
+    // Cas réel d'ACCM : « Acte de naissance » du Socle avait adopté par son nom
+    // un embryon Arpège local, et partait chez Arpège au lieu d'Iris.
+    const proc = makeSocleProcedure({ partner: null });
+    const row = makeSyncedRow(makeSocleProcedure(), {
+      external_reference_id: "NAISSANCE2",
+      arpege_config_fields: arpegeConfig,
+    });
+    const mapped = mapSocleProcedure(proc, T1, row);
+    expect(mapped.external_reference_id).toBeNull();
+    expect(mapped.arpege_config_fields).toBeNull();
+    expect(procedureNeedsUpdate(row, mapped)).toBe(true);
+    expect(procedureOrigin(mapped)).toBe("iris");
+  });
+
+  it("garde le formulaire récupéré à la volée tant que le Socle n'en sert pas", () => {
+    const components = [{ Id: "c1", Type: "Texte" }];
+    const row = makeSyncedRow(arpegeProc, {
+      external_reference_id: "NAISSANCE2",
+      arpege_config_fields: { ...arpegeConfig, FormComponents: components },
+    });
+    const mapped = mapSocleProcedure(arpegeProc, T1, row);
+    expect((mapped.arpege_config_fields as Record<string, unknown>).FormComponents).toEqual(components);
+    // Rien d'autre n'a changé : pas de mise à jour (sinon la nuit effacerait le formulaire).
+    expect(procedureNeedsUpdate(row, mapped)).toBe(false);
+  });
+
+  it("…mais pas quand la référence change, ni quand le Socle sert le sien", () => {
+    const components = [{ Id: "c1", Type: "Texte" }];
+    const row = makeSyncedRow(arpegeProc, {
+      external_reference_id: "AUTRE",
+      arpege_config_fields: { ...arpegeConfig, FormComponents: components },
+    });
+    expect(
+      (mapSocleProcedure(arpegeProc, T1, row).arpege_config_fields as Record<string, unknown>)
+        .FormComponents,
+    ).toBeNull();
+
+    const served = [{ Id: "socle", Type: "Texte" }];
+    const withForm = makeSocleProcedure({
+      ...arpegeProc,
+      partner: { integration: "arpege", reference: "NAISSANCE2", config: { ...arpegeConfig, FormComponents: served } },
+    });
+    const sameRef = { ...row, external_reference_id: "NAISSANCE2" };
+    expect(
+      (mapSocleProcedure(withForm, T1, sameRef).arpege_config_fields as Record<string, unknown>)
+        .FormComponents,
+    ).toEqual(served);
+  });
+
+  it("idempotence : une démarche Arpège déjà mirrorée est inchangée au run suivant", () => {
+    const row = makeSyncedRow(arpegeProc);
+    const plan = planProcedureSync([row], [arpegeProc], T1);
+    expect(plan.unchanged).toBe(1);
+    expect(plan.toUpdate).toHaveLength(0);
+  });
+
+  it("insère une démarche Arpège nouvelle sans adopter une ancienne démarche Arpège homonyme", () => {
+    // Les 36 démarches importées localement (sync-arpege-services) sont
+    // retirées et gardent leurs tickets : on n'y touche plus.
+    const legacy = makeEmbryo({
+      id: "legacy-arpege",
+      name: arpegeProc.name,
+      external_source: "arpege",
+      external_reference_id: "NAISSANCE2",
+      arpege_config_fields: arpegeConfig,
+      obsoleted_at: T0,
+      is_displayed: false,
+    });
+    const plan = planProcedureSync([legacy], [arpegeProc], T1);
+    expect(plan.toAdopt).toHaveLength(0);
+    expect(plan.toInsert.map((p) => p.id)).toEqual([arpegeProc.id]);
+    expect(plan.toObsolete).toHaveLength(0); // déjà retirée : rien à réécrire
+  });
+
+  it("périme une ancienne démarche Arpège encore active, sans l'adopter", () => {
+    const legacy = makeEmbryo({ id: "legacy-active", name: arpegeProc.name, external_source: "arpege" });
+    const plan = planProcedureSync([legacy], [arpegeProc], T1);
+    expect(plan.toAdopt).toHaveLength(0);
+    expect(plan.toObsolete).toEqual(["legacy-active"]);
+  });
+
+  it("ignore, avec un avertissement, la démarche d'un partenaire inconnu", () => {
+    const other = makeSocleProcedure({
+      id: "44444444-4444-4444-4444-444444444444",
+      partner: { integration: "autre", reference: "X", config: null },
+    });
+    const known = makeSyncedRow(other); // déjà mirrorée par erreur : périmée
+    const plan = planProcedureSync([known], [other], T1);
+    expect(plan.toInsert).toHaveLength(0);
+    expect(plan.toUpdate).toHaveLength(0);
+    expect(plan.toObsolete).toEqual([known.id]);
+    expect(plan.warnings[0]).toMatch(/partenaire « autre » inconnu/);
   });
 });
 

@@ -42,7 +42,13 @@ import {
   filterProceduresForOrganization,
   isProcedureOfferedBy,
 } from "@/lib/procedure-activation";
-import { isRequestableProcedure, procedureOriginLabel } from "@/lib/procedure-origin";
+import {
+  isPartnerSuspended,
+  isRequestableProcedure,
+  procedureOrigin,
+  procedureOriginLabel,
+} from "@/lib/procedure-origin";
+import { getPartnerIntegrationStatus } from "@/services/partnerIntegrationService";
 import { createTicket, createArpegeTicket } from "@/services/actionTicketService";
 import { pushIrisRequest } from "@/services/irisRequestService";
 import { logEvent } from "@/services/courierEventService";
@@ -534,19 +540,31 @@ export default function CreateTicketDialog({
       ),
     [procedures],
   );
-  // …ni celles que l'organisation destinataire n'assure pas. Une démarche que
-  // le référentiel ne connaît pas (Arpège) n'a aucune activation et reste
-  // proposée — cf. src/lib/procedure-activation.ts.
+  // …ni celles que l'organisation destinataire n'assure pas — démarches Arpège
+  // du Socle comprises. Une démarche que le référentiel ne connaît pas n'a
+  // aucune activation et reste proposée — cf. src/lib/procedure-activation.ts.
   const displayedProcedures = useMemo(
     () => filterProceduresForOrganization(visibleProcedures, activationIndex, socleOrgId),
     [visibleProcedures, activationIndex, socleOrgId],
   );
   const selectedProcedure = displayedProcedures.find((p) => p.id === procedureId) ?? null;
 
-  // Le flux Arpège dépend de la présence effective des références Arpège
-  // (conservées après adoption par le Socle), pas de external_source.
-  const isArpege =
-    !!selectedProcedure?.external_reference_id && !!selectedProcedure?.arpege_config_fields;
+  // État de l'interface Arpège du tenant (sans secret) : une démarche
+  // partenaire reste listée mais grisée quand l'interface est suspendue.
+  const { data: arpegeStatus } = useQuery({
+    queryKey: ["partner-integration-status", organizationId, "arpege"],
+    queryFn: () => getPartnerIntegrationStatus(organizationId, "arpege"),
+    enabled: !!organizationId && open,
+  });
+  const arpegeActive = arpegeStatus ? arpegeStatus.configured && arpegeStatus.is_active : undefined;
+
+  // Le flux Arpège dépend de la présence effective des références Arpège —
+  // recopiées de `partner` pour une démarche venue du Socle —, pas de
+  // external_source. Même règle que create-arpege-demande.
+  const isArpege = !!selectedProcedure && procedureOrigin(selectedProcedure) === "arpege";
+  const selectedSuspended = !!selectedProcedure && isPartnerSuspended(selectedProcedure, arpegeActive);
+  // Démarche du référentiel : le dépôt exige l'organisation qui l'a activée.
+  const arpegeNeedsOrg = isArpege && !!selectedProcedure?.socle_id && !socleOrgId;
   const arpegeFields = selectedProcedure?.arpege_config_fields?.ConfigInfoUsagerObligs ?? [];
   const formComponents = selectedProcedure?.arpege_config_fields?.FormComponents ?? [];
 
@@ -754,11 +772,13 @@ export default function CreateTicketDialog({
           demandeur: arpegeValues,
           formValues,
           pieceJointes: piecesJointes,
+          socleOrganizationId: socleOrgId,
         });
         await logEvent(organizationId, courierId, "ticket_created", {
           ticket_id: created.id,
           procedure_id: procedureId,
           arpege_ref: created.arpege_demande_ref,
+          socle_organization_id: socleOrgId,
         });
         return {};
       }
@@ -836,6 +856,8 @@ export default function CreateTicketDialog({
   const canSubmit =
     !saveMutation.isPending &&
     !!selectedProcedure &&
+    !selectedSuspended &&
+    !arpegeNeedsOrg &&
     (!isArpege || (arpegeObligatoryMet && bizObligatoryMet)) &&
     socleObligatoryMet;
 
@@ -957,25 +979,31 @@ export default function CreateTicketDialog({
                           : "Aucune démarche trouvée"}
                       </CommandEmpty>
                       <CommandGroup>
-                        {displayedProcedures.map((p) => (
-                          <CommandItem
-                            key={p.id}
-                            value={p.name}
-                            className="group"
-                            onSelect={() => {
-                              selectProcedure(p.id);
-                              setProcedurePopoverOpen(false);
-                            }}
-                          >
-                            <Check className={cn("mr-2 h-4 w-4", procedureId === p.id ? "opacity-100" : "opacity-0")} />
-                            {p.name}
-                            {procedureOriginLabel(p) && (
-                              <span className="ml-auto text-[10px] text-muted-foreground group-data-[selected=true]:text-accent-foreground">
-                                {procedureOriginLabel(p)}
-                              </span>
-                            )}
-                          </CommandItem>
-                        ))}
+                        {displayedProcedures.map((p) => {
+                          const suspended = isPartnerSuspended(p, arpegeActive);
+                          return (
+                            <CommandItem
+                              key={p.id}
+                              value={p.name}
+                              className="group"
+                              disabled={suspended}
+                              onSelect={() => {
+                                selectProcedure(p.id);
+                                setProcedurePopoverOpen(false);
+                              }}
+                            >
+                              <Check className={cn("mr-2 h-4 w-4", procedureId === p.id ? "opacity-100" : "opacity-0")} />
+                              {p.name}
+                              {procedureOriginLabel(p) && (
+                                <span className="ml-auto text-[10px] text-muted-foreground group-data-[selected=true]:text-accent-foreground">
+                                  {suspended
+                                    ? `${procedureOriginLabel(p)} · interface suspendue`
+                                    : procedureOriginLabel(p)}
+                                </span>
+                              )}
+                            </CommandItem>
+                          );
+                        })}
                       </CommandGroup>
                     </CommandList>
                   </Command>
@@ -988,6 +1016,18 @@ export default function CreateTicketDialog({
                 </Button>
               )}
             </div>
+            {selectedSuspended && (
+              <p className="text-xs text-destructive">
+                L'interface Arpège est suspendue pour cette collectivité : la demande ne peut pas
+                être transmise.
+              </p>
+            )}
+            {!selectedSuspended && arpegeNeedsOrg && (
+              <p className="text-xs text-muted-foreground">
+                Choisissez l'organisation destinataire : la demande part chez Arpège au nom de
+                l'organisation qui assure cette démarche.
+              </p>
+            )}
           </div>
 
           {/* Arpège forms — side by side when both present */}

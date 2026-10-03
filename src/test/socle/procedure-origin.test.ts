@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  isPartnerSuspended,
   isRequestableProcedure,
   procedureOrigin,
   procedureOriginLabel,
@@ -42,6 +43,16 @@ describe("procedure-origin — d'où vient une démarche", () => {
     expect(procedureOrigin(p)).toBe("local");
     expect(procedureOriginLabel(p)).toBeNull();
     expect(isRequestableProcedure(p)).toBe(false);
+  });
+
+  it("grise une démarche Arpège quand l'interface du tenant est suspendue, et elle seule", () => {
+    const arpege = { external_source: "socle", external_reference_id: "42", arpege_config_fields: {} };
+    const iris = { external_source: "socle" };
+    expect(isPartnerSuspended(arpege, false)).toBe(true);
+    expect(isPartnerSuspended(arpege, true)).toBe(false);
+    // Statut pas encore lu : on ne grise rien.
+    expect(isPartnerSuspended(arpege, undefined)).toBe(false);
+    expect(isPartnerSuspended(iris, false)).toBe(false);
   });
 
   it("laisse demander tout ce qu'un système instruit", () => {

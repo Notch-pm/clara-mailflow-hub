@@ -20,6 +20,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { assertEditor } from "../_shared/authz.ts";
+import { procedureOrigin } from "../_shared/procedure-origin.ts";
 import {
   attachmentsRefusedNote,
   buildIrisEnvelope,
@@ -73,7 +74,7 @@ Deno.serve(async (req) => {
     // ── Le ticket, et tout ce qui compose la demande, relus côté serveur ──
     const { data: ticket, error: ticketErr } = await supabaseAdmin
       .from("action_tickets")
-      .select("id, organization_id, courier_id, procedure_id, title, description, socle_data, socle_organization_id, iris_idempotency_key, iris_request_id")
+      .select("id, organization_id, courier_id, procedure_id, title, description, socle_data, socle_organization_id, iris_idempotency_key, iris_request_id, arpege_demande_ref")
       .eq("id", ticket_id)
       .maybeSingle();
     if (ticketErr) throw ticketErr;
@@ -93,6 +94,23 @@ Deno.serve(async (req) => {
     // Déposer une demande est un effet de bord : le consultant est en lecture seule.
     if (!(await assertEditor(supabaseAdmin, user.id, organizationId))) {
       return json({ error: "Accès refusé : rôle consultant en lecture seule" }, 403);
+    }
+
+    // Démarche d'un partenaire (Arpège) : la demande a été déposée chez lui par
+    // create-arpege-demande, elle n'a rien à faire dans Iris — y compris quand
+    // la démarche vient du Socle (`external_source = 'socle'`, `partner`
+    // recopié par la sync). Même règle que le dialogue (procedureOrigin).
+    if (ticket.arpege_demande_ref) return json({ skipped: true, reason: "partenaire" });
+    if (ticket.procedure_id) {
+      const { data: origin } = await supabaseAdmin
+        .from("procedures")
+        .select("external_source, external_reference_id, arpege_config_fields")
+        .eq("id", ticket.procedure_id)
+        .eq("organization_id", organizationId)
+        .maybeSingle();
+      if (origin && procedureOrigin(origin) === "arpege") {
+        return json({ skipped: true, reason: "partenaire" });
+      }
     }
 
     const lookup = await resolveIrisIntegration(supabaseAdmin, organizationId);

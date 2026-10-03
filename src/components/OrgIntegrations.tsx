@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,18 +20,17 @@ interface ArpegeIntegrationView {
   socle_synced_at: string | null;
 }
 
-type ArpegeSyncResult = { total: number; created: number; updated: number; skipped?: number };
-
 // La configuration Arpège se saisit dans le Socle (fiche du client, section
 // « Intégrations ») et la sync du référentiel la recopie : cet écran ne fait
 // que l'afficher et la mettre à l'épreuve. La base refuse d'ailleurs toute
 // écriture cliente d'une ligne Arpège.
+//
+// Les DÉMARCHES Arpège aussi viennent du Socle depuis le 2026-10-02 : importées
+// sur la fiche du client (Intégrations → Arpège), activées par organisation,
+// elles arrivent par la sync du référentiel. Plus de « Récupérer les démarches ».
 export default function OrgIntegrations({ orgId }: OrgIntegrationsProps) {
-  const queryClient = useQueryClient();
   const [testResult, setTestResult] = useState<{ status: string; message: string } | null>(null);
   const [isTesting, setIsTesting] = useState(false);
-  const [isSyncingProcedures, setIsSyncingProcedures] = useState(false);
-  const [syncProceduresResult, setSyncProceduresResult] = useState<ArpegeSyncResult | null>(null);
 
   const { data: integration, isLoading } = useQuery({
     queryKey: ["org-integration", orgId, "arpege"],
@@ -47,26 +46,6 @@ export default function OrgIntegrations({ orgId }: OrgIntegrationsProps) {
       return data as unknown as ArpegeIntegrationView | null;
     },
   });
-
-  async function handleSyncProcedures() {
-    setIsSyncingProcedures(true);
-    setSyncProceduresResult(null);
-    try {
-      const { data, error } = await supabase.functions.invoke("sync-arpege-services", {
-        body: { organization_id: orgId },
-      });
-      if (error) throw error;
-      setSyncProceduresResult(data);
-      queryClient.invalidateQueries({ queryKey: ["procedures", orgId] });
-      toast.success(
-        `Synchronisation : ${data?.created ?? 0} créées, ${data?.updated ?? 0} mises à jour`,
-      );
-    } catch (e) {
-      toast.error("Erreur lors de la synchronisation : " + (e instanceof Error ? e.message : String(e)));
-    } finally {
-      setIsSyncingProcedures(false);
-    }
-  }
 
   async function handleTestConnection() {
     setIsTesting(true);
@@ -121,21 +100,10 @@ export default function OrgIntegrations({ orgId }: OrgIntegrationsProps) {
             )}
           </div>
           {integration?.is_active && (
-            <div className="gap-2 flex flex-col">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleSyncProcedures}
-                disabled={isSyncingProcedures}
-              >
-                {isSyncingProcedures ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
-                Récupérer les démarches
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleTestConnection} disabled={isTesting}>
-                {isTesting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
-                Tester la connexion API
-              </Button>
-            </div>
+            <Button variant="outline" size="sm" onClick={handleTestConnection} disabled={isTesting}>
+              {isTesting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+              Tester la connexion API
+            </Button>
           )}
         </CardHeader>
         <CardContent className="pt-0">
@@ -143,7 +111,8 @@ export default function OrgIntegrations({ orgId }: OrgIntegrationsProps) {
             {integration ? (
               <>
                 Configuration gérée dans le Socle (fiche du client, section « Intégrations ») et
-                recopiée à chaque synchronisation du référentiel
+                recopiée à chaque synchronisation du référentiel, comme les démarches Arpège
+                qui y sont importées et activées
                 {integration.socle_synced_at
                   ? ` — dernière le ${new Date(integration.socle_synced_at).toLocaleString("fr-FR")}`
                   : ""}
@@ -154,34 +123,22 @@ export default function OrgIntegrations({ orgId }: OrgIntegrationsProps) {
             )}
           </p>
         </CardContent>
-        {(testResult || syncProceduresResult) && (
-          <CardContent className="pt-0 space-y-2">
-            {testResult && (
-              <div
-                className={`flex items-center gap-2 text-sm ${
-                  testResult.status === "success" ? "text-success" : "text-destructive"
-                }`}
-              >
-                {testResult.status === "success" ? (
-                  <CheckCircle2 className="h-4 w-4" />
-                ) : (
-                  <XCircle className="h-4 w-4" />
-                )}
-                {testResult.status === "success"
-                  ? "Connexion réussie avec l'API Arpège"
-                  : `Impossible de se connecter à l'API Arpège : ${testResult.message}`}
-              </div>
-            )}
-            {syncProceduresResult && (
-              <div className="flex items-center gap-2 text-sm text-success">
+        {testResult && (
+          <CardContent className="pt-0">
+            <div
+              className={`flex items-center gap-2 text-sm ${
+                testResult.status === "success" ? "text-success" : "text-destructive"
+              }`}
+            >
+              {testResult.status === "success" ? (
                 <CheckCircle2 className="h-4 w-4" />
-                {syncProceduresResult.created} démarche(s) créée(s),{" "}
-                {syncProceduresResult.updated} mise(s) à jour
-                {typeof syncProceduresResult.skipped === "number"
-                  ? `, ${syncProceduresResult.skipped} inchangée(s)`
-                  : ""}
-              </div>
-            )}
+              ) : (
+                <XCircle className="h-4 w-4" />
+              )}
+              {testResult.status === "success"
+                ? "Connexion réussie avec l'API Arpège"
+                : `Impossible de se connecter à l'API Arpège : ${testResult.message}`}
+            </div>
           </CardContent>
         )}
       </Card>
