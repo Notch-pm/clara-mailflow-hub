@@ -123,7 +123,7 @@ Public-api 1.35.0 (champ `partner`) ; suppression de `sync-arpege-services` et d
 | 2 | Déployer `create-arpege-demande` et `push-iris-request` (embarquent `_shared/procedure-origin.ts`) | Nouvelles règles ; sans la garde d'Iris, une démarche Arpège du Socle partirait chez Iris | ✅ 2026-10-03 |
 | 3 | Supprimer `sync-arpege-services` de la plateforme | Fonction retirée du dépôt | ✅ 2026-10-03 |
 | 4 | Publier le frontend | Dialogue (grisage, organisation requise), bouton retiré | Push sur `main` |
-| 5 | Recette : faire activer une démarche Arpège sur une organisation SNA dans le Socle (Laurent) ; `select public.trigger_socle_sync();`, vérifier `arpege_config_fields` ; depuis « Actions liées » d'un courrier SNA, créer la demande | Elle doit arriver chez Arpège et pas chez Iris | À faire |
+| 5 | Recette : faire activer une démarche Arpège sur une organisation SNA dans le Socle (Laurent) ; `select public.trigger_socle_sync();`, vérifier `arpege_config_fields` ; depuis « Actions liées » d'un courrier SNA, créer la demande | Elle doit arriver chez Arpège et pas chez Iris | ✅ 2026-10-04 — « Nid de poule » (D_INTER_VO) déposée chez Arpège, rien dans Iris. Le compte `laurentgec` est refusé sur INCIDENTM1–4 (métier MAINTI, « 403 : Vous n'avez pas le droit de créer ce type de demande ») : droits à ouvrir chez Arpège. |
 
 ### Lot « Arpège : fin de la transition » (2026-10-02)
 
