@@ -244,7 +244,10 @@ Deno.serve(async (req) => {
 
     const apiText = await apiResp.text();
     if (!apiResp.ok) {
-      console.error(`Arpège POST error ${apiResp.status}: ${apiText}`);
+      console.error(
+        `Arpège POST error ${apiResp.status} — tenant ${organization_id}, démarche ` +
+          `${procedure.external_reference_id} : ${apiText}`,
+      );
       return new Response(
         JSON.stringify({ error: `Erreur Arpège ${apiResp.status}: ${apiText.substring(0, 200)}` }),
         { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -253,6 +256,15 @@ Deno.serve(async (req) => {
 
     const apiData = JSON.parse(apiText);
     if (apiData?.IsSuccess === false) {
+      // Refus MÉTIER d'Arpège (HTTP 200, IsSuccess false) : ex. « 403 : Vous
+      // n'avez pas le droit de créer ce type de demande » quand le compte Hawk
+      // du tenant n'a pas les droits sur ce type. Journalisé pour être
+      // diagnostiqué sans la console de l'agent.
+      console.error(
+        `Arpège a refusé la demande — tenant ${organization_id}, démarche « ${procedure.name} » ` +
+          `(${procedure.external_reference_id}, métier ${config?.CodeQualificationMetier ?? "?"}) : ` +
+          `${apiData.CodErreur}: ${apiData.LibErreur}`,
+      );
       return new Response(
         JSON.stringify({ error: `${apiData.CodErreur}: ${apiData.LibErreur}` }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
