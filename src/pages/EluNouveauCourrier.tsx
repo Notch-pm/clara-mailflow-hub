@@ -9,7 +9,6 @@ import DictationRecorder from "@/components/courier/DictationRecorder";
 import { useDictationEnabled } from "@/hooks/useDictationEnabled";
 import { extractCourierInfo, type SuggestedSender } from "@/services/courierAnalysisService";
 import { useOrganization } from "@/contexts/OrganizationContext";
-import { cn } from "@/lib/utils";
 import { createEluRelayedCourier } from "@/services/eluRelayService";
 import type { SocleContact } from "@/services/socleContactService";
 import { storage } from "@/services/storageService";
@@ -58,7 +57,6 @@ export default function EluNouveauCourrier() {
   const [request, setRequest] = useState("");
   const [comment, setComment] = useState("");
   const [files, setFiles] = useState<PendingFile[]>([]);
-  const [submitted, setSubmitted] = useState(false);
   // Dictée : la transcription (relue), et l'usager qu'elle nomme sans fiche
   // reconnue d'office — la recherche et la création partent de lui.
   const dictationEnabled = useDictationEnabled(organizationId);
@@ -112,14 +110,16 @@ export default function EluNouveauCourrier() {
     });
   }
 
-  const errors = useMemo(
-    () => ({
-      usager: usager ? null : "Choisissez ou créez l'usager.",
-      request: request.trim() ? null : "Décrivez la requête de l'usager.",
-    }),
-    [usager, request],
-  );
-  const hasErrors = !!errors.usager || !!errors.request;
+  // Ce qui manque pour envoyer, dit sous le bouton tant qu'il est grisé :
+  // l'élu sait d'avance pourquoi il ne peut pas envoyer, au lieu de
+  // l'apprendre après avoir appuyé.
+  const missing = useMemo(() => {
+    const parts: string[] = [];
+    if (!usager) parts.push("choisissez ou créez l'usager");
+    if (!request.trim()) parts.push("décrivez sa requête");
+    return parts;
+  }, [usager, request]);
+  const canSend = missing.length === 0 && !!organizationId;
 
   /**
    * La dictée remplit ce qu'elle peut : la requête (si elle est vide) et
@@ -174,8 +174,7 @@ export default function EluNouveauCourrier() {
   });
 
   function submit() {
-    setSubmitted(true);
-    if (hasErrors || !organizationId) return;
+    if (!canSend) return;
     create.mutate();
   }
 
@@ -254,14 +253,8 @@ export default function EluNouveauCourrier() {
               organizationId={organizationId}
               value={usager}
               onChange={setUsager}
-              invalid={submitted && !!errors.usager}
               suggestion={usagerSuggestion}
             />
-          )}
-          {submitted && errors.usager && (
-            <p role="alert" className="text-[15px] text-destructive">
-              {errors.usager}
-            </p>
           )}
         </section>
 
@@ -275,17 +268,8 @@ export default function EluNouveauCourrier() {
             onChange={(e) => setRequest(e.target.value)}
             rows={7}
             placeholder="Ce que l'usager demande, avec les détails utiles (lieu, dates, personnes concernées)."
-            aria-invalid={submitted && !!errors.request}
-            className={cn(
-              "w-full rounded-xl border bg-card px-4 py-3.5 text-[17px] leading-relaxed text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              submitted && errors.request && "border-destructive",
-            )}
+            className="w-full rounded-xl border bg-card px-4 py-3.5 text-[17px] leading-relaxed text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
-          {submitted && errors.request && (
-            <p role="alert" className="text-[15px] text-destructive">
-              {errors.request}
-            </p>
-          )}
         </section>
 
         <section className="flex flex-col gap-2.5">
@@ -379,8 +363,9 @@ export default function EluNouveauCourrier() {
         <button
           type="button"
           onClick={submit}
-          disabled={create.isPending}
-          className="flex min-h-[60px] w-full items-center justify-center rounded-xl bg-primary text-[19px] font-bold text-primary-foreground transition active:scale-[0.98] disabled:opacity-50"
+          disabled={create.isPending || !canSend}
+          aria-describedby={missing.length > 0 ? "elu-relay-missing" : undefined}
+          className="flex min-h-[60px] w-full items-center justify-center rounded-xl bg-primary text-[19px] font-bold text-primary-foreground transition active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100"
         >
           {create.isPending
             ? files.length > 0
@@ -388,9 +373,9 @@ export default function EluNouveauCourrier() {
               : "Envoi…"
             : "Envoyer le courrier"}
         </button>
-        {submitted && hasErrors && (
-          <p role="status" className="text-center text-[13px] text-muted-foreground">
-            Il manque l'usager ou sa requête.
+        {missing.length > 0 && (
+          <p id="elu-relay-missing" role="status" className="text-center text-[15px] text-muted-foreground">
+            Pour envoyer, {missing.join(" et ")}.
           </p>
         )}
       </div>

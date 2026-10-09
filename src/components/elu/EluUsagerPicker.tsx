@@ -40,13 +40,11 @@ export function EluUsagerPicker({
   organizationId,
   value,
   onChange,
-  invalid = false,
   suggestion = null,
 }: {
   organizationId: string;
   value: SocleContact | null;
   onChange: (contact: SocleContact | null) => void;
-  invalid?: boolean;
   /**
    * Usager mentionné dans une dictée, sans fiche reconnue d'office : la
    * recherche part de son nom, et une création éventuelle reprend ce qui a
@@ -112,7 +110,7 @@ export function EluUsagerPicker({
   }
 
   return (
-    <div className={cn("flex flex-col gap-2.5", invalid && "rounded-xl ring-2 ring-destructive ring-offset-2")}>
+    <div className="flex flex-col gap-2.5">
       <EluSearchInput value={search} onChange={setSearch} placeholder="Nom, courriel, téléphone" label="Rechercher un usager" />
       {debounced.length >= 2 && (
         <ul className="flex flex-col gap-2" aria-label="Usagers trouvés">
