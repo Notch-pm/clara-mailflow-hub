@@ -144,6 +144,19 @@ function ListSection({
             ))}
           </div>
         )}
+        {/* La pastille compte tout, la liste n'en montre que LIST_SIZE : le dire,
+            et ouvrir la suite là où l'œil arrive après la dernière ligne. */}
+        {!loading && current.count > current.rows.length && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t px-4 py-2.5 text-[12.5px]">
+            <span className="text-muted-foreground">
+              {current.rows.length} sur {current.count} · {current.order}
+            </span>
+            <span className="flex-1" />
+            <Link to={current.link.href} className="whitespace-nowrap font-semibold text-primary hover:underline">
+              {current.link.label} →
+            </Link>
+          </div>
+        )}
       </Card>
     </section>
   );

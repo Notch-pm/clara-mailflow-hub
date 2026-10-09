@@ -332,6 +332,12 @@ export interface DashboardList {
   link: { label: string; href: string };
   columns: [string, string];
   rows: ListRow[];
+  /**
+   * Ce que montrent les lignes retenues quand la liste est tronquée à
+   * `LIST_SIZE` (« échéances les plus proches d'abord ») : sans cette mention, la
+   * pastille de l'onglet (le total) et les lignes affichées se contredisent.
+   */
+  order: string;
   /** Lignes en rouge : choisit l'onglet ouvert d'office. */
   urgentCount: number;
 }
@@ -391,6 +397,7 @@ export function instructionList(
     count: rows.length,
     link: { label: "Tous les courriers en instruction", href: "/courriers-en-instruction" },
     columns: ["Étape", "Échéance"],
+    order: "échéances les plus proches d'abord",
     rows: rows.slice(0, LIST_SIZE),
     urgentCount: rows.filter((r) => r.tone === "urgent").length,
   };
@@ -420,6 +427,7 @@ export function mailroomList(items: MailroomItem[], orgName: (id: string | null)
     count: rows.length,
     link: { label: "Ouvrir le courrier entrant", href: mailroomHref("av") },
     columns: ["Service proposé", "Confiance"],
+    order: "propositions les plus sûres d'abord",
     rows: rows.slice(0, LIST_SIZE),
     // Les à-réorienter et les retards sont rouges dans les cartes, pas dans cette liste.
     urgentCount: items.filter((i) => i.stage === "to_reorient" || i.stage === "late").length,
@@ -452,6 +460,7 @@ export function parapheurList(entries: ParapheurEntry[]): DashboardList {
     count: rows.length,
     link: { label: "Ouvrir le parapheur", href: "/parapheur" },
     columns: ["Étape", "Attente"],
+    order: "attentes les plus longues d'abord",
     rows: rows.slice(0, LIST_SIZE),
     urgentCount: rows.filter((r) => r.tone === "attention").length,
   };

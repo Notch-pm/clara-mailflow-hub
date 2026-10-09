@@ -8,6 +8,7 @@ import {
   heroAction,
   instructionList,
   instructionTodo,
+  LIST_SIZE,
   longDate,
   mailroomList,
   monthName,
@@ -190,6 +191,14 @@ describe("listes", () => {
     expect(list.rows[0]).toMatchObject({ tone: "urgent", mid: "Analyse technique" });
     expect(list.rows[0].end).toMatch(/^Dépassée de \d+ j$/);
     expect(list.urgentCount).toBe(1);
+  });
+
+  it("tronquée à LIST_SIZE lignes, mais le total reste celui de toute la liste", () => {
+    const items = Array.from({ length: 7 }, () => item(inVoirie));
+    const list = instructionList(items, voirieScope, () => null, NOW);
+    expect(list.count).toBe(7);
+    expect(list.rows).toHaveLength(LIST_SIZE);
+    expect(list.order).toBe("échéances les plus proches d'abord");
   });
 
   it("courrier entrant : propositions par confiance décroissante", () => {
