@@ -49,7 +49,11 @@ export function EluSignFooter({
 
   return (
     <>
-      <div className="sticky bottom-0 z-10 flex flex-col gap-2.5 border-t bg-card px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3.5 shadow-[0_-6px_20px_-8px_rgb(0_0_0/0.12)]">
+      {/* Pas de `safe-area-inset-bottom` : le pied est posé AU-DESSUS de la
+          barre d'onglets, qui dégage déjà la barre système — la compter ici
+          le faisait remonter d'autant (Firefox Android bord à bord, même
+          défaut qu'`EluTabBar`). */}
+      <div className="sticky bottom-0 z-10 flex flex-col gap-2.5 border-t bg-card px-5 pb-3.5 pt-3.5 shadow-[0_-6px_20px_-8px_rgb(0_0_0/0.12)]">
         {primary && (
           <>
             <button

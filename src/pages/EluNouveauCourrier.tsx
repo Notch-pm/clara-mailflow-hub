@@ -358,14 +358,18 @@ export default function EluNouveauCourrier() {
       </EluScreen>
 
       {/* Même pied que l'écran de signature : `sticky`, pas `fixed` (barre
-          d'URL de Safari iOS). */}
-      <div className="sticky bottom-0 z-10 flex flex-col gap-2 border-t bg-card px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3.5 shadow-[0_-6px_20px_-8px_rgb(0_0_0/0.12)]">
+          d'URL de Safari iOS). Compact : il recouvre le bas du formulaire
+          tant qu'on n'y est pas descendu. Pas de `safe-area-inset-bottom` :
+          le pied est posé AU-DESSUS de la barre d'onglets, qui dégage déjà
+          la barre système — la compter ici le faisait remonter d'autant
+          (Firefox Android bord à bord, même défaut qu'`EluTabBar`). */}
+      <div className="sticky bottom-0 z-10 flex flex-col gap-1.5 border-t bg-card px-5 pb-3 pt-3 shadow-[0_-6px_20px_-8px_rgb(0_0_0/0.12)]">
         <button
           type="button"
           onClick={submit}
           disabled={create.isPending || !canSend}
           aria-describedby={missing.length > 0 ? "elu-relay-missing" : undefined}
-          className="flex min-h-[60px] w-full items-center justify-center rounded-xl bg-primary text-[19px] font-bold text-primary-foreground transition active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100"
+          className="flex min-h-12 w-full items-center justify-center rounded-xl bg-primary text-[17px] font-bold text-primary-foreground transition active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100"
         >
           {create.isPending
             ? files.length > 0
@@ -374,7 +378,7 @@ export default function EluNouveauCourrier() {
             : "Envoyer le courrier"}
         </button>
         {missing.length > 0 && (
-          <p id="elu-relay-missing" role="status" className="text-center text-[15px] text-muted-foreground">
+          <p id="elu-relay-missing" role="status" className="text-center text-[13px] text-muted-foreground">
             Pour envoyer, {missing.join(" et ")}.
           </p>
         )}
