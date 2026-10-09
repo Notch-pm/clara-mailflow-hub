@@ -43,7 +43,27 @@ export const channelLabels: Record<CourierChannel, string> = {
   email: "Email",
   portal: "Portail",
   relaye_elu: "Relayé élu",
+  guichet: "Guichet",
+  autre: "Autre",
 };
+
+/**
+ * Comment un courrier entrant est arrivé, en une locution — pour la phrase
+ * d'en-tête « reçu par email le 3 octobre ». « Reçu par guichet » ne se dit
+ * pas, et « reçu par autre » encore moins : chaque canal a sa tournure.
+ */
+const INBOUND_CHANNEL_PHRASES: Record<CourierChannel, string> = {
+  paper: "reçu par papier",
+  email: "reçu par email",
+  portal: "reçu par le portail",
+  relaye_elu: "relayé par un élu",
+  guichet: "reçu au guichet",
+  autre: "reçu",
+};
+
+export function inboundChannelPhrase(channel: CourierChannel): string {
+  return INBOUND_CHANNEL_PHRASES[channel] ?? "reçu";
+}
 
 /** Le courrier tel que le manipulent les écrans : la ligne DB + ses relations chargées. */
 export interface WorkspaceCourier {

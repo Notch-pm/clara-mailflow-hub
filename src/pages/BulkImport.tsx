@@ -37,7 +37,7 @@ import { matchSender, type SocleContact } from "@/services/socleContactService";
 import type { SenderMatch } from "../../supabase/functions/_shared/senderMatchLogic";
 
 type BulkStep = 1 | 2 | 3 | 4 | 5;
-type CourierChannel = "paper" | "email";
+type CourierChannel = "paper" | "email" | "guichet" | "autre";
 
 const STEPS = [
   { n: 1, label: "Canal" },
@@ -331,7 +331,7 @@ export default function BulkImport() {
         const { data: courier, error: cErr } = await createCourier({
           organization_id: organizationId,
           direction: "inbound",
-          channel: channel as "paper" | "email" | "portal",
+          channel,
           subject: draft.title || "Courrier importé",
           received_at: new Date().toISOString(),
           assigned_service: service?.name ?? null,

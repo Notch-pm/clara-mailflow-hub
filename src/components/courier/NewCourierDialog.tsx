@@ -68,11 +68,13 @@ const channelOptions: { value: CourierChannel; label: string }[] = [
   { value: "paper", label: "Papier" },
   { value: "email", label: "Email" },
   { value: "portal", label: "Portail" },
+  { value: "guichet", label: "Guichet" },
+  { value: "autre", label: "Autre" },
 ];
 
 const schema = z.object({
   subject: z.string().trim().min(1, "L'objet est obligatoire").max(255),
-  channel: z.enum(["paper", "email", "portal"]),
+  channel: z.enum(["paper", "email", "portal", "guichet", "autre"]),
   received_at: z.string().min(1, "Date obligatoire"),
   recipient_name: z.string().trim().max(150).optional(),
 });

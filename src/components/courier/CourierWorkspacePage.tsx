@@ -81,6 +81,7 @@ import CloseLinkedCouriersDialog from "./CloseLinkedCouriersDialog";
 import ReturnToMailroomDialog from "./ReturnToMailroomDialog";
 import {
   channelLabels,
+  inboundChannelPhrase,
   useCourierWorkspace,
   type WorkspaceCourier,
 } from "@/hooks/useCourierWorkspace";
@@ -338,7 +339,7 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
   const subtitle = [
     senderLabel,
     dateLabel
-      ? `${isOutbound ? "envoyé" : courier.channel === "relaye_elu" ? "relayé par un élu" : `reçu par ${channelLabels[courier.channel].toLowerCase()}`} le ${dateLabel}`
+      ? `${isOutbound ? "envoyé" : inboundChannelPhrase(courier.channel)} le ${dateLabel}`
       : null,
     localAssignedService ? `organisation gestionnaire ${localAssignedService}` : null,
   ]

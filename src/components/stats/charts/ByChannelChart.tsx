@@ -10,6 +10,8 @@ const CHANNEL_LABELS: Record<string, string> = {
   paper: "Courrier papier",
   portal: "Portail",
   relaye_elu: "Relayé par un élu",
+  guichet: "Guichet",
+  autre: "Autre",
   manual: "Saisie manuelle",
   inconnu: "Inconnu",
 };

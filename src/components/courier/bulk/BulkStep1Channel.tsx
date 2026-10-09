@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Mail, Pencil } from "lucide-react";
 
-type CourierChannel = "paper" | "email";
+type CourierChannel = "paper" | "email" | "guichet" | "autre";
 
 interface Props {
   value: CourierChannel | null;
@@ -20,13 +20,16 @@ const CHANNELS: {
 }[] = [
   { value: "paper", label: "Courrier papier", icon: "✉︎", available: true },
   { value: "email", label: "Courriel", icon: "@", available: true },
-  { value: "portal" as unknown as CourierChannel, label: "Guichet", icon: "🏛", available: false },
+  { value: "guichet", label: "Guichet", icon: "🏛", available: true },
+  { value: "autre", label: "Autre", icon: "…", available: true },
   { value: "portal2" as unknown as CourierChannel, label: "Portail citoyen", icon: "🌐", available: false },
 ];
 
 const CHANNEL_LABELS: Record<CourierChannel, string> = {
   paper: "Courrier papier",
   email: "Courriel",
+  guichet: "Guichet",
+  autre: "Autre",
 };
 
 export default function BulkStep1Channel({ value, onChange, done, onEdit }: Props) {
@@ -46,7 +49,7 @@ export default function BulkStep1Channel({ value, onChange, done, onEdit }: Prop
   }
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
       {CHANNELS.map((ch) => {
         const isAvailable = ch.available;
         const isSelected = value === ch.value;
