@@ -30,6 +30,10 @@ export const COURIER_EVENT_LABELS: Record<string, string> = {
   ticket_created: "Ticket créé",
   ticket_updated: "Ticket mis à jour",
   ticket_deleted: "Ticket supprimé",
+  task_created: "Tâche créée",
+  task_reminded: "Tâche relancée",
+  task_completed: "Tâche terminée",
+  task_reopened: "Tâche rouverte",
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- payload libre de courier_events
@@ -67,6 +71,24 @@ export function describeCourierEvent(type: string, payload: Payload): { title: s
     case "document_deleted":
     case "document_updated":
       detail = [p.file_name, p.document_type].filter(Boolean).join(" · ") || null;
+      break;
+    case "task_created":
+    case "task_reminded":
+      detail = [p.title ? `« ${p.title} »` : null, p.assignee_name ? `→ ${p.assignee_name}` : null]
+        .filter(Boolean)
+        .join(" ") || null;
+      break;
+    case "task_completed":
+      detail = [
+        p.title ? `« ${p.title} »` : null,
+        p.via === "lien" ? `par ${p.assignee_name ?? "l'agent affecté"}, depuis le lien du mail` : null,
+        p.note ? `« ${p.note} »` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ") || null;
+      break;
+    case "task_reopened":
+      detail = p.title ? `« ${p.title} »` : null;
       break;
     case "reply_visa_granted":
       detail = [

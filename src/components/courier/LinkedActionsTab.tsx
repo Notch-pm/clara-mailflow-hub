@@ -1,14 +1,35 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Plus, Trash2, Ticket as TicketIcon, ExternalLink, Paperclip } from "lucide-react";
+import {
+  Plus,
+  Trash2,
+  Ticket as TicketIcon,
+  ExternalLink,
+  Paperclip,
+  ChevronDown,
+  ListChecks,
+  Send,
+  CheckCircle2,
+  RotateCcw,
+  Mail,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   listTicketsForCourier,
   deleteTicket,
+  completeTask,
+  reopenTask,
+  sendTaskMail,
   type ActionTicketWithProcedure,
 } from "@/services/actionTicketService";
 import { logEvent } from "@/services/courierEventService";
@@ -16,6 +37,8 @@ import { pushIrisRequest, refreshIrisStatuses } from "@/services/irisRequestServ
 import { irisStatusLabel, irisStatusVariant } from "@/lib/iris";
 import { supabase } from "@/integrations/supabase/client";
 import CreateTicketDialog from "./CreateTicketDialog";
+import CreateTaskDialog from "./CreateTaskDialog";
+import { taskAssigneeLabel } from "@/lib/action-task";
 import SuggestedActionsCard from "./SuggestedActionsCard";
 import { UserAvatar } from "@/components/UserAvatar";
 import type { SuggestedAction } from "@/services/courierAnalysisService";
@@ -144,6 +167,74 @@ function IrisRequestLine({
   );
 }
 
+function userLabel(u: ActionTicketWithProcedure["assignee"]) {
+  if (!u) return null;
+  return [u.first_name, u.last_name].filter(Boolean).join(" ") || u.email;
+}
+
+/**
+ * Tâche : action interne affectée. Statut, affecté, commentaire, clôture
+ * (depuis l'écran ou le lien du mail) et relances.
+ */
+function TaskCardBody({ ticket: t }: { ticket: ActionTicketWithProcedure }) {
+  const done = t.status === "done";
+  const completer = userLabel(t.completer ?? null);
+  const closedBy =
+    t.completed_via === "lien"
+      ? `par ${taskAssigneeLabel(t)} (lien du mail)`
+      : completer
+        ? `par ${completer}`
+        : null;
+  return (
+    <>
+      <div className="flex items-center gap-2 mb-1 flex-wrap">
+        <Badge variant="outline" className="gap-1">
+          <ListChecks className="h-3 w-3" />
+          Tâche
+        </Badge>
+        {done ? (
+          <Badge className="bg-success text-success-foreground hover:bg-success/90">Terminée</Badge>
+        ) : (
+          <Badge className="bg-warning text-warning-foreground hover:bg-warning/90">À faire</Badge>
+        )}
+        <span className="text-[10px] text-muted-foreground ml-auto">
+          Créée le {formatDate(t.created_at)}
+        </span>
+      </div>
+      <p className={`text-sm font-medium break-words ${done ? "line-through text-muted-foreground" : ""}`}>
+        {t.title}
+      </p>
+      <p className="text-[11px] text-muted-foreground flex items-center gap-1.5 mt-0.5 flex-wrap">
+        <Mail className="h-3 w-3 shrink-0" />
+        <span>
+          Affectée à {taskAssigneeLabel(t)}
+          {t.assignee_name && t.assignee_email ? ` (${t.assignee_email})` : ""}
+        </span>
+      </p>
+      {t.description && (
+        <p className="text-sm whitespace-pre-wrap break-words mt-1">{t.description}</p>
+      )}
+      {done && (
+        <p className="text-[11px] text-muted-foreground mt-1">
+          Terminée le {formatDate(t.completed_at)}
+          {closedBy ? ` ${closedBy}` : ""}
+        </p>
+      )}
+      {done && t.completion_note && (
+        <p className="text-sm whitespace-pre-wrap break-words mt-1 border-l-2 pl-2 text-muted-foreground">
+          {t.completion_note}
+        </p>
+      )}
+      {!done && t.reminder_count > 0 && (
+        <p className="text-[11px] text-muted-foreground mt-1">
+          {t.reminder_count} relance{t.reminder_count > 1 ? "s" : ""} — dernière le{" "}
+          {formatDate(t.last_reminded_at)}
+        </p>
+      )}
+    </>
+  );
+}
+
 function assigneeName(t: ActionTicketWithProcedure) {
   if (!t.assignee) return null;
   return (
@@ -161,6 +252,7 @@ export default function LinkedActionsTab({
 }: Props) {
   const qc = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [taskDialogOpen, setTaskDialogOpen] = useState(false);
   const [suggestedAction, setSuggestedAction] = useState<SuggestedAction | null>(null);
   const [refreshingStatus, setRefreshingStatus] = useState(false);
   const [refreshingIris, setRefreshingIris] = useState(false);
@@ -242,6 +334,48 @@ export default function LinkedActionsTab({
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // Relance : un mail neuf (nouveau lien, les précédents restent valides).
+  const remindMutation = useMutation({
+    mutationFn: async (ticket: ActionTicketWithProcedure) => {
+      const result = await sendTaskMail(ticket.id, "remind");
+      if (result.mailed || result.notified) {
+        await logEvent(organizationId, courierId, "task_reminded", {
+          ticket_id: ticket.id,
+          title: ticket.title,
+          assignee_name: taskAssigneeLabel(ticket),
+          mailed: result.mailed,
+        });
+      }
+      return result;
+    },
+    onSuccess: (result) => {
+      if (result.mailed) toast.success("Relance envoyée par mail");
+      else if (result.notified) toast.warning("Relance notifiée dans Clara, mais le mail n'est pas parti");
+      else toast.error("Le mail de relance n'est pas parti (serveur d'envoi absent ou refusé)");
+      qc.invalidateQueries({ queryKey: ["action-tickets", courierId] });
+      qc.invalidateQueries({ queryKey: ["courier-events", courierId] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const taskStatusMutation = useMutation({
+    mutationFn: async ({ ticket, done }: { ticket: ActionTicketWithProcedure; done: boolean }) => {
+      if (done) await completeTask(ticket.id);
+      else await reopenTask(ticket.id);
+      await logEvent(organizationId, courierId, done ? "task_completed" : "task_reopened", {
+        ticket_id: ticket.id,
+        title: ticket.title,
+        via: "app",
+      });
+    },
+    onSuccess: (_r, { done }) => {
+      toast.success(done ? "Tâche marquée terminée" : "Tâche rouverte");
+      qc.invalidateQueries({ queryKey: ["action-tickets", courierId] });
+      qc.invalidateQueries({ queryKey: ["courier-events", courierId] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const openCreate = (action?: SuggestedAction) => {
     setSuggestedAction(action ?? null);
     setDialogOpen(true);
@@ -258,15 +392,39 @@ export default function LinkedActionsTab({
               {(tickets?.length ?? 0)} ticket(s) lié(s) à ce courrier
             </p>
           </div>
-          <Button
-            size="sm"
-            onClick={() => openCreate()}
-            disabled={readOnly || !!creationBlockedReason}
-            title={readOnly ? "Courrier archivé — actions désactivées" : creationBlockedReason ?? undefined}
-          >
-            <Plus className="h-4 w-4" />
-            Créer
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                size="sm"
+                disabled={readOnly || !!creationBlockedReason}
+                title={readOnly ? "Courrier archivé — actions désactivées" : creationBlockedReason ?? undefined}
+              >
+                <Plus className="h-4 w-4" />
+                Créer
+                <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuItem onSelect={() => openCreate()} className="flex-col items-start gap-0.5">
+                <span className="flex items-center gap-2 font-medium">
+                  <TicketIcon className="h-4 w-4" />
+                  Demande
+                </span>
+                <span className="text-xs text-muted-foreground pl-6">
+                  Fondée sur une démarche, transmise à Iris ou Arpège
+                </span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setTaskDialogOpen(true)} className="flex-col items-start gap-0.5">
+                <span className="flex items-center gap-2 font-medium">
+                  <ListChecks className="h-4 w-4" />
+                  Tâche
+                </span>
+                <span className="text-xs text-muted-foreground pl-6">
+                  Action interne confiée à un agent, suivie par mail
+                </span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         {creationBlockedReason && !readOnly && (
@@ -291,9 +449,54 @@ export default function LinkedActionsTab({
           <div className="space-y-2">
             {tickets.map((t) => {
               const aName = assigneeName(t);
+              const isTask = t.kind === "tache";
+              const taskOpen = isTask && t.status !== "done";
+              const taskBusy =
+                (remindMutation.isPending && remindMutation.variables?.id === t.id) ||
+                (taskStatusMutation.isPending && taskStatusMutation.variables?.ticket.id === t.id);
               return (
                 <Card key={t.id} className="p-3">
                   <div className="flex items-start gap-3">
+                    {isTask ? (
+                    <div className="flex-1 min-w-0">
+                      <TaskCardBody ticket={t} />
+                      {!readOnly && (
+                        <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                          {taskOpen && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-2 text-xs"
+                              disabled={taskBusy}
+                              onClick={() => remindMutation.mutate(t)}
+                            >
+                              <Send className="h-3.5 w-3.5" />
+                              Relancer
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-2 text-xs"
+                            disabled={taskBusy}
+                            onClick={() => taskStatusMutation.mutate({ ticket: t, done: taskOpen })}
+                          >
+                            {taskOpen ? (
+                              <>
+                                <CheckCircle2 className="h-3.5 w-3.5" />
+                                Marquer terminée
+                              </>
+                            ) : (
+                              <>
+                                <RotateCcw className="h-3.5 w-3.5" />
+                                Rouvrir
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                    ) : (
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
                         {t.procedure && (
@@ -359,13 +562,20 @@ export default function LinkedActionsTab({
                         </p>
                       )}
                     </div>
+                    )}
                     <div className="flex items-center gap-0.5 shrink-0">
                       <Button
                         size="icon"
                         variant="ghost"
                         className="h-7 w-7 text-muted-foreground hover:text-destructive"
                         onClick={() => {
-                          if (confirm("Supprimer ce ticket ?")) {
+                          if (
+                            confirm(
+                              isTask
+                                ? "Supprimer cette tâche ? Le lien envoyé par mail ne fonctionnera plus."
+                                : "Supprimer ce ticket ?",
+                            )
+                          ) {
                             deleteMutation.mutate(t.id);
                           }
                         }}
@@ -387,6 +597,13 @@ export default function LinkedActionsTab({
         courierId={courierId}
         onCreateTicket={creationBlockedReason ? undefined : (action) => openCreate(action)}
         readOnly={readOnly}
+      />
+
+      <CreateTaskDialog
+        open={taskDialogOpen}
+        onOpenChange={setTaskDialogOpen}
+        courierId={courierId}
+        organizationId={organizationId}
       />
 
       <CreateTicketDialog

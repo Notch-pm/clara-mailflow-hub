@@ -192,7 +192,7 @@ describe("strippedTitle et truncate", () => {
 });
 
 describe("PUSH_TITLES", () => {
-  it("couvre les six types que Clara produit aujourd'hui", () => {
+  it("couvre les neuf types que Clara produit aujourd'hui", () => {
     expect(Object.keys(PUSH_TITLES).sort()).toEqual([
       "action_assigned",
       "action_unassigned",
@@ -200,6 +200,9 @@ describe("PUSH_TITLES", () => {
       "courier_returned",
       "courier_transferred",
       "new_courier",
+      "task_assigned",
+      "task_completed",
+      "task_reminded",
     ]);
   });
 });

@@ -25,7 +25,7 @@ export function NotificationBell() {
     markRead(id);
     setPopoverOpen(false);
     if (!resourceId) return;
-    if (type === "action_assigned" || type === "action_unassigned") {
+    if (type === "action_assigned" || type === "action_unassigned" || type.startsWith("task_")) {
       // Même permalien que le mail : la page détail lit ?tab au montage, alors
       // que /a-instruire?open= purge les paramètres d'URL à l'ouverture.
       navigate(`/courrier/${resourceId}?tab=actions`);
@@ -134,6 +134,16 @@ export function NotificationBell() {
                               action
                             </span>
                           )}
+                          {(notif.type === "task_assigned" || notif.type === "task_reminded") && (
+                            <span className="inline-flex items-center rounded px-1 py-0 text-[10px] font-medium bg-primary/15 text-primary border border-primary/30">
+                              {notif.type === "task_reminded" ? "relance tâche" : "tâche"}
+                            </span>
+                          )}
+                          {notif.type === "task_completed" && (
+                            <span className="inline-flex items-center rounded px-1 py-0 text-[10px] font-medium bg-success/15 text-success border border-success/30">
+                              tâche terminée
+                            </span>
+                          )}
                           {notif.type === "action_unassigned" && (
                             <span className="inline-flex items-center rounded px-1 py-0 text-[10px] font-medium bg-muted text-muted-foreground border border-border">
                               retirée
@@ -152,6 +162,12 @@ export function NotificationBell() {
                             ? ((notif.title ?? "").replace(/^Relance : /, "") || "Relance du service courrier")
                             : notif.type === "action_assigned"
                             ? ((notif.title ?? "").replace(/^Action affectée : /, "") || "Action affectée")
+                            : notif.type === "task_assigned"
+                            ? ((notif.title ?? "").replace(/^Tâche affectée : /, "") || "Tâche affectée")
+                            : notif.type === "task_reminded"
+                            ? ((notif.title ?? "").replace(/^Relance : /, "") || "Relance d'une tâche")
+                            : notif.type === "task_completed"
+                            ? ((notif.title ?? "").replace(/^Tâche terminée : /, "") || "Tâche terminée")
                             : notif.type === "action_unassigned"
                             ? ((notif.title ?? "").replace(/^Affectation retirée : /, "") || "Affectation retirée")
                             : (notif.title ?? "Nouveau courrier")}

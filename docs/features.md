@@ -296,7 +296,8 @@ l'échéance (jours civils de Paris, pas de tranches de 24 h).
 
 Clara ne remplace pas les applications métier qui exécutent les demandes d'action. Elle sert de point de suivi côté courrier :
 
-- **une action EST une demande fondée sur une démarche**, déposée chez qui l'instruit : Iris pour les démarches du référentiel, le partenaire pour les démarches Arpège. Clara conserve le lien et l'état de résolution utiles à la réponse ;
+- **une demande est fondée sur une démarche**, déposée chez qui l'instruit : Iris pour les démarches du référentiel, le partenaire pour les démarches Arpège. Clara conserve le lien et l'état de résolution utiles à la réponse ;
+- **une tâche** (depuis le 2026-10-09) est une action **interne** de la collectivité, jamais transmise : voir « Tâches » ci-dessous ;
 - l'analyse IA peut recommander des actions, mais l'agent reste responsable de la décision et du circuit retenu.
 
 **Pas d'action tant que le courrier n'est pas orienté** (depuis le 2026-09-24) : sans organisation
@@ -305,6 +306,30 @@ Actions grise « Créer », affiche le motif et retire la création depuis les a
 base tient la même règle — voir § 5 et `docs/data-model.md` § `action_tickets`.
 
 **Plus d'action « libre » depuis le 2026-09-11** : la démarche est obligatoire dans le dialogue, qui ne propose que les démarches Iris ou partenaire (`procedureOrigin`, `supabase/functions/_shared/procedure-origin.ts`, réexporté par `src/lib/procedure-origin.ts` — une démarche sans origine, embryon local, n'est plus proposée). Avec elle disparaissent les champs que Clara ajoutait de son côté — **titre de l'action, affecté à, descriptif** — et la modification d'un ticket : une demande instruite ailleurs ne s'édite pas dans Clara (elle se supprime, ou se renvoie si le dépôt a échoué). Les colonnes `title` / `description` / `assignee_id` d'`action_tickets` ne servent plus qu'à afficher les tickets antérieurs ; l'edge `send-assignment-notification` n'a donc plus d'appelant.
+
+### Tâches (depuis le 2026-10-09)
+
+Le bouton « Créer » de l'onglet Actions liées propose **Demande** (dialogue des démarches) ou
+**Tâche** (`CreateTaskDialog.tsx`) : intitulé (obligatoire), commentaire (facultatif), agent
+affecté — un **membre** de l'organisation, ou une **autre adresse mail** avec un nom facultatif.
+Réservée aux éditeurs (RLS `is_editor_of`) ; l'espace élu les affiche en lecture seule.
+
+- **Mail à l'affecté** (`action-task-mail`, `notify` à la création) par le serveur d'envoi de
+  l'organisation : contenu **minimal** — intitulé, commentaire, référence (`chrono`) du courrier,
+  collectivité, auteur. **Jamais** l'objet du courrier, l'usager ni les pièces : le lien circule
+  par mail. Un affecté membre reçoit en plus une notification in-app (`task_assigned`, donc un
+  push) et un lien « Ouvrir dans Clara ».
+- **Clôture sans connexion** : le bouton du mail ouvre `/tache/:token` (`TaskPublicPage`), qui
+  affiche la tâche et un champ de note facultatif ; seul le bouton « Marquer comme terminée » clôt
+  (ouvrir la page ne modifie rien — les scanners de liens des messageries l'ouvrent aussi). La
+  clôture consigne `task_completed` dans l'historique et notifie l'auteur.
+- **À l'écran** : « Marquer terminée » / « Rouvrir », et **« Relancer »** — un nouveau mail
+  (`remind`), avec un lien neuf ; les liens précédents restent valides tant que la tâche est
+  ouverte. Pas de relance automatique (choix du 2026-10-09).
+- Sans serveur d'envoi, la tâche est créée quand même et l'écran avertit ; « Relancer » renverra
+  le mail une fois le SMTP recopié du Socle.
+- Le brouillon IA de réponse les voit comme « Tâche interne : … [en cours | réalisée] », sans
+  référence citable.
 
 ### Dépôt dans Iris (depuis le 2026-08-23)
 
@@ -456,7 +481,9 @@ Variables (à insérer par le menu « Variables » de l'éditeur) :
 ## 8. Notifications
 
 - Table `notifications` + cloche `NotificationBell.tsx` + hook `useNotifications`.
-- Six types aujourd'hui (`courier_returned` « Renvoyé : … » et `courier_reminder` « Relance : … »
+- Neuf types aujourd'hui — dont, depuis le 2026-10-09, `task_assigned` / `task_reminded`
+  (edge `action-task-mail`, à l'agent affecté d'une tâche s'il est membre) et `task_completed`
+  (edge `action-task-public`, à l'auteur de la tâche close depuis le lien) ; les six autres (`courier_returned` « Renvoyé : … » et `courier_reminder` « Relance : … »
   depuis le 2026-10-01, insérés par `courierRoutingService`, sauf pour l'auteur du geste) : `new_courier` (fan-out à tous les membres actifs de l'org, par
   `fn_create_courier_notifications`, sauf l'auteur du courrier), `courier_transferred`
   (inséré côté client depuis `useCourierWorkspace`), `action_assigned` et `action_unassigned`

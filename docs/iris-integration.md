@@ -16,11 +16,18 @@ La frontière n'est pas une règle de Clara, elle tombe du contrat : `socle_proc
 |---|---|
 | Sur une démarche du référentiel (`procedures.socle_id` renseigné) | **Iris** |
 | Sur une démarche **Arpège** (`arpege_config_fields`) | Arpège, flux inchangé |
+| **Tâche** (`kind = 'tache'`, depuis le 2026-10-09) | **Nulle part** : action interne, suivie dans Clara |
 
 **La « demande libre » n'existe plus depuis le 2026-09-11.** Le dialogue exige une démarche, et
 ne propose que celles qu'un système instruit — Iris ou partenaire (`src/lib/procedure-origin.ts`).
 Une action sans démarche était un pense-bête sans suite : ni Iris ni le partenaire ne la voyaient,
 et Clara ne savait pas la faire avancer.
+
+**La tâche (2026-10-09) n'est pas une demande libre ressuscitée** : c'est une action interne
+avec un moyen de la faire avancer — un agent affecté (membre ou simple adresse) la reçoit par
+mail, avec un lien qui la marque terminée sans connexion, et l'agent du courrier peut relancer
+(`docs/features.md` § 4). Elle ne concerne pas l'usager et ne part jamais chez Iris :
+`push-iris-request` la saute explicitement (`skipped: true, reason: "tache"`).
 
 Le refus de `push-iris-request` sur une action sans démarche du référentiel **reste** : il couvre
 les tickets d'avant cette date, les démarches Arpège (sans `socle_id`) et les appels directs. Ce

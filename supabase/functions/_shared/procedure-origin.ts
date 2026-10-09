@@ -7,11 +7,13 @@
 // recopié par sync-socle-referentiel dans external_reference_id +
 // arpege_config_fields).
 //
-// Depuis la suppression de la « demande libre » (2026-09-11), une action de
-// courrier EST une demande adressée à un système qui l'instruit : Iris pour les
-// démarches du référentiel, le partenaire pour les démarches Arpège. Une
-// démarche que personne n'instruit (embryon local resté sans origine) ne
-// donnerait qu'un pense-bête sans suite : elle n'est plus proposée.
+// Depuis la suppression de la « demande libre » (2026-09-11), une DEMANDE de
+// courrier est adressée à un système qui l'instruit : Iris pour les démarches
+// du référentiel, le partenaire pour les démarches Arpège. Une démarche que
+// personne n'instruit (embryon local resté sans origine) ne donnerait qu'un
+// pense-bête sans suite : elle n'est plus proposée. Le travail interne passe
+// par l'autre sorte d'action, la TÂCHE (`kind = 'tache'`, 2026-10-09), sans
+// démarche, affectée et suivie par mail (`_shared/actionTask.ts`).
 
 export type ProcedureOrigin = "arpege" | "iris" | "local";
 

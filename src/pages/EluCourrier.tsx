@@ -13,6 +13,7 @@ import { useEluCourrierFil } from "@/hooks/useEluCourrierFil";
 import { SLA_AXIS_LABELS, formatDay, parisDay, slaLabel } from "@/lib/courier-sla";
 import { filMeta } from "@/lib/fil";
 import { irisStatusLabel } from "@/lib/iris";
+import { taskAssigneeLabel } from "@/lib/action-task";
 import { readableTextColor } from "@/lib/tag-color";
 import { cn } from "@/lib/utils";
 import { relationLabel } from "@/services/courierRelationService";
@@ -365,12 +366,26 @@ export default function EluCourrier() {
         ) : (
           <div className="flex flex-col gap-2">
             {detail.tickets.map((t) => {
-              const title = t.procedure?.name ?? t.title ?? "Action";
-              const metaLine = [
-                t.iris_reference ?? t.arpege_demande_ref,
-                irisStatusLabel(t.iris_status) ?? t.arpege_demande_status,
-                `créée le ${formatDate(t.created_at)}`,
-              ]
+              const isTask = t.kind === "tache";
+              const title = isTask
+                ? `Tâche : ${t.title ?? "—"}`
+                : t.procedure?.name ?? t.title ?? "Action";
+              // Une tâche (action interne) se lit : à qui, et où elle en est.
+              const metaLine = (
+                isTask
+                  ? [
+                      taskAssigneeLabel(t),
+                      t.status === "done"
+                        ? `terminée le ${formatDate(t.completed_at ?? t.updated_at)}`
+                        : "à faire",
+                      `créée le ${formatDate(t.created_at)}`,
+                    ]
+                  : [
+                      t.iris_reference ?? t.arpege_demande_ref,
+                      irisStatusLabel(t.iris_status) ?? t.arpege_demande_status,
+                      `créée le ${formatDate(t.created_at)}`,
+                    ]
+              )
                 .filter(Boolean)
                 .join(" · ");
               // Une démarche déposée dans Iris s'ouvre dans l'espace élu ; une

@@ -14,6 +14,7 @@ Toute nouvelle route doit être ajoutée ici dans la même PR que son ajout dans
 | `/activer-compte` | `ActivateAccount` | Aucun | Lien d'invitation / activation. |
 | `/accessibilite` | `Accessibility` | Aucun | Déclaration d'accessibilité. |
 | `/portail/:token` | `PortalFormPage` | Aucun | Formulaire portail public, sécurisé par token applicatif. |
+| `/tache/:token` | `TaskPublicPage` | Aucun | Lien du mail d'une tâche : la marquer terminée sans connexion (edge `action-task-public`). |
 
 ## Super-admin (`SuperAdminRoute` — requiert `users.is_superadmin = true`)
 

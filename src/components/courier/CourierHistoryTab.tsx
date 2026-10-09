@@ -22,6 +22,9 @@ import {
   RotateCcw,
   TicketPlus,
   TicketX,
+  ListChecks,
+  BellRing,
+  CheckCircle2,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { COURIER_EVENT_LABELS, describeCourierEvent } from "@/lib/courier-history";
@@ -65,6 +68,10 @@ const ICONS: Record<string, JSX.Element> = {
   ticket_created:        <TicketPlus className="h-3.5 w-3.5" />,
   ticket_updated:        <MessageSquare className="h-3.5 w-3.5" />,
   ticket_deleted:        <TicketX className="h-3.5 w-3.5" />,
+  task_created:          <ListChecks className="h-3.5 w-3.5" />,
+  task_reminded:         <BellRing className="h-3.5 w-3.5" />,
+  task_completed:        <CheckCircle2 className="h-3.5 w-3.5" />,
+  task_reopened:         <RotateCcw className="h-3.5 w-3.5" />,
 };
 
 

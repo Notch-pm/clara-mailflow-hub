@@ -43,6 +43,7 @@ Pour servir un document privé : passer par l'edge function `storage-documents` 
 - `send-password-reset` : vérifie que la cible appartient à une org commune avec l'appelant (ou que l'appelant est superadmin).
 - `invite-user` : exige `admin` de l'org cible.
 - `sync-arpege-*` / `test-arpege-connection` : exigent admin de l'`organization_id` cible spécifiquement (ou service role, ou `x-cron-secret` pour le cron).
+- `action-task-public` (2026-10-09) est **publique intentionnellement** : l'agent affecté d'une tâche n'a pas forcément de compte. Garde = jeton du lien reçu par mail — 256 bits aléatoires (force brute hors de portée, d'où l'absence de limite de débit), stocké **haché** (SHA-256, `action_task_tokens`, aucune policy RLS), **révoqué** à la clôture de la tâche, détruit avec elle. Tout passe en POST : un scanner de liens qui ouvre la page ne clôt rien. Contenu servi **minimal** (intitulé, commentaire, chrono, collectivité, auteur) : ni objet du courrier, ni usager, ni pièces.
 - Toutes : vérifient l'auth **avant** toute opération.
 
 ## Secrets (à configurer côté Supabase / Lovable Cloud)

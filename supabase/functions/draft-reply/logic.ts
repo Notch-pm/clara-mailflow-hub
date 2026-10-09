@@ -106,6 +106,8 @@ export interface DraftTicket {
   status?: string | null;
   /** Référence rendue par Iris : la SEULE que la lettre ait le droit de citer. */
   irisReference?: string | null;
+  /** `tache` = action interne de la collectivité (jamais transmise), sinon une demande. */
+  kind?: string | null;
 }
 
 export interface DraftAttachment {
@@ -306,6 +308,14 @@ const FINAL_INSTRUCTION =
 export function buildTicketsBlock(tickets: DraftTicket[]): string {
   if (tickets.length === 0) return "Aucune action liée.";
   const lines = tickets.map((t) => {
+    if (t.kind === "tache") {
+      // Travail interne de la collectivité : la lettre peut dire qu'il est engagé
+      // ou fait, sans jamais citer de référence (il n'y en a pas).
+      let task = `- Tâche interne : ${(t.title ?? "").trim() || "Tâche"}`;
+      const detail = (t.description ?? "").trim();
+      if (detail) task += ` : ${detail}`;
+      return `${task} [${t.status === "done" ? "réalisée" : "en cours"}]`;
+    }
     const name = (t.procedureName ?? "").trim() || (t.title ?? "").trim() || "Action";
     let line = `- ${name}`;
     const title = (t.title ?? "").trim();

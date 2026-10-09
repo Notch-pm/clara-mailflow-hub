@@ -125,6 +125,7 @@ interface ExtractRow {
 }
 
 interface TicketRow {
+  kind: string | null;
   title: string | null;
   description: string | null;
   status: string | null;
@@ -254,7 +255,7 @@ Deno.serve(async (req) => {
         .eq("organization_id", orgId)
         .order("created_at", { ascending: true }),
       admin.from("action_tickets")
-        .select("title, description, status, iris_reference, procedure:procedures(name, description)")
+        .select("kind, title, description, status, iris_reference, procedure:procedures(name, description)")
         .eq("courier_id", courierId)
         .eq("organization_id", orgId),
       // Les réponses déjà faites : un « Suivi » rédigé sans elles promet une
@@ -302,6 +303,7 @@ Deno.serve(async (req) => {
       description: t.description ?? null,
       status: t.status ?? null,
       irisReference: t.iris_reference ?? null,
+      kind: t.kind ?? null,
     }));
 
     const previousReplies: DraftPreviousReply[] = ((threadRes.data ?? []) as ReplyRow[])

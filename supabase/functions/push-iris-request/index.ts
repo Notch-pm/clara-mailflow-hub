@@ -74,7 +74,7 @@ Deno.serve(async (req) => {
     // ── Le ticket, et tout ce qui compose la demande, relus côté serveur ──
     const { data: ticket, error: ticketErr } = await supabaseAdmin
       .from("action_tickets")
-      .select("id, organization_id, courier_id, procedure_id, title, description, socle_data, socle_organization_id, iris_idempotency_key, iris_request_id, arpege_demande_ref")
+      .select("id, organization_id, courier_id, procedure_id, title, description, socle_data, socle_organization_id, iris_idempotency_key, iris_request_id, arpege_demande_ref, kind")
       .eq("id", ticket_id)
       .maybeSingle();
     if (ticketErr) throw ticketErr;
@@ -100,6 +100,8 @@ Deno.serve(async (req) => {
     // create-arpege-demande, elle n'a rien à faire dans Iris — y compris quand
     // la démarche vient du Socle (`external_source = 'socle'`, `partner`
     // recopié par la sync). Même règle que le dialogue (procedureOrigin).
+    // Une tâche est une action INTERNE : elle ne part jamais chez Iris.
+    if (ticket.kind === "tache") return json({ skipped: true, reason: "tache" });
     if (ticket.arpege_demande_ref) return json({ skipped: true, reason: "partenaire" });
     if (ticket.procedure_id) {
       const { data: origin } = await supabaseAdmin

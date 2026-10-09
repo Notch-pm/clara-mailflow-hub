@@ -44,6 +44,12 @@ export type Database = {
           arpege_demande_ref: string | null
           arpege_demande_status: string | null
           assignee_id: string | null
+          assignee_email: string | null
+          assignee_name: string | null
+          completed_at: string | null
+          completed_by: string | null
+          completed_via: string | null
+          completion_note: string | null
           courier_id: string
           created_at: string
           created_by: string | null
@@ -59,8 +65,11 @@ export type Database = {
           iris_synced_at: string | null
           iris_url: string | null
           iris_version: number | null
+          kind: string
+          last_reminded_at: string | null
           organization_id: string
           procedure_id: string | null
+          reminder_count: number
           socle_data: Json | null
           socle_organization_id: string | null
           status: string
@@ -71,6 +80,12 @@ export type Database = {
           arpege_demande_ref?: string | null
           arpege_demande_status?: string | null
           assignee_id?: string | null
+          assignee_email?: string | null
+          assignee_name?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
+          completed_via?: string | null
+          completion_note?: string | null
           courier_id: string
           created_at?: string
           created_by?: string | null
@@ -86,8 +101,11 @@ export type Database = {
           iris_synced_at?: string | null
           iris_url?: string | null
           iris_version?: number | null
+          kind?: string
+          last_reminded_at?: string | null
           organization_id: string
           procedure_id?: string | null
+          reminder_count?: number
           socle_data?: Json | null
           socle_organization_id?: string | null
           status?: string
@@ -98,6 +116,12 @@ export type Database = {
           arpege_demande_ref?: string | null
           arpege_demande_status?: string | null
           assignee_id?: string | null
+          assignee_email?: string | null
+          assignee_name?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
+          completed_via?: string | null
+          completion_note?: string | null
           courier_id?: string
           created_at?: string
           created_by?: string | null
@@ -113,8 +137,11 @@ export type Database = {
           iris_synced_at?: string | null
           iris_url?: string | null
           iris_version?: number | null
+          kind?: string
+          last_reminded_at?: string | null
           organization_id?: string
           procedure_id?: string | null
+          reminder_count?: number
           socle_data?: Json | null
           socle_organization_id?: string | null
           status?: string
@@ -122,6 +149,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "action_tickets_completed_by_fkey"
+            columns: ["completed_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "action_tickets_assignee_id_fkey"
             columns: ["assignee_id"]

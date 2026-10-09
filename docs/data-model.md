@@ -595,9 +595,13 @@ les créer, ni les modifier, ni les supprimer (policies `integrations_superadmin
 | `socle_synced_at` / `socle_updated_at` | timestamptz | **Arpège** (2026-10-02) : recopie depuis le Socle (`sync-socle-referentiel` → RPC de service `sync_arpege_integration_from_socle`). `socle_synced_at` = dernière relecture au Socle. Plus aucune ligne manuelle (vérifié le 2026-10-02, transition retirée) : un Socle qui répond 200 sans configuration complète **suspend** la ligne (`is_active = false`, RPC de service `suspend_arpege_integration_from_socle`) sans effacer les identifiants, pour que le suivi des demandes déjà déposées continue |
 
 #### `action_tickets`
-Demandes dérivées d'un courrier. Depuis le 2026-09-11 elles sont **toujours** fondées sur une
-démarche — Iris ou partenaire ; les colonnes restées nullables ne le sont que pour les tickets
-d'avant (cf. `docs/features.md` § 4).
+Actions dérivées d'un courrier, de deux sortes (`kind`, 2026-10-09) :
+- **`demande`** : depuis le 2026-09-11 **toujours** fondée sur une démarche — Iris ou
+  partenaire ; les colonnes restées nullables ne le sont que pour les tickets d'avant (cf.
+  `docs/features.md` § 4) ;
+- **`tache`** : action interne, jamais transmise. Intitulé (`title`), commentaire
+  (`description`), agent affecté, statut `open` / `done`. CHECK `action_tickets_tache_check` :
+  titre non vide, `procedure_id` nul, `assignee_email` non vide, statut dans la liste.
 
 | Colonne | Type | Notes |
 |---|---|---|
@@ -605,8 +609,12 @@ d'avant (cf. `docs/features.md` § 4).
 | `procedure_id` | uuid FK → procedures | nullable en DB pour les tickets d'avant le 2026-09-11 ; **exigé par le formulaire** — sans démarche, personne n'instruit la demande |
 | `title` | text | **plus saisi** : affiché seulement s'il est renseigné (tickets d'avant) |
 | `description` | text | idem — plus saisi, affiché s'il est renseigné |
-| `assignee_id` | uuid FK → users | **plus saisi** : l'affectation a disparu avec la demande libre ; affiché s'il est renseigné |
-| `status` | text | `'open'` par défaut |
+| `assignee_id` | uuid FK → users | demande : **plus saisi** depuis la fin de la demande libre, affiché s'il est renseigné. Tâche : l'agent affecté quand c'est un membre |
+| `status` | text | `'open'` par défaut. Tâche : `open` / `done` uniquement |
+| `kind` | text | `'demande'` (défaut, tous les tickets d'avant) ou `'tache'`. **Immuable** (trigger `trg_action_tickets_task_status`) |
+| `assignee_email` / `assignee_name` | text | tâche : destinataire figé à la création. Membre de Clara ⇒ `assignee_id` renseigné **aussi** ; simple adresse ⇒ seuls ces deux champs |
+| `completed_at` / `completed_by` / `completed_via` / `completion_note` | timestamptz / uuid FK → users / text (`app` \| `lien`) / text (≤ 1000) | clôture d'une tâche. `completed_by` nul quand elle vient du lien du mail. Le trigger `trg_action_tickets_task_status` pose la date au passage à `done`, **révoque les jetons** de la tâche, et efface ces quatre colonnes à la réouverture |
+| `last_reminded_at` / `reminder_count` | timestamptz / int | relances par mail (`action-task-mail`, mode `remind`), comptées seulement si elles ont atteint l'affecté |
 | `socle_data` | jsonb | démarche du référentiel : demandeur déclaré + réponses au formulaire + pièces sélectionnées (`src/lib/socle-form.ts`) |
 | `socle_organization_id` | uuid FK → socle_organizations | **organisation destinataire choisie par l'agent** — commande la liste des démarches proposées et l'organisme transmis à Iris. Nullable : à null, on retombe sur celle du courrier (tickets antérieurs au 2026-09-10). Adresser une demande à un service ne déplace pas le courrier. Posée aussi sur les tickets **Arpège** depuis le 2026-10-02 (`create-arpege-demande`) |
 | `arpege_demande_ref` / `arpege_demande_status` | text | |
@@ -635,6 +643,15 @@ antérieures à la règle restent sur des courriers qui seraient refusés aujour
 | `iris_synced_at` / `iris_last_attempt_at` | timestamptz | |
 | `iris_last_error` | text | message en français du dernier échec de dépôt ; non nul ⇒ l'onglet Actions liées propose « Renvoyer ». NULL après un dépôt réussi |
 | `iris_attachments_error` | text | pièces réclamées par le formulaire de la démarche qu'Iris a refusées au dernier dépôt (format hors liste, 25 Mo, fichier introuvable) : la demande est **déposée mais incomplète**, et la ligne du ticket le dit. NULL = rien à signaler — **jamais** la preuve que tout est arrivé : les demandes d'avant le 2026-09-11 sont parties sans aucune pièce |
+
+#### `action_task_tokens`
+Jetons des liens « Marquer comme terminée » envoyés par mail pour une tâche (2026-10-09). Un
+jeton **par mail** (création, puis chaque relance) : tous restent valides tant que la tâche est
+ouverte, et sont révoqués (`revoked_at`) dès qu'elle est terminée — par le lien ou à l'écran.
+Seul le **SHA-256 hexadécimal** du jeton est stocké (`token_hash`, unique). RLS activée **sans
+aucune policy** : seules les edge functions `action-task-mail` / `action-task-public` (service
+role) y accèdent. Colonnes : `ticket_id` (FK cascade), `organization_id`, `token_hash`,
+`created_at`, `revoked_at`.
 
 #### `notifications`
 Notifications in-app **et** boîte d'envoi push. RLS scoped `user_id = auth.uid()`.

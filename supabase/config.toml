@@ -30,6 +30,12 @@ verify_jwt = false
 [functions.portal-form]
 verify_jwt = false
 
+# Page publique /tache/:token (lien du mail d'une tâche) : l'agent affecté n'a
+# pas forcément de compte. La garde est le jeton, haché en base et révoqué à la
+# clôture (voir la fonction et docs/security.md).
+[functions.action-task-public]
+verify_jwt = false
+
 # Appelée de serveur à serveur par portal-api de Nora, qui n'a pas de JWT
 # Supabase : la garde est la clé NORA_INTAKE_KEY (Bearer), vérifiée dans la fonction.
 [functions.nora-courrier]

@@ -48,6 +48,7 @@ import OrgSettings from "@/pages/OrgSettings";
 import BulkImport from "@/pages/BulkImport";
 import NotFound from "@/pages/NotFound";
 import PortalFormPage from "@/pages/PortalFormPage";
+import TaskPublicPage from "@/pages/TaskPublicPage";
 import Accessibility from "@/pages/Accessibility";
 import { PushBootstrap } from "@/hooks/usePushSubscription";
 import { Loader2 } from "lucide-react";
@@ -200,6 +201,7 @@ const App = () => (
               <Route path="/activer-compte" element={<ActivateAccount />} />
               <Route path="/accessibilite" element={<Accessibility />} />
               <Route path="/portail/:token" element={<PortalFormPage />} />
+              <Route path="/tache/:token" element={<TaskPublicPage />} />
 
               {/* Super Admin routes */}
               <Route path="/superadmin" element={<SuperAdminRoute />}>

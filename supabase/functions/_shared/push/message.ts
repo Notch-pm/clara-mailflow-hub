@@ -44,6 +44,9 @@ export const PUSH_TITLES: Record<string, string> = {
   courier_reminder: "Relance du service courrier",
   action_assigned: "Action affectée",
   action_unassigned: "Affectation retirée",
+  task_assigned: "Tâche affectée",
+  task_reminded: "Relance d'une tâche",
+  task_completed: "Tâche terminée",
 };
 
 /** Repli pour un type inconnu — une version ultérieure ne doit pas casser la carte. */
@@ -60,6 +63,9 @@ const TITLE_PREFIXES: Record<string, RegExp> = {
   courier_reminder: /^Relance\s*:\s*/,
   action_assigned: /^Action affectée\s*:\s*/,
   action_unassigned: /^Affectation retirée\s*:\s*/,
+  task_assigned: /^Tâche affectée\s*:\s*/,
+  task_reminded: /^Relance\s*:\s*/,
+  task_completed: /^Tâche terminée\s*:\s*/,
 };
 
 /** Corps par défaut quand la ligne n'a pas de `title` exploitable. */
@@ -70,6 +76,9 @@ const EMPTY_BODY: Record<string, string> = {
   courier_reminder: "Le service courrier vous relance sur un courrier.",
   action_assigned: "Une action vous a été affectée.",
   action_unassigned: "Une affectation vous a été retirée.",
+  task_assigned: "Une tâche vous a été confiée.",
+  task_reminded: "Une tâche qui vous est confiée attend d'être réalisée.",
+  task_completed: "Une tâche que vous avez créée est terminée.",
 };
 
 /** Longueur maximale du corps : au-delà, les systèmes tronquent eux-mêmes, mal. */
@@ -104,7 +113,7 @@ export function strippedTitle(type: string, title: string | null): string {
 export function notificationPath(type: string, resourceId: string | null): string {
   const id = text(resourceId);
   if (!id) return "/";
-  if (type === "action_assigned" || type === "action_unassigned") {
+  if (type === "action_assigned" || type === "action_unassigned" || type.startsWith("task_")) {
     return `/courrier/${id}?tab=actions`;
   }
   return `/a-instruire?open=${id}`;
