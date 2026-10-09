@@ -56,6 +56,7 @@ function selectedProcedure(overrides: Partial<SelectedProcedure> = {}): Selected
   return {
     id: "p1",
     name: "Objets trouvés",
+    source: "socle",
     fields: extractFillableFields(FORM_SCHEMA),
     knowledge: "",
     ...overrides,
@@ -153,7 +154,7 @@ describe("extractFillableFields / buildPrefillTool — champ `location`", () => 
   it("le lieu d'intervention est préremplissable, demandé comme une adresse texte", () => {
     const fields = extractFillableFields(LIEU);
     expect(fields.map((f) => f.prefillKey)).toEqual(["intervention_lieu"]);
-    const tool = buildPrefillTool([{ id: "p1", name: "Espace public", fields, knowledge: "" }]);
+    const tool = buildPrefillTool([{ id: "p1", name: "Espace public", source: "socle", fields, knowledge: "" }]);
     expect(JSON.stringify(tool.toolParameters)).toContain("adresse du lieu concerné");
   });
 });

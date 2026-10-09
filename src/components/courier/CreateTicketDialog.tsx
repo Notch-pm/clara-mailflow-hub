@@ -89,6 +89,8 @@ interface Props {
   initialArpegeValues?: Record<string, string>;
   /** Préremplissage Socle de l'action suggérée (audience + valeurs par clé). */
   initialSoclePrefill?: SoclePrefill | null;
+  /** Préremplissage du formulaire métier Arpège de l'action suggérée (valeurs par DataId). */
+  initialArpegePrefill?: Record<string, string> | null;
   /** Organisation destinataire suggérée par l'analyse IA (id du miroir Socle). */
   initialSocleOrganizationId?: string | null;
   /** Organisation gestionnaire du courrier — destinataire par défaut de la demande. */
@@ -424,6 +426,24 @@ function buildFormValues(
     .filter((e) => e.valeur !== null && e.valeur !== "");
 }
 
+/**
+ * Valeurs proposées par l'analyse pour le formulaire métier, réduites aux
+ * champs que ce formulaire saisit réellement (ni pièce jointe, ni identité) :
+ * un `DataId` inconnu — schéma Arpège changé depuis l'analyse — est ignoré.
+ */
+function arpegeBusinessPrefill(
+  components: ArpegeFormComponent[],
+  prefill: Record<string, string>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const { component: c } of flattenComponents(components)) {
+    if (c.Type === "Pieces_jointes" || c.Type === "Identite") continue;
+    const value = prefill[c.DataId];
+    if (typeof value === "string" && value.trim()) out[c.DataId] = value;
+  }
+  return out;
+}
+
 function businessRequiredMet(
   components: ArpegeFormComponent[],
   values: Record<string, unknown>,
@@ -454,6 +474,7 @@ export default function CreateTicketDialog({
   initialProcedureId,
   initialArpegeValues,
   initialSoclePrefill,
+  initialArpegePrefill,
   initialSocleOrganizationId,
   courierSocleOrganizationId,
 }: Props) {
@@ -566,7 +587,12 @@ export default function CreateTicketDialog({
   // Démarche du référentiel : le dépôt exige l'organisation qui l'a activée.
   const arpegeNeedsOrg = isArpege && !!selectedProcedure?.socle_id && !socleOrgId;
   const arpegeFields = selectedProcedure?.arpege_config_fields?.ConfigInfoUsagerObligs ?? [];
-  const formComponents = selectedProcedure?.arpege_config_fields?.FormComponents ?? [];
+  // Mémorisé : le préremplissage en dépend, une nouvelle référence à chaque rendu
+  // relancerait l'effet pour rien.
+  const formComponents = useMemo(
+    () => selectedProcedure?.arpege_config_fields?.FormComponents ?? [],
+    [selectedProcedure],
+  );
 
   // Démarche Socle « native » (sans config Arpège) : rendu du contrat Socle
   // (requester_config + form_schema).
@@ -658,6 +684,9 @@ export default function CreateTicketDialog({
       setArpegeValues(
         mergeNonEmpty(contactToArpegeValues(contact, senderParticipant), initialArpegeValues ?? {}),
       );
+      // Formulaire métier : seulement pour la démarche de l'action suggérée.
+      const fromSuggestion = procedureId === initialProcedureId ? initialArpegePrefill : null;
+      if (fromSuggestion) setBusinessValues(arpegeBusinessPrefill(formComponents, fromSuggestion));
       return;
     }
     if (!showSocleForm) return;
@@ -687,7 +716,7 @@ export default function CreateTicketDialog({
     open, procedureId, selectedProcedure, isArpege, showSocleForm,
     socleConfig, socleAudiencesList, socleSchema, loadingParticipants,
     senderParticipant, senderContact, initialArpegeValues, initialSoclePrefill,
-    initialProcedureId,
+    initialArpegePrefill, formComponents, initialProcedureId,
   ]);
 
   // Sélection (ou désélection avec "") d'une démarche : purge des formulaires

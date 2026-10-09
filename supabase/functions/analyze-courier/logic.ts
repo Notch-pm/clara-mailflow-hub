@@ -16,6 +16,8 @@
 // vraie défense — un schéma d'outil n'a JAMAIS empêché un modèle d'inventer une
 // valeur bien formée et fausse.
 
+import { procedureOrigin } from "../_shared/procedure-origin.ts";
+
 // ── Catalogue de démarches (appel 1 — l'analyse) ────────────────────────────
 
 export interface ProcedureCatalogEntry {
@@ -171,6 +173,113 @@ export function extractFillableFields(rawFormSchema: unknown): FillableField[] {
   return out;
 }
 
+// ── Champs remplissables d'un formulaire métier Arpège ──────────────────────
+//
+// Le formulaire d'une démarche Arpège n'est pas un `form_schema` Socle : ce sont
+// les `FormComponents` d'`arpege_config_fields`, que le dialogue de création
+// rend (`ArpegeBusinessForm`) et dont les valeurs partent à Arpège indexées par
+// `DataId`. Les champs retenus ici sont EXACTEMENT ceux que le dialogue saisit,
+// avec le même rendu — sans quoi l'IA remplirait un champ que l'écran n'affiche
+// pas, ou rendrait un code là où l'écran attend un texte :
+//   • Bloc → on descend, son libellé devient celui des champs (les feuilles
+//     Arpège ont souvent un `Libelle` vide : « Nature du signalement » est porté
+//     par le bloc) ;
+//   • Pieces_jointes, Label_long, Identite, et les feuilles voisines d'une pièce
+//     jointe (même règle que `flattenComponents`) → écartés ;
+//   • Combo_autre / RadiobuttonList AVEC de vraies options (`{Code, Libelle}`)
+//     → liste ; sinon texte libre, comme à l'écran ;
+//   • Date → date, Chiffre → nombre, Adresse → une ligne d'adresse, le reste → texte.
+//
+// ⚠️ `Value` n'est PAS une liste d'options quand il contient des chaînes ou une
+// adresse : `create-arpege-demande` recopie ces composants depuis une DEMANDE
+// créée (« Machine à laver… », « 233 rue Saint Pry, Béthune »). Ce sont les
+// valeurs d'un autre usager : elles ne doivent jamais servir de défaut.
+
+interface ArpegeComponentLike {
+  DataId?: unknown;
+  Code?: unknown;
+  Type?: unknown;
+  Libelle?: unknown;
+  LibelleAide?: unknown;
+  Value?: unknown;
+  Components?: unknown;
+}
+
+const ARPEGE_OPTION_TYPES = new Set(["Combo_autre", "RadiobuttonList"]);
+const ARPEGE_SKIPPED_TYPES = new Set(["Pieces_jointes", "Label_long", "Identite"]);
+
+function arpegeOptions(raw: unknown): FillableFieldOption[] {
+  if (!Array.isArray(raw)) return [];
+  const out: FillableFieldOption[] = [];
+  for (const v of raw) {
+    if (!v || typeof v !== "object") continue;
+    const o = v as Record<string, unknown>;
+    const code = o.Code ?? o.code;
+    if (typeof code !== "string" || code.length === 0) continue;
+    const label = o.Libelle ?? o.libelle ?? o.Label;
+    out.push({ value: code, label: typeof label === "string" && label ? label : code });
+  }
+  return out;
+}
+
+function arpegeFieldType(type: string, options: FillableFieldOption[]): string {
+  if (ARPEGE_OPTION_TYPES.has(type) && options.length > 0) return "select";
+  switch (type) {
+    case "Date":
+      return "date";
+    case "Chiffre":
+      return "number";
+    case "Adresse":
+      return "location";
+    case "Texte_long":
+      return "textarea";
+    default:
+      return "text";
+  }
+}
+
+/**
+ * Champs remplissables des `FormComponents` d'une démarche Arpège. `id` = le
+ * `DataId` (clé du formulaire et du dépôt), `prefillKey` = le `Code` (clé courte
+ * et sûre proposée au modèle). Parseur tolérant : structure invalide → [].
+ */
+export function extractArpegeFillableFields(rawConfig: unknown): FillableField[] {
+  if (!rawConfig || typeof rawConfig !== "object") return [];
+  const components = (rawConfig as Record<string, unknown>).FormComponents;
+  if (!Array.isArray(components)) return [];
+
+  const out: FillableField[] = [];
+  const seen = new Set<string>();
+  const walk = (level: unknown[], groupLabel: string | null) => {
+    const nodes = level.filter((c): c is ArpegeComponentLike => !!c && typeof c === "object");
+    const levelHasPJ = nodes.some((c) => c.Type === "Pieces_jointes");
+    for (const c of nodes) {
+      const type = typeof c.Type === "string" ? c.Type : "";
+      const libelle = typeof c.Libelle === "string" ? c.Libelle.trim() : "";
+      if (type === "Bloc") {
+        if (Array.isArray(c.Components)) walk(c.Components, libelle || groupLabel);
+        continue;
+      }
+      if (levelHasPJ || ARPEGE_SKIPPED_TYPES.has(type)) continue;
+      if (typeof c.DataId !== "string" || c.DataId.length === 0) continue;
+      const code = typeof c.Code === "string" && c.Code.trim() ? c.Code.trim() : c.DataId;
+      if (seen.has(code)) continue;
+      seen.add(code);
+      const options = arpegeOptions(c.Value);
+      out.push({
+        id: c.DataId,
+        prefillKey: code,
+        label: libelle || groupLabel || code,
+        type: arpegeFieldType(type, options),
+        options,
+        help: typeof c.LibelleAide === "string" && c.LibelleAide.trim() ? c.LibelleAide.trim() : null,
+      });
+    }
+  };
+  walk(components, null);
+  return out;
+}
+
 // ── Condensé de la base de connaissance Socle ───────────────────────────────
 
 /**
@@ -222,15 +331,19 @@ export interface PrefillProcedureSource {
 export interface SelectedProcedure {
   id: string;
   name: string;
+  /** Formulaire Socle (`form_schema`) ou formulaire métier Arpège (`FormComponents`). */
+  source: "socle" | "arpege";
   fields: FillableField[];
   knowledge: string;
 }
 
 /**
  * Démarches à soumettre à l'appel de préremplissage : celles pointées par les
- * actions (dans l'ordre, dédoublonnées), Socle natives (les démarches adoptées
- * qui gardent leur config Arpège suivent le flux Arpège du dialog — même règle
- * que `isArpege` côté client) et ayant au moins un champ remplissable.
+ * actions (dans l'ordre, dédoublonnées) et ayant au moins un champ remplissable.
+ * Le formulaire lu suit le flux du dialogue (`procedureOrigin`, même règle que
+ * `isArpege` côté client et que create-arpege-demande) : une démarche Arpège —
+ * adoptée par le Socle comprise — se remplit sur ses `FormComponents`, une
+ * démarche Iris sur son `form_schema`.
  */
 export function selectPrefillCandidates(
   actions: Array<{ procedure_id?: string | null }>,
@@ -247,13 +360,18 @@ export function selectPrefillCandidates(
     if (!id || seen.has(id)) continue;
     seen.add(id);
     const proc = byId.get(id);
-    if (!proc || proc.external_source !== "socle") continue;
-    if (proc.external_reference_id && proc.arpege_config_fields) continue; // flux Arpège
-    const fields = extractFillableFields(proc.form_schema);
+    if (!proc) continue;
+    const origin = procedureOrigin(proc);
+    if (origin === "local") continue;
+    const source = origin === "arpege" ? "arpege" : "socle";
+    const fields = source === "arpege"
+      ? extractArpegeFillableFields(proc.arpege_config_fields)
+      : extractFillableFields(proc.form_schema);
     if (fields.length === 0) continue;
     out.push({
       id: proc.id,
       name: proc.name,
+      source,
       fields,
       knowledge: condenseKnowledgeBase(proc.knowledge_base),
     });
@@ -573,5 +691,42 @@ export function attachSoclePrefill<T extends { procedure_id: string | null }>(
   return actions.map((action) => {
     const prefill = action.procedure_id ? sanitized[action.procedure_id] : undefined;
     return prefill ? { ...action, socle_prefill: prefill } : action;
+  });
+}
+
+/** Valeurs du formulaire métier Arpège, par `DataId` — ce que le dialogue saisit et dépose. */
+export type ArpegePrefill = Record<string, string>;
+
+/**
+ * Range chaque préremplissage sous le formulaire qu'il vise : `socle_prefill`
+ * (audience + valeurs par clé de `form_schema`) pour une démarche Iris,
+ * `arpege_prefill` (valeurs par `DataId`) pour une démarche Arpège. Côté
+ * Arpège, la clé courte proposée au modèle (`Code`) est retraduite en `DataId`
+ * ici, et l'audience est ignorée : le dialogue Arpège n'en a pas.
+ */
+export function attachPrefills<T extends { procedure_id: string | null }>(
+  actions: T[],
+  sanitized: Record<string, SanitizedPrefill>,
+  selected: SelectedProcedure[],
+): Array<T & { socle_prefill?: SanitizedPrefill; arpege_prefill?: ArpegePrefill }> {
+  const arpege = new Map<string, ArpegePrefill>();
+  const socle: Record<string, SanitizedPrefill> = {};
+  for (const proc of selected) {
+    const prefill = sanitized[proc.id];
+    if (!prefill) continue;
+    if (proc.source === "socle") {
+      socle[proc.id] = prefill;
+      continue;
+    }
+    const byDataId: ArpegePrefill = {};
+    for (const field of proc.fields) {
+      const value = prefill.form[field.prefillKey];
+      if (value !== undefined && value !== null) byDataId[field.id] = String(value);
+    }
+    if (Object.keys(byDataId).length > 0) arpege.set(proc.id, byDataId);
+  }
+  return attachSoclePrefill(actions, socle).map((action) => {
+    const prefill = action.procedure_id ? arpege.get(action.procedure_id) : undefined;
+    return prefill ? { ...action, arpege_prefill: prefill } : action;
   });
 }

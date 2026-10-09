@@ -46,6 +46,9 @@ export interface SuggestedAction {
     audience?: string | null;
     form?: Record<string, unknown> | null;
   } | null;
+  /** Préremplissage du formulaire métier d'une démarche Arpège (valeurs par
+   *  `DataId` de ses FormComponents), produit par le même appel ciblé. */
+  arpege_prefill?: Record<string, string> | null;
 }
 
 export interface SuggestedSender {

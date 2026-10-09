@@ -35,7 +35,7 @@ import {
   type ServiceCandidate,
 } from "../_shared/serviceSuggestion.ts";
 import {
-  attachSoclePrefill,
+  attachPrefills,
   buildProcedureCatalog,
   planPrefillCalls,
   resolveSuggestedOrganization,
@@ -669,14 +669,17 @@ ${jsonSchemaInstruction(analysisSchema)}`,
     : [];
 
   // ── Appel(s) 2 (ciblés, non bloquants) : préremplissage des démarches Socle ──
-  // Uniquement pour les démarches Socle natives recommandées ayant des champs
-  // de formulaire. Le schéma de sortie est généré depuis leur form_schema
+  // Pour les démarches recommandées ayant des champs de formulaire : form_schema
+  // pour une démarche Iris, FormComponents pour une démarche Arpège (rangés en
+  // `arpege_prefill`, par DataId). Le schéma de sortie est généré depuis ces champs
   // (labels et options portés par le schéma, pas de rappel dans le prompt) et
   // joint au prompt système depuis la centralisation IA ; au-delà
   // d'un seuil de taille, la planification scinde en un appel par démarche, et
   // un appel groupé qui échoue est rejoué scindé. La sortie est revalidée avant
   // stockage. En cas d'échec final, l'analyse est stockée sans socle_prefill.
-  let actionsToStore: Array<(typeof safeActions)[number] & { socle_prefill?: unknown }> = safeActions;
+  let actionsToStore: Array<
+    (typeof safeActions)[number] & { socle_prefill?: unknown; arpege_prefill?: unknown }
+  > = safeActions;
   const prefillCandidates = selectPrefillCandidates(safeActions, procedureList);
   const prefillQueue: PrefillCall[] = planPrefillCalls(prefillCandidates);
   if (prefillQueue.length > 1) {
@@ -729,7 +732,7 @@ ${jsonSchemaInstruction(call.tool.toolParameters as Record<string, unknown>)}`;
     }
   }
   if (Object.keys(sanitizedAll).length > 0) {
-    actionsToStore = attachSoclePrefill(safeActions, sanitizedAll);
+    actionsToStore = attachPrefills(safeActions, sanitizedAll, prefillCandidates);
   }
 
   // Sécurité : le service proposé doit appartenir au catalogue (id revalidé).

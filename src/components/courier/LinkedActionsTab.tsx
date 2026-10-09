@@ -397,6 +397,7 @@ export default function LinkedActionsTab({
         initialProcedureId={suggestedAction?.procedure_id ?? undefined}
         initialArpegeValues={suggestedAction?.prefill}
         initialSoclePrefill={suggestedAction?.socle_prefill ?? undefined}
+        initialArpegePrefill={suggestedAction?.arpege_prefill ?? undefined}
         initialSocleOrganizationId={suggestedAction?.socle_organization_id ?? undefined}
         courierSocleOrganizationId={courierSocleOrganizationId}
       />
