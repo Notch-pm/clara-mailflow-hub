@@ -549,6 +549,32 @@ export default function CreateTicketDialog({
   );
   const selectedProcedure = displayedProcedures.find((p) => p.id === procedureId) ?? null;
 
+  // L'organisation par défaut (celle du courrier) peut ne pas assurer la
+  // démarche suggérée : le filtre ci-dessus la ferait alors disparaître et la
+  // suggestion serait perdue. La démarche suggérée l'emporte : on adresse la
+  // demande à la seule organisation qui l'assure, sinon on lève le filtre et
+  // l'agent choisit parmi celles qui l'assurent.
+  const orgReconciledRef = useRef(false);
+  useEffect(() => {
+    if (!open) {
+      orgReconciledRef.current = false;
+      return;
+    }
+    if (orgReconciledRef.current || !activations || !socleOrgs || !initialProcedureId) return;
+    orgReconciledRef.current = true;
+    // Valeur posée à l'ouverture, pas `socleOrgId` : à la réouverture, les
+    // requêtes en cache font tourner cet effet avant que l'état soit réinitialisé.
+    const defaultOrg = initialSocleOrganizationId ?? courierSocleOrganizationId ?? null;
+    if (isProcedureOfferedBy(activationIndex, initialProcedureId, defaultOrg)) return;
+    const offering = [...(activationIndex.get(initialProcedureId) ?? [])].filter((id) =>
+      selectableOrgs.some((o) => o.id === id),
+    );
+    setSocleOrgId(offering.length === 1 ? offering[0] : null);
+  }, [
+    open, activations, socleOrgs, activationIndex, selectableOrgs,
+    initialProcedureId, initialSocleOrganizationId, courierSocleOrganizationId,
+  ]);
+
   // État de l'interface Arpège du tenant (sans secret) : une démarche
   // partenaire reste listée mais grisée quand l'interface est suspendue.
   const { data: arpegeStatus } = useQuery({
@@ -886,7 +912,7 @@ export default function CreateTicketDialog({
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">Organisation destinataire</Label>
             <div className="flex items-center gap-1.5">
-              <Popover open={orgPopoverOpen} onOpenChange={setOrgPopoverOpen}>
+              <Popover modal open={orgPopoverOpen} onOpenChange={setOrgPopoverOpen}>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
@@ -950,7 +976,9 @@ export default function CreateTicketDialog({
               Démarche<span className="text-destructive ml-0.5">*</span>
             </Label>
             <div className="flex items-center gap-1.5">
-              <Popover open={procedurePopoverOpen} onOpenChange={setProcedurePopoverOpen}>
+              {/* `modal` : dans un Dialog, le verrou de scroll de la modale bloque la
+                  molette sur ce contenu rendu en portail — il lui faut le sien. */}
+              <Popover modal open={procedurePopoverOpen} onOpenChange={setProcedurePopoverOpen}>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"

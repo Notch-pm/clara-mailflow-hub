@@ -64,3 +64,13 @@ export function isPartnerSuspended(
 export function isRequestableProcedure(p: ProcedureOriginFields): boolean {
   return procedureOrigin(p) !== "local";
 }
+
+/**
+ * Éditeur partenaire qui instruit la démarche hors de la gamme — affiché à
+ * côté d'une action suggérée pour que l'agent sache que la demande part chez
+ * un tiers. `null` pour une démarche instruite par Iris (le cas courant, qu'on
+ * ne signale pas) ou instruite nulle part.
+ */
+export function procedurePartnerLabel(p: ProcedureOriginFields): string | null {
+  return procedureOrigin(p) === "arpege" ? procedureOriginLabel(p) : null;
+}

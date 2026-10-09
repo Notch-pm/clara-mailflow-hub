@@ -1,9 +1,13 @@
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getAnalysis, type SuggestedAction } from "@/services/courierAnalysisService";
+import { listProcedures } from "@/services/procedureService";
+import { procedurePartnerLabel } from "@/lib/procedure-origin";
+import { useOrganization } from "@/contexts/OrganizationContext";
 
 interface Props {
   courierId: string;
@@ -17,6 +21,19 @@ export default function SuggestedActionsCard({ courierId, onCreateTicket, readOn
     queryFn: () => getAnalysis(courierId),
     enabled: !!courierId,
   });
+
+  // Même requête (et même cache) que le dialogue de demande : sert à dire si
+  // la démarche suggérée part chez un éditeur partenaire plutôt que dans Iris.
+  const { organizationId } = useOrganization();
+  const { data: procedures } = useQuery({
+    queryKey: ["procedures-displayed", organizationId],
+    queryFn: () => listProcedures(organizationId!),
+    enabled: !!organizationId && !!analysis?.suggested_actions.some((a) => a.procedure_id),
+  });
+  const partnerByProcedure = useMemo(
+    () => new Map((procedures ?? []).map((p) => [p.id, procedurePartnerLabel(p)])),
+    [procedures],
+  );
 
   if (isLoading) {
     return <Skeleton className="h-24 w-full" />;
@@ -43,6 +60,14 @@ export default function SuggestedActionsCard({ courierId, onCreateTicket, readOn
                 {action.procedure_name && (
                   <span className="ml-1.5 text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full">
                     {action.procedure_name}
+                  </span>
+                )}
+                {action.procedure_id && partnerByProcedure.get(action.procedure_id) && (
+                  <span
+                    className="ml-1.5 text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full"
+                    title="La demande sera transmise à cet éditeur partenaire, pas à Iris."
+                  >
+                    → {partnerByProcedure.get(action.procedure_id)}
                   </span>
                 )}
                 {/* Organisation à qui adresser la demande : elle décide de la

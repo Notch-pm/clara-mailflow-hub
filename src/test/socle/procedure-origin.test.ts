@@ -4,6 +4,7 @@ import {
   isRequestableProcedure,
   procedureOrigin,
   procedureOriginLabel,
+  procedurePartnerLabel,
 } from "@/lib/procedure-origin";
 
 describe("procedure-origin — d'où vient une démarche", () => {
@@ -58,5 +59,13 @@ describe("procedure-origin — d'où vient une démarche", () => {
   it("laisse demander tout ce qu'un système instruit", () => {
     expect(isRequestableProcedure({ external_source: "socle" })).toBe(true);
     expect(isRequestableProcedure({ external_source: "arpege" })).toBe(true);
+  });
+
+  it("ne nomme un éditeur partenaire que pour une démarche instruite hors de la gamme", () => {
+    expect(
+      procedurePartnerLabel({ external_source: "socle", external_reference_id: "42", arpege_config_fields: {} }),
+    ).toBe("Arpège");
+    expect(procedurePartnerLabel({ external_source: "socle" })).toBeNull();
+    expect(procedurePartnerLabel({})).toBeNull();
   });
 });
