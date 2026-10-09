@@ -5,6 +5,8 @@
 import { createClient } from "npm:@supabase/supabase-js@2.45.0";
 import { normalizeConsents } from "../_shared/consents/catalog.ts";
 import { portalConsentAnswersFromForm, portalConsentsConfig } from "./logic.ts";
+import { createPortalCourier, resolvePortalRouting } from "../_shared/portalIntake.ts";
+import { portalFieldsFromForm, portalSubmissionError } from "../_shared/portalIntakeLogic.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -17,8 +19,6 @@ const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const RATE_LIMIT_WINDOW_SECONDS = 60;
 const RATE_LIMIT_MAX = 5;
-const MAX_FILES = 3;
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 Mo
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -88,39 +88,12 @@ Deno.serve(async (req) => {
       }
 
       const token = fd.get("token") as string | null;
-      const subject = fd.get("subject") as string | null;
-      const messageBody = fd.get("body") as string | null;
-      const senderCategory = (fd.get("sender_category") as string | null) ?? "citoyen";
-      const senderCivilite = fd.get("sender_civilite") as string | null;
-      const senderFirstName = fd.get("sender_first_name") as string | null;
-      const senderLastName = fd.get("sender_last_name") as string | null;
-      const senderEmail = fd.get("sender_email") as string | null;
-      const senderPhone = fd.get("sender_phone") as string | null;
+      const fields = portalFieldsFromForm((k) => fd.get(k));
       const uploadedFiles = fd.getAll("files").filter((f) => f instanceof File && f.size > 0) as File[];
 
       if (!token) return jsonResponse({ error: "Token manquant" }, 400);
-      if (!subject?.trim()) return jsonResponse({ error: "Sujet obligatoire" }, 400);
-      if (!messageBody?.trim()) return jsonResponse({ error: "Message obligatoire" }, 400);
-      if (!["citoyen", "entreprise", "association"].includes(senderCategory)) {
-        return jsonResponse({ error: "Catégorie invalide" }, 400);
-      }
-      if (senderCategory === "citoyen" && !senderFirstName?.trim()) {
-        return jsonResponse({ error: "Prénom obligatoire" }, 400);
-      }
-      if (!senderLastName?.trim()) return jsonResponse({ error: "Nom obligatoire" }, 400);
-      if (!senderEmail?.trim() && !senderPhone?.trim()) {
-        return jsonResponse({ error: "Email ou téléphone obligatoire" }, 400);
-      }
-
-      // Validation des fichiers
-      if (uploadedFiles.length > MAX_FILES) {
-        return jsonResponse({ error: `Maximum ${MAX_FILES} fichiers autorisés` }, 400);
-      }
-      for (const file of uploadedFiles) {
-        if (file.size > MAX_FILE_SIZE) {
-          return jsonResponse({ error: `Le fichier "${file.name}" dépasse la limite de 5 Mo` }, 400);
-        }
-      }
+      const invalid = portalSubmissionError(fields, uploadedFiles);
+      if (invalid) return jsonResponse({ error: invalid }, 400);
 
       // 1. Charger le formulaire (sans join pour fiabilité)
       const { data: form, error: formErr } = await admin
@@ -171,149 +144,28 @@ Deno.serve(async (req) => {
       if (!consentCheck.ok) return jsonResponse({ error: consentCheck.message }, 400);
       const receivedAt = new Date().toISOString();
 
-      // 4. Résoudre l'organisation (miroir Socle, prioritaire) ou le service legacy
-      //    + état initial du workflow
-      let serviceName: string | null = null;
-      let socleOrganizationId: string | null = null;
-      let initialStateId: string | null = null;
-
-      if (form.socle_organization_id) {
-        const { data: socleOrg } = await admin
-          .from("socle_organizations")
-          .select("id, name, workflow_id")
-          .eq("id", form.socle_organization_id)
-          .maybeSingle();
-        if (socleOrg) {
-          serviceName = (socleOrg as any).name ?? null;
-          socleOrganizationId = (socleOrg as any).id ?? null;
-          if ((socleOrg as any).workflow_id) {
-            const { data: initState } = await admin
-              .from("workflow_states")
-              .select("id")
-              .eq("workflow_id", (socleOrg as any).workflow_id)
-              .eq("is_initial", true)
-              .maybeSingle();
-            initialStateId = (initState as any)?.id ?? null;
-          }
-        }
-      } else if (form.service_id) {
-        // Legacy : formulaire encore rattaché à un service (tables gelées)
-        const { data: svc } = await admin
-          .from("services")
-          .select("name, workflow_id")
-          .eq("id", form.service_id)
-          .maybeSingle();
-        if (svc) {
-          serviceName = (svc as any).name ?? null;
-          const { data: initState } = await admin
-            .from("workflow_states")
-            .select("id")
-            .eq("workflow_id", (svc as any).workflow_id)
-            .eq("is_initial", true)
-            .maybeSingle();
-          initialStateId = (initState as any)?.id ?? null;
-        }
-      }
-
-      if (!initialStateId) {
-        const { data: defaultWf } = await admin
-          .from("workflows")
-          .select("id")
-          .eq("organization_id", form.organization_id)
-          .eq("is_default", true)
-          .maybeSingle();
-        if (defaultWf) {
-          const { data: initState } = await admin
-            .from("workflow_states")
-            .select("id")
-            .eq("workflow_id", (defaultWf as any).id)
-            .eq("is_initial", true)
-            .maybeSingle();
-          initialStateId = (initState as any)?.id ?? null;
-        }
-      }
-
-      // 5. Créer le courrier
-      const { data: courier, error: courierErr } = await admin
-        .from("couriers")
-        .insert({
-          organization_id: form.organization_id,
-          direction: "inbound",
-          channel: "portal",
-          subject: subject.trim().slice(0, 500),
-          received_at: receivedAt,
-          assigned_service: serviceName,
-          socle_organization_id: socleOrganizationId,
-          workflow_state_id: initialStateId,
-          created_by: null,
-          metadata: { body_text: messageBody.trim(), source: "portal" },
-          // La trace de CE dépôt, immuable (trigger). Date = réception du
-          // courrier : c'est elle que le report au Socle consignera.
-          consents: consentCheck.consents.map((c) => ({ ...c, collected_at: receivedAt })),
-        })
-        .select("id")
-        .single();
-
-      if (courierErr || !courier) {
-        console.error("[portal-form] Erreur insert courier", courierErr);
-        return jsonResponse({ error: "Erreur lors de la création du courrier" }, 500);
-      }
-
-      // 6. Créer le participant expéditeur
-      const isCitoyen = senderCategory === "citoyen";
-      const firstName = isCitoyen ? (senderFirstName?.trim() || null) : null;
-      const lastName = senderLastName!.trim();
-      const displayName = isCitoyen
-        ? [firstName, lastName].filter(Boolean).join(" ")
-        : lastName;
-
-      await admin.from("courier_participants").insert({
-        organization_id: form.organization_id,
-        courier_id: courier.id,
-        role: "sender",
-        name: displayName,
-        first_name: firstName,
-        last_name: lastName,
-        email: senderEmail?.trim() || null,
-        phone: senderPhone?.trim() || null,
-        socle_contact_id: null,
-        metadata: {
-          category: senderCategory,
-          ...(isCitoyen && senderCivilite?.trim() ? { civilite: senderCivilite.trim() } : {}),
-        },
+      // 4. Organisation gestionnaire (miroir Socle, prioritaire) ou service
+      //    legacy, et état initial du workflow
+      const routing = await resolvePortalRouting(admin, form.organization_id, {
+        socleOrganizationId: form.socle_organization_id,
+        serviceId: form.service_id,
       });
 
-      // 7. Upload des pièces jointes (best-effort)
-      for (const file of uploadedFiles) {
-        try {
-          const safeName = file.name.replace(/[^\w.\-]+/g, "_");
-          const storageKey = `org_${form.organization_id}/couriers/${courier.id}/${crypto.randomUUID()}-${safeName}`;
-          const fileBytes = new Uint8Array(await file.arrayBuffer());
+      // 5-7. Courrier, expéditeur brut, pièces jointes (best-effort)
+      const created = await createPortalCourier(admin, {
+        organizationId: form.organization_id,
+        routing,
+        fields,
+        consents: consentCheck.consents,
+        receivedAt,
+        metadata: {},
+        files: uploadedFiles,
+        logTag: "[portal-form]",
+      });
 
-          const { error: upErr } = await admin.storage
-            .from("clara-documents")
-            .upload(storageKey, fileBytes, {
-              contentType: file.type || "application/octet-stream",
-              upsert: false,
-            });
-
-          if (upErr) {
-            console.error("[portal-form] Erreur upload", file.name, upErr);
-            continue;
-          }
-
-          await admin.from("courier_documents").insert({
-            organization_id: form.organization_id,
-            courier_id: courier.id,
-            document_type: "attachment",
-            storage_key: storageKey,
-            file_name: file.name,
-            mime_type: file.type || "application/octet-stream",
-            file_size: file.size,
-          });
-        } catch (e) {
-          console.error("[portal-form] Exception upload", file.name, e);
-        }
+      if (!created.ok) {
+        console.error("[portal-form] Erreur insert courier", created.error);
+        return jsonResponse({ error: "Erreur lors de la création du courrier" }, 500);
       }
 
       // 8. Enregistrer la soumission (rate-limiting)

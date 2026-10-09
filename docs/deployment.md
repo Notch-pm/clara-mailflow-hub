@@ -293,6 +293,19 @@ Correctif : `socle-contacts/index.ts` (variable renommée) ; garde-fou :
 |---|---|---|
 | 4 | `bunx supabase functions deploy socle-contacts --project-ref aullweizxcjbvtdspjli` (pas d'entrée `config.toml` : `verify_jwt = true`, comme en ligne) | **Fait** — v17 |
 
+### Lot « courrier libre depuis Nora » (2026-10-09) — appliqué le 2026-10-09
+
+Trois dépôts (Socle, Clara, Nora). Chaque étape est compatible avec la précédente : rien n'est
+visible pour l'usager tant qu'aucun organisme n'a activé le courrier libre au Socle.
+
+| # | Action | Pourquoi cet ordre | État |
+|---|---|---|---|
+| 1 | **Socle** : migration `20261009091517_portal_free_mail_settings` (**appliquée le 2026-10-09**, test SQL vert) (+ slug réservé `courrier`), déploiement de `public-api` 1.38.0 (`verify_jwt = false` !), écran d'administration | Ajout pur : `free_mail` est ignoré par un Nora qui ne le connaît pas | À faire |
+| 2 | **Clara** : migration `20261009091939_nora_courrier_idempotence.sql` — **appliquée le 2026-10-09**, index `couriers_nora_submission_uniq` vérifié en base, `bunx supabase secrets set NORA_INTAKE_KEY=<secret> --project-ref aullweizxcjbvtdspjli`, `bunx supabase functions deploy nora-courrier portal-form --project-ref aullweizxcjbvtdspjli` (`config.toml` porte `verify_jwt = false` pour les deux) | `portal-form` est refactorisé (module partagé) sans changement de comportement : le redéployer avec | À faire |
+| 3 | **Nora** : secrets `CLARA_INTAKE_URL` (`https://aullweizxcjbvtdspjli.supabase.co/functions/v1/nora-courrier`) et `CLARA_INTAKE_KEY` (= `NORA_INTAKE_KEY`), puis front, puis `portal-api` | Ordre du README de Nora | À faire |
+| 4 | Activer le courrier libre sur un organisme [TEST] au Socle, déposer, vérifier dans Clara : bon tenant et bon `socle_organization_id`, état initial, `consents`, job d'analyse `done`, présence sous « À valider »/« À qualifier » ; rejouer le même `submission_id` ⇒ pas de doublon | — | À faire |
+| 5 | Non-régression : un dépôt par l'iframe `portal-form` crée toujours son courrier | — | À faire |
+
 ### Lot « vue usager : demandes Iris et espace élu » (2026-09-23) — appliqué le 2026-09-23
 
 Branche `feat/application-elu` rebasée et fusionnée ; la fiche contact et l'espace élu montrent les

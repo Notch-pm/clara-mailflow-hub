@@ -30,6 +30,11 @@ verify_jwt = false
 [functions.portal-form]
 verify_jwt = false
 
+# Appelée de serveur à serveur par portal-api de Nora, qui n'a pas de JWT
+# Supabase : la garde est la clé NORA_INTAKE_KEY (Bearer), vérifiée dans la fonction.
+[functions.nora-courrier]
+verify_jwt = false
+
 # Facteur des notifications push, appelé par pg_cron (trigger_notifications_push),
 # qui n'envoie aucun en-tête Authorization. L'authentification réelle se fait dans
 # la fonction (x-cron-secret comparé à get_cron_secret()).
