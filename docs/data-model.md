@@ -55,6 +55,7 @@ Tenants racine. RLS sur `id` (pas sur `organization_id`).
 | `status` | varchar | `'active'` par défaut |
 | `logo_url` / `primary_color` / `secondary_color` | text | **Charte graphique — MIROIR du Socle depuis le 2026-09-13, aucune saisie dans Clara.** Couleurs en `#rrggbb` minuscule (CHECK `organizations_branding_colors_hex`). Voir ci-dessous. |
 | `multiple_imap` | boolean | multi-boîtes IMAP |
+| `ai_voice_enabled` | boolean | **Miroir** de `assistant.voice_enabled` du Socle (2026-10-09) : ouvre la dictée vocale d'un courrier. Écrit par `sync-socle-referentiel` seule — **aucun grant UPDATE client** (les droits d'écriture sur `organizations` sont colonne par colonne). Défaut `false`. |
 | `reply_template_html` / `_design` / `_data` / `_storage_key` | text/jsonb | template courrier Unlayer |
 | `address_*` / `phone` / `website` / `contact_email` | text | coordonnées org |
 | `socle_org_id` | uuid | mapping vers l'org Socle (renseigné par le superadmin) ; NULL = pas de sync Socle |

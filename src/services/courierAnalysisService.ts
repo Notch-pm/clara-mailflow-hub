@@ -207,6 +207,9 @@ export async function encodeFilesToBase64(files: File[]): Promise<FilePayload[]>
 export async function extractCourierInfo(args: {
   files?: File[];
   pastedText?: string;
+  /** `dictation` : `pastedText` est la transcription d'une dictée vocale — le
+   *  locuteur rapporte la demande d'un usager, qui est l'expéditeur. */
+  source?: "dictation";
 }): Promise<ExtractCourierInfoResult> {
   const filePayloads = args.files?.length
     ? await encodeFilesToBase64(args.files.slice(0, 5))
@@ -217,6 +220,7 @@ export async function extractCourierInfo(args: {
     body: {
       ...(filePayloads ? { files: filePayloads } : {}),
       ...(pastedText ? { pasted_text: pastedText } : {}),
+      ...(args.source ? { source: args.source } : {}),
     },
   });
   if (error) throw await edgeError(error, "Analyse impossible");

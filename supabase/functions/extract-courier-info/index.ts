@@ -211,7 +211,13 @@ Deno.serve(async (req) => {
       throw new Error("Forbidden: Accès refusé : rôle consultant en lecture seule");
     }
 
-    const { files, pasted_text } = (await req.json()) as { files?: FileInput[]; pasted_text?: string };
+    const { files, pasted_text, source } = (await req.json()) as {
+      files?: FileInput[];
+      pasted_text?: string;
+      /** `dictation` : le texte collé est la transcription d'une dictée vocale. */
+      source?: string;
+    };
+    const fromDictation = source === "dictation";
     if (!files?.length && !pasted_text?.trim()) {
       return jsonResponse({ error: "No content provided" }, 400);
     }
@@ -349,10 +355,25 @@ Deno.serve(async (req) => {
       [...SUGGESTED_FIELDS_KEYS, "suggested_service", "suggested_tag_names"],
     );
 
+    // ⚠️ LA DICTÉE CHANGE QUI EST L'EXPÉDITEUR. Un courrier écrit est signé par
+    // son expéditeur ; une dictée est dite par l'agent ou l'élu qui RAPPORTE la
+    // demande d'un usager (« Mme Dupont m'a appelé pour… »). Sans ce
+    // paragraphe, le modèle prendrait le locuteur — ou personne — pour
+    // l'expéditeur, et le rapprochement de contact chercherait la mauvaise fiche.
+    const dictationRules = fromDictation
+      ? `
+Ce texte est la TRANSCRIPTION d'une dictée vocale, pas un courrier écrit :
+- Il peut contenir des hésitations, des répétitions, des reprises et des fautes de transcription (noms propres approximatifs) : comprends l'intention, ignore le bruit.
+- Le locuteur est un agent ou un élu de la collectivité qui RAPPORTE la demande d'un usager. L'expéditeur (sender_*) est l'USAGER dont il parle, jamais le locuteur. Si aucun usager n'est nommé, laisse les champs sender_* à null.
+- Une adresse e-mail ou un numéro de téléphone dictés peuvent être épelés (« dupont arobase gmail point com », « zéro six douze… ») : restitue-les sous leur forme écrite.
+- suggested_subject : reformule la demande en un objet court et factuel (pas « Dictée » ni « Appel »).
+- recipient_name : null, sauf si le locuteur nomme explicitement un destinataire.`
+      : "";
+
     const systemPrompt = `Tu es un assistant expert en gestion de courrier administratif français.
 Analyse le texte extrait d'un courrier et restitue les informations structurées.
 Règles :
-- Ne retourne QUE ce qui est clairement identifiable dans le texte. Ne devine rien.
+- Ne retourne QUE ce qui est clairement identifiable dans le texte. Ne devine rien.${dictationRules}
 ${SUGGESTED_FIELDS_PROMPT_RULES}
 ${serviceSuggestionPromptRules(null)}
 - suggested_tag_names : choisis EXCLUSIVEMENT dans les deux listes ci-dessous (copie exacte du nom, sensible à la casse). N'invente AUCUN tag. Retiens les thèmes qui qualifient le sujet, et AU PLUS UN sentiment pour le ton du rédacteur. Liste vide si rien ne correspond.
@@ -368,7 +389,7 @@ ${listForPrompt(sentimentTagNames, "(aucun sentiment défini)")}
 
 ${jsonSchemaInstruction(responseSchema)}`;
 
-    const userPrompt = `Texte extrait du courrier :
+    const userPrompt = `${fromDictation ? "Transcription de la dictée" : "Texte extrait du courrier"} :
 ${combinedText}`;
 
     const answer = await socleCompletion({

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Plus, User, X } from "lucide-react";
 import { toast } from "sonner";
@@ -12,6 +12,7 @@ import {
   type SocleContact,
   type SocleContactCivility,
 } from "@/services/socleContactService";
+import type { SuggestedSender } from "@/services/courierAnalysisService";
 
 function contactName(c: SocleContact): string {
   return c.display_name?.trim() || c.email || "Sans nom";
@@ -40,16 +41,30 @@ export function EluUsagerPicker({
   value,
   onChange,
   invalid = false,
+  suggestion = null,
 }: {
   organizationId: string;
   value: SocleContact | null;
   onChange: (contact: SocleContact | null) => void;
   invalid?: boolean;
+  /**
+   * Usager mentionné dans une dictée, sans fiche reconnue d'office : la
+   * recherche part de son nom, et une création éventuelle reprend ce qui a
+   * été dit (civilité, prénom, nom, coordonnées).
+   */
+  suggestion?: SuggestedSender | null;
 }) {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const debounced = useDebouncedValue(search.trim(), 300);
   const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    if (!suggestion) return;
+    const term = suggestion.last_name?.trim() || suggestion.email?.trim() || suggestion.phone?.trim() || "";
+    if (term) setSearch(term);
+    setCreating(false);
+  }, [suggestion]);
 
   const { data: results = [], isFetching, isError } = useQuery({
     queryKey: ["socle-contacts", organizationId, "elu-relay", debounced],
@@ -84,6 +99,7 @@ export function EluUsagerPicker({
       <NewUsagerForm
         organizationId={organizationId}
         initialName={search.trim()}
+        draft={suggestion}
         onCancel={() => setCreating(false)}
         onCreated={(contact) => {
           void qc.invalidateQueries({ queryKey: ["socle-contacts"] });
@@ -144,21 +160,24 @@ export function EluUsagerPicker({
 function NewUsagerForm({
   organizationId,
   initialName,
+  draft = null,
   onCancel,
   onCreated,
 }: {
   organizationId: string;
   initialName: string;
+  /** Identité dictée : reprise telle quelle, l'élu corrige au besoin. */
+  draft?: SuggestedSender | null;
   onCancel: () => void;
   onCreated: (contact: SocleContact) => void;
 }) {
   // Ce que l'élu a déjà tapé dans la recherche sert de nom de famille : il
   // cherchait la personne, il ne la retape pas.
-  const [civility, setCivility] = useState<SocleContactCivility | "">("");
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState(initialName);
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
+  const [civility, setCivility] = useState<SocleContactCivility | "">(draft?.civility ?? "");
+  const [firstName, setFirstName] = useState(draft?.first_name ?? "");
+  const [lastName, setLastName] = useState(draft?.last_name || initialName);
+  const [email, setEmail] = useState(draft?.email ?? "");
+  const [phone, setPhone] = useState(draft?.phone ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

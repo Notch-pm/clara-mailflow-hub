@@ -83,6 +83,12 @@ import {
   type BrandingMirror,
   type SocleBrandingDto,
 } from "./branding.ts";
+import {
+  assistantWarning,
+  planAssistantUpdate,
+  type AssistantMirror,
+  type SocleAssistantDto,
+} from "./assistant.ts";
 
 type AdminClient = ReturnType<typeof createClient>;
 
@@ -345,6 +351,30 @@ async function fetchSocleBranding(
 }
 
 /**
+ * Assistant IA ouvert pour une organisation (public-api 1.38.0) — mêmes règles
+ * que `fetchSocleBranding`, et pour la même raison l'organisation interrogée est
+ * celle du TENANT : la route résout l'héritage.
+ */
+async function fetchSocleAssistant(
+  socleOrgId: string,
+): Promise<{ status: number; dto: SocleAssistantDto | null }> {
+  const response = await socleFetch(
+    `${socleBaseUrl()}/v1/organizations/${encodeURIComponent(socleOrgId)}/assistant`,
+  );
+  if (response.status === 401) {
+    await response.body?.cancel();
+    throw new SocleAuthError(
+      "Clé API Socle invalide ou révoquée (401) — synchronisation interrompue",
+    );
+  }
+  if (!response.ok) {
+    await response.body?.cancel();
+    return { status: response.status, dto: null };
+  }
+  return { status: 200, dto: (await response.json()) as SocleAssistantDto };
+}
+
+/**
  * Liste d'un tenant sur le Socle (`<path>?tenant_id=`) — mêmes règles que
  * `fetchSocleSmtp` : pas de retry, un statut d'erreur n'est pas une exception,
  * seul le 401 est fatal. Rend le corps JSON brut, à valider par l'appelant.
@@ -573,7 +603,7 @@ Deno.serve(async (req) => {
     // Organisations Clara mappées au Socle.
     let query = supabaseAdmin
       .from("organizations")
-      .select("id, name, slug, logo_url, primary_color, secondary_color, socle_org_id")
+      .select("id, name, slug, logo_url, primary_color, secondary_color, ai_voice_enabled, socle_org_id")
       .not("socle_org_id", "is", null);
     if (filterOrgId) query = query.eq("id", filterOrgId);
     const { data: orgs, error: orgsError } = await query;
@@ -617,7 +647,7 @@ Deno.serve(async (req) => {
 
 // ── Synchronisation ──
 
-interface ClaraOrg extends Partial<BrandingMirror> {
+interface ClaraOrg extends Partial<BrandingMirror>, Partial<AssistantMirror> {
   id: string;
   name: string;
   slug: string | null;
@@ -645,6 +675,8 @@ interface OrgSyncResult {
     arpege_suspendu: number;
     /** Charte graphique (logo + couleurs) relue et appliquée (0 ou 1) — 0 = miroir laissé en l'état. */
     charte_synchronisee: number;
+    /** Assistant IA (voix ouverte ou non) relu et appliqué (0 ou 1) — 0 = miroir laissé en l'état. */
+    assistant_synchronise: number;
     /** Descriptifs publics (« informations usager ») réécrits dans le miroir des organisations. */
     descriptifs_synchronises: number;
     /** Attributions internes réécrites dans le miroir des organisations (services internes compris). */
@@ -768,7 +800,11 @@ async function syncOrg(
   // collectivité.
   const branding = await syncBranding(org);
 
-  const tenantUpdate = { ...(identity ?? {}), ...(branding.fields ?? {}) };
+  // 0quater) Assistant IA : la voix ouverte au Socle ouvre la dictée vocale
+  // d'un courrier (2026-10-09). Même ligne, même mise à jour.
+  const assistant = await syncAssistant(org);
+
+  const tenantUpdate = { ...(identity ?? {}), ...(branding.fields ?? {}), ...(assistant.fields ?? {}) };
   if (Object.keys(tenantUpdate).length > 0 && !dryRun) {
     const { error: identityError } = await supabaseAdmin
       .from("organizations")
@@ -921,7 +957,7 @@ async function syncOrg(
     ? { created: 0, updated: 0, adopted: 0, obsoleted: 0, unchanged: 0 }
     : await syncActivations(supabaseAdmin, org, activations, muteOrgs, syncedAt);
 
-  const warnings = [...smtp.warnings, ...arpege.warnings, ...branding.warnings, ...descriptions.warnings, ...attributions.warnings, ...plan.warnings];
+  const warnings = [...smtp.warnings, ...arpege.warnings, ...branding.warnings, ...assistant.warnings, ...descriptions.warnings, ...attributions.warnings, ...plan.warnings];
   if (muteOrgs.length > 0) {
     warnings.push(
       `Démarches illisibles pour ${muteOrgs.length} organisation(s) (${muteOrgs.join(", ")}) — leur miroir est inchangé.`,
@@ -940,6 +976,7 @@ async function syncOrg(
       arpege_synchronise: arpege.synchronise,
       arpege_suspendu: arpege.suspendu,
       charte_synchronisee: branding.synchronisee,
+      assistant_synchronise: assistant.synchronise,
       descriptifs_synchronises: descriptions.synchronises,
       attributions_synchronisees: attributions.synchronises,
     },
@@ -978,6 +1015,35 @@ async function syncBranding(
       fields: null,
       synchronisee: 0,
       warnings: [`charte graphique (${org.name}) : ${message} — miroir inchangé.`],
+    };
+  }
+}
+
+// ── Assistant IA (miroir du Socle) ──
+
+/**
+ * Relit l'assistant ouvert pour le tenant et rend le drapeau de voix à
+ * réécrire, ou `null` si le miroir est aligné. N'ÉCRIT RIEN (fusionné avec
+ * l'identité, comme la charte). Un échec garde le dernier état connu : couper
+ * la dictée parce que le Socle a toussé serait aussi faux que l'ouvrir.
+ */
+async function syncAssistant(
+  org: ClaraOrg,
+): Promise<{ fields: Partial<AssistantMirror> | null; synchronise: number; warnings: string[] }> {
+  try {
+    const { status, dto } = await fetchSocleAssistant(org.socle_org_id);
+    if (status !== 200) {
+      return { fields: null, synchronise: 0, warnings: [assistantWarning(org.name, status)] };
+    }
+    return { fields: planAssistantUpdate(org, dto), synchronise: 1, warnings: [] };
+  } catch (e) {
+    if (e instanceof SocleAuthError) throw e;
+    const message = e instanceof Error ? e.message : String(e);
+    console.error(`[sync-socle] org ${org.name}: assistant IA: ${message}`);
+    return {
+      fields: null,
+      synchronise: 0,
+      warnings: [`assistant IA (${org.name}) : ${message} — miroir inchangé.`],
     };
   }
 }

@@ -38,6 +38,8 @@ export const FEATURE_EXTRACTION = "extraction-courrier";
 export const FEATURE_DRAFT = "redaction-reponse";
 /** « Améliorer mon message » — même libellé qu'Iris : une seule ligne au compteur du Socle. */
 export const FEATURE_CORRECTION = "correction-message";
+/** Dictée vocale d'un nouveau courrier (`/v1/transcriptions`, 2026-10-09). */
+export const FEATURE_DICTATION = "dictee-courrier";
 
 /**
  * Alias d'agents. Clara demande « extraction-courrier », le Socle sait quel
@@ -337,4 +339,44 @@ export function fitMessage(content: string, budget = MAX_MESSAGE_CHARS): string 
   if (content.length <= budget) return content;
   const marker = "\n\n[…contenu tronqué pour tenir dans la limite de l'assistant…]";
   return content.slice(0, Math.max(0, budget - marker.length)) + marker;
+}
+
+// ===========================================================================
+// Transcription (`POST /v1/transcriptions`, ai-api 1.4.0)
+// ===========================================================================
+
+export interface TranscriptionInput {
+  ctx: SocleAiContext;
+  /** WAV PCM 16 bits, 16 kHz, mono — déjà contrôlé par l'appelant. */
+  audio: Uint8Array;
+  /** Durée annoncée — sert à RÉSERVER le crédit, jamais à facturer. */
+  durationMs: number;
+  /** Absent ⇒ détection par le fournisseur. */
+  language?: string | null;
+}
+
+/**
+ * Le corps multipart de `/v1/transcriptions`.
+ *
+ * ⚠️ CE N'EST PAS LE CORPS JSON DES AUTRES ROUTES : le guichet refuse tout
+ * champ hors de sa liste, et chaque champ ne peut paraître qu'une fois. La
+ * référence s'y écrit à plat (`reference_kind` / `reference_id`), pas en objet.
+ * Pas de `Content-Type` à poser à la main : c'est `fetch` qui écrit le
+ * boundary.
+ */
+export function buildTranscriptionForm(input: TranscriptionInput): FormData {
+  const { ctx, audio, durationMs, language } = input;
+  const form = new FormData();
+  // Copie dans un ArrayBuffer neuf : un `Uint8Array` vue d'un tampon plus grand
+  // enverrait le tampon entier.
+  form.append("file", new Blob([audio.slice()], { type: "audio/wav" }), "dictee.wav");
+  form.append("duration_ms", String(Math.max(1, Math.round(durationMs))));
+  if (language) form.append("language", language);
+  form.append("feature", ctx.feature);
+  if (ctx.actorId) form.append("actor_id", ctx.actorId);
+  if (ctx.reference) {
+    form.append("reference_kind", ctx.reference.kind);
+    form.append("reference_id", ctx.reference.id);
+  }
+  return form;
 }

@@ -1190,6 +1190,7 @@ export type Database = {
           address_complement: string | null
           address_postal_code: string | null
           address_street: string | null
+          ai_voice_enabled: boolean
           contact_email: string | null
           courier_retention_days: number | null
           created_at: string
@@ -1216,6 +1217,7 @@ export type Database = {
           address_complement?: string | null
           address_postal_code?: string | null
           address_street?: string | null
+          ai_voice_enabled?: boolean
           contact_email?: string | null
           courier_retention_days?: number | null
           created_at?: string
@@ -1242,6 +1244,7 @@ export type Database = {
           address_complement?: string | null
           address_postal_code?: string | null
           address_street?: string | null
+          ai_voice_enabled?: boolean
           contact_email?: string | null
           courier_retention_days?: number | null
           created_at?: string

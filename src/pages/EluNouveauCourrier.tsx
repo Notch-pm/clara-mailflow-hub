@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Camera, FileText, Paperclip, X } from "lucide-react";
+import { Camera, FileText, Loader2, Mic, Paperclip, Sparkles, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { EluScreen, EluScreenHeader } from "@/components/elu/EluScreenHeader";
 import { EluUsagerPicker } from "@/components/elu/EluUsagerPicker";
+import DictationRecorder from "@/components/courier/DictationRecorder";
+import { useDictationEnabled } from "@/hooks/useDictationEnabled";
+import { extractCourierInfo, type SuggestedSender } from "@/services/courierAnalysisService";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { cn } from "@/lib/utils";
 import { createEluRelayedCourier } from "@/services/eluRelayService";
@@ -56,6 +59,12 @@ export default function EluNouveauCourrier() {
   const [comment, setComment] = useState("");
   const [files, setFiles] = useState<PendingFile[]>([]);
   const [submitted, setSubmitted] = useState(false);
+  // Dictée : la transcription (relue), et l'usager qu'elle nomme sans fiche
+  // reconnue d'office — la recherche et la création partent de lui.
+  const dictationEnabled = useDictationEnabled(organizationId);
+  const [dictating, setDictating] = useState(false);
+  const [dictation, setDictation] = useState("");
+  const [usagerSuggestion, setUsagerSuggestion] = useState<SuggestedSender | null>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -112,6 +121,37 @@ export default function EluNouveauCourrier() {
   );
   const hasErrors = !!errors.usager || !!errors.request;
 
+  /**
+   * La dictée remplit ce qu'elle peut : la requête (si elle est vide) et
+   * l'usager — sélectionné s'il est reconnu sans ambiguïté, sinon proposé à la
+   * recherche. Rien n'est envoyé : l'élu relit, complète et valide.
+   */
+  const fill = useMutation({
+    mutationFn: () => extractCourierInfo({ pastedText: dictation, source: "dictation" }),
+    onSuccess: (result) => {
+      const filled: string[] = [];
+      if (!request.trim()) {
+        setRequest(dictation.trim());
+        filled.push("requête");
+      }
+      const s = result.sender;
+      const named = !!(s.first_name || s.last_name || s.email || s.phone);
+      const match = result.sender_match ?? null;
+      if (!usager && match?.status === "matched" && match.contact) {
+        setUsager(match.contact as SocleContact);
+        setUsagerSuggestion(null);
+        filled.push("usager reconnu");
+      } else if (!usager && named) {
+        setUsagerSuggestion(s);
+        filled.push("usager à confirmer");
+      }
+      setDictating(false);
+      if (filled.length) toast.success(`Dictée : ${filled.join(", ")}`);
+      else toast.info("Dictée : rien à remplir — la requête et l'usager sont déjà saisis.");
+    },
+    onError: (e: Error) => toast.error("Remplissage impossible", { description: e.message }),
+  });
+
   const create = useMutation({
     mutationFn: () =>
       createEluRelayedCourier({
@@ -148,14 +188,74 @@ export default function EluNouveauCourrier() {
           withBack
         />
 
+        {dictationEnabled &&
+          (dictating ? (
+            <section className="flex flex-col gap-3 rounded-xl border bg-card p-4 shadow-airbnb-sm" aria-label="Dictée">
+              <div className="flex items-center gap-2">
+                <span className="flex-1 text-[19px] font-bold text-foreground">Dicter la demande</span>
+                <button
+                  type="button"
+                  onClick={() => setDictating(false)}
+                  aria-label="Fermer la dictée"
+                  className="grid h-11 w-11 place-items-center rounded-full text-muted-foreground"
+                >
+                  <X className="h-5 w-5" aria-hidden="true" />
+                </button>
+              </div>
+              <DictationRecorder value={dictation} onChange={setDictation} variant="touch" disabled={fill.isPending} />
+              {dictation.trim() && (
+                <button
+                  type="button"
+                  onClick={() => fill.mutate()}
+                  disabled={fill.isPending}
+                  className="flex min-h-14 w-full items-center justify-center gap-2 rounded-xl bg-primary text-[17px] font-bold text-primary-foreground transition active:scale-[0.98] disabled:opacity-50"
+                >
+                  {fill.isPending ? (
+                    <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Sparkles className="h-5 w-5" aria-hidden="true" />
+                  )}
+                  {fill.isPending ? "Remplissage…" : "Remplir le formulaire"}
+                </button>
+              )}
+            </section>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setDictating(true)}
+              className="flex min-h-14 items-center justify-center gap-2 rounded-xl border border-primary bg-primary/5 text-[17px] font-semibold text-primary"
+            >
+              <Mic className="h-5 w-5" aria-hidden="true" />
+              Dicter la demande
+            </button>
+          ))}
+
         <section className="flex flex-col gap-2.5">
           <FieldTitle required>Usager</FieldTitle>
+          {!usager && usagerSuggestion && (
+            <p className="text-[15px] text-muted-foreground">
+              Usager mentionné :{" "}
+              <span className="font-semibold text-foreground">
+                {[
+                  usagerSuggestion.civility === "madame" ? "Mme" : usagerSuggestion.civility === "monsieur" ? "M." : null,
+                  usagerSuggestion.first_name,
+                  usagerSuggestion.last_name,
+                ]
+                  .filter(Boolean)
+                  .join(" ") ||
+                  usagerSuggestion.email ||
+                  usagerSuggestion.phone}
+              </span>{" "}
+              — choisissez sa fiche ou créez-la.
+            </p>
+          )}
           {organizationId && (
             <EluUsagerPicker
               organizationId={organizationId}
               value={usager}
               onChange={setUsager}
               invalid={submitted && !!errors.usager}
+              suggestion={usagerSuggestion}
             />
           )}
           {submitted && errors.usager && (

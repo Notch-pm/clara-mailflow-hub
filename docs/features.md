@@ -8,6 +8,16 @@
 - Dialogue `NewCourierDialog.tsx` : direction, canal, sujet, expéditeur/destinataire (via `ContactPicker`, branché sur le référentiel de contacts du Socle), pièces jointes.
 - Création via `courierService.createCourier` → numérotation automatique (`courier_sequences` annuel par direction).
 
+### Dictée vocale (depuis le 2026-10-09)
+- On **énonce librement** une demande ; Clara la transcrit, l'agent ou l'élu relit et corrige le texte, puis l'IA remplit ce qu'elle peut. Pas de dialogue ni de voix de synthèse : ce qui manque se complète à la main.
+- **Ouverture par la collectivité, au Socle** : même interrupteur que le mode dialogue de l'assistant du portail (`assistant.voice_enabled`, servi par `GET /v1/organizations/{id}/assistant`, public-api 1.39.0), recopié par la sync dans `organizations.ai_voice_enabled`. Le micro n'apparaît que si la voix est ouverte ; `transcribe-dictation` relit le drapeau à chaque appel. ⚠️ Couplage hérité du Socle : sans assistant de portail ouvert, `voice_enabled` y reste faux — donc pas de dictée.
+- **Agent** : onglet « Dicter » de `NewCourierDialog` (à côté de « Importer » et « Coller ») → « Continuer » lance `extract-courier-info` avec `source: "dictation"` : même remplissage que pour un texte collé (objet, contenu, expéditeur rapproché, organisation proposée, tags).
+- **Élu** (`/elu/nouveau-courrier`, pensé pour le téléphone) : bouton « Dicter la demande » → « Remplir le formulaire » : la requête (si vide) reçoit la transcription, l'usager est sélectionné s'il est reconnu sans ambiguïté, sinon la recherche de `EluUsagerPicker` part de son nom et la création reprend l'identité dictée.
+- Chaîne : navigateur (AudioWorklet → WAV PCM 16 bits, 16 kHz, mono, `src/lib/voice/`) → `transcribe-dictation` → guichet IA du Socle `POST /v1/transcriptions` (multipart, `feature: dictee-courrier`). Format et bornes partagés écran ↔ serveur : `supabase/functions/_shared/dictation.ts` (**4 minutes** max, sous les 300 s / 10 Mo du guichet). Coût : 50 jetons par seconde transcrite, sur le crédit de la collectivité.
+- Le prompt d'extraction sait qu'une dictée est **rapportée** : l'expéditeur est l'usager dont parle le locuteur, jamais le locuteur ; coordonnées épelées restituées sous forme écrite.
+- **Rien n'est conservé** : ni l'audio ni la transcription (hors ce que l'utilisateur garde dans le courrier), ni dans Clara ni au Socle.
+- Exige HTTPS (`getUserMedia`) et un navigateur avec AudioWorklet ; sinon le composant le dit au lieu d'afficher un micro inerte.
+
 ### Réception automatique IMAP
 - Edge function `fetch-inbound-emails` : poll des boîtes IMAP configurées par tenant ou par organisation Socle (`imap_settings.socle_organization_id`). Le fallback vers les anciens services est legacy et ne doit pas servir de base à de nouveaux développements.
 - Crée un `courier` `direction=inbound`, importe les pièces jointes dans le bucket `clara-documents`, crée les participants.

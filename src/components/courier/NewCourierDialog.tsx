@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
-import { Check, ChevronLeft, ChevronRight, FileText, FileUp, Loader2, Plus, Sparkles, Upload, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, FileText, FileUp, Loader2, Mic, Plus, Sparkles, Upload, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -52,6 +52,8 @@ import {
 } from "@/services/courierAnalysisService";
 import ContactPicker from "@/components/courier/ContactPicker";
 import SenderMatchNotice from "@/components/courier/SenderMatchNotice";
+import DictationRecorder from "@/components/courier/DictationRecorder";
+import { useDictationEnabled } from "@/hooks/useDictationEnabled";
 import type { SenderMatch } from "../../../supabase/functions/_shared/senderMatchLogic";
 import {
   createSenderContact,
@@ -99,8 +101,10 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
   const canEdit = canEditCouriers(profile, membership);
 
   const [step, setStep] = useState<"import" | "review">("import");
-  const [importMode, setImportMode] = useState<"files" | "paste">("files");
+  const [importMode, setImportMode] = useState<"files" | "paste" | "dictation">("files");
   const [pastedText, setPastedText] = useState("");
+  /** Transcription de la dictée vocale, relue et corrigée par l'agent. */
+  const [dictatedText, setDictatedText] = useState("");
 
   const [subject, setSubject] = useState("");
   const [channel, setChannel] = useState<CourierChannel>("paper");
@@ -134,6 +138,7 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
     setStep("import");
     setImportMode("files");
     setPastedText("");
+    setDictatedText("");
     setSubject("");
     setChannel("paper");
     setReceivedAt(new Date().toISOString().slice(0, 10));
@@ -172,6 +177,8 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
     select: assignableOrgs,
     enabled: !!organizationId && open,
   });
+
+  const dictationEnabled = useDictationEnabled(organizationId, open);
 
   const { data: orgTags } = useQuery({
     queryKey: ["courier-tags", organizationId],
@@ -371,10 +378,14 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
 
   const extractMutation = useMutation({
     mutationFn: async () => {
-      const result = await extractCourierInfo({
-        files: importMode === "files" ? pendingFiles : undefined,
-        pastedText: importMode === "paste" ? pastedText : undefined,
-      });
+      const result = await extractCourierInfo(
+        importMode === "dictation"
+          ? { pastedText: dictatedText, source: "dictation" }
+          : {
+            files: importMode === "files" ? pendingFiles : undefined,
+            pastedText: importMode === "paste" ? pastedText : undefined,
+          },
+      );
       // Une edge function antérieure au rapprochement par `match` ne renvoie
       // pas `sender_match` (et son `matched_contact` repose sur le seul nom de
       // famille) : on refait alors le rapprochement d'ici, même règle.
@@ -496,7 +507,8 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
   function handleContinue() {
     const hasContent =
       (importMode === "files" && pendingFiles.length > 0) ||
-      (importMode === "paste" && pastedText.trim().length > 0);
+      (importMode === "paste" && pastedText.trim().length > 0) ||
+      (importMode === "dictation" && dictatedText.trim().length > 0);
     if (hasContent) {
       extractMutation.mutate();
     } else {
@@ -511,17 +523,24 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
           <DialogTitle>Nouveau courrier</DialogTitle>
           <DialogDescription>
             {step === "import"
-              ? "Étape 1/2 — Importez un fichier ou collez le contenu du courrier."
+              ? dictationEnabled
+                ? "Étape 1/2 — Importez un fichier, collez le contenu du courrier ou dictez la demande."
+                : "Étape 1/2 — Importez un fichier ou collez le contenu du courrier."
               : "Étape 2/2 — Vérifiez et complétez les informations du courrier."}
           </DialogDescription>
         </DialogHeader>
 
         {step === "import" ? (
           <div className="space-y-4">
-            <Tabs value={importMode} onValueChange={(v) => setImportMode(v as "files" | "paste")}>
-              <TabsList className="grid grid-cols-2 w-full">
+            <Tabs value={importMode} onValueChange={(v) => setImportMode(v as "files" | "paste" | "dictation")}>
+              <TabsList className={cn("grid w-full", dictationEnabled ? "grid-cols-3" : "grid-cols-2")}>
                 <TabsTrigger value="files">Importer des fichiers</TabsTrigger>
                 <TabsTrigger value="paste">Coller un texte</TabsTrigger>
+                {dictationEnabled && (
+                  <TabsTrigger value="dictation" className="gap-1.5">
+                    <Mic className="h-4 w-4" /> Dicter
+                  </TabsTrigger>
+                )}
               </TabsList>
 
               <TabsContent value="files" className="mt-3 space-y-3">
@@ -638,6 +657,12 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
                   className="resize-y min-h-[280px]"
                 />
               </TabsContent>
+
+              {dictationEnabled && (
+                <TabsContent value="dictation" className="mt-3">
+                  <DictationRecorder value={dictatedText} onChange={setDictatedText} />
+                </TabsContent>
+              )}
             </Tabs>
 
             <DialogFooter className="mt-2 sm:justify-between">

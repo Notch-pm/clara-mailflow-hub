@@ -21,6 +21,7 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import {
   AiRateLimitedError,
+  buildTranscriptionForm,
   type ChatMessage,
   deriveAiApiBaseUrl,
   mapSocleAiFailure,
@@ -28,6 +29,7 @@ import {
   MAX_OUTPUT_TOKENS,
   SocleAiError,
   type SocleAiContext,
+  type TranscriptionInput,
 } from "./socleAiLogic.ts";
 
 export {
@@ -40,6 +42,7 @@ export {
   deriveAiApiBaseUrl,
   FEATURE_ANALYSIS,
   FEATURE_CORRECTION,
+  FEATURE_DICTATION,
   FEATURE_DRAFT,
   FEATURE_EXTRACTION,
   FEATURE_PREFILL,
@@ -108,11 +111,22 @@ export async function socleOrgIdFor(
 // L'appel
 // ===========================================================================
 
-interface SocleAiRequest {
-  path: "/v1/completions" | "/v1/ocr";
-  payload: Record<string, unknown>;
-  ctx: SocleAiContext;
-}
+type SocleAiRequest =
+  | {
+    path: "/v1/completions" | "/v1/ocr";
+    payload: Record<string, unknown>;
+    ctx: SocleAiContext;
+  }
+  | {
+    /**
+     * Multipart : le contexte (feature, actor, référence) est déjà DANS le
+     * formulaire. Une fabrique plutôt qu'un objet : le réessai après un refus
+     * de cadence renvoie un corps neuf.
+     */
+    path: "/v1/transcriptions";
+    form: () => FormData;
+    ctx: SocleAiContext;
+  };
 
 /**
  * Un appel au guichet, avec UN réessai après un refus de cadence.
@@ -129,9 +143,10 @@ interface SocleAiRequest {
  * puisqu'il n'existe pas de clé d'idempotence.
  */
 async function callSocleAi(
-  { path, payload, ctx }: SocleAiRequest,
+  request: SocleAiRequest,
   attempt = 0,
 ): Promise<unknown> {
+  const { path, ctx } = request;
   const base = aiApiBaseUrl();
   const key = socleAiKey();
   if (base === "" || !key) {
@@ -142,28 +157,37 @@ async function callSocleAi(
     );
   }
 
-  const res = await fetch(`${base}${path}`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "X-Organization-Id": ctx.socleOrgId,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      ...payload,
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${key}`,
+    "X-Organization-Id": ctx.socleOrgId,
+  };
+  let body: BodyInit;
+  if ("form" in request) {
+    // Pas de Content-Type : `fetch` écrit lui-même le boundary du multipart.
+    body = request.form();
+  } else {
+    headers["Content-Type"] = "application/json";
+    body = JSON.stringify({
+      ...request.payload,
       feature: ctx.feature,
       reference: ctx.reference ?? null,
       actor_id: ctx.actorId ?? null,
-    }),
+    });
+  }
+
+  const res = await fetch(`${base}${path}`, {
+    method: "POST",
+    headers,
+    body,
     signal: AbortSignal.timeout(TIMEOUT_MS),
   }).catch(() => null);
 
   if (!res) throw mapSocleAiFailure(null, null, null);
 
-  const body = await res.json().catch(() => null);
-  if (res.ok) return body;
+  const answer = await res.json().catch(() => null);
+  if (res.ok) return answer;
 
-  const failure = mapSocleAiFailure(res.status, body, res.headers.get("Retry-After"));
+  const failure = mapSocleAiFailure(res.status, answer, res.headers.get("Retry-After"));
 
   if (failure instanceof AiRateLimitedError && attempt === 0) {
     // Un seul réessai, et une attente BORNÉE : au-delà, la fonction dépasserait
@@ -172,7 +196,7 @@ async function callSocleAi(
     const waitMs = Math.min(failure.retryAfterSeconds, MAX_RATE_LIMIT_WAIT_SECONDS) * 1000;
     console.warn(`socleAi: cadence dépassée sur ${path}, reprise dans ${waitMs / 1000} s`);
     await new Promise((resolve) => setTimeout(resolve, waitMs));
-    return await callSocleAi({ path, payload, ctx }, attempt + 1);
+    return await callSocleAi(request, attempt + 1);
   }
 
   throw failure;
@@ -275,4 +299,29 @@ export async function socleOcr(options: OcrOptions): Promise<OcrOutcome> {
     text: typeof text === "string" ? text : "",
     pageCount: typeof pageCount === "number" && pageCount > 0 ? pageCount : null,
   };
+}
+
+/**
+ * La transcription d'une dictée (`POST /v1/transcriptions`, ai-api 1.4.0).
+ *
+ * Un silence rend `""` — ce n'est PAS une panne : l'appelant dit « je n'ai rien
+ * entendu », il ne dit pas que l'assistant est indisponible. Le texte n'est ni
+ * journalisé ni conservé, ici comme au Socle.
+ */
+export async function socleTranscription(input: TranscriptionInput): Promise<string> {
+  const body = await callSocleAi({
+    path: "/v1/transcriptions",
+    form: () => buildTranscriptionForm(input),
+    ctx: input.ctx,
+  });
+  const text = (body as { text?: unknown } | null)?.text;
+  if (typeof text !== "string") {
+    console.error("socleAi: réponse de transcription inattendue");
+    throw new SocleAiError(
+      "L'assistant est momentanément indisponible — réessayez dans un instant.",
+      502,
+      "ai_unavailable",
+    );
+  }
+  return text.trim();
 }

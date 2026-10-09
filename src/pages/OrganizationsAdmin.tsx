@@ -56,6 +56,8 @@ function syncSummary(result: SocleSyncResult): string {
   // Idem pour la charte graphique : logo et couleurs viennent du référentiel,
   // un écran qui ne le dit pas laisse chercher où on les modifie.
   if (counters.charte_synchronisee) parts.push("Charte graphique : à jour");
+  // La dictée vocale s'ouvre au référentiel, pas ici.
+  if (counters.assistant_synchronise) parts.push("Assistant IA : à jour");
   // Attributions : ce qui guide la proposition du service instructeur.
   if (counters.attributions_synchronisees) parts.push(`Attributions : ${counters.attributions_synchronisees}`);
   const resume = `Éléments modifiés — ${parts.join(", ")}.`;

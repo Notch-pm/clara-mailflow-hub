@@ -59,6 +59,8 @@ export interface SocleSyncCounters {
    * runs antérieurs au 2026-09-13 ; 0 = charte illisible, miroir laissé en l'état.
    */
   charte_synchronisee?: number;
+  /** Assistant IA (voix ouverte ou non) relu et appliqué (0 ou 1). Absent avant le 2026-10-09. */
+  assistant_synchronise?: number;
   /** Descriptifs publics (« informations usager ») réécrits. Absent avant le 2026-10-01. */
   descriptifs_synchronises?: number;
   /** Attributions internes réécrites (services internes compris). Absent avant le 2026-10-01. */
