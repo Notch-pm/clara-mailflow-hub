@@ -253,6 +253,7 @@ export default function LinkedActionsTab({
   const qc = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
+  const [taskInitialTitle, setTaskInitialTitle] = useState<string | null>(null);
   const [suggestedAction, setSuggestedAction] = useState<SuggestedAction | null>(null);
   const [refreshingStatus, setRefreshingStatus] = useState(false);
   const [refreshingIris, setRefreshingIris] = useState(false);
@@ -376,6 +377,11 @@ export default function LinkedActionsTab({
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const openCreateTask = (action?: SuggestedAction) => {
+    setTaskInitialTitle(action?.label ?? null);
+    setTaskDialogOpen(true);
+  };
+
   const openCreate = (action?: SuggestedAction) => {
     setSuggestedAction(action ?? null);
     setDialogOpen(true);
@@ -414,7 +420,7 @@ export default function LinkedActionsTab({
                   Fondée sur une démarche, transmise à Iris ou Arpège
                 </span>
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => setTaskDialogOpen(true)} className="flex-col items-start gap-0.5">
+              <DropdownMenuItem onSelect={() => openCreateTask()} className="flex-col items-start gap-0.5">
                 <span className="flex items-center gap-2 font-medium">
                   <ListChecks className="h-4 w-4" />
                   Tâche
@@ -596,6 +602,7 @@ export default function LinkedActionsTab({
       <SuggestedActionsCard
         courierId={courierId}
         onCreateTicket={creationBlockedReason ? undefined : (action) => openCreate(action)}
+        onCreateTask={creationBlockedReason ? undefined : (action) => openCreateTask(action)}
         readOnly={readOnly}
       />
 
@@ -604,6 +611,7 @@ export default function LinkedActionsTab({
         onOpenChange={setTaskDialogOpen}
         courierId={courierId}
         organizationId={organizationId}
+        initialTitle={taskInitialTitle}
       />
 
       <CreateTicketDialog

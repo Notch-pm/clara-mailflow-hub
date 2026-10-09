@@ -330,6 +330,10 @@ Réservée aux éditeurs (RLS `is_editor_of`) ; l'espace élu les affiche en lec
   le mail une fois le SMTP recopié du Socle.
 - Le brouillon IA de réponse les voit comme « Tâche interne : … [en cours | réalisée] », sans
   référence citable.
+- **Depuis une action suggérée sans démarche** (carte « Actions suggérées » de l'onglet) : quand
+  l'analyse ne rattache sa recommandation à aucune démarche du référentiel, le bouton n'est plus
+  « Demande » mais **« Tâche »**, qui ouvre ce dialogue avec l'intitulé repris de la suggestion
+  (modifiable). Une suggestion fondée sur une démarche garde le bouton « Demande ».
 
 ### Dépôt dans Iris (depuis le 2026-08-23)
 

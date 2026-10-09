@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
+import { ListChecks, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -8,10 +8,20 @@ import { getAnalysis, type SuggestedAction } from "@/services/courierAnalysisSer
 interface Props {
   courierId: string;
   onCreateTicket?: (action: SuggestedAction) => void;
+  /**
+   * Action sans démarche du référentiel : personne n'instruirait une demande,
+   * mais le travail peut être confié en interne — c'est une tâche.
+   */
+  onCreateTask?: (action: SuggestedAction) => void;
   readOnly?: boolean;
 }
 
-export default function SuggestedActionsCard({ courierId, onCreateTicket, readOnly = false }: Props) {
+export default function SuggestedActionsCard({
+  courierId,
+  onCreateTicket,
+  onCreateTask,
+  readOnly = false,
+}: Props) {
   const { data: analysis, isLoading } = useQuery({
     queryKey: ["courier-analysis", courierId],
     queryFn: () => getAnalysis(courierId),
@@ -53,18 +63,33 @@ export default function SuggestedActionsCard({ courierId, onCreateTicket, readOn
                   </span>
                 )}
               </span>
-              {onCreateTicket && !readOnly && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 px-2 text-xs shrink-0 opacity-60 group-hover:opacity-100"
-                  onClick={() => onCreateTicket(action)}
-                  title="Créer un ticket à partir de cette action"
-                >
-                  <Plus className="h-3 w-3" />
-                  Ticket
-                </Button>
-              )}
+              {/* Avec une démarche : une demande (Iris / Arpège). Sans : une
+                  tâche interne, l'intitulé repris de la suggestion. */}
+              {action.procedure_id
+                ? onCreateTicket && !readOnly && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 px-2 text-xs shrink-0 opacity-60 group-hover:opacity-100"
+                      onClick={() => onCreateTicket(action)}
+                      title="Créer une demande à partir de cette action"
+                    >
+                      <Plus className="h-3 w-3" />
+                      Demande
+                    </Button>
+                  )
+                : onCreateTask && !readOnly && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 px-2 text-xs shrink-0 opacity-60 group-hover:opacity-100"
+                      onClick={() => onCreateTask(action)}
+                      title="Aucune démarche ne correspond : confier cette action en interne"
+                    >
+                      <ListChecks className="h-3 w-3" />
+                      Tâche
+                    </Button>
+                  )}
             </li>
           ))}
         </ul>

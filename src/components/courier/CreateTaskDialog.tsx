@@ -32,16 +32,26 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   courierId: string;
   organizationId: string;
+  /** Intitulé proposé (action suggérée par l'analyse), modifiable. */
+  initialTitle?: string | null;
 }
 
 type AssigneeMode = "membre" | "adresse";
+
+const TITLE_MAX = 200;
 
 /**
  * Tâche : action interne, jamais transmise à Iris ni à un partenaire. L'agent
  * affecté — membre de Clara ou simple adresse — la reçoit par mail avec un lien
  * pour la marquer terminée sans se connecter.
  */
-export default function CreateTaskDialog({ open, onOpenChange, courierId, organizationId }: Props) {
+export default function CreateTaskDialog({
+  open,
+  onOpenChange,
+  courierId,
+  organizationId,
+  initialTitle = null,
+}: Props) {
   const qc = useQueryClient();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -52,13 +62,13 @@ export default function CreateTaskDialog({ open, onOpenChange, courierId, organi
 
   useEffect(() => {
     if (!open) return;
-    setTitle("");
+    setTitle((initialTitle ?? "").trim().slice(0, TITLE_MAX));
     setDescription("");
     setMode("membre");
     setMemberId("");
     setEmail("");
     setName("");
-  }, [open]);
+  }, [open, initialTitle]);
 
   const { data: members = [], isLoading: loadingMembers } = useQuery({
     queryKey: ["org-members-tasks", organizationId],
@@ -139,7 +149,7 @@ export default function CreateTaskDialog({ open, onOpenChange, courierId, organi
               id="task-title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              maxLength={200}
+              maxLength={TITLE_MAX}
               placeholder="Ex. : vérifier l'état du trottoir rue des Lilas"
             />
           </div>
