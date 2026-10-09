@@ -10,7 +10,7 @@ import {
 } from "../../../supabase/functions/_shared/actionTask";
 import { taskAssigneeLabel } from "@/lib/action-task";
 import { describeCourierEvent } from "@/lib/courier-history";
-import { buildTicketsBlock } from "../../../supabase/functions/draft-reply/logic";
+import { buildTicketsBlock, DRAFT_SYSTEM_PROMPT } from "../../../supabase/functions/draft-reply/logic";
 import { notificationPath, pushMessage } from "../../../supabase/functions/_shared/push/message";
 
 // Tâches : action interne affectée, close depuis un lien à jeton reçu par mail.
@@ -97,14 +97,21 @@ describe("historique du courrier", () => {
 });
 
 describe("contexte IA du brouillon de réponse", () => {
-  it("une tâche se dit interne, avec son avancement, sans référence", () => {
+  it("une tâche est du travail de la collectivité, avec son avancement, sans référence", () => {
     const block = buildTicketsBlock([
       { kind: "tache", title: "Vérifier le trottoir", description: "Rue des Lilas", status: "open" },
       { kind: "tache", title: "Élaguer", status: "done" },
     ]);
-    expect(block).toContain("- Tâche interne : Vérifier le trottoir : Rue des Lilas [en cours]");
-    expect(block).toContain("- Tâche interne : Élaguer [réalisée]");
+    expect(block).toContain("- Travail de la collectivité : Vérifier le trottoir : Rue des Lilas [en cours]");
+    expect(block).toContain("- Travail de la collectivité : Élaguer [fait]");
     expect(block).not.toContain("référence");
+    // Le modèle recopiait le mot dans la lettre : il ne doit pas le recevoir.
+    expect(block.toLowerCase()).not.toContain("tâche");
+  });
+
+  it("la consigne interdit de nommer l'outillage interne dans la lettre", () => {
+    expect(DRAFT_SYSTEM_PROMPT).toContain("« Travail de la collectivité »");
+    expect(DRAFT_SYSTEM_PROMPT).toContain("Ne parle jamais de tâche, d'action interne, de ticket");
   });
 });
 

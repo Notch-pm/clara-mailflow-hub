@@ -328,8 +328,11 @@ Réservée aux éditeurs (RLS `is_editor_of`) ; l'espace élu les affiche en lec
   ouverte. Pas de relance automatique (choix du 2026-10-09).
 - Sans serveur d'envoi, la tâche est créée quand même et l'écran avertit ; « Relancer » renverra
   le mail une fois le SMTP recopié du Socle.
-- Le brouillon IA de réponse les voit comme « Tâche interne : … [en cours | réalisée] », sans
-  référence citable.
+- Le brouillon IA de réponse les voit comme « Travail de la collectivité : … [en cours | fait] »,
+  sans référence citable. Le mot « tâche » ne lui est pas transmis, et le prompt système lui
+  interdit de parler de tâche, d'action interne ou de ticket : il rapporte ce qui a été fait du
+  point de vue de l'expéditeur (« la date d'intervention vous a été communiquée »), et tait ce qui
+  ne le concerne pas (2026-10-09 — il écrivait « la tâche interne consistant à… a été réalisée »).
 - **Depuis une action suggérée sans démarche** (carte « Actions suggérées » de l'onglet) : quand
   l'analyse ne rattache sa recommandation à aucune démarche du référentiel, le bouton n'est plus
   « Demande » mais **« Tâche »**, qui ouvre ce dialogue avec l'intitulé repris de la suggestion
