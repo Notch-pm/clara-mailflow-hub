@@ -1,11 +1,13 @@
-import { ArrowDownWideNarrow, CheckCheck, ChevronRight, Loader2, Sparkles } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { ArrowDownWideNarrow, CheckCheck, ChevronRight, ClockAlert, Loader2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { LIST_HEADER_SURFACE } from "@/components/list/ListCells";
 import { ListFooter, ListMessage } from "@/components/list/ListPage";
 import { ListScrollArea } from "@/components/list/ListScrollArea";
 import { channelLabels } from "@/hooks/useCourierWorkspace";
 import { cn } from "@/lib/utils";
-import { MAILROOM_VIEWS, type MailroomItem, type MailroomView } from "@/lib/mailroom";
+import { isLate, MAILROOM_SORTS, MAILROOM_VIEWS, type MailroomItem, type MailroomSort, type MailroomView } from "@/lib/mailroom";
 import type { CourierChannel } from "@/types/courier";
 import { TONE_TEXT, serviceCell, shortDate, stageLabel, statusCell } from "./mailroomDisplay";
 
@@ -31,6 +33,8 @@ interface Props {
   analyzeBusy: boolean;
   onAnalyze: () => void;
   filtered: boolean;
+  sort: MailroomSort;
+  onSortChange: (sort: MailroomSort) => void;
 }
 
 export default function MailroomList({
@@ -48,8 +52,18 @@ export default function MailroomList({
   analyzeBusy,
   onAnalyze,
   filtered,
+  sort,
+  onSortChange,
 }: Props) {
   const def = MAILROOM_VIEWS[view];
+  const listRef = useRef<HTMLDivElement>(null);
+
+  // Le courrier sélectionné reste visible : après un changement d'onglet (suivi
+  // d'un courrier déplacé), la liste est remontée en haut — on le ramène à l'écran.
+  useEffect(() => {
+    if (!selectedId) return;
+    listRef.current?.querySelector(`[data-courier-id="${selectedId}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [selectedId, view, sort]);
   const showAnalysing = analysingCount > 0 && (view === "aq" || view === "av");
 
   return (
@@ -70,10 +84,23 @@ export default function MailroomList({
             Lancer l'analyse IA ({analyzeCount} non analysé{analyzeCount > 1 ? "s" : ""})
           </Button>
         )}
-        <span className="hidden items-center gap-1.5 text-xs font-semibold text-muted-foreground lg:flex">
-          <ArrowDownWideNarrow className="h-3.5 w-3.5" />
-          {def.sortLabel}
-        </span>
+        <Select value={sort} onValueChange={(v) => onSortChange(v as MailroomSort)}>
+          <SelectTrigger
+            aria-label="Ordre de la liste"
+            className="hidden h-8 w-auto gap-1.5 border-none px-2 text-xs font-semibold text-muted-foreground shadow-none hover:bg-muted sm:flex"
+          >
+            <ArrowDownWideNarrow className="h-3.5 w-3.5 shrink-0" />
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent align="end">
+            <SelectItem value="default">{def.sortLabel} (par défaut)</SelectItem>
+            {MAILROOM_SORTS.filter((o) => o.label !== def.sortLabel).map((o) => (
+              <SelectItem key={o.value} value={o.value}>
+                {o.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {showAnalysing && (
@@ -102,6 +129,7 @@ export default function MailroomList({
       </div>
 
       <ListScrollArea resetKey={view}>
+        <div ref={listRef}>
         {isLoading ? (
           <ListMessage>Chargement…</ListMessage>
         ) : items.length === 0 ? (
@@ -116,9 +144,12 @@ export default function MailroomList({
             const SvcIcon = svc.icon;
             const StatusIcon = status.icon;
             const title = [row.sender_name, row.subject || "Sans objet"].filter(Boolean).join(" — ");
+            // L'étape « En retard » le dit déjà ; ailleurs (accusé dépassé avant routage), une pastille.
+            const lateMark = isLate(item) && item.stage !== "late";
             return (
               <button
                 key={row.id}
+                data-courier-id={row.id}
                 type="button"
                 onClick={() => onSelect(row.id)}
                 aria-current={selected}
@@ -131,11 +162,23 @@ export default function MailroomList({
                 <span className="flex min-w-0 flex-col gap-0.5">
                   <span className="truncate text-[13.5px] font-semibold text-foreground">{title}</span>
                   <span className="flex min-w-0 items-center gap-1.5 truncate text-xs text-muted-foreground group-data-[density=compact]/list:hidden">
+                    {row.chrono && (
+                      <>
+                        <span className="font-semibold tabular-nums text-foreground/80">{row.chrono}</span>
+                        <span aria-hidden="true">·</span>
+                      </>
+                    )}
                     <span>{channelLabels[row.channel as CourierChannel] ?? row.channel}</span>
                     <span aria-hidden="true">·</span>
                     <span className="tabular-nums">{shortDate(row.received_at ?? row.created_at)}</span>
                     <span aria-hidden="true">·</span>
                     <span className={cn("font-semibold", TONE_TEXT[stage.tone])}>{stage.label}</span>
+                    {lateMark && (
+                      <span className="flex shrink-0 items-center gap-1 font-semibold text-destructive">
+                        <ClockAlert className="h-3 w-3" />
+                        En retard
+                      </span>
+                    )}
                     {/* Sous `md`, pas de colonnes : le statut passe ici. */}
                     <span className={cn("truncate md:hidden", TONE_TEXT[status.tone])}>· {status.text}</span>
                   </span>
@@ -153,6 +196,7 @@ export default function MailroomList({
             );
           })
         )}
+        </div>
       </ListScrollArea>
 
       <ListFooter>

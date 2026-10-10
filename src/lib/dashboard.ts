@@ -156,8 +156,9 @@ export function instructionTodo(
   ];
 }
 
-export function mailroomHref(view: MailroomView): string {
-  return `/courrier-entrant?vue=${view}`;
+/** `lateOnly` : l'onglet réduit à ses retards (`?retard=1`) — il n'y a plus d'onglet « En retard ». */
+export function mailroomHref(view: MailroomView, lateOnly = false): string {
+  return `/courrier-entrant?vue=${view}${lateOnly ? "&retard=1" : ""}`;
 }
 
 export function mailroomTodo(items: MailroomItem[]): TodoCard[] {
@@ -198,7 +199,7 @@ export function mailroomTodo(items: MailroomItem[]): TodoCard[] {
       count: count("late"),
       sub: "routés, échéance dépassée",
       cta: "Relancer",
-      href: mailroomHref("retard"),
+      href: mailroomHref("cours", true),
     }),
   ];
 }

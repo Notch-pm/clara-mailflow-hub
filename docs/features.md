@@ -136,9 +136,20 @@ service gestionnaire, puis **suit et relance** ; il n'instruit pas. Écran `/cou
     Parmi eux : *analyse en cours* (job `pending`/`running`, bandeau), **À réorienter** (dernier
     routage = `service_returned`), **À qualifier** (échec d'analyse, non analysé, pas de
     proposition, organisation proposée indisponible, ou confiance < 70), **À valider** (le reste).
-  - **Routé** : **En retard** si l'échéance du moment (`primarySla`, accusé puis résolution) est
-    dépassée, sinon **En cours** (« non pris en charge » tant que le courrier est à l'état
-    initial) ; **Traités** = `resolved_at` posé.
+  - **Routé** : **En cours** (« non pris en charge » tant que le courrier est à l'état initial) ;
+    **Traités** = `resolved_at` posé. L'étape `late` (échéance du moment dépassée, `primarySla`)
+    reste rangée dans « En cours » : **il n'y a pas d'onglet « En retard »** (retiré le 2026-10-10).
+- **Retards** (`isLate`, à router compris — un accusé peut déjà être dépassé avant routage) : lus
+  DANS chaque liste (pastille rouge sur la ligne, « dont N en retard » sur la carte de l'onglet)
+  et filtrables (« Délai › En retard uniquement », `?retard=1`). L'ancien lien `?vue=retard` vaut
+  « En cours » filtré sur ses retards.
+- **Liste** : chrono en tête de la seconde ligne ; ordre choisi par onglet (par défaut celui de
+  l'onglet, ou plus récents / plus anciens d'abord / échéance la plus proche).
+- **Suivi d'un courrier déplacé** (`useMailroomMoves`) : après router, réaffecter, relancer ou
+  analyser, la liste est RELUE, puis un toast nomme l'onglet d'arrivée (« désormais dans » / « reste
+  dans ») ; pour un lot, le décompte par onglet. Un courrier seul encore affiché dans le panneau
+  est suivi : l'onglet change, sa ligne est sélectionnée et ramenée à l'écran. Sinon le toast
+  propose « Afficher ». Une analyse attend son résultat (3 min au plus) avant d'être annoncée.
 - **Gestes** (`src/services/courierRoutingService.ts`) :
   - **Router** (`routeCourier`) : autre organisation → `assignOrganization` (`service_changed`) ;
     organisation déjà posée → seul l'événement `courier_routed` acte la décision. Les membres de

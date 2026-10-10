@@ -133,7 +133,13 @@ export function classifyCourier(row: MailroomRow, ctx: MailroomContext): Mailroo
 
 // ─── Vues (onglets) ─────────────────────────────────────────────────────────
 
-export type MailroomView = "aq" | "av" | "retour" | "cours" | "retard" | "traites" | "tous";
+/**
+ * Pas d'onglet « En retard » : un retard se lit DANS chaque liste (pastille de
+ * la ligne, compteur de l'onglet) et se filtre (`lateOnly`). Un courrier routé
+ * en retard reste ainsi « En cours » : il ne change pas d'onglet en dépassant
+ * son échéance.
+ */
+export type MailroomView = "aq" | "av" | "retour" | "cours" | "traites" | "tous";
 
 export interface MailroomViewDef {
   label: string;
@@ -176,15 +182,7 @@ export const MAILROOM_VIEWS: Record<MailroomView, MailroomViewDef> = {
     sortLabel: "Échéance la plus proche",
     empty: "Aucun courrier en cours.",
     columns: ["Service destinataire", "Statut et échéance"],
-    stages: ["routed"],
-  },
-  retard: {
-    label: "En retard",
-    description: "Accusé de réception ou réponse hors délai",
-    sortLabel: "Retard le plus important",
-    empty: "Aucun courrier en retard.",
-    columns: ["Service destinataire", "Retard"],
-    stages: ["late"],
+    stages: ["routed", "late"],
   },
   traites: {
     label: "Traités",
@@ -204,15 +202,70 @@ export const MAILROOM_VIEWS: Record<MailroomView, MailroomViewDef> = {
   },
 };
 
-export const MAILROOM_VIEW_ORDER: MailroomView[] = ["aq", "av", "retour", "cours", "retard", "traites", "tous"];
+export const MAILROOM_VIEW_ORDER: MailroomView[] = ["aq", "av", "retour", "cours", "traites", "tous"];
 
 export function inView(item: MailroomItem, view: MailroomView): boolean {
   const stages = MAILROOM_VIEWS[view].stages;
   return stages === null || stages.includes(item.stage);
 }
 
+/** Onglet où se range une étape — `null` pendant l'analyse (« Tous » seulement). */
+export function viewOfStage(stage: MailroomStage): Exclude<MailroomView, "tous"> | null {
+  switch (stage) {
+    case "analysing":
+      return null;
+    case "to_qualify":
+      return "aq";
+    case "to_validate":
+      return "av";
+    case "to_reorient":
+      return "retour";
+    case "routed":
+    case "late":
+      return "cours";
+    case "done":
+      return "traites";
+  }
+}
+
+/**
+ * Échéance du moment dépassée, courrier non clôturé — à router compris : un
+ * accusé de réception peut déjà être en retard chez le service courrier.
+ */
+export function isLate(item: MailroomItem): boolean {
+  return !item.row.resolved_at && item.primary?.status.kind === "overdue";
+}
+
 const time = (value: string | null | undefined) => (value ? new Date(value).getTime() : 0);
 const receivedTime = (item: MailroomItem) => time(item.row.received_at ?? item.row.created_at);
+
+/** Ordre de la liste : celui de la vue (`sortLabel`), ou un ordre choisi. */
+export type MailroomSort = "default" | "recent" | "oldest" | "due";
+
+export const MAILROOM_SORTS: { value: Exclude<MailroomSort, "default">; label: string }[] = [
+  { value: "recent", label: "Plus récents d'abord" },
+  { value: "oldest", label: "Plus anciens d'abord" },
+  { value: "due", label: "Échéance la plus proche" },
+];
+
+const byDue = (a: MailroomItem, b: MailroomItem) => {
+  const da = a.primary?.status.dueDay ?? "9999-12-31";
+  const db = b.primary?.status.dueDay ?? "9999-12-31";
+  return da < db ? -1 : da > db ? 1 : receivedTime(a) - receivedTime(b);
+};
+
+export function sortItems(items: MailroomItem[], view: MailroomView, sort: MailroomSort): MailroomItem[] {
+  switch (sort) {
+    case "default":
+      return sortForView(items, view);
+    case "recent":
+      return [...items].sort((a, b) => receivedTime(b) - receivedTime(a));
+    case "oldest":
+      return [...items].sort((a, b) => receivedTime(a) - receivedTime(b));
+    case "due":
+      return [...items].sort(byDue);
+  }
+}
 
 /** Tri propre à chaque vue (voir `sortLabel`). */
 export function sortForView(items: MailroomItem[], view: MailroomView): MailroomItem[] {
@@ -223,14 +276,9 @@ export function sortForView(items: MailroomItem[], view: MailroomView): Mailroom
       return list.sort((a, b) => receivedTime(a) - receivedTime(b));
     case "retour":
       return list.sort((a, b) => time(b.row.returned_at) - time(a.row.returned_at));
+    // Échéance la plus proche : les retards, échéance passée, en tête.
     case "cours":
-      return list.sort((a, b) => {
-        const da = a.primary?.status.dueDay ?? "9999-12-31";
-        const db = b.primary?.status.dueDay ?? "9999-12-31";
-        return da < db ? -1 : da > db ? 1 : receivedTime(a) - receivedTime(b);
-      });
-    case "retard":
-      return list.sort((a, b) => (a.primary?.status.margin ?? 0) - (b.primary?.status.margin ?? 0));
+      return list.sort(byDue);
     case "traites":
       return list.sort((a, b) => time(b.row.resolved_at) - time(a.row.resolved_at));
     case "tous":
@@ -243,11 +291,12 @@ export interface MailroomCounts {
   av: number;
   retour: number;
   cours: number;
-  retard: number;
   traites: number;
   traitesToday: number;
   tous: number;
   analysing: number;
+  /** Courriers en retard (`isLate`) de chaque onglet. */
+  late: Record<MailroomView, number>;
 }
 
 export function countViews(items: MailroomItem[], now: Date = new Date()): MailroomCounts {
@@ -257,13 +306,18 @@ export function countViews(items: MailroomItem[], now: Date = new Date()): Mailr
     av: 0,
     retour: 0,
     cours: 0,
-    retard: 0,
     traites: 0,
     traitesToday: 0,
     tous: items.length,
     analysing: 0,
+    late: { aq: 0, av: 0, retour: 0, cours: 0, traites: 0, tous: 0 },
   };
   for (const item of items) {
+    if (isLate(item)) {
+      counts.late.tous++;
+      const view = viewOfStage(item.stage);
+      if (view) counts.late[view]++;
+    }
     switch (item.stage) {
       case "analysing":
         counts.analysing++;
@@ -278,10 +332,8 @@ export function countViews(items: MailroomItem[], now: Date = new Date()): Mailr
         counts.retour++;
         break;
       case "routed":
-        counts.cours++;
-        break;
       case "late":
-        counts.retard++;
+        counts.cours++;
         break;
       case "done":
         counts.traites++;
@@ -319,6 +371,8 @@ export interface MailroomFilters {
   channels: string[];
   /** Organisation destinataire (ou proposée pour un courrier à router). */
   serviceId: string | null;
+  /** Ne garder que les courriers en retard (`isLate`). */
+  lateOnly?: boolean;
 }
 
 function normalize(value: string): string {
@@ -330,6 +384,7 @@ function normalize(value: string): string {
 
 export function matchesFilters(item: MailroomItem, filters: MailroomFilters): boolean {
   const { row } = item;
+  if (filters.lateOnly && !isLate(item)) return false;
   if (filters.channels.length && !filters.channels.includes(row.channel)) return false;
   if (filters.serviceId) {
     const routingTarget = needsRouting(row) ? row.suggested_socle_organization_id : row.socle_organization_id;
@@ -393,4 +448,44 @@ export function trackingTimeline(item: MailroomItem, channelLabel: string): Time
   const due = item.sla.resolution.dueDay;
   steps.push({ label: "Réponse attendue", date: due, kind: late ? "late" : "todo" });
   return steps;
+}
+
+// ─── Déplacements (toasts après une action) ─────────────────────────────────
+
+export interface MoveGroup {
+  /** Onglet d'arrivée — `null` : encore en analyse. */
+  view: Exclude<MailroomView, "tous"> | null;
+  count: number;
+  /** Dont en retard. */
+  late: number;
+}
+
+/**
+ * Où se sont rangés des courriers après une action : un groupe par onglet
+ * d'arrivée, dans l'ordre des onglets (l'analyse en dernier). Un courrier
+ * absent de la liste (sorti de la période) n'est compté nulle part.
+ */
+export function summarizeMoves(items: MailroomItem[], ids: readonly string[]): MoveGroup[] {
+  const wanted = new Set(ids);
+  const groups = new Map<MoveGroup["view"], MoveGroup>();
+  for (const item of items) {
+    if (!wanted.has(item.row.id)) continue;
+    const view = viewOfStage(item.stage);
+    const group = groups.get(view) ?? { view, count: 0, late: 0 };
+    group.count++;
+    if (isLate(item)) group.late++;
+    groups.set(view, group);
+  }
+  const rank = (v: MoveGroup["view"]) => (v === null ? MAILROOM_VIEW_ORDER.length : MAILROOM_VIEW_ORDER.indexOf(v));
+  return [...groups.values()].sort((a, b) => rank(a.view) - rank(b.view));
+}
+
+/** « « En cours » : 10 (dont 2 en retard) · « À qualifier » : 1 » */
+export function describeMoveGroups(groups: MoveGroup[]): string {
+  return groups
+    .map((g) => {
+      const where = g.view ? `« ${MAILROOM_VIEWS[g.view].label} »` : "En cours d'analyse";
+      return `${where} : ${g.count}${g.late ? ` (dont ${g.late} en retard)` : ""}`;
+    })
+    .join(" · ");
 }

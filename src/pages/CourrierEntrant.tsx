@@ -26,6 +26,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { useMailroom, type MailroomPeriod } from "@/hooks/useMailroom";
 import { useMailroomActions } from "@/hooks/useMailroomActions";
+import { useMailroomMoves } from "@/hooks/useMailroomMoves";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { channelLabels } from "@/hooks/useCourierWorkspace";
 import { canAccessMailroom, canEditCouriers } from "@/lib/permissions";
@@ -37,9 +38,11 @@ import {
   inView,
   MAILROOM_VIEWS,
   matchesFilters,
-  sortForView,
+  sortItems,
+  viewOfStage,
   type MailroomFilters,
   type MailroomItem,
+  type MailroomSort,
   type MailroomView,
 } from "@/lib/mailroom";
 
@@ -70,13 +73,20 @@ export default function CourrierEntrant() {
   const splitView = useMediaQuery(SPLIT_VIEW_QUERY);
   const [searchParams, setSearchParams] = useSearchParams();
 
-  // `?vue=av` : arrivée depuis une carte du tableau de bord, sur le bon onglet.
+  // `?vue=av` : arrivée depuis une carte du tableau de bord, sur le bon onglet ;
+  // `&retard=1` : réduit à ses retards. `?vue=retard` (ancien onglet, liens
+  // gardés) vaut « En cours », retards seulement.
   const [view, setView] = useState<MailroomView>(() => {
     const requested = searchParams.get("vue");
+    if (requested === "retard") return "cours";
     return requested && Object.prototype.hasOwnProperty.call(MAILROOM_VIEWS, requested) ? (requested as MailroomView) : "aq";
   });
   const [period, setPeriod] = useState<MailroomPeriod>(30);
-  const [filters, setFilters] = useState<MailroomFilters>({ query: "", channels: [], serviceId: null });
+  const [filters, setFilters] = useState<MailroomFilters>(() => ({
+    ...EMPTY_FILTERS,
+    lateOnly: searchParams.get("retard") === "1" || searchParams.get("vue") === "retard",
+  }));
+  const [sort, setSort] = useState<MailroomSort>("default");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [newDialogOpen, setNewDialogOpen] = useState(false);
   const [toDelete, setToDelete] = useState<MailroomItem | null>(null);
@@ -93,7 +103,7 @@ export default function CourrierEntrant() {
 
   const filtered = useMemo(() => mailroom.items.filter((i) => matchesFilters(i, filters)), [mailroom.items, filters]);
   const counts = useMemo(() => countViews(filtered), [filtered]);
-  const shown = useMemo(() => sortForView(filtered.filter((i) => inView(i, view)), view), [filtered, view]);
+  const shown = useMemo(() => sortItems(filtered.filter((i) => inView(i, view)), view, sort), [filtered, view, sort]);
   const batch = useMemo(() => batchCandidates(filtered), [filtered]);
   const toAnalyze = useMemo(() => analysisCandidates(filtered), [filtered]);
 
@@ -108,13 +118,33 @@ export default function CourrierEntrant() {
       navigate(`/courrier/${openId}`);
       return;
     }
-    setView((Object.keys(VIEW_OF_STAGE) as MailroomView[]).find((v) => VIEW_OF_STAGE[v] === target.stage) ?? "tous");
+    setView(viewOfStage(target.stage) ?? "tous");
     setSelectedId(openId);
   }, [searchParams, mailroom.items, splitView, navigate, setSearchParams]);
 
+  // Un courrier sur lequel on agit change d'onglet : la vue le suit (onglet,
+  // ligne, panneau) et un toast dit où il s'est rangé — voir `useMailroomMoves`.
+  const moves = useMailroomMoves({
+    items: mailroom.items,
+    updatedAt: mailroom.updatedAt,
+    isFocused: (id) => selected?.row.id === id,
+    isVisible: (id) => filtered.some((i) => i.row.id === id),
+    show: (id, target) => {
+      const item = filtered.find((i) => i.row.id === id);
+      setSelectedId(id);
+      // Encore visible dans l'onglet courant (« Tous », par exemple) : on y reste.
+      if (item && !inView(item, view)) setView(target ?? "tous");
+    },
+  });
+
   // Sélection d'office du premier courrier de la vue (panneau jamais vide), et
-  // repli quand le courrier sélectionné quitte la vue (routé, par exemple).
-  const selected = shown.find((i) => i.row.id === selectedId) ?? (splitView ? shown[0] : undefined) ?? null;
+  // repli quand le courrier sélectionné quitte la vue — sauf s'il est suivi :
+  // le panneau le garde le temps que la liste relue dise où il est allé.
+  const selected =
+    shown.find((i) => i.row.id === selectedId) ??
+    (selectedId && moves.followed.has(selectedId) ? filtered.find((i) => i.row.id === selectedId) : undefined) ??
+    (splitView ? shown[0] : undefined) ??
+    null;
 
   const orgName = (id: string | null) => (id ? (mailroom.orgs.find((o) => o.id === id)?.name ?? null) : null);
   const busy = actions.route.isPending || actions.reassign.isPending || actions.remind.isPending;
@@ -133,7 +163,14 @@ export default function CourrierEntrant() {
       batch
         .map((i) => ({ courierId: i.row.id, org: byId.get(i.row.suggested_socle_organization_id!) }))
         .filter((x): x is { courierId: string; org: NonNullable<typeof x.org> } => !!x.org),
+      { onSuccess: ({ routed }) => routed.length > 0 && moves.track({ ids: routed, verb: "routé" }) },
     );
+  }
+
+  function analyze(courierIds: string[]) {
+    actions.analyze.mutate(courierIds, {
+      onSuccess: (queued) => queued > 0 && moves.track({ ids: courierIds, verb: "analysé", waitAnalysis: true }),
+    });
   }
 
   // La recherche vit dans le panneau « Filtres », comme sur les autres listes :
@@ -151,12 +188,15 @@ export default function CourrierEntrant() {
     ...(filters.serviceId
       ? [{ key: "service", label: orgName(filters.serviceId) ?? "Service", onRemove: () => setFilters((f) => ({ ...f, serviceId: null })) }]
       : []),
+    ...(filters.lateOnly
+      ? [{ key: "late", label: "En retard uniquement", onRemove: () => setFilters((f) => ({ ...f, lateOnly: false })) }]
+      : []),
     ...(period !== 30
       ? [{ key: "period", label: `Traités : ${period} jours`, onRemove: () => setPeriod(30) }]
       : []),
   ];
   const resetFilters = () => {
-    setFilters({ query: "", channels: [], serviceId: null });
+    setFilters(EMPTY_FILTERS);
     setPeriod(30);
   };
 
@@ -188,6 +228,13 @@ export default function CourrierEntrant() {
               placeholder="Objet, expéditeur…"
               ariaLabel="Rechercher un courrier, un expéditeur"
               focusOnOpen
+            />
+          </FilterSection>
+          <FilterSection label="Délai">
+            <FilterChips
+              options={[{ value: "late", label: "En retard uniquement" }]}
+              selected={filters.lateOnly ? ["late"] : []}
+              onToggle={() => setFilters((f) => ({ ...f, lateOnly: !f.lateOnly }))}
             />
           </FilterSection>
           <FilterSection label="Canal">
@@ -268,8 +315,10 @@ export default function CourrierEntrant() {
               onBatch={runBatch}
               analyzeCount={canEdit ? toAnalyze.length : 0}
               analyzeBusy={actions.analyze.isPending}
-              onAnalyze={() => actions.analyze.mutate(toAnalyze.map((i) => i.row.id))}
+              onAnalyze={() => analyze(toAnalyze.map((i) => i.row.id))}
               filtered={activeChips.length > 0 || !!filters.query.trim()}
+              sort={sort}
+              onSortChange={setSort}
             />
             {splitView && (
               <aside className="w-[440px] min-w-0 shrink-0 overflow-y-auto border-l bg-card xl:w-[480px]" aria-label="Courrier sélectionné">
@@ -282,10 +331,25 @@ export default function CourrierEntrant() {
                     assignable={mailroom.assignable}
                     canEdit={canEdit}
                     busy={busy}
-                    onRoute={(courierId, org) => actions.route.mutate({ courierId, org })}
-                    onReassign={(courierId, org) => actions.reassign.mutate({ courierId, org })}
-                    onRemind={(courierId) => actions.remind.mutate(courierId)}
-                    onAnalyze={(courierId) => actions.analyze.mutate([courierId])}
+                    onRoute={(courierId, org) =>
+                      actions.route.mutate(
+                        { courierId, org },
+                        { onSuccess: (name) => moves.track({ ids: [courierId], verb: "routé", detail: `Transmis à ${name}` }) },
+                      )
+                    }
+                    onReassign={(courierId, org) =>
+                      actions.reassign.mutate(
+                        { courierId, org },
+                        { onSuccess: (name) => moves.track({ ids: [courierId], verb: "réaffecté", detail: `Transféré à ${name}` }) },
+                      )
+                    }
+                    onRemind={(courierId) =>
+                      actions.remind.mutate(courierId, {
+                        onSuccess: (service) =>
+                          moves.track({ ids: [courierId], verb: "relancé", detail: `Relance envoyée à ${service ?? "le service"}` }),
+                      })
+                    }
+                    onAnalyze={(courierId) => analyze([courierId])}
                     analyzing={actions.analyze.isPending}
                     onDelete={canEdit ? setToDelete : undefined}
                   />
@@ -344,12 +408,4 @@ export default function CourrierEntrant() {
   );
 }
 
-/** Onglet où apparaît chaque étape (lien `?open=`). */
-const VIEW_OF_STAGE: Partial<Record<MailroomView, string>> = {
-  aq: "to_qualify",
-  av: "to_validate",
-  retour: "to_reorient",
-  cours: "routed",
-  retard: "late",
-  traites: "done",
-};
+const EMPTY_FILTERS: MailroomFilters = { query: "", channels: [], serviceId: null, lateOnly: false };

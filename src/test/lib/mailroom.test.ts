@@ -5,12 +5,17 @@ import {
   batchCandidates,
   classifyCourier,
   countViews,
+  describeMoveGroups,
   inView,
+  isLate,
   matchesFilters,
   needsRouting,
   slaProgress,
   sortForView,
+  sortItems,
+  summarizeMoves,
   trackingTimeline,
+  viewOfStage,
   type MailroomContext,
 } from "@/lib/mailroom";
 
@@ -124,17 +129,45 @@ describe("vues", () => {
     classifyCourier(row({ id: "h", analysis_status: "running" }), ctx),
   ];
 
-  it("compte par onglet, traités du jour compris", () => {
+  it("compte par onglet, traités du jour compris ; les retards restent « En cours »", () => {
     expect(countViews(items, NOW)).toMatchObject({
-      aq: 0, av: 3, retour: 0, cours: 1, retard: 2, traites: 1, traitesToday: 1, tous: 8, analysing: 1,
+      aq: 0, av: 3, retour: 0, cours: 3, traites: 1, traitesToday: 1, tous: 8, analysing: 1,
+      late: { aq: 0, av: 0, retour: 0, cours: 2, traites: 0, tous: 2 },
     });
   });
 
-  it("trie : plus anciens d'abord à valider, plus gros retard d'abord", () => {
+  it("trie : plus anciens d'abord à valider, échéance la plus proche (retards en tête) en cours", () => {
     const av = sortForView(items.filter((i) => inView(i, "av")), "av").map((i) => i.row.id);
     expect(av).toEqual(["b", "a", "c"]);
-    const retard = sortForView(items.filter((i) => inView(i, "retard")), "retard").map((i) => i.row.id);
-    expect(retard).toEqual(["f", "e"]);
+    const cours = sortForView(items.filter((i) => inView(i, "cours")), "cours").map((i) => i.row.id);
+    expect(cours).toEqual(["f", "e", "d"]);
+  });
+
+  it("ordre choisi : plus récents ou plus anciens d'abord, quel que soit l'onglet", () => {
+    const av = items.filter((i) => inView(i, "av"));
+    expect(sortItems(av, "av", "recent").map((i) => i.row.id)).toEqual(["c", "a", "b"]);
+    expect(sortItems(av, "av", "oldest").map((i) => i.row.id)).toEqual(["b", "a", "c"]);
+    expect(sortItems(av, "av", "default").map((i) => i.row.id)).toEqual(["b", "a", "c"]);
+  });
+
+  it("onglet de chaque étape ; un retard se filtre", () => {
+    expect(viewOfStage("late")).toBe("cours");
+    expect(viewOfStage("analysing")).toBeNull();
+    expect(items.filter(isLate).map((i) => i.row.id)).toEqual(["e", "f"]);
+    const lateOnly = { query: "", channels: [], serviceId: null, lateOnly: true };
+    expect(items.filter((i) => matchesFilters(i, lateOnly)).map((i) => i.row.id)).toEqual(["e", "f"]);
+  });
+
+  it("déplacements : décompte par onglet d'arrivée, retards compris", () => {
+    const groups = summarizeMoves(items, ["a", "d", "e", "f", "h"]);
+    expect(groups).toEqual([
+      { view: "av", count: 1, late: 0 },
+      { view: "cours", count: 3, late: 2 },
+      { view: null, count: 1, late: 0 },
+    ]);
+    expect(describeMoveGroups(groups)).toBe(
+      "« À valider » : 1 · « En cours » : 3 (dont 2 en retard) · En cours d'analyse : 1",
+    );
   });
 
   it("lot : uniquement les propositions à confiance connue ≥ 90", () => {

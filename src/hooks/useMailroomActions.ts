@@ -9,7 +9,13 @@ import type { SocleOrgWithConfig } from "@/services/socleOrgConfigService";
 
 const INVALIDATED = ["mailroom-couriers", "mailbox-couriers", "instruction-couriers", "courier-events", "courier"];
 
-/** Gestes du gestionnaire courrier : router (seul ou en lot), réaffecter, relancer. */
+/**
+ * Gestes du gestionnaire courrier : router (seul ou en lot), réaffecter, relancer.
+ *
+ * Router, réaffecter et relancer ne disent pas eux-mêmes leur succès : c'est
+ * l'écran qui le fait (`useMailroomMoves`), une fois la liste relue, pour nommer
+ * l'onglet où le courrier s'est rangé. Les erreurs, elles, se disent ici.
+ */
 export function useMailroomActions(organizationId: string) {
   const queryClient = useQueryClient();
   const refresh = () => INVALIDATED.forEach((key) => queryClient.invalidateQueries({ queryKey: [key] }));
@@ -20,10 +26,7 @@ export function useMailroomActions(organizationId: string) {
       await routeCourier(organizationId, courier, org);
       return org.name;
     },
-    onSuccess: (name) => {
-      refresh();
-      toast.success("Courrier routé", { description: `Transmis à ${name}. Suivi dans « En cours ».` });
-    },
+    onSuccess: refresh,
     onError: (err: Error) => toast.error(err.message),
   });
 
@@ -35,13 +38,8 @@ export function useMailroomActions(organizationId: string) {
         couriers.map((courier, idx) => ({ courier, org: items[idx].org })),
       );
     },
-    onSuccess: ({ routed, failed }) => {
+    onSuccess: ({ failed }) => {
       refresh();
-      if (routed.length) {
-        toast.success(`${routed.length} courrier${routed.length > 1 ? "s" : ""} routé${routed.length > 1 ? "s" : ""}`, {
-          description: "Propositions à confiance ≥ 90 % validées.",
-        });
-      }
       if (failed.length) {
         toast.error(`${failed.length} courrier${failed.length > 1 ? "s" : ""} non routé${failed.length > 1 ? "s" : ""}`, {
           description: failed[0].error,
@@ -57,10 +55,7 @@ export function useMailroomActions(organizationId: string) {
       await transferCourier(organizationId, courier, org);
       return org.name;
     },
-    onSuccess: (name) => {
-      refresh();
-      toast.success("Courrier réaffecté", { description: `Transféré à ${name}.` });
-    },
+    onSuccess: refresh,
     onError: (err: Error) => toast.error(err.message),
   });
 
@@ -70,10 +65,7 @@ export function useMailroomActions(organizationId: string) {
       await remindService(organizationId, courier);
       return courier.assigned_service;
     },
-    onSuccess: (service) => {
-      refresh();
-      toast.success("Relance envoyée", { description: `${service ?? "Le service"} a été relancé.` });
-    },
+    onSuccess: refresh,
     onError: (err: Error) => toast.error(err.message),
   });
 
