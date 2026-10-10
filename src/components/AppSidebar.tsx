@@ -197,7 +197,7 @@ function SidebarGroup({ group, items }: { group: NavGroup; items: NavItem[] }) {
               className={cn(
                 railButtonClass,
                 open
-                  ? "z-[11] !bg-transparent !text-primary hover:!bg-transparent"
+                  ? "z-[11] !bg-transparent !text-rail hover:!bg-transparent dark:!text-foreground"
                   : active && railActiveClass,
               )}
             >
@@ -245,8 +245,8 @@ function SidebarGroup({ group, items }: { group: NavGroup; items: NavItem[] }) {
                   <NavLink
                     to={item.url}
                     onClick={() => setOpen(false)}
-                    className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    activeClassName="!bg-primary/10 !text-primary"
+                    className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-semibold text-rail transition-colors hover:bg-muted dark:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    activeClassName="!bg-rail/10 dark:!bg-muted"
                   >
                     <ItemIcon className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />
                     <span className="flex-1 text-left">{item.title}</span>
