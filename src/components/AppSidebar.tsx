@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
-import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { NavLink } from "@/components/NavLink";
 import {
   Home,
@@ -94,6 +93,8 @@ const PARAPHEUR_URL = "/parapheur";
 const railButtonClass =
   "relative flex items-center justify-center w-9 h-9 rounded-lg transition-colors text-rail-foreground/70 hover:text-rail-foreground hover:bg-rail-foreground/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rail-foreground focus-visible:ring-offset-2 focus-visible:ring-offset-rail";
 const railActiveClass = "!text-rail-foreground !bg-rail-foreground/20";
+/** Bulle ouverte : contour, distinct du fond plein de la page courante. */
+const railOpenClass = "text-rail-foreground ring-1 ring-inset ring-rail-foreground/60";
 
 function isRouteActive(pathname: string, url: string): boolean {
   if (url === "/") return pathname === "/";
@@ -135,11 +136,22 @@ function ParapheurCountBadge() {
   );
 }
 
-function RailTooltip({ title, children }: { title: string; children: React.ReactNode }) {
+function RailTooltip({
+  title,
+  disabled = false,
+  children,
+}: {
+  title: string;
+  /** Rubrique dont la bulle est ouverte : son titre est déjà affiché. */
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
   return (
-    <Tooltip>
+    <Tooltip open={open && !disabled} onOpenChange={setOpen}>
       <TooltipTrigger asChild>{children}</TooltipTrigger>
-      <TooltipContent side="right" className="font-medium">
+      {/* Au-dessus d'une bulle ouverte (même z-50 sinon, et portée avant elle). */}
+      <TooltipContent side="right" className="z-[60] font-medium">
         {title}
       </TooltipContent>
     </Tooltip>
@@ -166,7 +178,7 @@ function SidebarGroup({ group, items }: { group: NavGroup; items: NavItem[] }) {
   const [open, setOpen] = useState(false);
   const Icon = group.icon;
   const hasParapheur = items.some((it) => it.url === PARAPHEUR_URL);
-  const active = open || items.some((it) => isRouteActive(pathname, it.url));
+  const active = items.some((it) => isRouteActive(pathname, it.url));
 
   // Toute navigation referme la bulle.
   useEffect(() => setOpen(false), [pathname]);
@@ -174,16 +186,21 @@ function SidebarGroup({ group, items }: { group: NavGroup; items: NavItem[] }) {
   return (
     <li>
       <Popover open={open} onOpenChange={setOpen}>
-        <RailTooltip title={group.title}>
+        <RailTooltip title={group.title} disabled={open}>
           <PopoverTrigger asChild>
             <button
               type="button"
               aria-label={group.title}
-              className={cn(railButtonClass, active && railActiveClass)}
+              className={cn(railButtonClass, active && railActiveClass, open && railOpenClass)}
             >
               <Icon className="h-5 w-5" aria-hidden="true" />
+              {/* Sur le fond du rail, hors du fond de l'icône ; la pointe de la bulle le remplace une fois ouverte. */}
               <ChevronRight
-                className="absolute -right-1.5 top-3 h-3 w-3 opacity-[0.55]"
+                className={cn(
+                  "absolute -right-2 top-1/2 h-2.5 w-2.5 -translate-y-1/2 transition-opacity",
+                  open ? "opacity-0" : "opacity-[0.55]",
+                )}
+                strokeWidth={3}
                 aria-hidden="true"
               />
               {hasParapheur && <ParapheurDot />}
@@ -193,10 +210,14 @@ function SidebarGroup({ group, items }: { group: NavGroup; items: NavItem[] }) {
         <PopoverContent
           side="right"
           align="center"
-          sideOffset={10}
-          className="w-[210px] rounded-xl bg-card p-2 shadow-lg"
+          sideOffset={9}
+          className="relative w-[210px] rounded-xl bg-card p-2 shadow-lg"
         >
-          <PopoverPrimitive.Arrow className="fill-card" width={12} height={6} />
+          {/* Pointe vers l'étape : la bulle part du rail. */}
+          <span
+            aria-hidden="true"
+            className="absolute -left-[6px] top-1/2 h-2.5 w-2.5 -translate-y-1/2 rotate-45 border-b border-l border-border bg-card"
+          />
           <p className="px-2.5 pb-1.5 pt-0.5 text-xs font-extrabold text-muted-foreground">{group.title}</p>
           <ul className="flex flex-col gap-0.5">
             {items.map((item) => {
