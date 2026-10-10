@@ -293,6 +293,18 @@ Correctif : `socle-contacts/index.ts` (variable renommée) ; garde-fou :
 |---|---|---|
 | 4 | `bunx supabase functions deploy socle-contacts --project-ref aullweizxcjbvtdspjli` (pas d'entrée `config.toml` : `verify_jwt = true`, comme en ligne) | **Fait** — v17 |
 
+### Lot « demande complexe relayée par Iris » (2026-10-10)
+
+Deux dépôts (Clara, Iris). Rien n'est visible côté Iris tant que ses secrets ne sont pas posés
+(la fonction répond `503 not_configured`).
+
+| # | Action | Pourquoi cet ordre | État |
+|---|---|---|---|
+| 1 | **Clara** : migration `20261010124843_canal_relaye_agent.sql` (valeur `relaye_agent` + index `couriers_iris_submission_uniq`) — **appliquée le 2026-10-10**, `enum_range` et index vérifiés en base ; puis front (libellés du canal) | Le canal doit exister avant le premier dépôt ; un front ancien affiche un canal inconnu sans planter | Migration faite, front à faire |
+| 2 | **Clara** : `bunx supabase secrets set IRIS_INTAKE_KEY=<secret> --project-ref aullweizxcjbvtdspjli`, `bunx supabase functions deploy iris-courrier nora-courrier portal-form --project-ref aullweizxcjbvtdspjli` | `nora-courrier` et `portal-form` importent le module partagé refactorisé (sans changement de comportement) : les redéployer avec | **Fait le 2026-10-10** (sans clé ⇒ 401, clé d'Iris sur `nora-courrier` ⇒ 401, dépôt vide ⇒ 400) |
+| 3 | **Iris** : secrets `CLARA_IRIS_INTAKE_URL` (`https://aullweizxcjbvtdspjli.supabase.co/functions/v1/iris-courrier`) et `CLARA_IRIS_INTAKE_KEY` (= `IRIS_INTAKE_KEY`), migration, déploiement de `relay-courrier-clara`, puis front | — | **Fait le 2026-10-10** sauf le front (migration Iris `20261010124124`) |
+| 4 | Depuis Iris, relayer une demande complexe (texte, puis fichiers seuls) ; vérifier dans Clara : canal « Relayé agent », usager rattaché, agent en copie, job d'analyse ; rejouer le même `submission_id` ⇒ pas de doublon | — | **Fait le 2026-10-10** : 2026-E-00021 à 00023 par la porte directe (rejeu ⇒ `duplicate`), 2026-E-00024 depuis l'écran d'Iris (texte + photo, ACCM › Services techniques, usager rattaché, agent en `cc`, analyse en file) ; rien d'écrit côté Iris |
+
 ### Lot « courrier libre depuis Nora » (2026-10-09) — appliqué le 2026-10-09
 
 Trois dépôts (Socle, Clara, Nora). Chaque étape est compatible avec la précédente : rien n'est

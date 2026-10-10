@@ -45,6 +45,7 @@ const channelLabels: Record<CourierChannel, string> = {
   email: "Email",
   portal: "Portail",
   relaye_elu: "Relayé élu",
+  relaye_agent: "Relayé agent",
   guichet: "Guichet",
   autre: "Autre",
 };

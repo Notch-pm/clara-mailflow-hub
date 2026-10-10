@@ -41,6 +41,9 @@ verify_jwt = false
 [functions.nora-courrier]
 verify_jwt = false
 
+[functions.iris-courrier]
+verify_jwt = false
+
 # Facteur des notifications push, appelé par pg_cron (trigger_notifications_push),
 # qui n'envoie aucun en-tête Authorization. L'authentification réelle se fait dans
 # la fonction (x-cron-secret comparé à get_cron_secret()).

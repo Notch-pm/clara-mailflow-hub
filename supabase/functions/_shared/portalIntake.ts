@@ -1,14 +1,59 @@
-// Écritures d'un dépôt PUBLIC de courrier, partagées par `portal-form` (iframe)
-// et `nora-courrier` (courrier libre du site Nora). Client service_role : la RLS
+// Écritures d'un dépôt de courrier venu d'AILLEURS que Clara, partagées par
+// `portal-form` (iframe), `nora-courrier` (courrier libre du site Nora) et
+// `iris-courrier` (demande complexe relayée par un agent d'Iris). Client service_role : la RLS
 // ne s'applique pas, c'est l'appelant qui a établi le tenant (`organizationId`).
 //
 // Logique pure (validation, expéditeur, routage) : `portalIntakeLogic.ts`.
 
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.45.0";
 import type { ConsentRecord } from "./consents/catalog.ts";
-import { portalSenderParticipant, safeStorageName, type PortalSubmissionFields } from "./portalIntakeLogic.ts";
+import {
+  distanceToAnchor,
+  pickTenant,
+  portalSenderParticipant,
+  safeStorageName,
+  type PortalSubmissionFields,
+} from "./portalIntakeLogic.ts";
 
 type Admin = SupabaseClient;
+
+/**
+ * Le tenant Clara qui reçoit le courrier d'un organisme du Socle : celui dont
+ * l'ancre est la plus proche (`pickTenant`), et à égalité, aucun. Partagé par
+ * `nora-courrier` et `iris-courrier`.
+ */
+export async function resolveSocleTenant(admin: Admin, socleId: string) {
+  const { data: rows, error } = await admin
+    .from("socle_organizations")
+    .select("id, organization_id")
+    .eq("socle_id", socleId)
+    .eq("status", "active");
+  if (error) throw error;
+  if (!rows?.length) return { kind: "none" as const };
+
+  const candidates = await Promise.all(
+    (rows as { id: string; organization_id: string }[]).map(async (row) => {
+      const [{ data: org }, { data: mirror }] = await Promise.all([
+        admin.from("organizations").select("socle_org_id").eq("id", row.organization_id).maybeSingle(),
+        admin.from("socle_organizations").select("socle_id, socle_parent_id").eq("organization_id", row.organization_id),
+      ]);
+      const parentOf = new Map<string, string | null>(
+        ((mirror ?? []) as { socle_id: string; socle_parent_id: string | null }[]).map((m) => [m.socle_id, m.socle_parent_id]),
+      );
+      const anchor = (org as { socle_org_id?: string | null } | null)?.socle_org_id ?? null;
+      return {
+        organizationId: row.organization_id,
+        localId: row.id,
+        distance: anchor ? distanceToAnchor(socleId, anchor, parentOf) : null,
+      };
+    }),
+  );
+
+  const pick = pickTenant(candidates);
+  if (pick.kind !== "one") return pick;
+  const chosen = candidates.find((c) => c.organizationId === pick.organizationId)!;
+  return { kind: "one" as const, organizationId: chosen.organizationId, socleOrganizationId: chosen.localId };
+}
 
 async function initialStateOf(admin: Admin, workflowId: string | null | undefined): Promise<string | null> {
   if (!workflowId) return null;
@@ -82,8 +127,16 @@ export interface CreatePortalCourierInput {
   /** Fusionné dans `couriers.metadata` (après `body_text` et `source`). */
   metadata: Record<string, unknown>;
   files: File[];
-  /** Préfixe des journaux : `[portal-form]`, `[nora-courrier]`. */
+  /** Préfixe des journaux : `[portal-form]`, `[nora-courrier]`, `[iris-courrier]`. */
   logTag: string;
+  /** Canal du courrier — `portal` par défaut (iframe, Nora). */
+  channel?: "portal" | "relaye_agent";
+  /**
+   * Ligne `courier_participants` de l'expéditeur, quand l'appelant la compose
+   * lui-même (Iris : fiche du Socle déjà rattachée). Défaut : l'expéditeur brut
+   * des champs du portail (`portalSenderParticipant`).
+   */
+  sender?: Record<string, unknown>;
 }
 
 export type CreatePortalCourierResult =
@@ -91,7 +144,7 @@ export type CreatePortalCourierResult =
   | { ok: false; error: { code?: string; message?: string } | null };
 
 /**
- * Crée le courrier entrant `portal`, son expéditeur brut et ses pièces
+ * Crée le courrier entrant (`portal` par défaut), son expéditeur et ses pièces
  * (best-effort). Les consentements forment la trace immuable de CE dépôt
  * (trigger), datée de la réception.
  */
@@ -103,14 +156,14 @@ export async function createPortalCourier(admin: Admin, input: CreatePortalCouri
     .insert({
       organization_id: organizationId,
       direction: "inbound",
-      channel: "portal",
+      channel: input.channel ?? "portal",
       subject: (fields.subject ?? "").trim().slice(0, 500),
       received_at: receivedAt,
       assigned_service: routing.serviceName,
       socle_organization_id: routing.socleOrganizationId,
       workflow_state_id: routing.initialStateId,
       created_by: null,
-      metadata: { body_text: (fields.body ?? "").trim(), source: "portal", ...input.metadata },
+      metadata: { body_text: (fields.body ?? "").trim(), source: input.channel ?? "portal", ...input.metadata },
       consents: input.consents.map((c) => ({ ...c, collected_at: receivedAt })),
     })
     .select("id, chrono")
@@ -123,7 +176,7 @@ export async function createPortalCourier(admin: Admin, input: CreatePortalCouri
   await admin.from("courier_participants").insert({
     organization_id: organizationId,
     courier_id: courier.id,
-    ...portalSenderParticipant(fields),
+    ...(input.sender ?? portalSenderParticipant(fields)),
   });
 
   for (const file of input.files) {

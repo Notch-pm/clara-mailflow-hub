@@ -43,6 +43,7 @@ export const channelLabels: Record<CourierChannel, string> = {
   email: "Email",
   portal: "Portail",
   relaye_elu: "Relayé élu",
+  relaye_agent: "Relayé agent",
   guichet: "Guichet",
   autre: "Autre",
 };
@@ -57,6 +58,7 @@ const INBOUND_CHANNEL_PHRASES: Record<CourierChannel, string> = {
   email: "reçu par email",
   portal: "reçu par le portail",
   relaye_elu: "relayé par un élu",
+  relaye_agent: "relayé par un agent",
   guichet: "reçu au guichet",
   autre: "reçu",
 };

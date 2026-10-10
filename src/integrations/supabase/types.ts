@@ -2740,6 +2740,7 @@ export type Database = {
         | "relaye_elu"
         | "guichet"
         | "autre"
+        | "relaye_agent"
       courier_direction: "inbound" | "outbound" | "internal"
       courier_relation_origin: "manual" | "ai_suggestion"
       courier_relation_type: "relance" | "sujet_lie"
@@ -2878,7 +2879,7 @@ export const Constants = {
   },
   public: {
     Enums: {
-      courier_channel: ["paper", "email", "portal", "relaye_elu", "guichet", "autre"],
+      courier_channel: ["paper", "email", "portal", "relaye_elu", "guichet", "autre", "relaye_agent"],
       courier_direction: ["inbound", "outbound", "internal"],
       courier_relation_origin: ["manual", "ai_suggestion"],
       courier_relation_type: ["relance", "sujet_lie"],
