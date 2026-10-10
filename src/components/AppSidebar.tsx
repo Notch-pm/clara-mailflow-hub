@@ -23,7 +23,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import * as PopoverPrimitive from "@radix-ui/react-popover";
+import { Popover, PopoverTrigger } from "@/components/ui/popover";
 import { useAuth } from "@/contexts/AuthContext";
 import { navItemVisible } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
@@ -93,8 +94,6 @@ const PARAPHEUR_URL = "/parapheur";
 const railButtonClass =
   "relative flex items-center justify-center w-9 h-9 rounded-lg transition-colors text-rail-foreground/70 hover:text-rail-foreground hover:bg-rail-foreground/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rail-foreground focus-visible:ring-offset-2 focus-visible:ring-offset-rail";
 const railActiveClass = "!text-rail-foreground !bg-rail-foreground/20";
-/** Bulle ouverte : contour, distinct du fond plein de la page courante. */
-const railOpenClass = "text-rail-foreground ring-1 ring-inset ring-rail-foreground/60";
 
 function isRouteActive(pathname: string, url: string): boolean {
   if (url === "/") return pathname === "/";
@@ -114,13 +113,17 @@ function useParapheurCount(): number {
 }
 
 /** Pastille sur l'icône d'étape ou de lien direct : il y a du travail en attente. */
-function ParapheurDot() {
+function ParapheurDot({ onTab = false }: { onTab?: boolean }) {
   const count = useParapheurCount();
   if (count === 0) return null;
   return (
     <span
       aria-hidden="true"
-      className="absolute -right-[3px] -top-[2px] h-2.5 w-2.5 rounded-full border-2 border-rail bg-secondary"
+      className={cn(
+        "absolute z-[2] h-2.5 w-2.5 rounded-full border-2 bg-secondary",
+        // Bulle ouverte : la pastille rentre dans l'onglet, cerclée de sa couleur.
+        onTab ? "right-[5px] top-[5px] border-card" : "-right-[3px] -top-[2px] border-rail",
+      )}
     />
   );
 }
@@ -191,33 +194,48 @@ function SidebarGroup({ group, items }: { group: NavGroup; items: NavItem[] }) {
             <button
               type="button"
               aria-label={group.title}
-              className={cn(railButtonClass, active && railActiveClass, open && railOpenClass)}
+              className={cn(
+                railButtonClass,
+                open
+                  ? "z-[11] !bg-transparent !text-primary hover:!bg-transparent"
+                  : active && railActiveClass,
+              )}
             >
-              <Icon className="h-5 w-5" aria-hidden="true" />
-              {/* Sur le fond du rail, hors du fond de l'icône ; la pointe de la bulle le remplace une fois ouverte. */}
-              <ChevronRight
-                className={cn(
-                  "absolute -right-2 top-1/2 h-2.5 w-2.5 -translate-y-1/2 transition-opacity",
-                  open ? "opacity-0" : "opacity-[0.55]",
-                )}
-                strokeWidth={3}
-                aria-hidden="true"
-              />
-              {hasParapheur && <ParapheurDot />}
+              {open && (
+                <>
+                  {/* Onglet : l'étape ouverte se prolonge dans la bulle, de la
+                      même couleur, avec deux coins rentrants pour la jonction. */}
+                  <span aria-hidden="true" className="absolute left-0 top-0 h-9 w-[45px] rounded-l-[10px] bg-card" />
+                  <span
+                    aria-hidden="true"
+                    className="absolute -top-2.5 left-[34px] h-2.5 w-2.5 bg-[radial-gradient(circle_at_0_0,transparent_10px,hsl(var(--card))_10.5px)]"
+                  />
+                  <span
+                    aria-hidden="true"
+                    className="absolute -bottom-2.5 left-[34px] h-2.5 w-2.5 bg-[radial-gradient(circle_at_0_100%,transparent_10px,hsl(var(--card))_10.5px)]"
+                  />
+                </>
+              )}
+              <Icon className="relative z-[1] h-5 w-5" aria-hidden="true" />
+              {!open && (
+                <ChevronRight
+                  className="absolute -right-[9px] top-[13px] h-2.5 w-2.5 opacity-60"
+                  strokeWidth={2.5}
+                  aria-hidden="true"
+                />
+              )}
+              {hasParapheur && <ParapheurDot onTab={open} />}
             </button>
           </PopoverTrigger>
         </RailTooltip>
-        <PopoverContent
+        {/* Pas de portail : la bulle doit passer SOUS l'onglet du bouton
+            (z-10 contre z-11) pour que les deux ne fassent qu'un. */}
+        <PopoverPrimitive.Content
           side="right"
           align="center"
-          sideOffset={9}
-          className="relative w-[210px] rounded-xl bg-card p-2 shadow-lg"
+          sideOffset={8}
+          className="z-10 flex w-[210px] flex-col rounded-r-[14px] border border-l-0 bg-card px-2 py-2.5 text-foreground shadow-2xl outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0"
         >
-          {/* Pointe vers l'étape : la bulle part du rail. */}
-          <span
-            aria-hidden="true"
-            className="absolute -left-[6px] top-1/2 h-2.5 w-2.5 -translate-y-1/2 rotate-45 border-b border-l border-border bg-card"
-          />
           <p className="px-2.5 pb-1.5 pt-0.5 text-xs font-extrabold text-muted-foreground">{group.title}</p>
           <ul className="flex flex-col gap-0.5">
             {items.map((item) => {
@@ -238,7 +256,7 @@ function SidebarGroup({ group, items }: { group: NavGroup; items: NavItem[] }) {
               );
             })}
           </ul>
-        </PopoverContent>
+        </PopoverPrimitive.Content>
       </Popover>
     </li>
   );
@@ -255,7 +273,7 @@ export function AppSidebar() {
 
   return (
     <TooltipProvider delayDuration={150}>
-      <nav aria-label="Navigation principale" className="hidden md:flex flex-col items-center w-[52px] shrink-0 py-3 bg-rail h-full relative">
+      <nav aria-label="Navigation principale" className="hidden md:flex flex-col items-center w-[52px] shrink-0 py-3 bg-rail h-full relative z-30">
         {/* Tableau de bord épinglé tout en haut du rail */}
         <ul className="contents">
           <SidebarItem item={HOME} />
