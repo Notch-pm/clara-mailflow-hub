@@ -737,6 +737,7 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
                     courierId={courier.id}
                     organizationId={organizationId}
                     parentSubject={courier.subject ?? null}
+                    parentReceivedAt={courier.received_at ?? null}
                     assignedService={localAssignedService}
                     socleOrganizationId={localSocleOrgId}
                     sender={sender ?? null}

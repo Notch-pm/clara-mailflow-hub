@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { edgeError } from "@/lib/edge-error";
+import type { AckDetails } from "../../supabase/functions/draft-reply/acknowledgment";
 
 export interface DraftReplyParams {
   courierId: string;
@@ -8,6 +9,8 @@ export interface DraftReplyParams {
   additionalInstructions?: string;
   /** Objet en cours dans l'éditeur : l'assistant le reprend ou le corrige. */
   currentSubject?: string | null;
+  /** Accusé de réception : sens du silence, date de décision implicite, pièces manquantes. */
+  acknowledgment?: AckDetails;
 }
 
 export interface DraftReplyResult {

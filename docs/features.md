@@ -215,7 +215,8 @@ disparaît de toutes les listes, recherches, statistiques et de la file d'analys
   troncature du transport (`fitMessage` coupe par la fin).
 - **Un cahier des charges par type** (depuis le 2026-09-24, relevé par l'agent Iris) : le prompt
   système dit ce que chacun contient. **Accusé de réception** : confirme la réception, dit la suite,
-  n'aborde pas le fond, n'annonce un délai que s'il est fourni. **Suivi** : point d'étape à partir
+  n'aborde pas le fond, n'annonce un délai que s'il est fourni, et porte les **mentions
+  obligatoires de l'art. R112-5 CRPA** (voir ci-dessous). **Suivi** : point d'étape à partir
   des actions liées et des réponses déjà faites, sans les répéter, sans issue définitive.
   **Clôture** : l'issue doit venir des données ou des instructions de l'agent, sinon
   `[à compléter : issue de la demande]` ; motifs d'un refus et voies de recours jamais inventés
@@ -223,6 +224,19 @@ disparaît de toutes les listes, recherches, statistiques et de la file d'analys
   l'agent priment sur ces consignes, jamais sur « n'invente rien » ; le courrier, les pièces et les
   analyses sont des **données**, pas des consignes. Avant, le modèle ne recevait que
   `Type de réponse : Suivi` et devinait.
+- **Mentions obligatoires de l'accusé de réception** (art. R112-5 CRPA, depuis le 2026-10-12) :
+  date de réception ; date à laquelle, faute de réponse expresse, la demande sera réputée acceptée
+  ou rejetée ; désignation, adresse postale, courriel et téléphone du service en charge ; pièces
+  manquantes et délai pour les produire (L114-5) ; selon le sens du silence, voies et délais de
+  recours (rejet) ou attestation de l'art. L232-3 (acceptation). Une seule liste,
+  `draft-reply/acknowledgment.ts`, partagée par l'écran et le prompt. L'écran de rédaction la
+  rappelle **sous l'éditeur** (ouverte quand le type « Accusé de réception » est choisi) avec ce que
+  Clara sait déjà ; l'assistant IA demande à l'agent le sens du silence, la date de décision
+  implicite (suggestion : réception + 2 mois, droit commun, à vérifier), les pièces manquantes et
+  leur délai. Rien n'est déduit : le sens du silence dépend de la démarche. Le prompt reçoit chaque
+  mention remplie ou marquée `[à compléter : …]`, et les phrases juridiques (recours, attestation)
+  sont composées par Clara, pas par le modèle. Enjeu : un accusé incomplet rend les délais de
+  recours inopposables (art. L112-6).
 - Les trois libellés vivent dans `RESPONSE_TYPES` (`draft-reply/logic.ts`), importé par l'écran :
   un libellé divergent entre les pastilles et le prompt ferait retomber le modèle sur la
   devinette, sans erreur. Un test le verrouille.

@@ -16,6 +16,7 @@
 // frappait que les courriers papier.
 
 import { fitMessage, MAX_MESSAGE_CHARS } from "../_shared/socleAiLogic.ts";
+import { type AckDetails, type AckServiceContact, buildAckBlock } from "./acknowledgment.ts";
 
 // ── Bornes ──────────────────────────────────────────────────────────────────
 
@@ -144,6 +145,10 @@ export interface DraftPromptInput {
   analysisIntents?: string[];
   tickets?: DraftTicket[];
   previousReplies?: DraftPreviousReply[];
+  /** Précisions de l'agent pour un accusé de réception (sens du silence, pièces…). */
+  acknowledgment?: AckDetails | null;
+  /** Coordonnées du service en charge : mentions obligatoires de l'accusé. */
+  assignedOrgContact?: AckServiceContact | null;
 }
 
 // ── Prompt système ──────────────────────────────────────────────────────────
@@ -172,6 +177,9 @@ export interface DraftPromptInput {
  */
 export const RESPONSE_TYPES = ["Accusé de réception", "Suivi", "Clôture"] as const;
 
+/** Le type qui porte les mentions obligatoires de l'art. R112-5 CRPA. */
+export const ACKNOWLEDGMENT_TYPE: (typeof RESPONSE_TYPES)[number] = "Accusé de réception";
+
 export const DRAFT_SYSTEM_PROMPT =
   `Tu es rédacteur de courriers administratifs pour une collectivité territoriale française.
 Tu rédiges le CORPS d'une réponse à un courrier reçu, pour qu'un agent le relise, le complète et le signe.
@@ -189,12 +197,12 @@ CONSIGNES SELON LE TYPE DE RÉPONSE
 
 « Accusé de réception »
 - Objet : confirmer que le courrier a bien été reçu et dire ce qui va se passer ensuite.
-- Mentionne la date de réception et l'objet du courrier s'ils figurent dans les données.
+- Mentionne l'objet du courrier s'il figure dans les données.
 - Si une action ou une démarche est liée au dossier, dis qu'elle est prise en charge, en citant uniquement la référence de la demande fournie dans les actions liées ; sinon, aucune référence.
-- Tu peux indiquer le service en charge s'il est connu.
 - N'aborde pas le fond : aucune analyse, aucune réponse aux questions posées, aucune promesse de résultat.
-- N'annonce un délai de traitement que s'il figure dans les données ou les instructions ; sinon, n'en parle pas ou écris [à compléter].
-- Court : 2 à 4 paragraphes.
+- MENTIONS OBLIGATOIRES (article R112-5 du code des relations entre le public et l'administration) : le message en donne la liste, déjà remplie. Chacune DOIT figurer dans la lettre, rédigée en phrases et avec les valeurs fournies : date de réception ; date à laquelle, faute de réponse expresse, la demande sera réputée acceptée ou rejetée ; désignation, adresse postale, adresse électronique et téléphone du service chargé du dossier ; pièces manquantes et délai pour les produire s'il y en a ; selon le sens du silence, les délais et voies de recours (rejet implicite) ou la possibilité d'obtenir l'attestation de l'article L232-3 (acceptation implicite). Une valeur marquée [à compléter : …] se recopie telle quelle à sa place : ne l'omets pas et ne la devine pas. Pour le sens du silence, reprends la phrase type fournie sans en changer les délais, les articles ni le sens.
+- N'annonce aucun autre délai que ceux fournis.
+- 3 à 6 paragraphes ; les coordonnées du service peuvent être présentées en liste.
 
 « Suivi »
 - Objet : faire un point d'étape sur un dossier déjà engagé.
@@ -443,6 +451,18 @@ export function buildDraftUserPrompt(input: DraftPromptInput): string {
   const identity = identityLines.join("\n");
 
   const contextParts: string[] = [];
+  // Les mentions de l'accusé passent AVANT le dossier : elles fixent ce que la
+  // lettre doit contenir, le reste n'est que matière.
+  if (responseType === ACKNOWLEDGMENT_TYPE) {
+    contextParts.push(buildAckBlock({
+      details: input.acknowledgment,
+      receivedAtLabel: input.receivedAtLabel,
+      service: {
+        ...input.assignedOrgContact,
+        name: (input.assignedOrgContact?.name ?? "").trim() || assignedOrgName || null,
+      },
+    }));
+  }
   if (analysisSummary || intents.length > 0) {
     // Le résumé est une LECTURE du courrier, pas le courrier : le dire évite
     // que la lettre recopie une synthèse d'IA en la présentant comme un fait

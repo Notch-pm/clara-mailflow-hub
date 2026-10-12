@@ -21,6 +21,7 @@ import {
   splitDraftSubject,
   stripHtml,
 } from "./logic.ts";
+import { normalizeAckDetails } from "./acknowledgment.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -109,8 +110,11 @@ interface CourierRow {
   chrono: string | null;
   metadata: Record<string, unknown> | null;
   received_at: string | null;
-  /** Organisation Socle en charge, jointe par `couriers_socle_organization_id_fkey`. */
-  assigned_org: { name: string | null } | null;
+  /**
+   * Organisation Socle en charge, jointe par `couriers_socle_organization_id_fkey`.
+   * Ses coordonnées sont des mentions obligatoires de l'accusé de réception.
+   */
+  assigned_org: { name: string | null; address: string | null; email: string | null; phone: string | null } | null;
   courier_participants: ParticipantRow[] | null;
 }
 
@@ -157,13 +161,15 @@ Deno.serve(async (req) => {
     const user = await verifyAuth(req);
     const admin = getAdminClient();
 
-    const { courierId, orgId, responseType, additionalInstructions, currentSubject } = await req.json() as {
+    const { courierId, orgId, responseType, additionalInstructions, currentSubject, acknowledgment } = await req.json() as {
       courierId: string;
       orgId: string;
       responseType: string;
       additionalInstructions?: string;
       /** Objet que porte la réponse dans l'éditeur, enregistré ou non. */
       currentSubject?: string | null;
+      /** Précisions de l'agent pour un accusé de réception : relues, jamais crues. */
+      acknowledgment?: unknown;
     };
 
     if (!courierId || !orgId || !responseType) {
@@ -205,7 +211,7 @@ Deno.serve(async (req) => {
       .from("couriers")
       .select(
         "subject, chrono, metadata, received_at, " +
-          "assigned_org:socle_organizations(name), " +
+          "assigned_org:socle_organizations(name, address, email, phone), " +
           "courier_participants(role, name, email, first_name, last_name, organization, socle_contact_id)",
       )
       .eq("id", courierId)
@@ -355,6 +361,8 @@ Deno.serve(async (req) => {
       analysisIntents,
       tickets,
       previousReplies,
+      acknowledgment: normalizeAckDetails(acknowledgment),
+      assignedOrgContact: courierRow.assigned_org,
     });
 
     // Le guichet réserve, appelle et solde : Clara ne compte plus rien.

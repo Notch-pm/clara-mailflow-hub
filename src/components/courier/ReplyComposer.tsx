@@ -3,7 +3,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Send, Save, Lock, PenLine, X, Plus, Pencil, Eye, Trash2, ArrowLeft, Printer, ChevronDown, Sparkles, Undo2, WandSparkles, Stamp } from "lucide-react";
 import { toast } from "sonner";
 import { edgeError } from "@/lib/edge-error";
-import { RESPONSE_TYPES } from "../../../supabase/functions/draft-reply/logic";
+import { ACKNOWLEDGMENT_TYPE, RESPONSE_TYPES } from "../../../supabase/functions/draft-reply/logic";
+import type { AckDetails } from "../../../supabase/functions/draft-reply/acknowledgment";
+import { AcknowledgmentChecklist, AcknowledgmentFields } from "./AcknowledgmentMentions";
 import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
@@ -90,6 +92,8 @@ interface Props {
   courierId: string;
   organizationId: string;
   parentSubject: string | null;
+  /** Date de réception du courrier : mention obligatoire de l'accusé de réception. */
+  parentReceivedAt?: string | null;
   assignedService: string | null;
   /** UUID de l'organisation gestionnaire (miroir Socle) — clé de résolution. */
   socleOrganizationId?: string | null;
@@ -124,6 +128,7 @@ export default function ReplyComposer({
   courierId,
   organizationId,
   parentSubject,
+  parentReceivedAt = null,
   assignedService,
   socleOrganizationId,
   sender,
@@ -294,6 +299,7 @@ export default function ReplyComposer({
   const [aiPanelOpen, setAiPanelOpen] = useState(false);
   const [aiResponseType, setAiResponseType] = useState<string>("");
   const [aiInstructions, setAiInstructions] = useState<string>("");
+  const [ackDetails, setAckDetails] = useState<AckDetails>({});
   const [isDrafting, setIsDrafting] = useState(false);
   const [isImproving, setIsImproving] = useState(false);
   /** Le texte d'avant « Améliorer » — annulable tant que l'agent n'a rien retouché depuis. */
@@ -914,6 +920,7 @@ export default function ReplyComposer({
         responseType: aiResponseType,
         additionalInstructions: aiInstructions.trim() || undefined,
         currentSubject: subject.trim() || null,
+        acknowledgment: aiResponseType === ACKNOWLEDGMENT_TYPE ? ackDetails : undefined,
       });
       setBody(draft.html);
       // L'objet proposé (ou corrigé) remplace celui de l'éditeur ; sans
@@ -1361,6 +1368,10 @@ export default function ReplyComposer({
                 </div>
               </div>
 
+              {aiResponseType === ACKNOWLEDGMENT_TYPE && (
+                <AcknowledgmentFields value={ackDetails} onChange={setAckDetails} receivedAt={parentReceivedAt} />
+              )}
+
               <div>
                 <p className="text-xs font-medium text-muted-foreground mb-1">Instructions complémentaires</p>
                 <Textarea
@@ -1480,6 +1491,22 @@ export default function ReplyComposer({
         minHeight={220}
         className="flex-1 min-h-[220px]"
       />
+
+      {/* Rappel des mentions de l'art. R112-5 CRPA, que l'assistant IA reçoit aussi. */}
+      {!readOnly && (
+        <AcknowledgmentChecklist
+          ack={ackDetails}
+          receivedAt={parentReceivedAt}
+          service={{
+            name: currentService?.name ?? assignedService,
+            address: currentService?.address ?? null,
+            email: currentService?.email ?? null,
+            phone: currentService?.phone ?? null,
+          }}
+          highlighted={aiResponseType === ACKNOWLEDGMENT_TYPE}
+          className="shrink-0"
+        />
+      )}
 
       {/* Proposition état final après envoi */}
       <AlertDialog open={proposeFinal} onOpenChange={setProposeFinal}>
