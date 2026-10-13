@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import type { Database } from "@/integrations/supabase/types";
 
 /**
  * Enfilement de l'analyse (OCR + LLM) d'un courrier.
@@ -52,4 +53,30 @@ export async function enqueueCourierAnalyses(courierIds: string[]): Promise<numb
     }
   }
   return queued;
+}
+
+export type CourierAnalysisJob = Pick<
+  Database["public"]["Tables"]["courier_analysis_jobs"]["Row"],
+  "id" | "status" | "last_error" | "created_at" | "finished_at"
+>;
+
+/** Dernier job d'analyse du courrier (ou null s'il n'est jamais passé par la file). */
+export async function getLatestAnalysisJob(
+  organizationId: string,
+  courierId: string,
+): Promise<CourierAnalysisJob | null> {
+  const { data, error } = await supabase
+    .from("courier_analysis_jobs")
+    .select("id, status, last_error, created_at, finished_at")
+    .eq("organization_id", organizationId)
+    .eq("courier_id", courierId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export function isAnalysisJobInProgress(job: Pick<CourierAnalysisJob, "status"> | null | undefined): boolean {
+  return job?.status === "pending" || job?.status === "running";
 }

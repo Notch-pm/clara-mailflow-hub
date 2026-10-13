@@ -115,6 +115,17 @@ describe("classifyCourier", () => {
     expect(stage({ ...routed, received_at: "2026-09-01T08:00:00Z" }).stage).toBe("late");
     expect(stage({ ...routed, resolved_at: "2026-10-01T08:00:00Z" }).stage).toBe("done");
   });
+
+  it("saisie manuelle : rattaché d'emblée — en analyse tant que le job tourne, puis à valider", () => {
+    // Cas 2026-E-00068 : le dialogue de création rattachait à l'organisation proposée
+    // et lançait l'analyse en direct, sans job. L'écran lisait alors « Non analysé »
+    // sans la proposition de l'IA. L'analyse passe désormais par la file : le
+    // courrier est « en analyse » (relu toutes les 5 s), puis « À valider ».
+    const manual = { socle_organization_id: "voirie", assigned_service: "Voirie", workflow_state_id: "init", state_is_initial: true };
+    expect(stage({ ...manual, has_analysis: false, analysis_status: null })).toMatchObject({ stage: "to_qualify", reason: "not_analysed" });
+    expect(stage({ ...manual, has_analysis: false, analysis_status: "pending" }).stage).toBe("analysing");
+    expect(stage({ ...manual, analysis_status: "done", suggested_service_confidence: 95 }).stage).toBe("to_validate");
+  });
 });
 
 describe("vues", () => {

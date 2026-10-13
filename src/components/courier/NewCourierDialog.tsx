@@ -40,6 +40,7 @@ import { canEditCouriers } from "@/lib/permissions";
 import { findSuggestedOrg } from "@/lib/service-suggestion";
 import { supabase } from "@/integrations/supabase/client";
 import { createCourier } from "@/services/courierService";
+import { COURIER_LIST_QUERY_PREFIXES } from "@/services/courierListService";
 import { addParticipant } from "@/services/courierParticipantService";
 import { assignableOrgs, listOrgsWithConfig } from "@/services/socleOrgConfigService";
 import { listTags, TAG_GROUPS, type TagGroup } from "@/services/courierTagService";
@@ -47,9 +48,9 @@ import { splitAppliedTags } from "@/lib/courier-tags";
 import { storage } from "@/services/storageService";
 import {
   extractCourierInfo,
-  runFullAnalysis,
   type SuggestedSender,
 } from "@/services/courierAnalysisService";
+import { enqueueCourierAnalysis } from "@/services/courierAnalysisJobService";
 import ContactPicker from "@/components/courier/ContactPicker";
 import SenderMatchNotice from "@/components/courier/SenderMatchNotice";
 import DictationRecorder from "@/components/courier/DictationRecorder";
@@ -342,10 +343,28 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
           toast.error(`${file.name} : ${msg}`);
         }
       }
-      return { courierId: courier.id, uploaded: pendingFiles.length - uploadFailures, total: pendingFiles.length };
+      const uploaded = pendingFiles.length - uploadFailures;
+
+      // Si l'utilisateur a lancé l'analyse OCR en pré-création, on relance une
+      // analyse complète pour persister les extraits OCR dans
+      // `courier_document_extracts` et générer l'analyse IA dès maintenant.
+      // Par la file serveur, comme l'import en masse : « Courrier entrant » et la
+      // fiche voient l'analyse en cours et se mettent à jour à la fin. Lancée en
+      // direct, personne ne le savait — le courrier restait « Non analysé », sans
+      // la proposition de l'IA, jusqu'au rafraîchissement suivant (2026-E-00068).
+      // Enfilée AVANT de rendre la main : la fiche ouverte par `onCreated` trouve le job.
+      if (analyzedPreCreationRef.current && uploaded > 0) {
+        await enqueueCourierAnalysis(courier.id).catch((e) => {
+          console.error("Enfilement de l'analyse post-création impossible:", e);
+        });
+      }
+
+      return { courierId: courier.id, uploaded, total: pendingFiles.length };
     },
     onSuccess: (res) => {
-      qc.invalidateQueries({ queryKey: ["mailbox-couriers"] });
+      // Toutes les listes, « Courrier entrant » comprise : n'invalider que la
+      // boîte laissait l'écran du service courrier sur un instantané périmé.
+      COURIER_LIST_QUERY_PREFIXES.forEach((prefix) => qc.invalidateQueries({ queryKey: [prefix] }));
       qc.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
       if (res && res.total > 0) {
         toast.success(`Courrier créé — ${res.uploaded}/${res.total} fichier(s) ajouté(s)`);
@@ -354,22 +373,6 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
       }
       onOpenChange(false);
       if (onCreated) onCreated(res.courierId);
-
-      // Si l'utilisateur a lancé l'analyse OCR en pré-création, on relance
-      // une analyse complète côté serveur pour persister les extraits OCR
-      // dans `courier_document_extracts` et générer l'analyse IA dès maintenant.
-      if (analyzedPreCreationRef.current && res.uploaded > 0 && res.courierId) {
-        const courierId = res.courierId;
-        runFullAnalysis(courierId)
-          .then(() => {
-            qc.invalidateQueries({ queryKey: ["courier-extracts", courierId] });
-            qc.invalidateQueries({ queryKey: ["courier-analysis", courierId] });
-            qc.invalidateQueries({ queryKey: ["courier", organizationId, courierId] });
-          })
-          .catch((e) => {
-            console.error("Analyse automatique post-création échouée:", e);
-          });
-      }
     },
     onError: (err: Error) => {
       if (err.message !== "Veuillez corriger les erreurs du formulaire.") {

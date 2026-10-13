@@ -16,6 +16,7 @@ import { remindService, transferCourier, returnToMailroom } from "@/services/cou
 import { fetchMailroomMemberIds } from "@/services/mailroomService";
 import { useUserServiceFilter } from "@/hooks/useUserServiceFilter";
 import { useCourierDisplayDocuments } from "@/hooks/useCourierDisplayDocuments";
+import { useCourierAnalysisJob } from "@/hooks/useCourierAnalysisJob";
 import { addParticipant, updateParticipant } from "@/services/courierParticipantService";
 import {
   contactRelationLines,
@@ -121,6 +122,8 @@ export function useCourierWorkspace({
   const initialReplyIdParam = searchParams.get("replyId");
   const initialEditParam = searchParams.get("edit") === "1";
   const [activeTab, setActiveTab] = useState<string>(initialTabParam || "detail");
+  // Analyse enfilée (saisie manuelle, import, relais d'élu) : la fiche se met à jour seule à la fin.
+  const { inProgress: analysisInProgress } = useCourierAnalysisJob(organizationId, courier?.id);
 
   const { data: replyList = [] } = useQuery({
     queryKey: ["courier-replies", courier?.id],
@@ -677,6 +680,7 @@ export function useCourierWorkspace({
   return {
     // Lecture seule effective (rôle consultant compris)
     effectiveReadOnly,
+    analysisInProgress,
     isOutbound,
     // Participants et référentiel
     participants,

@@ -10,6 +10,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { getDocuments } from "@/services/courierDocumentService";
 import { getCourierById, updateCourier } from "@/services/courierService";
 import { COURIER_LIST_QUERY_PREFIXES } from "@/services/courierListService";
+import { getLatestAnalysisJob, isAnalysisJobInProgress } from "@/services/courierAnalysisJobService";
+import { courierAnalysisJobQueryKey } from "@/hooks/useCourierAnalysisJob";
 import { listTags, TAG_GROUPS } from "@/services/courierTagService";
 import { splitAppliedTags } from "@/lib/courier-tags";
 import { cn } from "@/lib/utils";
@@ -84,6 +86,15 @@ export default function ContentIntentsTab({
     queryFn: () => getAnalysis(courierId),
     enabled: !!courierId,
   });
+
+  // Analyse enfilée côté serveur : suivie (relecture, rafraîchissement en fin de
+  // job) par `useCourierAnalysisJob`, monté par la fiche ; ici on n'en lit que l'état.
+  const { data: analysisJob } = useQuery({
+    queryKey: courierAnalysisJobQueryKey(courierId),
+    queryFn: () => getLatestAnalysisJob(organizationId, courierId),
+    enabled: !!courierId && !!organizationId,
+  });
+  const queued = isAnalysisJobInProgress(analysisJob);
 
   const { data: orgTags } = useQuery({
     queryKey: ["courier-tags", organizationId],
@@ -382,9 +393,11 @@ export default function ContentIntentsTab({
           <div>
             <h3 className="text-sm font-semibold">Analyse</h3>
             <p className="text-xs text-muted-foreground">
-              {analysis
-                ? `Mise à jour ${formatDate(analysis.updated_at)}`
-                : "Aucune analyse pour ce courrier"}
+              {queued
+                ? "Lecture et analyse en cours…"
+                : analysis
+                  ? `Mise à jour ${formatDate(analysis.updated_at)}`
+                  : "Aucune analyse pour ce courrier"}
             </p>
           </div>
           <Button
@@ -393,17 +406,20 @@ export default function ContentIntentsTab({
             onClick={() => (analysis ? analyzeMutation.mutate() : runFullAnalysisMutation.mutate())}
             disabled={
               readOnly ||
+              queued ||
               (analysis ? analyzeMutation.isPending || !canAnalyze : runFullAnalysisMutation.isPending)
             }
             title={
               readOnly
                 ? "Courrier archivé — actions désactivées"
-                : analysis && !canAnalyze
-                  ? "Extrayez d'abord le texte des documents ou réceptionnez un email"
-                  : undefined
+                : queued
+                  ? "Analyse en cours — les résultats s'afficheront ici"
+                  : analysis && !canAnalyze
+                    ? "Extrayez d'abord le texte des documents ou réceptionnez un email"
+                    : undefined
             }
           >
-            {(analysis ? analyzeMutation.isPending : runFullAnalysisMutation.isPending) ? (
+            {queued || (analysis ? analyzeMutation.isPending : runFullAnalysisMutation.isPending) ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : analysis ? (
               <RefreshCw className="h-4 w-4" />
@@ -419,6 +435,11 @@ export default function ContentIntentsTab({
             <Skeleton className="h-20 w-full" />
             <Skeleton className="h-16 w-full" />
           </div>
+        ) : !analysis && queued ? (
+          <Card className="p-4 text-center text-sm text-muted-foreground">
+            Clara lit les documents et analyse le courrier. Les résultats s'afficheront ici dès
+            qu'ils seront prêts.
+          </Card>
         ) : !analysis ? (
           <Card className="p-4 text-center text-sm text-muted-foreground">
             Cliquez sur "Analyser" pour détecter les intentions, l'état d'esprit, les champs
