@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { inVisaScope, nextSelection, parapheurTabs, shortWaitLabel, startOfMonthIso } from "@/lib/parapheur";
+import { inVisaScope, nextSelection, parapheurPendingCount, parapheurTabs, shortWaitLabel, startOfMonthIso } from "@/lib/parapheur";
 import { canAccessParapheur, navItemVisible } from "@/lib/permissions";
 
 describe("accès au parapheur", () => {
@@ -64,5 +64,19 @@ describe("libellés", () => {
 
   it("part du premier jour du mois civil", () => {
     expect(new Date(startOfMonthIso(new Date(2026, 9, 17, 15))).getTime()).toBe(new Date(2026, 9, 1).getTime());
+  });
+});
+
+describe("parapheurPendingCount", () => {
+  const visa = [{ designatedToOther: false }, { designatedToOther: false }, { designatedToOther: true }];
+
+  it("additionne mes visas et mes signatures", () => {
+    expect(parapheurPendingCount({ is_viseur: true, is_signataire: true }, visa, 3)).toBe(5);
+  });
+
+  it("ignore la file d'un onglet caché (fiche signataire sans l'attribut)", () => {
+    expect(parapheurPendingCount({ is_viseur: true, is_signataire: false }, visa, 3)).toBe(2);
+    expect(parapheurPendingCount({ is_signataire: true }, visa, 3)).toBe(3);
+    expect(parapheurPendingCount(null, visa, 3)).toBe(0);
   });
 });

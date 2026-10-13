@@ -28,6 +28,23 @@ export function parapheurTabs(
 }
 
 /**
+ * Le compteur du menu : ce qui attend dans les onglets que j'ouvre, et rien
+ * d'autre. Une fiche de signataire peut survivre au retrait de l'attribut
+ * `is_signataire` — ses réponses ne doivent pas gonfler un compte dont
+ * l'onglet est caché.
+ */
+export function parapheurPendingCount(
+  membership: { is_signataire?: boolean | null; is_viseur?: boolean | null } | null | undefined,
+  visaItems: readonly { designatedToOther: boolean }[],
+  signatureCount: number,
+): number {
+  const tabs = parapheurTabs(membership);
+  const visa = tabs.includes("visa") ? visaItems.filter((item) => inVisaScope(item, "mine")).length : 0;
+  const signature = tabs.includes("signature") ? signatureCount : 0;
+  return visa + signature;
+}
+
+/**
  * « Mes courriers » garde aussi les réponses sans viseur désigné : elles
  * attendent n'importe quel viseur, donc moi. Seules sortent celles qu'un autre
  * viseur est attendu pour viser — viser à sa place reste permis, mais c'est un

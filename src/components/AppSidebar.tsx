@@ -27,6 +27,7 @@ import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { Popover, PopoverTrigger } from "@/components/ui/popover";
 import { useAuth } from "@/contexts/AuthContext";
 import { navItemVisible } from "@/lib/permissions";
+import { parapheurPendingCount } from "@/lib/parapheur";
 import { cn } from "@/lib/utils";
 import { useEluSignatureQueue } from "@/hooks/useEluSignatureQueue";
 import { useEluVisaQueue } from "@/hooks/useEluVisaQueue";
@@ -101,15 +102,17 @@ function isRouteActive(pathname: string, url: string): boolean {
 }
 
 /**
- * Ce qui attend MON visa ou MA signature — les réponses qu'un autre viseur est
- * attendu pour viser n'y comptent pas. Les composants qui l'appellent ne sont
+ * Ce qui attend MON visa ou MA signature, dans les seuls onglets que j'ouvre —
+ * les réponses qu'un autre viseur est attendu pour viser n'y comptent pas, ni
+ * une file de signature sans l'attribut `is_signataire`. Les composants qui l'appellent ne sont
  * montés que quand l'entrée Parapheur est visible : les files ne se chargent
  * pas pour qui ne vise ni ne signe.
  */
 function useParapheurCount(): number {
   const visa = useEluVisaQueue();
   const signature = useEluSignatureQueue();
-  return visa.items.filter((i) => !i.designatedToOther).length + signature.count;
+  const { membership } = useAuth();
+  return parapheurPendingCount(membership, visa.items, signature.count);
 }
 
 /** Pastille sur l'icône d'étape ou de lien direct : il y a du travail en attente. */

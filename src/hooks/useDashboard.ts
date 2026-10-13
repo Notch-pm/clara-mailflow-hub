@@ -5,6 +5,7 @@ import { useOrganization } from "@/contexts/OrganizationContext";
 import { useEluSignatureQueue } from "@/hooks/useEluSignatureQueue";
 import { useEluVisaQueue } from "@/hooks/useEluVisaQueue";
 import { canAccessParapheur, isServiceCourrier } from "@/lib/permissions";
+import { parapheurTabs } from "@/lib/parapheur";
 import { classifyCourier, type MailroomItem } from "@/lib/mailroom";
 import {
   dashboardRoles,
@@ -114,9 +115,12 @@ export function useDashboard() {
     [myOrgIds, orgs],
   );
 
+  // Comme le badge du rail : seules comptent les files dont le parapheur
+  // m'ouvre l'onglet — une fiche de signataire sans `is_signataire` n'en ouvre pas.
+  const signsInParapheur = parapheurTabs(membership).includes("signature");
   const parapheurEntries = useMemo<ParapheurEntry[]>(
     () => [
-      // Comme le badge du rail : un visa désigné à un autre ne m'attend pas.
+      // Un visa désigné à un autre ne m'attend pas.
       ...visa.items
         .filter((i) => !i.designatedToOther)
         .map<ParapheurEntry>((i) => ({
@@ -129,7 +133,7 @@ export function useDashboard() {
           step: i.stateName,
           waitingDays: i.waitingDays,
         })),
-      ...signature.items.map<ParapheurEntry>((i) => ({
+      ...(signsInParapheur ? signature.items : []).map<ParapheurEntry>((i) => ({
         kind: "signature",
         replyId: i.replyId,
         parentCourierId: i.parentCourierId,
@@ -140,7 +144,7 @@ export function useDashboard() {
         waitingDays: i.waitingDays,
       })),
     ],
-    [visa.items, signature.items],
+    [visa.items, signature.items, signsInParapheur],
   );
 
   const view = useMemo(() => {
