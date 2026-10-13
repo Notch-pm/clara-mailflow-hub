@@ -223,6 +223,44 @@ describe("useEluSignatureQueue", () => {
     expect(result.current.items[0].receivedAt).not.toBeNull();
   });
 
+  it("un sortant sans parent : l'ancienneté se lit sur son propre historique", async () => {
+    // Un courrier à l'initiative de la collectivité n'a pas de courrier reçu :
+    // ses événements sont ancrés sur lui-même.
+    stubTables({
+      signatories: [SIGNATORY],
+      workflow_states: [{ id: "st-sig" }],
+      couriers: [
+        {
+          id: "s1",
+          subject: "Convocation réunion de quartier",
+          chrono: "2026-S-00042",
+          created_at: daysAgo(1),
+          parent_courier_id: null,
+          assigned_service: "Cabinet",
+          courier_participants: [
+            { role: "recipient", name: "Jean Martin", first_name: null, last_name: null },
+          ],
+        },
+      ],
+      courier_events: [
+        { courier_id: "s1", created_at: daysAgo(3), payload: { reply_id: "s1", to_state_id: "st-sig" } },
+      ],
+    });
+
+    const { result } = renderHook(() => useEluSignatureQueue(), { wrapper });
+
+    await waitFor(() => expect(result.current.items[0]?.waitingDays).toBe(3));
+    const [item] = result.current.items;
+    expect(item.parentCourierId).toBeNull();
+    expect(item.title).toBe("Convocation réunion de quartier");
+    expect(item.chrono).toBe("2026-S-00042");
+    expect(item.senderName).toBe("Jean Martin");
+    const eventsQuery = mockSupabase.from.mock.results.find(
+      (_r: unknown, i: number) => mockSupabase.from.mock.calls[i][0] === "courier_events",
+    )?.value as { in: ReturnType<typeof vi.fn> };
+    expect(eventsQuery.in).toHaveBeenCalledWith("courier_id", ["s1"]);
+  });
+
   it("signale une fiche de signataire sans signature manuscrite", async () => {
     // L'élu est bien signataire, mais rien n'a été déposé : le détail devra
     // dire pourquoi le bouton est gris.

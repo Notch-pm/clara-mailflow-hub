@@ -81,10 +81,10 @@ export async function listOrgViseurs(organizationId: string, socleOrgId: string)
     .sort((a, b) => visaPersonName(a).localeCompare(visaPersonName(b), "fr"));
 }
 
-/** Vise l'étape courante d'une réponse et le journalise sur le courrier parent. */
+/** Vise l'étape courante d'un sortant et le journalise sur le courrier qui porte son historique. */
 export async function grantVisa(args: {
   organizationId: string;
-  parentCourierId: string;
+  eventCourierId: string;
   replyId: string;
   stateId: string;
   comment?: string | null;
@@ -104,7 +104,7 @@ export async function grantVisa(args: {
   const visa = data as unknown as ReplyVisa;
 
   const designatedIsOther = visa.designated_user_id && visa.designated_user_id !== visa.user_id;
-  await logEvent(args.organizationId, args.parentCourierId, "reply_visa_granted", {
+  await logEvent(args.organizationId, args.eventCourierId, "reply_visa_granted", {
     reply_id: args.replyId,
     state_id: args.stateId,
     state_name: visa.state_name,

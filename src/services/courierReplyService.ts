@@ -38,7 +38,7 @@ export async function listRepliesForCourier(
 
 export async function deleteReply(
   organizationId: string,
-  parentCourierId: string,
+  eventCourierId: string,
   replyId: string,
 ): Promise<void> {
   const { error } = await supabase
@@ -47,7 +47,7 @@ export async function deleteReply(
     .eq("id", replyId)
     .eq("organization_id", organizationId);
   if (error) throw error;
-  await logEvent(organizationId, parentCourierId, "reply_deleted", { reply_id: replyId });
+  await logEvent(organizationId, eventCourierId, "reply_deleted", { reply_id: replyId });
 }
 
 /**
@@ -209,9 +209,12 @@ export async function updateReplyContent(
   if (error) throw error;
 }
 
+// `eventCourierId` : le courrier qui porte l'historique du sortant — son parent
+// pour une réponse, lui-même sinon (`eventAnchor`, `@/lib/courier-events`).
+
 export async function transitionReplyState(
   organizationId: string,
-  parentCourierId: string,
+  eventCourierId: string,
   replyId: string,
   toStateId: string,
   toStateName: string | null,
@@ -224,7 +227,7 @@ export async function transitionReplyState(
     .eq("organization_id", organizationId);
   if (error) throw error;
 
-  await logEvent(organizationId, parentCourierId, "reply_state_changed", {
+  await logEvent(organizationId, eventCourierId, "reply_state_changed", {
     reply_id: replyId,
     to_state_id: toStateId,
     to_state_name: toStateName,
@@ -242,7 +245,7 @@ export async function transitionReplyState(
         .update({ sent_at: new Date().toISOString() } as never)
         .eq("id", replyId);
     }
-    await logEvent(organizationId, parentCourierId, "reply_sent", { reply_id: replyId });
+    await logEvent(organizationId, eventCourierId, "reply_sent", { reply_id: replyId });
   }
 }
 
@@ -256,7 +259,7 @@ function stripHtml(html: string): string {
 
 export async function signReply(
   organizationId: string,
-  parentCourierId: string,
+  eventCourierId: string,
   replyId: string,
   args: { bodyHtml: string; signedBy: string; signedStateId?: string | null },
 ): Promise<void> {
@@ -266,7 +269,7 @@ export async function signReply(
     signedBy: args.signedBy,
     signedStateId: args.signedStateId ?? null,
   });
-  await logEvent(organizationId, parentCourierId, "reply_signed", {
+  await logEvent(organizationId, eventCourierId, "reply_signed", {
     reply_id: replyId,
     signed_by: args.signedBy,
     signed_state_id: args.signedStateId ?? null,
@@ -275,7 +278,7 @@ export async function signReply(
 
 export async function unsignReply(
   organizationId: string,
-  parentCourierId: string,
+  eventCourierId: string,
   replyId: string,
   args: { bodyHtml: string },
 ): Promise<void> {
@@ -285,38 +288,9 @@ export async function unsignReply(
     signedBy: null,
     signedStateId: null,
   });
-  await logEvent(organizationId, parentCourierId, "reply_unsigned", {
+  await logEvent(organizationId, eventCourierId, "reply_unsigned", {
     reply_id: replyId,
   });
-}
-
-/**
- * Reset the sent_email_at marker on a reply, so it can be re-sent automatically
- * the next time it transitions through a "send" state. Called when the reply
- * moves back to a state located before the send state in the workflow.
- */
-export async function resetSendMarker(
-  organizationId: string,
-  parentCourierId: string,
-  replyId: string,
-): Promise<void> {
-  const { data: existing, error: fErr } = await supabase
-    .from("couriers")
-    .select("metadata")
-    .eq("id", replyId)
-    .single();
-  if (fErr) throw fErr;
-  const currentMeta = ((existing as { metadata: Record<string, unknown> | null } | null)?.metadata) ?? {};
-  if (!currentMeta.sent_email_at) return;
-  const nextMeta = { ...currentMeta };
-  delete nextMeta.sent_email_at;
-  const { error } = await supabase
-    .from("couriers")
-    .update({ metadata: nextMeta } as never)
-    .eq("id", replyId)
-    .eq("organization_id", organizationId);
-  if (error) throw error;
-  await logEvent(organizationId, parentCourierId, "reply_send_reset", { reply_id: replyId });
 }
 
 /**

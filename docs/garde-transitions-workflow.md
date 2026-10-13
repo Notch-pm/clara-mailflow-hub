@@ -60,7 +60,7 @@ Les réponses (`outbound`) suivent la même matrice, W* via `reply_workflow_id`.
 - **RPC `apply_transition`** : insuffisante seule — le client fait un UPDATE **direct** autorisé par la RLS (`is_editor_of`), pas une RPC. Une RPC ne ferme le trou que si l'UPDATE direct de la colonne est aussi verrouillé, ce que Postgres ne fait pas par colonne → il faudrait un trigger de toute façon. Rejetée comme mécanisme unique (reste possible plus tard comme sucre de journalisation).
 - **Trigger** : fire pour **tout** writer (client direct, edge service_role, cron, migration), **sous** la RLS. Seule option qui ferme le threat model « appel Supabase direct ».
 
-Déclenché aussi sur changement de `socle_organization_id` (sinon un état devenu étranger après réassignation passerait). Un update qui ne touche que `metadata` (envoi, `resetSendMarker`, contenu) ne fire pas — voulu.
+Déclenché aussi sur changement de `socle_organization_id` (sinon un état devenu étranger après réassignation passerait). Un update qui ne touche que `metadata` (envoi, contenu) ne fire pas — voulu.
 
 ## 5. Bypass (service_role + migrations passent, superadmin humain non)
 

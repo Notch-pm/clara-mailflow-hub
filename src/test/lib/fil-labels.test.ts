@@ -38,4 +38,20 @@ describe("describeCourierEvent", () => {
     });
     expect(describeCourierEvent("reply_sent", null)).toEqual({ title: "Réponse envoyée", detail: null });
   });
+
+  it("lu sur le courrier reçu, l'événement d'une réponse parle de réponse", () => {
+    expect(describeCourierEvent("reply_signed", { reply_id: "r1" }, "p1").title).toBe("Réponse signée");
+  });
+
+  it("lu sur un sortant sans parent, il parle du courrier lui-même", () => {
+    // Un courrier à l'initiative de la collectivité porte son propre
+    // historique : ce n'est la réponse à rien.
+    expect(describeCourierEvent("reply_signed", { reply_id: "s1" }, "s1").title).toBe("Courrier signé");
+    expect(describeCourierEvent("reply_visa_granted", { reply_id: "s1", state_name: "Visa DGS" }, "s1")).toEqual({
+      title: "Courrier visé",
+      detail: "Étape « Visa DGS »",
+    });
+    // Sans libellé propre, on garde le libellé commun.
+    expect(describeCourierEvent("reply_unsigned", { reply_id: "s1" }, "s1").title).toBe("Signature retirée");
+  });
 });

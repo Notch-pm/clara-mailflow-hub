@@ -91,7 +91,7 @@ describe("courierVisaService", () => {
         courier_events: [{ data: null, error: null }],
       });
 
-      await grantVisa({ organizationId: ORG_ID, parentCourierId: "c-1", replyId: "r-1", stateId: "s-visa", comment: "  Vu  " });
+      await grantVisa({ organizationId: ORG_ID, eventCourierId: "c-1", replyId: "r-1", stateId: "s-visa", comment: "  Vu  " });
 
       const insert = built.courier_visas[0].insert;
       expect(insert).toHaveBeenCalledWith({
@@ -108,7 +108,7 @@ describe("courierVisaService", () => {
     it("propage le refus du serveur (non-viseur)", async () => {
       routeTables({ courier_visas: [{ data: null, error: new Error("Visa interdit") }] });
       await expect(
-        grantVisa({ organizationId: ORG_ID, parentCourierId: "c-1", replyId: "r-1", stateId: "s-visa" }),
+        grantVisa({ organizationId: ORG_ID, eventCourierId: "c-1", replyId: "r-1", stateId: "s-visa" }),
       ).rejects.toThrow("Visa interdit");
     });
   });

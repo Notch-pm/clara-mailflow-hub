@@ -156,7 +156,13 @@ nouveaux as (
     ) as received_at,
     p.sujets[1 + (gen.g * 7) % array_length(p.sujets, 1)] as sujet,
     p.corps[1 + (gen.g * 3) % array_length(p.corps, 1)] as corps,
-    case when gen.g % 9 = 0 then 'outbound' else 'inbound' end as direction,
+    -- Entrants seulement. Un sortant sans parent est un courrier à
+    -- l'initiative de la collectivité : il naît dans le workflow réponse de
+    -- son organisation, avec un destinataire du référentiel
+    -- (docs/specs/courriers-sortants.md). Les 555 sortants que ce script
+    -- générait, rangés dans le workflow des entrants, ont été purgés le
+    -- 2026-10-13.
+    'inbound' as direction,
     (array['paper','email','portal'])[1 + (gen.g * 5) % 3] as channel,
     c.id as contact_id,
     c.display_name as contact_name,

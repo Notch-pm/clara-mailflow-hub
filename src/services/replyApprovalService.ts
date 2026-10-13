@@ -4,6 +4,7 @@ import { getSignatureDataUrl } from "@/services/signatoryService";
 import { grantVisa } from "@/services/courierVisaService";
 import { listOrgsWithConfig } from "@/services/socleOrgConfigService";
 import { appendSignature, buildSignatureBlock } from "@/lib/reply-signature";
+import { eventCourierIdOf } from "@/lib/courier-events";
 import type { WorkflowState } from "@/types/courier";
 
 // Viser et signer une réponse, puis l'avancer d'une étape. Un seul chemin pour
@@ -30,12 +31,13 @@ export interface ApprovalSignatory {
 
 interface ReplyRef {
   organizationId: string;
-  parentCourierId: string;
+  /** Le courrier qui porte l'historique : le parent d'une réponse, sinon le sortant lui-même. */
+  eventCourierId: string;
   replyId: string;
 }
 
 async function advance(ref: ReplyRef, target: ApprovalTarget): Promise<void> {
-  await transitionReplyState(ref.organizationId, ref.parentCourierId, ref.replyId, target.id, target.name, target.category);
+  await transitionReplyState(ref.organizationId, ref.eventCourierId, ref.replyId, target.id, target.name, target.category);
 }
 
 /**
@@ -47,7 +49,7 @@ export async function visaAndAdvance(
 ): Promise<void> {
   await grantVisa({
     organizationId: ref.organizationId,
-    parentCourierId: ref.parentCourierId,
+    eventCourierId: ref.eventCourierId,
     replyId: ref.replyId,
     stateId: ref.stateId,
     comment: ref.comment ?? null,
@@ -70,7 +72,7 @@ export async function signAndAdvance(
     ref.bodyHtml,
     buildSignatureBlock({ fullName, title: ref.signatory.title, signatureDataUrl }),
   );
-  await signReply(ref.organizationId, ref.parentCourierId, ref.replyId, {
+  await signReply(ref.organizationId, ref.eventCourierId, ref.replyId, {
     bodyHtml: signedBody,
     signedBy: ref.signatory.id,
     signedStateId: ref.stateId,
@@ -99,7 +101,9 @@ export async function loadApprovalContext(organizationId: string, replyId: strin
     .eq("organization_id", organizationId)
     .maybeSingle();
   if (error) throw error;
-  if (!reply?.parent_courier_id) throw new Error("Réponse introuvable.");
+  // Un sortant sans parent (courrier à l'initiative de la collectivité) se
+  // signe comme une réponse : seul l'ancrage de son historique change.
+  if (!reply) throw new Error("Courrier introuvable.");
 
   // Même résolution de l'organisation gestionnaire que `useEluReply`.
   const services = await listOrgsWithConfig(organizationId);
@@ -134,7 +138,7 @@ export async function loadApprovalContext(organizationId: string, replyId: strin
   }
 
   return {
-    ref: { organizationId, parentCourierId: reply.parent_courier_id, replyId },
+    ref: { organizationId, eventCourierId: eventCourierIdOf(reply), replyId },
     state,
     next: nextState ? { id: nextState.id, name: nextState.name, category: nextState.category ?? null } : null,
     bodyHtml: (metadata.body_html as string | undefined) ?? "",

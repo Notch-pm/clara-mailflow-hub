@@ -45,7 +45,7 @@ export function useEluCourrierFil(courierId: string | undefined) {
         listNotes(courierId!),
         supabase
           .from("courier_events")
-          .select("id, event_type, payload, created_by, created_at")
+          .select("id, courier_id, event_type, payload, created_by, created_at")
           .eq("courier_id", courierId!)
           .order("created_at", { ascending: false })
           .limit(200)
@@ -97,7 +97,7 @@ export function useEluCourrierFil(courierId: string | undefined) {
         })),
         activity: events.map<FilActivity>((e) => ({
           id: e.id,
-          ...describeCourierEvent(e.event_type, e.payload as Record<string, unknown> | null),
+          ...describeCourierEvent(e.event_type, e.payload as Record<string, unknown> | null, e.courier_id),
           at: e.created_at,
           by: e.created_by ? userName.get(e.created_by) ?? null : "Système",
         })),

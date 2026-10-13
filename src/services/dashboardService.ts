@@ -21,6 +21,7 @@ export async function listMySocleOrganizationIds(userId: string): Promise<string
 /**
  * Réponses que l'utilisateur a commencées et qui sont encore à l'état initial
  * de leur circuit (« En rédaction ») : ni soumises au visa, ni à la signature.
+ * Les sortants à l'initiative de la collectivité (sans parent) comptent aussi.
  */
 export async function countMyDraftReplies(organizationId: string, userId: string): Promise<number> {
   const { data: initialStates, error: statesError } = await supabase
@@ -37,7 +38,6 @@ export async function countMyDraftReplies(organizationId: string, userId: string
     .eq("organization_id", organizationId)
     .eq("direction", "outbound")
     .eq("created_by", userId)
-    .not("parent_courier_id", "is", null)
     .is("deleted_at", null)
     .in("workflow_state_id", stateIds);
   if (error) throw error;

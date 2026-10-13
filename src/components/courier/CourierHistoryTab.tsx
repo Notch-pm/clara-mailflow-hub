@@ -163,7 +163,7 @@ export default function CourierHistoryTab({ courierId, organizationId }: Props) 
     }
 
     events.forEach((e: any) => {
-      const { title, detail } = describeCourierEvent(e.event_type, e.payload);
+      const { title, detail } = describeCourierEvent(e.event_type, e.payload, e.courier_id);
       out.push({
         id: e.id,
         type: e.event_type,

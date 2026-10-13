@@ -7,6 +7,7 @@ import { transitionReplyState } from "@/services/courierReplyService";
 import { signAndAdvance as signReplyAndAdvance, signatureBlocker, visaAndAdvance as visaReplyAndAdvance } from "@/services/replyApprovalService";
 import { isFreeExitFromVisa, type VisaGraphTransition } from "@/lib/reply-visa";
 import { approvalLabel } from "@/lib/approval-label";
+import { eventAnchor } from "@/lib/courier-events";
 import type { EluTransitionChoice } from "@/hooks/useEluReply";
 import type { WorkflowState } from "@/types/courier";
 
@@ -86,10 +87,18 @@ export function useSignAndAdvance(ctx: EluSignContext): {
     return ctx.outgoing.filter((t) => !nominal.has(t.transitionId));
   }, [ctx.outgoing, nextEntry, prevEntry]);
 
+  // Un sortant sans parent journalise sur lui-même : passer `parentCourierId`
+  // (null) faisait échouer l'écriture de l'historique, sans bruit.
+  function eventCourierId(): string {
+    return eventAnchor(ctx.parentCourierId, ctx.replyId!);
+  }
+
   function settle() {
     if (ctx.parentCourierId) {
       void queryClient.invalidateQueries({ queryKey: ["courier-replies", ctx.parentCourierId] });
-      void queryClient.invalidateQueries({ queryKey: ["courier-events", ctx.parentCourierId] });
+    }
+    if (ctx.replyId) {
+      void queryClient.invalidateQueries({ queryKey: ["courier-events", eventCourierId()] });
     }
     void queryClient.invalidateQueries({ queryKey: ["elu-reply"] });
     void queryClient.invalidateQueries({ queryKey: ["elu-signature-queue"] });
@@ -104,7 +113,7 @@ export function useSignAndAdvance(ctx: EluSignContext): {
   async function advance(target: EluTransitionChoice["target"]) {
     await transitionReplyState(
       ctx.organizationId!,
-      ctx.parentCourierId!,
+      eventCourierId(),
       ctx.replyId!,
       target.id,
       target.name,
@@ -117,7 +126,7 @@ export function useSignAndAdvance(ctx: EluSignContext): {
       if (!nextEntry) throw new Error("Aucune transition suivante définie.");
       await signReplyAndAdvance({
         organizationId: ctx.organizationId!,
-        parentCourierId: ctx.parentCourierId!,
+        eventCourierId: eventCourierId(),
         replyId: ctx.replyId!,
         stateId: ctx.currentState?.id ?? null,
         bodyHtml: ctx.bodyHtml,
@@ -164,7 +173,7 @@ export function useSignAndAdvance(ctx: EluSignContext): {
       if (!ctx.currentState) throw new Error("Étape de visa introuvable.");
       await visaReplyAndAdvance({
         organizationId: ctx.organizationId!,
-        parentCourierId: ctx.parentCourierId!,
+        eventCourierId: eventCourierId(),
         replyId: ctx.replyId!,
         stateId: ctx.currentState.id,
         next: nextEntry?.target ?? null,

@@ -36,11 +36,30 @@ export const COURIER_EVENT_LABELS: Record<string, string> = {
   task_reopened: "Tâche rouverte",
 };
 
+// Un sortant sans parent porte son propre historique (`eventAnchor`) : lu sur
+// lui-même, « Réponse signée » serait faux — ce n'est la réponse à rien.
+const SELF_OUTBOUND_LABELS: Record<string, string> = {
+  reply_created: "Courrier créé",
+  reply_state_changed: "Changement d'état",
+  reply_sent: "Courrier envoyé",
+  reply_signed: "Courrier signé",
+  reply_visa_granted: "Courrier visé",
+};
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- payload libre de courier_events
 type Payload = Record<string, any> | null | undefined;
 
-export function describeCourierEvent(type: string, payload: Payload): { title: string; detail: string | null } {
+/**
+ * @param courierId le courrier dont on lit l'historique : quand l'événement
+ *   d'un sortant y est ancré sur lui-même, le libellé ne parle plus de réponse.
+ */
+export function describeCourierEvent(
+  type: string,
+  payload: Payload,
+  courierId?: string | null,
+): { title: string; detail: string | null } {
   const p = payload ?? {};
+  const selfAnchored = !!courierId && p.reply_id === courierId;
   let detail: string | null = null;
   switch (type) {
     case "service_changed":
@@ -100,5 +119,6 @@ export function describeCourierEvent(type: string, payload: Payload): { title: s
         .join(" · ") || null;
       break;
   }
-  return { title: COURIER_EVENT_LABELS[type] ?? type, detail };
+  const title = (selfAnchored ? SELF_OUTBOUND_LABELS[type] : undefined) ?? COURIER_EVENT_LABELS[type] ?? type;
+  return { title, detail };
 }

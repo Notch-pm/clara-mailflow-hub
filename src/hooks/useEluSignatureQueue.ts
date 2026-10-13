@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { waitingDays } from "@/lib/elu-delay";
+import { eventAnchor } from "@/lib/courier-events";
 
 /** Une réponse qui attend la signature de l'utilisateur courant. */
 export interface EluSignatureItem {
@@ -104,6 +105,12 @@ export function useEluSignatureQueue() {
     () => Array.from(new Set((replies ?? []).map((r) => r.parent_courier_id).filter(Boolean))) as string[],
     [replies],
   );
+  // Les courriers qui portent l'historique : le parent d'une réponse, sinon le
+  // sortant lui-même (`eventAnchor`).
+  const anchorIds = useMemo(
+    () => Array.from(new Set((replies ?? []).map((r) => eventAnchor(r.parent_courier_id, r.id)))),
+    [replies],
+  );
 
   // 4. L'objet du courrier parent. Requête à part, et non jointure imbriquée :
   //    l'auto-jointure `couriers!parent_courier_id` rend `null` à l'exécution,
@@ -128,16 +135,16 @@ export function useEluSignatureQueue() {
   // 5. Depuis quand chacune attend. `couriers.updated_at` ne peut pas servir :
   //    un trigger le repousse à CHAQUE écriture, donc à chaque sauvegarde du
   //    brouillon. La date vit dans l'historique — et l'événement d'une réponse
-  //    est journalisé sur son courrier PARENT.
+  //    est journalisé sur son courrier PARENT (sur lui-même s'il n'en a pas).
   const { data: waitingSince } = useQuery({
-    queryKey: ["elu-signature-waiting", organizationId, parentIds, signatureStateIds],
+    queryKey: ["elu-signature-waiting", organizationId, anchorIds, signatureStateIds],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("courier_events")
         .select("courier_id, created_at, payload")
         .eq("organization_id", organizationId!)
         .eq("event_type", "reply_state_changed")
-        .in("courier_id", parentIds)
+        .in("courier_id", anchorIds)
         .order("created_at", { ascending: false });
       if (error) throw error;
 
@@ -155,7 +162,7 @@ export function useEluSignatureQueue() {
       }
       return byReply;
     },
-    enabled: !!organizationId && parentIds.length > 0 && (signatureStateIds?.length ?? 0) > 0,
+    enabled: !!organizationId && anchorIds.length > 0 && (signatureStateIds?.length ?? 0) > 0,
   });
 
   const items = useMemo<EluSignatureItem[]>(() => {

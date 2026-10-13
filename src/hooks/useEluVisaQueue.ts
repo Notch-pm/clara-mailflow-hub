@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { listMyVisaQueue } from "@/services/courierVisaService";
 import { waitingDays } from "@/lib/elu-delay";
+import { eventAnchor } from "@/lib/courier-events";
 
 /** Une réponse qui attend le visa de l'utilisateur courant. */
 export interface EluVisaItem {
@@ -63,6 +64,10 @@ export function useEluVisaQueue() {
     () => Array.from(new Set(queue.map((r) => r.parent_courier_id).filter(Boolean))) as string[],
     [queue],
   );
+  const anchorIds = useMemo(
+    () => Array.from(new Set(queue.map((r) => eventAnchor(r.parent_courier_id, r.id)))),
+    [queue],
+  );
   const stateIds = useMemo(() => Array.from(new Set(queue.map((r) => r.state_id))), [queue]);
 
   // Requête à part plutôt qu'auto-jointure : voir `useEluSignatureQueue`.
@@ -81,16 +86,17 @@ export function useEluVisaQueue() {
   });
 
   // Depuis quand chacune attend : la dernière entrée dans l'étape de visa, lue
-  // dans l'historique du courrier PARENT (même raison que pour la signature).
+  // dans l'historique du courrier PARENT, ou du sortant lui-même s'il n'en a
+  // pas (même raison que pour la signature).
   const { data: waitingSince } = useQuery({
-    queryKey: ["elu-visa-waiting", organizationId, parentIds, stateIds],
+    queryKey: ["elu-visa-waiting", organizationId, anchorIds, stateIds],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("courier_events")
         .select("courier_id, created_at, payload")
         .eq("organization_id", organizationId!)
         .eq("event_type", "reply_state_changed")
-        .in("courier_id", parentIds)
+        .in("courier_id", anchorIds)
         .order("created_at", { ascending: false });
       if (error) throw error;
       const stateSet = new Set(stateIds);
@@ -105,7 +111,7 @@ export function useEluVisaQueue() {
       }
       return byReply;
     },
-    enabled: !!organizationId && parentIds.length > 0,
+    enabled: !!organizationId && anchorIds.length > 0,
   });
 
   const items = useMemo<EluVisaItem[]>(() => {
