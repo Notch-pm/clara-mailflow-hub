@@ -1049,6 +1049,22 @@ export function OutboundEditor({
         </div>
       </div>
 
+      {/* Courriel d'un courrier à l'initiative : ce qui part, et si quelque chose peut partir. */}
+      {kind === "initiative" && channel === "email" && workflow && !isSent && (
+        workflow.states.some((s) => s.is_send) ? (
+          <p className="shrink-0 text-xs text-muted-foreground">
+            Le courriel partira à {senderEmail ?? "votre destinataire"} au passage de l'étape d'envoi, avec les documents
+            du courrier en pièces jointes (10 au plus, 10 Mo en tout).
+          </p>
+        ) : (
+          <p className="flex shrink-0 items-center gap-1.5 rounded-md border border-warning/40 bg-warning/5 px-3 py-2 text-xs">
+            <Send className="h-3.5 w-3.5 shrink-0 text-warning" aria-hidden="true" />
+            Le workflow de réponse de « {currentService.name} » n'a pas d'étape d'envoi : ce courriel ne pourra pas partir,
+            ni être clos. Un administrateur doit en marquer une « envoi », ou passez en courrier postal.
+          </p>
+        )
+      )}
+
       {/* Assistant IA */}
       {!body && !editorDisabled && canDraft && (
         <div className="border rounded-md shrink-0">

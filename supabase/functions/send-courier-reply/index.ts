@@ -2,6 +2,16 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import nodemailer from "npm:nodemailer@6";
 import { assertEditor } from "../_shared/authz.ts";
 import { contactsApiKeyForOrg, fetchContactsApi } from "../_shared/socleContactsClient.ts";
+import { planOutboundAttachments, type OutboundDocument } from "../_shared/outboundAttachments.ts";
+
+const BUCKET = "clara-documents";
+
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -98,6 +108,11 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+    // Un courrier REÇU par courriel a lui aussi `channel = email` : sans ce
+    // contrôle, il était « envoyable ».
+    if (reply.direction !== "outbound") {
+      return json({ error: "Seul un courrier sortant s'envoie." }, 400);
+    }
     if (reply.channel !== "email") {
       return new Response(JSON.stringify({ error: "Le canal de la réponse n'est pas email" }), {
         status: 400,
@@ -113,7 +128,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Recipient = participant of the reply with role=recipient (fallback: parent sender)
+    // Destinataire : le participant « recipient » du sortant ; pour une réponse,
+    // à défaut, l'expéditeur du courrier reçu. Un courrier à l'initiative n'a
+    // pas de repli : son destinataire est une fiche du référentiel.
     const { data: replyParts } = await supabase
       .from("courier_participants")
       .select("role, email, name, socle_contact_id")
@@ -154,6 +171,10 @@ Deno.serve(async (req) => {
       }
     }
 
+    if (!reply.parent_courier_id && !recipient?.socle_contact_id) {
+      return json({ error: "Ce courrier n'a pas de destinataire rattaché au référentiel des contacts." }, 400);
+    }
+
     if (!recipient?.email) {
       return new Response(
         JSON.stringify({
@@ -173,6 +194,13 @@ Deno.serve(async (req) => {
     // Le relais vient du référentiel (organisation principale) : Clara n'en tient
     // qu'un miroir et n'a aucun repli. Pas de miroir = pas d'envoi possible.
     if (smtpErr || !smtp) {
+      await supabase.from("courier_events").insert({
+        organization_id,
+        courier_id: reply.parent_courier_id ?? reply.id,
+        event_type: "reply_email_failed",
+        payload: { reply_id: reply.id, reason: "Aucun serveur d'envoi" },
+        created_by: userData.user.id,
+      } as never);
       return new Response(JSON.stringify({
         error:
           "Aucun serveur d'envoi pour cette organisation : définissez-le dans le référentiel (organisation principale), puis lancez une synchronisation.",
@@ -181,6 +209,46 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    // Pièces jointes du sortant (courrier à l'initiative seulement : une
+    // réponse peut porter des documents qui n'étaient pas faits pour partir).
+    const fileAttachments: { filename: string; content: Uint8Array; contentType: string }[] = [];
+    if (!reply.parent_courier_id) {
+      const { data: docs, error: docsErr } = await supabase
+        .from("courier_documents")
+        .select("id, organization_id, courier_id, file_name, mime_type, file_size, storage_key")
+        .eq("courier_id", reply.id)
+        .eq("organization_id", organization_id);
+      if (docsErr) throw docsErr;
+      const plan = planOutboundAttachments((docs ?? []) as OutboundDocument[], {
+        courierId: reply.id,
+        organizationId: organization_id,
+      });
+      if (plan.refusal) return json({ error: plan.refusal }, 413);
+      for (const doc of plan.items) {
+        const { data: blob, error: dlErr } = await supabase.storage.from(BUCKET).download(doc.storage_key!);
+        if (dlErr || !blob) {
+          return json({ error: `Pièce jointe illisible : ${doc.file_name ?? doc.id}. Rien n'est parti.` }, 502);
+        }
+        fileAttachments.push({
+          filename: doc.file_name ?? "piece-jointe",
+          content: new Uint8Array(await blob.arrayBuffer()),
+          contentType: doc.mime_type ?? "application/octet-stream",
+        });
+      }
+    }
+
+    // Réservation : deux clics rapprochés, ou deux onglets, n'envoient qu'un
+    // seul message. La lecture de `sent_email_at` plus haut ne suffisait pas.
+    const { data: claimed, error: claimErr } = await supabase.rpc("claim_outbound_email_send", {
+      p_courier_id: reply.id,
+      p_organization_id: organization_id,
+    });
+    if (claimErr) throw claimErr;
+    if (!claimed) return json({ error: "Envoi déjà en cours ou déjà fait." }, 409);
+
+    // Le courrier qui porte l'historique : le parent d'une réponse, sinon lui-même.
+    const anchorId = reply.parent_courier_id ?? reply.id;
 
     const transporter = nodemailer.createTransport({
       host: smtp.host,
@@ -220,32 +288,47 @@ Deno.serve(async (req) => {
       },
     );
 
-    const info = await transporter.sendMail({
-      from: smtp.from_name ? `${smtp.from_name} <${smtp.from_email}>` : smtp.from_email,
-      to: recipient.name ? `${recipient.name} <${recipient.email}>` : recipient.email,
-      subject: reply.subject || "Réponse",
-      text,
-      html: html || text,
-      attachments: attachments.length ? attachments : undefined,
-    });
-
-    const sentAt = new Date().toISOString();
-    await supabase
-      .from("couriers")
-      .update({
-        metadata: { ...meta, sent_email_at: sentAt, sent_email_message_id: info.messageId ?? null },
-        sent_at: sentAt,
-      } as never)
-      .eq("id", reply.id);
-
-    if (reply.parent_courier_id) {
+    const allAttachments = [...attachments, ...fileAttachments];
+    let info: { messageId?: string };
+    try {
+      info = await transporter.sendMail({
+        from: smtp.from_name ? `${smtp.from_name} <${smtp.from_email}>` : smtp.from_email,
+        to: recipient.name ? `${recipient.name} <${recipient.email}>` : recipient.email,
+        subject: reply.subject || "Réponse",
+        text,
+        html: html || text,
+        attachments: allAttachments.length ? allAttachments : undefined,
+      });
+    } catch (sendErr) {
+      // Rien n'est parti : on libère la réservation, et l'échec est tracé.
+      await supabase.rpc("release_outbound_email_send", { p_courier_id: reply.id });
       await supabase.from("courier_events").insert({
         organization_id,
-        courier_id: reply.parent_courier_id,
-        event_type: "reply_email_sent",
-        payload: { reply_id: reply.id, to: recipient.email, message_id: info.messageId ?? null },
+        courier_id: anchorId,
+        event_type: "reply_email_failed",
+        payload: { reply_id: reply.id, to: recipient.email, reason: (sendErr as Error).message?.slice(0, 300) ?? null },
+        created_by: userData.user.id,
       } as never);
+      return json({ error: `Le serveur d'envoi a refusé le courriel : ${(sendErr as Error).message}` }, 502);
     }
+
+    await supabase.rpc("finish_outbound_email_send", {
+      p_courier_id: reply.id,
+      p_message_id: info.messageId ?? null,
+    });
+
+    await supabase.from("courier_events").insert({
+      organization_id,
+      courier_id: anchorId,
+      event_type: "reply_email_sent",
+      payload: {
+        reply_id: reply.id,
+        to: recipient.email,
+        message_id: info.messageId ?? null,
+        attachments: fileAttachments.length,
+      },
+      created_by: userData.user.id,
+    } as never);
 
     return new Response(
       JSON.stringify({ success: true, message_id: info.messageId, to: recipient.email }),

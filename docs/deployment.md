@@ -112,6 +112,14 @@ bunx supabase functions deploy <nom> --project-ref aullweizxcjbvtdspjli
 bun run build && npx wrangler deploy --dry-run
 ```
 
+### Lot « courriers sortants à l'initiative, lot 2 : envoi par courriel » (2026-10-13) — appliqué le 2026-10-13
+
+| # | Étape | Pourquoi cet ordre | État |
+|---|---|---|---|
+| 1 | `20261013130000_sortants_envoi_courriel.sql` (trigger : pas de clôture `processed` d'un courriel non parti ; RPC de service `claim_/finish_/release_outbound_email_send`) | La fonction appelle les trois RPC | **Appliqué via `execute_sql`** (`apply_migration` répondait « Invalid or expired requestState » deux fois), **ligne de registre posée à la main** pour `20261013130000`. `supabase/tests/outbound_email_send.test.sql` : VERDICT OK (7 scénarios) |
+| 2 | `send-courier-reply` (direction sortante exigée, réservation atomique anti-double envoi, PJ du sortant à l'initiative ≤ 10 × / 10 Mo, événements succès/échec sur `parent ?? self`) | Après les RPC | **Déployé**. Vérifié sur [TEST] Alpha : entrant → 400 ; courriel sans serveur d'envoi → 404, `reply_email_failed` tracé, rien marqué envoyé. ⚠️ Envoi réel (avec PJ) non éprouvé : aucun tenant de test n'a de serveur d'envoi |
+| 3 | Frontend (avertissement « pas d'étape d'envoi », libellés d'historique) | Push | **Fait** |
+
 ### Lot « courriers sortants à l'initiative, lot 1 » (2026-10-13) — appliqué le 2026-10-13
 
 Spécification : `docs/specs/courriers-sortants.md`.

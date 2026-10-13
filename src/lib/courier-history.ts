@@ -27,6 +27,8 @@ export const COURIER_EVENT_LABELS: Record<string, string> = {
   reply_unsigned: "Signature retirée",
   reply_visa_granted: "Réponse visée",
   reply_send_reset: "Envoi annulé",
+  reply_email_sent: "Courriel envoyé",
+  reply_email_failed: "Échec de l'envoi du courriel",
   outbound_created: "Courrier créé",
   outbound_recipient_changed: "Destinataire modifié",
   outbound_channel_changed: "Mode d'envoi modifié",
@@ -115,6 +117,14 @@ export function describeCourierEvent(
       break;
     case "reply_state_changed":
       detail = p.to_state_name ? `→ ${p.to_state_name}` : null;
+      break;
+    case "reply_email_sent":
+      detail = [p.to ? `à ${p.to}` : null, p.attachments ? `${p.attachments} pièce${p.attachments > 1 ? "s" : ""} jointe${p.attachments > 1 ? "s" : ""}` : null]
+        .filter(Boolean)
+        .join(" · ") || null;
+      break;
+    case "reply_email_failed":
+      detail = p.reason ?? null;
       break;
     case "outbound_created":
       detail = [p.organization_name ? `Par ${p.organization_name}` : null, p.recipient_name ? `à ${p.recipient_name}` : null]

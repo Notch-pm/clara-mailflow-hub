@@ -46,3 +46,6 @@ export function issuerBlockReason(org: IssuerCandidate | null | undefined): stri
   if (!org.reply_workflow_id) return noReplyWorkflowReason(org.name);
   return null;
 }
+
+export const UNSENT_EMAIL_CLOSE_REASON =
+  "Ce courriel n'est pas encore parti : envoyez-le avant de le clore (ou abandonnez-le).";

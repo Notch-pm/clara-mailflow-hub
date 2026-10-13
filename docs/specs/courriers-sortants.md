@@ -12,6 +12,8 @@
 > adresse (`ContactPicker withAddress`) au lieu d'extraire `ContactFormDialog` ; le mode d'envoi se
 > règle dans l'éditeur (radio « Canal ») ; l'assistant « type de réponse » est masqué pour un
 > courrier à l'initiative jusqu'au lot 3 (« Améliorer » reste disponible).
+> **Lot 2 livré le 2026-10-13** : envoi par courriel (réservation atomique, PJ, échecs tracés), clôture
+> d'un courriel non parti refusée. Les PJ restent réservées aux courriers à l'initiative.
 > Écart au plan : pas de hook `useOutboundComposer` séparé — l'éditeur porte son état ; à
 > extraire au lot 1 seulement si `InitiativeComposer` en a besoin.
 
