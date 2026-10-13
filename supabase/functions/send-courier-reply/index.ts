@@ -330,6 +330,27 @@ Deno.serve(async (req) => {
       created_by: userData.user.id,
     } as never);
 
+    // Courrier à l'initiative lié à des courriers reçus : le départ se lit
+    // aussi dans leur historique, là où l'agent qui instruit regarde.
+    if (!reply.parent_courier_id) {
+      const { data: rels } = await supabase
+        .from("courier_relations")
+        .select("source_courier_id, target_courier_id")
+        .eq("organization_id", organization_id)
+        .or(`source_courier_id.eq.${reply.id},target_courier_id.eq.${reply.id}`);
+      const linked = Array.from(new Set(((rels ?? []) as { source_courier_id: string; target_courier_id: string }[])
+        .map((r) => (r.source_courier_id === reply.id ? r.target_courier_id : r.source_courier_id))));
+      if (linked.length) {
+        await supabase.from("courier_events").insert(linked.map((id) => ({
+          organization_id,
+          courier_id: id,
+          event_type: "reply_email_sent",
+          payload: { reply_id: reply.id, to: recipient.email, attachments: fileAttachments.length },
+          created_by: userData.user.id,
+        })) as never);
+      }
+    }
+
     return new Response(
       JSON.stringify({ success: true, message_id: info.messageId, to: recipient.email }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },

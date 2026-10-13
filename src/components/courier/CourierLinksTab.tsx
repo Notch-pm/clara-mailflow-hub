@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import LinkCourierDialog from "./LinkCourierDialog";
 import LinkedCouriersSection from "./LinkedCouriersSection";
+import { unlinkOutboundFromInbound } from "@/services/outboundCourierService";
 import {
   deleteRelation,
   listRelationsForCourier,
@@ -18,6 +19,8 @@ interface Props {
   courierId: string;
   organizationId: string;
   readOnly?: boolean;
+  /** Courrier à l'initiative : liens vers des courriers reçus seulement, tracés des deux côtés. */
+  initiative?: { chrono: string | null; subject: string | null } | null;
 }
 
 function RelationCard({
@@ -100,7 +103,7 @@ function RelationCard({
   );
 }
 
-export default function CourierLinksTab({ courierId, organizationId, readOnly }: Props) {
+export default function CourierLinksTab({ courierId, organizationId, readOnly, initiative = null }: Props) {
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -110,10 +113,28 @@ export default function CourierLinksTab({ courierId, organizationId, readOnly }:
   });
 
   const removeMutation = useMutation({
-    mutationFn: (id: string) => deleteRelation(id),
+    mutationFn: async (id: string) => {
+      const rel = relations.find((r) => r.id === id);
+      // Un lien entre un courrier à l'initiative et un courrier reçu se retire
+      // en laissant une trace des deux côtés, comme il s'est posé.
+      const outboundSide = initiative
+        ? { id: courierId, chrono: initiative.chrono, subject: initiative.subject }
+        : rel?.related?.direction === "outbound"
+          ? { id: rel.related.id, chrono: rel.related.chrono, subject: rel.related.subject }
+          : null;
+      if (rel?.related && outboundSide) {
+        const inboundSide = initiative
+          ? { id: rel.related.id, chrono: rel.related.chrono, subject: rel.related.subject }
+          : { id: courierId, chrono: null, subject: null };
+        await unlinkOutboundFromInbound({ organizationId, relationId: id, outbound: outboundSide, inbound: inboundSide });
+        return;
+      }
+      await deleteRelation(id);
+    },
     onSuccess: () => {
       toast.success("Lien retiré");
       queryClient.invalidateQueries({ queryKey: ["courier-relations", courierId] });
+      queryClient.invalidateQueries({ queryKey: ["courier-events"] });
     },
     onError: (e: Error) => toast.error(e.message || "Erreur lors de la suppression"),
   });
@@ -132,7 +153,9 @@ export default function CourierLinksTab({ courierId, organizationId, readOnly }:
             <Link2 className="h-4 w-4" /> Courriers liés
           </h2>
           <p className="text-sm text-muted-foreground">
-            Liez ce courrier à des relances ou à d'autres courriers parlant du même sujet.
+            {initiative
+              ? "Liez ce courrier aux courriers reçus auxquels il se rapporte."
+              : "Liez ce courrier à des relances ou à d'autres courriers parlant du même sujet."}
           </p>
         </div>
         {!readOnly && (
@@ -142,13 +165,15 @@ export default function CourierLinksTab({ courierId, organizationId, readOnly }:
         )}
       </div>
 
-      <LinkedCouriersSection
-        courierId={courierId}
-        organizationId={organizationId}
-        disabled={readOnly}
-        // Cet onglet liste déjà les liens posés, juste en dessous.
-        showRelations={false}
-      />
+      {!initiative && (
+        <LinkedCouriersSection
+          courierId={courierId}
+          organizationId={organizationId}
+          disabled={readOnly}
+          // Cet onglet liste déjà les liens posés, juste en dessous.
+          showRelations={false}
+        />
+      )}
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Chargement…</p>
@@ -206,6 +231,7 @@ export default function CourierLinksTab({ courierId, organizationId, readOnly }:
         courierId={courierId}
         organizationId={organizationId}
         excludeIds={excludeIds}
+        initiative={initiative}
       />
     </div>
   );

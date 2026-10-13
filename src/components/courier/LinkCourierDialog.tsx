@@ -26,6 +26,7 @@ import {
   type CourierRelationType,
   type RelatedCourierSummary,
 } from "@/services/courierRelationService";
+import { linkOutboundToInbound } from "@/services/outboundCourierService";
 
 interface Props {
   open: boolean;
@@ -35,6 +36,13 @@ interface Props {
   /** Ids of couriers already linked to exclude from the picker. */
   excludeIds?: string[];
   onCreated?: () => void;
+  /**
+   * Courrier à l'initiative de la collectivité : on le relie aux courriers
+   * REÇUS auxquels il se rapporte. Pas de suggestion automatique (elles
+   * comparent des courriers reçus entre eux), pas de « relance » : un lien
+   * « sujet lié », tracé dans les deux historiques.
+   */
+  initiative?: { chrono: string | null; subject: string | null } | null;
 }
 
 function CourierRow({
@@ -101,9 +109,10 @@ export default function LinkCourierDialog({
   organizationId,
   excludeIds = [],
   onCreated,
+  initiative = null,
 }: Props) {
   const queryClient = useQueryClient();
-  const [mode, setMode] = useState<"search" | "suggestions">("suggestions");
+  const [mode, setMode] = useState<"search" | "suggestions">(initiative ? "search" : "suggestions");
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<RelatedCourierSummary | null>(null);
   const [relationType, setRelationType] = useState<CourierRelationType>("sujet_lie");
@@ -127,12 +136,21 @@ export default function LinkCourierDialog({
     queryKey: ["link-suggestions", organizationId, courierId, excludeIds.join(","), scopeKey],
     queryFn: () =>
       computeSimilarCouriers(organizationId, courierId, { excludeIds, visibleSocleOrganizationIds: scope }),
-    enabled: open && mode === "suggestions",
+    enabled: open && mode === "suggestions" && !initiative,
   });
 
   const mutation = useMutation({
     mutationFn: async () => {
       if (!selected) throw new Error("Sélectionnez un courrier");
+      if (initiative) {
+        await linkOutboundToInbound({
+          organizationId,
+          outbound: { id: courierId, chrono: initiative.chrono, subject: initiative.subject },
+          inbound: { id: selected.id, chrono: selected.chrono, subject: selected.subject },
+          note: note.trim() || null,
+        });
+        return;
+      }
       // For 'relance', orient the relation: target = master, source = relance.
       let source = courierId;
       let target = selected.id;
@@ -153,6 +171,7 @@ export default function LinkCourierDialog({
     onSuccess: () => {
       toast.success("Lien créé");
       queryClient.invalidateQueries({ queryKey: ["courier-relations", courierId] });
+      queryClient.invalidateQueries({ queryKey: ["courier-events"] });
       onCreated?.();
       onOpenChange(false);
       // reset
@@ -180,12 +199,14 @@ export default function LinkCourierDialog({
             <Link2 className="h-4 w-4" /> Lier un courrier
           </DialogTitle>
           <DialogDescription>
-            Reliez ce courrier à un autre, comme relance ou comme courrier traitant du même sujet.
+            {initiative
+              ? "Reliez ce courrier aux courriers reçus auxquels il se rapporte. L'assistant de rédaction les lira, et le départ de ce courrier s'inscrira dans leur historique."
+              : "Reliez ce courrier à un autre, comme relance ou comme courrier traitant du même sujet."}
           </DialogDescription>
         </DialogHeader>
 
         <Tabs value={mode} onValueChange={(v) => { setMode(v as "search" | "suggestions"); setSelected(null); }}>
-          <TabsList>
+          <TabsList className={initiative ? "hidden" : undefined}>
             <TabsTrigger value="suggestions" className="gap-2">
               <Sparkles className="h-3.5 w-3.5" /> Suggestions
             </TabsTrigger>
@@ -249,7 +270,7 @@ export default function LinkCourierDialog({
 
         {selected && (
           <div className="space-y-3 rounded-md border bg-muted/30 p-3">
-            <div className="space-y-2">
+            <div className={initiative ? "hidden" : "space-y-2"}>
               <Label className="text-xs">Type de lien</Label>
               <RadioGroup
                 value={relationType}

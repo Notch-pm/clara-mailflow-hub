@@ -342,7 +342,7 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
       });
     }
     items.push({ value: "participants", label: "Participants", count: participants.length });
-    if (!isOutbound) {
+    if (!isOutbound || isInitiative) {
       items.push({ value: "links", label: "Liens", count: relationsList.length });
     }
     items.push({ value: "history", label: "Historique" });
@@ -809,13 +809,14 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
               </Card>
             </TabsContent>
 
-            {!isOutbound && (
+            {(!isOutbound || isInitiative) && (
               <TabsContent value="links" className="mt-0 focus-visible:outline-none">
                 <Card className="p-6 shadow-airbnb-sm">
                   <CourierLinksTab
                     courierId={courier.id}
                     organizationId={organizationId}
                     readOnly={effectiveReadOnly}
+                    initiative={isInitiative ? { chrono: courier.chrono ?? null, subject: courier.subject ?? null } : null}
                   />
                 </Card>
               </TabsContent>

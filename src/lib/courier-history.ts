@@ -31,7 +31,9 @@ export const COURIER_EVENT_LABELS: Record<string, string> = {
   reply_email_failed: "Échec de l'envoi du courriel",
   outbound_created: "Courrier créé",
   outbound_ai_drafted: "Texte proposé par l'assistant",
-  outbound_posted: "Courrier posté",
+  outbound_posted: "Courrier sortant posté",
+  outbound_linked: "Lien avec un courrier sortant",
+  outbound_unlinked: "Lien avec un courrier sortant retiré",
   outbound_recipient_changed: "Destinataire modifié",
   outbound_channel_changed: "Mode d'envoi modifié",
   outbound_org_changed: "Organisation émettrice modifiée",
@@ -52,6 +54,9 @@ const SELF_OUTBOUND_LABELS: Record<string, string> = {
   reply_sent: "Courrier envoyé",
   reply_signed: "Courrier signé",
   reply_visa_granted: "Courrier visé",
+  outbound_linked: "Lié à un courrier reçu",
+  outbound_posted: "Courrier posté",
+  outbound_unlinked: "Lien avec un courrier reçu retiré",
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- payload libre de courier_events
@@ -127,6 +132,10 @@ export function describeCourierEvent(
       break;
     case "reply_email_failed":
       detail = p.reason ?? null;
+      break;
+    case "outbound_linked":
+    case "outbound_unlinked":
+      detail = [p.other_chrono, p.other_subject ? `« ${p.other_subject} »` : null].filter(Boolean).join(" ") || null;
       break;
     case "outbound_posted":
       detail = p.posted_on ? `le ${new Date(p.posted_on).toLocaleDateString("fr-FR")}` : null;

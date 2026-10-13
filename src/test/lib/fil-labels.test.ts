@@ -54,6 +54,13 @@ describe("describeCourierEvent", () => {
     expect(
       describeCourierEvent("outbound_created", { reply_id: "s1", organization_name: "Cabinet", recipient_name: "Jean Martin" }, "s1"),
     ).toEqual({ title: "Courrier créé", detail: "Par Cabinet à Jean Martin" });
+    // Un lien se lit des deux côtés, avec la référence de l'autre courrier.
+    expect(
+      describeCourierEvent("outbound_linked", { reply_id: "s1", other_chrono: "2026-E-00042", other_subject: "Nuisances" }, "s1"),
+    ).toEqual({ title: "Lié à un courrier reçu", detail: "2026-E-00042 « Nuisances »" });
+    expect(
+      describeCourierEvent("outbound_linked", { reply_id: "s1", other_chrono: "2026-S-00007", other_subject: "Convocation" }, "e1").title,
+    ).toBe("Lien avec un courrier sortant");
     // Sans libellé propre, on garde le libellé commun.
     expect(describeCourierEvent("reply_unsigned", { reply_id: "s1" }, "s1").title).toBe("Signature retirée");
   });

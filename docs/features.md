@@ -427,6 +427,31 @@ Détail complet — contrat, raccordement des champs, périmètre, exploitation 
 - **Envoi SMTP** : edge function `send-courier-reply` envoie via le serveur d'envoi de l'org. Marque `metadata.sent_email_at`. Déclenchée par une transition vers un état de catégorie `processed`.
 - **D'où vient le relais** : du **Socle**, pas de Clara (depuis le 2026-08-23). Il se définit une fois pour toute la gamme sur l'organisation racine ; `sync-socle-referentiel` en recopie un miroir dans `smtp_settings`. Plus aucun écran de saisie ni test d'envoi dans Clara — le diagnostic se fait dans le référentiel. Conséquence : **un tenant sans relais déclaré n'expédie rien** (aucun relais de repli), et l'adresse d'expédition est celle du référentiel, pas celle qui avait pu être saisie à la main. Détail du miroir : `docs/data-model.md` § `smtp_settings`.
 
+### 5 bis. Courriers sortants à l'initiative de la collectivité (2026-10-13)
+
+Un sortant **sans** `parent_courier_id` : la collectivité écrit la première (convocation,
+information, relance…). Spécification et décisions : `docs/specs/courriers-sortants.md`.
+
+- **Création** : « Nouveau » dans *Courriers sortants* (`NewOutboundDialog`) — organisation
+  émettrice (celles du périmètre ; sans workflow de réponse = grisée avec le motif), destinataire
+  choisi ou créé dans le référentiel (adresse comprise), mode courriel ou courrier, objet. RPC
+  `create_outbound_courier` : courrier à l'état initial du **workflow de réponse de l'émettrice**,
+  destinataire (instantané de la fiche), événement `outbound_created`, en une transaction.
+- **Rédaction** : onglet « Rédaction » (`InitiativeComposer` → `OutboundEditor`, l'éditeur partagé
+  avec les réponses) : visa, signature, transitions comme une réponse ; « Que doit dire ce courrier ? »
+  fait rédiger l'assistant sur consigne (`draft-reply`, mode `initiative`).
+- **Courriel** : à l'étape d'envoi, `send-courier-reply` (réservation anti-double envoi, documents du
+  courrier en pièces jointes, 10 au plus / 10 Mo). **Courrier** : « Imprimer et marquer posté » — date
+  déclarée, exemplaire HTML de la lettre conservé dans les documents.
+- **Clôture** : refusée en base tant que le courriel n'est pas parti ou la lettre pas postée ;
+  l'abandon reste libre. `sent_at` = vraie date d'envoi.
+- **Liens** : onglet Liens, vers des courriers **reçus** (« sujet lié », jamais un parent) ; l'assistant
+  les lit, et le départ (courriel ou « posté ») s'inscrit aussi dans leur historique.
+- **Historique** : porté par le sortant lui-même (`eventAnchor`, `src/lib/courier-events.ts`).
+- **Garde** : trigger `couriers_enforce_outbound_initiative` (organisation du tenant, active, avec
+  workflow de réponse ; état initial ; canal courriel/courrier ; émettrice et canal figés après visa,
+  signature ou envoi). Messages partagés : `supabase/functions/_shared/outboundInitiativeGuard.ts`.
+
 ## 6. Référentiels
 
 ### Contacts (`Contacts.tsx`, route `/contacts`)

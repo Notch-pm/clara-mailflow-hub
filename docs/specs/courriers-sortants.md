@@ -18,6 +18,9 @@
 > brouillon de l'éditeur et les courriers liés, jamais les notes internes.
 > **Lot 4 livré le 2026-10-13** : « Imprimer et marquer posté » (date déclarée, exemplaire HTML
 > conservé, `sent_at` fixé par la base). La garde de clôture couvre désormais courriel ET courrier.
+> **Lot 5 livré le 2026-10-13 — chantier terminé.** Liens vers les courriers reçus depuis l'onglet
+> Liens, tracés des deux côtés ; départ (courriel, « posté ») recopié sur les courriers liés. Écart :
+> pas de lien à la création (le formulaire reste court) — il se pose depuis l'onglet Liens.
 > Écart au plan : pas de hook `useOutboundComposer` séparé — l'éditeur porte son état ; à
 > extraire au lot 1 seulement si `InitiativeComposer` en a besoin.
 

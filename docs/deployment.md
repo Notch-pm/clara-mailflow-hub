@@ -112,6 +112,13 @@ bunx supabase functions deploy <nom> --project-ref aullweizxcjbvtdspjli
 bun run build && npx wrangler deploy --dry-run
 ```
 
+### Lot « courriers sortants à l'initiative, lot 5 : liens avec les courriers reçus » (2026-10-13) — déployé le 2026-10-13
+
+| # | Étape | État |
+|---|---|---|
+| 1 | `send-courier-reply` : le départ d'un courriel à l'initiative est recopié (`reply_email_sent`) dans l'historique des courriers reçus liés | **Déployé** |
+| 2 | Frontend : onglet Liens sur un courrier à l'initiative (recherche de courriers reçus seulement, lien « sujet lié »), événements `outbound_linked` / `outbound_unlinked` des deux côtés, « posté » recopié sur les courriers liés | **Fait**. Vérifié sur [TEST] Alpha : lien sans parent, tracé sur le sortant et sur 2026-E-00001 ; « posté » recopié sur 2026-E-00001 |
+
 ### Lot « courriers sortants à l'initiative, lot 4 : envoi postal » (2026-10-13) — appliqué le 2026-10-13
 
 | # | Étape | État |

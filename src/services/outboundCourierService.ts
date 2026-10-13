@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { logEvent } from "./courierEventService";
+import { createRelation, deleteRelation } from "./courierRelationService";
 import { addressLines, type OutboundChannel } from "@/lib/outbound-channel";
 import type { SocleContact } from "./socleContactService";
 
@@ -60,6 +61,94 @@ export async function markOutboundPosted(args: {
     reply_id: args.outboundId,
     posted_on: args.postedOn,
   });
+  await mirrorOnLinkedInbound(args.organizationId, args.outboundId, "outbound_posted", { posted_on: args.postedOn });
+}
+
+interface LinkedSide {
+  id: string;
+  chrono: string | null;
+  subject: string | null;
+}
+
+/**
+ * Relie un courrier à l'initiative à un courrier reçu (lien « sujet lié »,
+ * jamais `parent_courier_id` : ce n'est pas une réponse). Les deux historiques
+ * en gardent la trace.
+ */
+export async function linkOutboundToInbound(args: {
+  organizationId: string;
+  outbound: LinkedSide;
+  inbound: LinkedSide;
+  note?: string | null;
+}): Promise<void> {
+  await createRelation({
+    organizationId: args.organizationId,
+    sourceCourierId: args.outbound.id,
+    targetCourierId: args.inbound.id,
+    relationType: "sujet_lie",
+    note: args.note ?? null,
+    createdVia: "manual",
+  });
+  await logLinkEvents(args.organizationId, "outbound_linked", args.outbound, args.inbound);
+}
+
+/** Retire le lien, trace des deux côtés. */
+export async function unlinkOutboundFromInbound(args: {
+  organizationId: string;
+  relationId: string;
+  outbound: LinkedSide;
+  inbound: LinkedSide;
+}): Promise<void> {
+  await deleteRelation(args.relationId);
+  await logLinkEvents(args.organizationId, "outbound_unlinked", args.outbound, args.inbound);
+}
+
+async function logLinkEvents(
+  organizationId: string,
+  type: "outbound_linked" | "outbound_unlinked",
+  outbound: LinkedSide,
+  inbound: LinkedSide,
+): Promise<void> {
+  await Promise.all([
+    logEvent(organizationId, outbound.id, type, {
+      reply_id: outbound.id,
+      other_id: inbound.id,
+      other_chrono: inbound.chrono,
+      other_subject: inbound.subject,
+    }),
+    logEvent(organizationId, inbound.id, type, {
+      reply_id: outbound.id,
+      other_id: outbound.id,
+      other_chrono: outbound.chrono,
+      other_subject: outbound.subject,
+    }),
+  ]);
+}
+
+/**
+ * Recopie un fait du sortant (parti par courriel, posté) dans l'historique
+ * des courriers reçus qui lui sont liés : c'est là que l'agent qui instruit
+ * le dossier regarde.
+ */
+export async function mirrorOnLinkedInbound(
+  organizationId: string,
+  outboundId: string,
+  eventType: string,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  const { data } = await supabase
+    .from("courier_relations")
+    .select("source_courier_id, target_courier_id")
+    .eq("organization_id", organizationId)
+    .or(`source_courier_id.eq.${outboundId},target_courier_id.eq.${outboundId}`);
+  const others = Array.from(
+    new Set(
+      ((data ?? []) as { source_courier_id: string; target_courier_id: string }[]).map((r) =>
+        r.source_courier_id === outboundId ? r.target_courier_id : r.source_courier_id,
+      ),
+    ),
+  );
+  await Promise.all(others.map((id) => logEvent(organizationId, id, eventType, { ...payload, reply_id: outboundId })));
 }
 
 /** Instantané d'une fiche du référentiel, tel que le participant le garde. */
