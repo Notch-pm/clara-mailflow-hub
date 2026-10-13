@@ -108,6 +108,8 @@ export function useSignAndAdvance(ctx: EluSignContext): {
     void queryClient.invalidateQueries({ queryKey: ["elu-visa-waiting"] });
     void queryClient.invalidateQueries({ queryKey: ["parapheur-done"] });
     void queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
+    // L'écran « Courriers sortants » range le courrier dans sa nouvelle étape.
+    void queryClient.invalidateQueries({ queryKey: ["couriers-outbound"] });
   }
 
   async function advance(target: EluTransitionChoice["target"]) {

@@ -8,26 +8,6 @@ import type { SocleContact } from "./socleContactService";
 // La base tient les règles (trigger `couriers_enforce_outbound_initiative`) :
 // ce service ne fait que les appeler et journaliser sur le sortant lui-même.
 
-/** « Réponse » (avec parent) ou « initiative » (sans), pour les sortants donnés. */
-export async function listOutboundKinds(
-  organizationId: string,
-  ids: string[],
-): Promise<Map<string, "reply" | "initiative">> {
-  if (ids.length === 0) return new Map();
-  const { data, error } = await supabase
-    .from("couriers")
-    .select("id, parent_courier_id")
-    .eq("organization_id", organizationId)
-    .in("id", ids);
-  if (error) throw error;
-  return new Map(
-    ((data ?? []) as { id: string; parent_courier_id: string | null }[]).map((r) => [
-      r.id,
-      r.parent_courier_id ? "reply" : "initiative",
-    ]),
-  );
-}
-
 /**
  * Déclare un courrier postal « posté » le jour donné (AAAA-MM-JJ), avec
  * l'exemplaire conservé. La base refuse une date future ou antérieure à la

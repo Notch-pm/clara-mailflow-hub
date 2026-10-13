@@ -23,6 +23,11 @@
 > pas de lien à la création (le formulaire reste court) — il se pose depuis l'onglet Liens.
 > Écart au plan : pas de hook `useOutboundComposer` séparé — l'éditeur porte son état ; à
 > extraire au lot 1 seulement si `InitiativeComposer` en a besoin.
+> **Écran par état, 2026-10-13.** `/courriers-sortants` n'est plus un tableau plat : gabarit de
+> « Courrier entrant », onglets En rédaction / visa / signature / Prêt à l'envoi / Envoyés / Tous.
+> Envoyé = `sent_email_at` ou `posted_at` ou état final — jamais `sent_at` seul (leurre, ADR-4) ;
+> signé hors étape d'envoi = prêt à l'envoi. Règle : `src/lib/outbox.ts` ; données : RPC
+> `outbound_couriers` (`20261013142643_courriers_sortants_ecran.sql`) ; panneau : `ParapheurDetail`.
 
 ## 1. Besoin
 

@@ -9,7 +9,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { useEluReply } from "@/hooks/useEluReply";
 import { useSignAndAdvance } from "@/hooks/useSignAndAdvance";
-import type { ParapheurTab } from "@/lib/parapheur";
 import { visaPersonName } from "@/services/courierVisaService";
 import { cn } from "@/lib/utils";
 
@@ -22,18 +21,19 @@ function longDate(date: Date): string {
 }
 
 /**
- * Relecture d'une réponse dans le parapheur, et son action : viser ou signer
- * puis passer à la suivante. Les décisions (quelle action, quelles sorties
- * sans visa) sont celles de l'espace élu — `useSignAndAdvance` —, seule la
- * mise en page change.
+ * Relecture d'un courrier sortant, et son action : viser, signer ou envoyer
+ * puis passer au suivant — dans le parapheur comme dans l'écran « Courriers
+ * sortants ». Les décisions (quelle action, quelles sorties sans visa) sont
+ * celles de l'espace élu — `useSignAndAdvance` —, seule la mise en page change.
  */
 export function ParapheurDetail({
   replyId,
-  tab,
+  showActions,
   onDone,
 }: {
   replyId: string;
-  tab: ParapheurTab;
+  /** Le courrier attend encore quelqu'un : bandeau, emplacement de signature, actions. */
+  showActions: boolean;
   /** Appelé après une action qui fait sortir la réponse de la file. */
   onDone: () => void;
 }) {
@@ -46,7 +46,10 @@ export function ParapheurDetail({
   const canVisa = detail.viseurs.some((v) => v.id === user?.id);
   const visaPending = detail.isVisaState && !detail.activeVisa;
   const signaturePending = !!detail.currentState?.requires_signature && !detail.isSigned;
-  const isQueue = tab !== "done";
+  // Hors parapheur (écran « Courriers sortants »), la signature attendue peut
+  // être celle d'un autre.
+  const mySignature = !!signatory && signatory.user_id === user?.id;
+  const isQueue = showActions;
 
   const { primary, secondary, isPending } = useSignAndAdvance({
     organizationId,
@@ -93,10 +96,16 @@ export function ParapheurDetail({
     ? null
     : visaPending
       ? detail.designatedViseurId && detail.designatedViseurId !== user?.id
-        ? `En attente du visa de ${visaPersonName(detail.designatedViseur)}. Vous pouvez viser à sa place : la trace l'indiquera.`
-        : `En attente de votre visa — étape « ${detail.currentState?.name ?? "Visa"} ». Le texte est figé pendant le visa.`
+        ? `En attente du visa de ${visaPersonName(detail.designatedViseur)}.${canVisa ? " Vous pouvez viser à sa place : la trace l'indiquera." : ""}`
+        : canVisa
+          ? `En attente de votre visa — étape « ${detail.currentState?.name ?? "Visa"} ». Le texte est figé pendant le visa.`
+          : `En attente du visa d'un viseur — étape « ${detail.currentState?.name ?? "Visa"} ». Le texte est figé pendant le visa.`
       : signaturePending
-        ? "En attente de votre signature. Votre signature sera apposée sur le document."
+        ? mySignature
+          ? "En attente de votre signature. Votre signature sera apposée sur le document."
+          : signatory
+            ? `En attente de la signature de ${`${signatory.first_name} ${signatory.last_name}`.trim()}.`
+            : "En attente de signature : aucun signataire n'est désigné."
         : null;
   // Hors file, l'emplacement « à signer » ne s'adresse plus à moi : on ne montre
   // que la signature déjà apposée.
@@ -200,7 +209,11 @@ export function ParapheurDetail({
                     : "border-warning bg-secondary/15 text-secondary-foreground",
                 )}
               >
-                {detail.isSigned ? "Signé électroniquement" : "Votre signature sera apposée ici"}
+                {detail.isSigned
+                  ? "Signé électroniquement"
+                  : mySignature
+                    ? "Votre signature sera apposée ici"
+                    : "Signature attendue"}
               </div>
               {signatory && (
                 <span className="font-bold">{`${signatory.first_name} ${signatory.last_name}`.trim()}</span>

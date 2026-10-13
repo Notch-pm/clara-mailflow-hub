@@ -276,7 +276,7 @@ export default function Parapheur() {
             <ParapheurDetail
               key={currentId}
               replyId={currentId}
-              tab={tab}
+              showActions={isQueue}
               onDone={() => setSelectedId(nextSelection(ids, currentId, [currentId]))}
             />
           ) : (

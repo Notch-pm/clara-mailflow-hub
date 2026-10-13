@@ -112,6 +112,13 @@ bunx supabase functions deploy <nom> --project-ref aullweizxcjbvtdspjli
 bun run build && npx wrangler deploy --dry-run
 ```
 
+### Écran « Courriers sortants » par état (2026-10-13)
+
+| # | Étape | État |
+|---|---|---|
+| 1 | `20261013142643_courriers_sortants_ecran.sql` (RPC `outbound_couriers`, SECURITY DEFINER gardée par `is_member_of`) | **Appliqué** via `apply_migration` — registre `20261013142643` (fichier renommé pour coller). SNA27, en membre : 27 sortants, 8 envoyés, 0 visa, 4 signature, 10 prêts à l'envoi |
+| 2 | Frontend : `/courriers-sortants` réécrit (onglets par étape, panneau `ParapheurDetail`) | Après la migration |
+
 ### Lot « courriers sortants à l'initiative, lot 5 : liens avec les courriers reçus » (2026-10-13) — déployé le 2026-10-13
 
 | # | Étape | État |

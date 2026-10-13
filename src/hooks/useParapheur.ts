@@ -172,6 +172,7 @@ export function useParapheurBulk() {
         "courier-events",
         "parapheur-done",
         "mailbox-couriers",
+        "couriers-outbound",
       ]) {
         void queryClient.invalidateQueries({ queryKey: [key] });
       }

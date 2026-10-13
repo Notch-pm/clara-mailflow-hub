@@ -2692,6 +2692,34 @@ export type Database = {
         Returns: string[]
       }
       notification_push_max_attempts: { Args: never; Returns: number }
+      outbound_couriers: {
+        Args: { p_organization_id: string; p_since?: string }
+        Returns: {
+          channel: string
+          chrono: string
+          created_at: string
+          id: string
+          parent_chrono: string
+          parent_courier_id: string
+          parent_subject: string
+          posted_at: string
+          recipient_contact_id: string
+          recipient_name: string
+          sent_at: string
+          sent_email_at: string
+          signed_at: string
+          socle_organization_id: string
+          state_id: string
+          state_is_final: boolean
+          state_is_initial: boolean
+          state_is_send: boolean
+          state_name: string
+          state_requires_signature: boolean
+          state_requires_visa: boolean
+          state_since: string
+          subject: string
+        }[]
+      }
       outbound_initiative_block_reason: {
         Args: {
           p_channel: Database["public"]["Enums"]["courier_channel"]
