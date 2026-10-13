@@ -105,10 +105,9 @@ export async function createReply(args: CreateReplyArgs): Promise<ReplyRecord> {
       assigned_service: args.assignedService,
       socle_organization_id: args.socleOrganizationId ?? null,
       workflow_state_id: args.initialStateId,
-      // sent_at is required by the check_dates constraint on outbound couriers.
-      // For drafts we use the creation timestamp as a placeholder; it gets
-      // refreshed when the reply transitions to a final/processed state.
-      sent_at: new Date().toISOString(),
+      // Pas de `sent_at` : c'est la date d'envoi réelle, posée par l'envoi
+      // (`send-courier-reply`) ou au passage dans un état « traité »
+      // (`transitionReplyState`) — plus la date de création du brouillon.
       metadata: { body_html: args.bodyHtml, body_text: stripHtml(args.bodyHtml), is_draft: true },
     } as never)
     .select("id, parent_courier_id, organization_id, channel, subject, workflow_state_id, metadata, assigned_service")

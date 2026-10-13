@@ -49,6 +49,11 @@ interface Props {
    * apparaît deux fois, et la cartouche mange la largeur du nom.
    */
   showTypeBadge?: boolean;
+  /**
+   * La création rapide demande aussi l'adresse postale : pour un courrier
+   * sortant envoyé par la poste, une fiche sans adresse ne sert à rien.
+   */
+  withAddress?: boolean;
 }
 
 /**
@@ -65,6 +70,7 @@ export default function ContactPicker({
   fallbackLabel,
   triggerClassName,
   showTypeBadge = true,
+  withAddress = false,
 }: Props) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -101,6 +107,10 @@ export default function ContactPicker({
   const [c_last, setCLast] = useState("");
   const [c_email, setCEmail] = useState("");
   const [c_phone, setCPhone] = useState("");
+  const [c_line1, setCLine1] = useState("");
+  const [c_line2, setCLine2] = useState("");
+  const [c_postal, setCPostal] = useState("");
+  const [c_city, setCCity] = useState("");
   const [creating, setCreating] = useState(false);
 
   function resetCreate() {
@@ -110,6 +120,10 @@ export default function ContactPicker({
     setCLast("");
     setCEmail("");
     setCPhone("");
+    setCLine1("");
+    setCLine2("");
+    setCPostal("");
+    setCCity("");
   }
 
   async function handleCreate() {
@@ -132,6 +146,14 @@ export default function ContactPicker({
         legal_name: c_type !== "personne" ? c_last.trim() || null : null,
         email: c_email.trim() || null,
         mobile_phone: c_phone.trim() || null,
+        ...(withAddress
+          ? {
+              address_line1: c_line1.trim() || null,
+              address_line2: c_line2.trim() || null,
+              postal_code: c_postal.trim() || null,
+              city: c_city.trim() || null,
+            }
+          : {}),
       });
       qc.invalidateQueries({ queryKey: ["socle-contacts"] });
       onChange(contact);
@@ -310,6 +332,25 @@ export default function ContactPicker({
                 <Input type="tel" value={c_phone} onChange={(e) => setCPhone(e.target.value)} />
               </div>
             </div>
+            {withAddress && (
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label>Adresse</Label>
+                  <Input value={c_line1} onChange={(e) => setCLine1(e.target.value)} placeholder="N° et voie" />
+                  <Input value={c_line2} onChange={(e) => setCLine2(e.target.value)} placeholder="Complément (facultatif)" />
+                </div>
+                <div className="grid grid-cols-[8rem_1fr] gap-3">
+                  <div className="space-y-2">
+                    <Label>Code postal</Label>
+                    <Input value={c_postal} onChange={(e) => setCPostal(e.target.value)} inputMode="numeric" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Ville</Label>
+                    <Input value={c_city} onChange={(e) => setCCity(e.target.value)} />
+                  </div>
+                </div>
+              </div>
+            )}
             <Button className="w-full" onClick={handleCreate} disabled={creating}>
               {creating ? "Création…" : "Créer et sélectionner"}
             </Button>

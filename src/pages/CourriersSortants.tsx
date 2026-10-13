@@ -2,16 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Send, Plus } from "lucide-react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { toast } from "sonner";
+import { useQuery } from "@tanstack/react-query";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { DataTable } from "@/components/data-table/data-table";
 import { DataTableColumnToggle } from "@/components/data-table/data-table-column-toggle";
@@ -35,7 +26,8 @@ import {
   organisationColumn,
   subjectColumn,
 } from "@/components/courier/courierListColumns";
-import { createCourier } from "@/services/courierService";
+import { NewOutboundDialog } from "@/components/courier/outbound/NewOutboundDialog";
+import { listOutboundKinds } from "@/services/outboundCourierService";
 import { listOrgsWithConfig } from "@/services/socleOrgConfigService";
 import type { CourierListFilters, CourierListRow } from "@/services/courierListService";
 import { useUserServiceFilter } from "@/hooks/useUserServiceFilter";
@@ -43,22 +35,10 @@ import { useCourierList } from "@/hooks/useCourierList";
 import { useCourierFacets } from "@/hooks/useCourierFacets";
 import { useCourierCsvExport } from "@/hooks/useCourierCsvExport";
 
-const schema = z.object({
-  subject: z.string().min(1, "L'objet est obligatoire").max(500),
-  channel: z.enum(["paper", "email", "portal"] as const, { required_error: "Le canal est obligatoire" }),
-  sent_at: z.string().min(1, "La date d'envoi est obligatoire"),
-});
-
 export default function CourriersSortants() {
   const { organizationId } = useOrganization();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
-
-  const form = useForm<z.infer<typeof schema>>({
-    resolver: zodResolver(schema),
-    defaultValues: { subject: "", channel: undefined, sent_at: new Date().toISOString().slice(0, 16) },
-  });
 
   const { data: services } = useQuery({
     queryKey: ["socle-orgs-config", organizationId],
@@ -94,9 +74,38 @@ export default function CourriersSortants() {
   const [tableInstance, onTableInstanceChange] = useDataTableInstance<CourierListRow>();
   const { exportCsv, isExporting } = useCourierCsvExport(list.filters, tableInstance, "courriers-sortants");
 
+  // Réponse ou initiative : `search_couriers` ne rend pas `parent_courier_id`,
+  // on le relit pour la seule page affichée.
+  const pageIds = useMemo(() => list.rows.map((r) => r.id), [list.rows]);
+  const { data: kinds } = useQuery({
+    queryKey: ["outbound-kinds", organizationId, pageIds],
+    queryFn: () => listOutboundKinds(organizationId!, pageIds),
+    enabled: !!organizationId && pageIds.length > 0,
+  });
+  // La table met en cache la valeur de chaque cellule tant que ses données
+  // gardent la même identité : sans ces copies, la colonne « Type », calculée
+  // avant l'arrivée de `kinds`, resterait vide.
+  const rows = useMemo(() => list.rows.map((r) => ({ ...r })), [list.rows, kinds]);
+
   const columns = useMemo<ColumnDef<CourierListRow>[]>(
     () => [
       chronoColumn(),
+      {
+        id: "kind",
+        accessorFn: (c) => (kinds?.get(c.id) === "reply" ? "Réponse" : kinds?.get(c.id) ? "Initiative" : ""),
+        enableSorting: false,
+        header: "Type",
+        cell: ({ getValue }) => {
+          const label = getValue() as string;
+          if (!label) return null;
+          return (
+            <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-[11.5px] font-semibold text-muted-foreground">
+              {label}
+            </span>
+          );
+        },
+        meta: { exportLabel: "Type", width: 110 },
+      },
       subjectColumn("recipient"),
       organisationColumn(),
       channelColumn(),
@@ -109,66 +118,31 @@ export default function CourriersSortants() {
         sortable: true,
       }),
     ],
-    [],
+    [kinds],
   );
 
-  const createMutation = useMutation({
-    mutationFn: async (values: z.infer<typeof schema>) => {
-      if (!organizationId) throw new Error("Organisation non sélectionnée");
-      const { error } = await createCourier({
-        organization_id: organizationId,
-        direction: "outbound",
-        channel: values.channel,
-        subject: values.subject,
-        sent_at: values.sent_at,
-      });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["couriers-outbound"] });
-      toast.success("Courrier sortant créé");
-      form.reset();
-      setDialogOpen(false);
-    },
-    onError: (err: Error) => toast.error(err.message),
-  });
-
   const newCourier = (
-    <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+    <>
       <ToolbarTooltip label="Nouveau courrier" hideFromXl>
-        <DialogTrigger asChild>
-          <ToolbarButton primary icon={<Plus />} label="Nouveau courrier" text="Nouveau" showLabel />
-        </DialogTrigger>
+        <ToolbarButton
+          primary
+          icon={<Plus />}
+          label="Nouveau courrier"
+          text="Nouveau"
+          showLabel
+          onClick={() => setDialogOpen(true)}
+        />
       </ToolbarTooltip>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Créer un courrier sortant</DialogTitle></DialogHeader>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit((v) => createMutation.mutate(v))} className="space-y-4">
-            <FormField control={form.control} name="subject" render={({ field }) => (
-              <FormItem><FormLabel>Objet</FormLabel><FormControl><Input placeholder="Objet du courrier" {...field} /></FormControl><FormMessage /></FormItem>
-            )} />
-            <FormField control={form.control} name="channel" render={({ field }) => (
-              <FormItem><FormLabel>Canal</FormLabel>
-                <Select onValueChange={field.onChange} value={field.value}>
-                  <FormControl><SelectTrigger><SelectValue placeholder="Sélectionner un canal" /></SelectTrigger></FormControl>
-                  <SelectContent>
-                    <SelectItem value="paper">Papier</SelectItem>
-                    <SelectItem value="email">Email</SelectItem>
-                    <SelectItem value="portal">Portail</SelectItem>
-                  </SelectContent>
-                </Select><FormMessage />
-              </FormItem>
-            )} />
-            <FormField control={form.control} name="sent_at" render={({ field }) => (
-              <FormItem><FormLabel>Date d'envoi</FormLabel><FormControl><Input type="datetime-local" {...field} /></FormControl><FormMessage /></FormItem>
-            )} />
-            <Button type="submit" className="w-full" disabled={createMutation.isPending}>
-              {createMutation.isPending ? "Création..." : "Créer le courrier"}
-            </Button>
-          </form>
-        </Form>
-      </DialogContent>
-    </Dialog>
+      {organizationId && (
+        <NewOutboundDialog
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          organizationId={organizationId}
+          services={services}
+          userServiceFilter={userServiceFilter}
+        />
+      )}
+    </>
   );
 
   return (
@@ -200,7 +174,7 @@ export default function CourriersSortants() {
       ) : (
         <DataTable
           columns={columns}
-          data={list.rows}
+          data={rows}
           isLoading={list.isLoading}
           onRowClick={(c) => navigate(`/courrier/${c.id}`)}
           onTableInstanceChange={onTableInstanceChange}

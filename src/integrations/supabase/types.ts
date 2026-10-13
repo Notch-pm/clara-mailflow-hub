@@ -39,12 +39,54 @@ export type Database = {
   }
   public: {
     Tables: {
+      action_task_tokens: {
+        Row: {
+          created_at: string
+          id: string
+          organization_id: string
+          revoked_at: string | null
+          ticket_id: string
+          token_hash: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          organization_id: string
+          revoked_at?: string | null
+          ticket_id: string
+          token_hash: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          organization_id?: string
+          revoked_at?: string | null
+          ticket_id?: string
+          token_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "action_task_tokens_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "action_task_tokens_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "action_tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       action_tickets: {
         Row: {
           arpege_demande_ref: string | null
           arpege_demande_status: string | null
-          assignee_id: string | null
           assignee_email: string | null
+          assignee_id: string | null
           assignee_name: string | null
           completed_at: string | null
           completed_by: string | null
@@ -79,8 +121,8 @@ export type Database = {
         Insert: {
           arpege_demande_ref?: string | null
           arpege_demande_status?: string | null
-          assignee_id?: string | null
           assignee_email?: string | null
+          assignee_id?: string | null
           assignee_name?: string | null
           completed_at?: string | null
           completed_by?: string | null
@@ -115,8 +157,8 @@ export type Database = {
         Update: {
           arpege_demande_ref?: string | null
           arpege_demande_status?: string | null
-          assignee_id?: string | null
           assignee_email?: string | null
+          assignee_id?: string | null
           assignee_name?: string | null
           completed_at?: string | null
           completed_by?: string | null
@@ -150,15 +192,15 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "action_tickets_completed_by_fkey"
-            columns: ["completed_by"]
+            foreignKeyName: "action_tickets_assignee_id_fkey"
+            columns: ["assignee_id"]
             isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "action_tickets_assignee_id_fkey"
-            columns: ["assignee_id"]
+            foreignKeyName: "action_tickets_completed_by_fkey"
+            columns: ["completed_by"]
             isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["id"]
@@ -200,6 +242,21 @@ export type Database = {
           },
         ]
       }
+      analysis_queue_wakeups: {
+        Row: {
+          id: number
+          last_wake_at: string
+        }
+        Insert: {
+          id?: number
+          last_wake_at?: string
+        }
+        Update: {
+          id?: number
+          last_wake_at?: string
+        }
+        Relationships: []
+      }
       courier_analyses: {
         Row: {
           courier_id: string
@@ -212,9 +269,9 @@ export type Database = {
           suggested_actions: Json
           suggested_recipient_name: string | null
           suggested_sender: Json | null
-          suggested_service_name: string | null
           suggested_service_alternatives: string[]
           suggested_service_confidence: number | null
+          suggested_service_name: string | null
           suggested_service_reason: string | null
           suggested_socle_organization_id: string | null
           suggested_subject: string | null
@@ -233,9 +290,9 @@ export type Database = {
           suggested_actions?: Json
           suggested_recipient_name?: string | null
           suggested_sender?: Json | null
-          suggested_service_name?: string | null
           suggested_service_alternatives?: string[]
           suggested_service_confidence?: number | null
+          suggested_service_name?: string | null
           suggested_service_reason?: string | null
           suggested_socle_organization_id?: string | null
           suggested_subject?: string | null
@@ -254,9 +311,9 @@ export type Database = {
           suggested_actions?: Json
           suggested_recipient_name?: string | null
           suggested_sender?: Json | null
-          suggested_service_name?: string | null
           suggested_service_alternatives?: string[]
           suggested_service_confidence?: number | null
+          suggested_service_name?: string | null
           suggested_service_reason?: string | null
           suggested_socle_organization_id?: string | null
           suggested_subject?: string | null
@@ -270,6 +327,13 @@ export type Database = {
             columns: ["courier_id"]
             isOneToOne: true
             referencedRelation: "couriers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "courier_analyses_suggested_socle_organization_id_fkey"
+            columns: ["suggested_socle_organization_id"]
+            isOneToOne: false
+            referencedRelation: "socle_organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -935,6 +999,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "couriers_deleted_by_fkey"
+            columns: ["deleted_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "couriers_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
@@ -1123,6 +1194,8 @@ export type Database = {
           organization_id: string
           provider: string
           socle_root_org_id: string | null
+          socle_synced_at: string | null
+          socle_updated_at: string | null
         }
         Insert: {
           access_token?: string | null
@@ -1138,6 +1211,8 @@ export type Database = {
           organization_id: string
           provider: string
           socle_root_org_id?: string | null
+          socle_synced_at?: string | null
+          socle_updated_at?: string | null
         }
         Update: {
           access_token?: string | null
@@ -1153,6 +1228,8 @@ export type Database = {
           organization_id?: string
           provider?: string
           socle_root_org_id?: string | null
+          socle_synced_at?: string | null
+          socle_updated_at?: string | null
         }
         Relationships: [
           {
@@ -1169,8 +1246,8 @@ export type Database = {
           created_at: string
           id: string
           is_active: boolean | null
-          is_signataire: boolean
           is_service_courrier: boolean
+          is_signataire: boolean
           is_viseur: boolean
           organization_id: string
           role: string
@@ -1181,8 +1258,8 @@ export type Database = {
           created_at?: string
           id?: string
           is_active?: boolean | null
-          is_signataire?: boolean
           is_service_courrier?: boolean
+          is_signataire?: boolean
           is_viseur?: boolean
           organization_id: string
           role: string
@@ -1193,8 +1270,8 @@ export type Database = {
           created_at?: string
           id?: string
           is_active?: boolean | null
-          is_signataire?: boolean
           is_service_courrier?: boolean
+          is_signataire?: boolean
           is_viseur?: boolean
           organization_id?: string
           role?: string
@@ -2102,6 +2179,7 @@ export type Database = {
       socle_organizations: {
         Row: {
           address: string | null
+          attributions: string | null
           created_at: string
           email: string | null
           id: string
@@ -2110,7 +2188,6 @@ export type Database = {
           obsoleted_at: string | null
           organization_id: string
           phone: string | null
-          attributions: string | null
           public_description: string | null
           reply_workflow_id: string | null
           sla_ack_business_days: number | null
@@ -2126,6 +2203,7 @@ export type Database = {
         }
         Insert: {
           address?: string | null
+          attributions?: string | null
           created_at?: string
           email?: string | null
           id?: string
@@ -2134,7 +2212,6 @@ export type Database = {
           obsoleted_at?: string | null
           organization_id: string
           phone?: string | null
-          attributions?: string | null
           public_description?: string | null
           reply_workflow_id?: string | null
           sla_ack_business_days?: number | null
@@ -2150,6 +2227,7 @@ export type Database = {
         }
         Update: {
           address?: string | null
+          attributions?: string | null
           created_at?: string
           email?: string | null
           id?: string
@@ -2158,7 +2236,6 @@ export type Database = {
           obsoleted_at?: string | null
           organization_id?: string
           phone?: string | null
-          attributions?: string | null
           public_description?: string | null
           reply_workflow_id?: string | null
           sla_ack_business_days?: number | null
@@ -2239,6 +2316,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      storage_deletions: {
+        Row: {
+          attempts: number
+          bucket: string
+          done_at: string | null
+          enqueued_at: string
+          id: string
+          last_error: string | null
+          next_attempt_at: string
+          organization_id: string | null
+          reason: string
+          storage_path: string
+        }
+        Insert: {
+          attempts?: number
+          bucket?: string
+          done_at?: string | null
+          enqueued_at?: string
+          id?: string
+          last_error?: string | null
+          next_attempt_at?: string
+          organization_id?: string | null
+          reason: string
+          storage_path: string
+        }
+        Update: {
+          attempts?: number
+          bucket?: string
+          done_at?: string | null
+          enqueued_at?: string
+          id?: string
+          last_error?: string | null
+          next_attempt_at?: string
+          organization_id?: string | null
+          reason?: string
+          storage_path?: string
+        }
+        Relationships: []
       }
       users: {
         Row: {
@@ -2462,6 +2578,27 @@ export type Database = {
           type: string
         }[]
       }
+      claim_storage_deletions: {
+        Args: { p_limit?: number }
+        Returns: {
+          attempts: number
+          bucket: string
+          done_at: string | null
+          enqueued_at: string
+          id: string
+          last_error: string | null
+          next_attempt_at: string
+          organization_id: string | null
+          reason: string
+          storage_path: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "storage_deletions"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       clara_search_tsquery: {
         Args: { p_keywords: string; p_prefix: boolean }
         Returns: unknown
@@ -2469,6 +2606,20 @@ export type Database = {
       clear_smtp_settings_from_socle: {
         Args: { p_org_id: string }
         Returns: boolean
+      }
+      courier_creation_block_reason: {
+        Args: { p_courier_id: string }
+        Returns: string
+      }
+      create_outbound_courier: {
+        Args: {
+          p_channel: Database["public"]["Enums"]["courier_channel"]
+          p_organization_id: string
+          p_recipient: Json
+          p_socle_organization_id: string
+          p_subject: string
+        }
+        Returns: string
       }
       current_user_orgs: { Args: never; Returns: string[] }
       dashboard_trends: {
@@ -2541,6 +2692,15 @@ export type Database = {
         Returns: string[]
       }
       notification_push_max_attempts: { Args: never; Returns: number }
+      outbound_initiative_block_reason: {
+        Args: {
+          p_channel: Database["public"]["Enums"]["courier_channel"]
+          p_organization_id: string
+          p_socle_organization_id: string
+          p_workflow_state_id: string
+        }
+        Returns: string
+      }
       partner_integration_status: {
         Args: { p_organization_id: string; p_provider?: string }
         Returns: {
@@ -2548,11 +2708,12 @@ export type Database = {
           is_active: boolean
         }[]
       }
+      purge_expired_data: { Args: never; Returns: Json }
+      purge_settled_storage_deletions: { Args: never; Returns: number }
       purge_trashed_courier: {
         Args: { p_courier_id: string; p_organization_id: string }
         Returns: undefined
       }
-      purge_expired_data: { Args: never; Returns: Json }
       register_push_subscription: {
         Args: {
           p_auth: string
@@ -2562,13 +2723,13 @@ export type Database = {
         }
         Returns: string
       }
-      restore_courier: {
-        Args: { p_courier_id: string; p_organization_id: string }
-        Returns: undefined
-      }
       requeue_stale_analysis_jobs: {
         Args: { p_older_than?: string }
         Returns: number
+      }
+      restore_courier: {
+        Args: { p_courier_id: string; p_organization_id: string }
+        Returns: undefined
       }
       search_couriers: {
         Args: {
@@ -2591,6 +2752,7 @@ export type Database = {
           p_workflow_state_ids?: string[]
         }
         Returns: {
+          acknowledged_at: string
           assigned_service: string
           channel: string
           chrono: string
@@ -2603,6 +2765,7 @@ export type Database = {
           organization_id: string
           received_at: string
           recipient_name: string
+          resolved_at: string
           sender_first_name: string
           sender_last_name: string
           sender_name: string
@@ -2619,6 +2782,11 @@ export type Database = {
         Args: { p_error?: string; p_id: string; p_ok: boolean }
         Returns: undefined
       }
+      settle_storage_deletion: {
+        Args: { p_error?: string; p_id: string; p_ok: boolean }
+        Returns: undefined
+      }
+      shares_organization_with: { Args: { _target: string }; Returns: boolean }
       stats_by_channel: {
         Args: {
           p_org_id: string
@@ -2690,6 +2858,24 @@ export type Database = {
           tag_name: string
         }[]
       }
+      suspend_arpege_integration_from_socle: {
+        Args: { p_org_id: string }
+        Returns: boolean
+      }
+      sync_arpege_integration_from_socle: {
+        Args: {
+          p_access_token: string
+          p_api_base_url: string
+          p_api_url_ticketingapp: string
+          p_client_id: string
+          p_client_secret: string
+          p_is_active: boolean
+          p_org_id: string
+          p_socle_org_id: string
+          p_socle_updated_at: string
+        }
+        Returns: undefined
+      }
       sync_smtp_settings_from_socle: {
         Args: {
           p_from_email: string
@@ -2731,6 +2917,7 @@ export type Database = {
       trigger_notifications_push: { Args: never; Returns: number }
       trigger_process_analysis_queue: { Args: never; Returns: number }
       trigger_socle_sync: { Args: never; Returns: number }
+      trigger_storage_maintenance: { Args: never; Returns: number }
     }
     Enums: {
       courier_channel:
@@ -2879,7 +3066,15 @@ export const Constants = {
   },
   public: {
     Enums: {
-      courier_channel: ["paper", "email", "portal", "relaye_elu", "guichet", "autre", "relaye_agent"],
+      courier_channel: [
+        "paper",
+        "email",
+        "portal",
+        "relaye_elu",
+        "guichet",
+        "autre",
+        "relaye_agent",
+      ],
       courier_direction: ["inbound", "outbound", "internal"],
       courier_relation_origin: ["manual", "ai_suggestion"],
       courier_relation_type: ["relance", "sujet_lie"],

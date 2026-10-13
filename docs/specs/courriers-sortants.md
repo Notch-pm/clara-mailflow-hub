@@ -7,6 +7,11 @@
 > **Avancement** : lot 0 livré le 2026-10-13 (`OutboundEditor` extrait de `ReplyComposer`,
 > historique ancré par `eventAnchor` dans `src/lib/courier-events.ts`). Les 555 sortants
 > `seed_bulk` d'ACCM ont été purgés et le script de charge ne génère plus que des entrants.
+> **Lot 1 livré le 2026-10-13** : migrations appliquées, `NewOutboundDialog`, `InitiativeComposer`
+> (onglet « Rédaction »), colonne Type. Écarts : la création rapide de contact gagne un champ
+> adresse (`ContactPicker withAddress`) au lieu d'extraire `ContactFormDialog` ; le mode d'envoi se
+> règle dans l'éditeur (radio « Canal ») ; l'assistant « type de réponse » est masqué pour un
+> courrier à l'initiative jusqu'au lot 3 (« Améliorer » reste disponible).
 > Écart au plan : pas de hook `useOutboundComposer` séparé — l'éditeur porte son état ; à
 > extraire au lot 1 seulement si `InitiativeComposer` en a besoin.
 

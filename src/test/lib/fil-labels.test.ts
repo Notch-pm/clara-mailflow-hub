@@ -51,6 +51,9 @@ describe("describeCourierEvent", () => {
       title: "Courrier visé",
       detail: "Étape « Visa DGS »",
     });
+    expect(
+      describeCourierEvent("outbound_created", { reply_id: "s1", organization_name: "Cabinet", recipient_name: "Jean Martin" }, "s1"),
+    ).toEqual({ title: "Courrier créé", detail: "Par Cabinet à Jean Martin" });
     // Sans libellé propre, on garde le libellé commun.
     expect(describeCourierEvent("reply_unsigned", { reply_id: "s1" }, "s1").title).toBe("Signature retirée");
   });

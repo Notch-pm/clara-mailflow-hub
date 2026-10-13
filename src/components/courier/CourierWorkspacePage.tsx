@@ -75,6 +75,7 @@ import InlineEditField from "./InlineEditField";
 import LinkedActionsTab from "./LinkedActionsTab";
 import ParticipantManager from "./ParticipantManager";
 import ReplyComposer from "./ReplyComposer";
+import { InitiativeComposer } from "./outbound/InitiativeComposer";
 import { ReplyVisaSection } from "./ReplyVisaTrail";
 import LinkedCouriersSection from "./LinkedCouriersSection";
 import CloseLinkedCouriersDialog from "./CloseLinkedCouriersDialog";
@@ -262,6 +263,12 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
     linkSenderContact,
   } = ws;
 
+  // Sortant sans parent : un courrier à l'initiative de la collectivité. Il se
+  // rédige et avance dans l'onglet « Rédaction », par le workflow de réponse
+  // de son organisation émettrice — pas par les boutons d'en-tête, qui suivent
+  // le workflow des courriers reçus.
+  const isInitiative = isOutbound && !courier.parent_courier_id;
+
   // Ni action ni réponse tant que le courrier n'est pas orienté et sorti de la
   // boîte aux lettres ; la base tient la même règle (trigger de création).
   const creationBlockedReason = courierCreationBlockReason({
@@ -299,6 +306,22 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
 
   const tabItems: ResponsiveTabItem[] = useMemo(() => {
     const items: ResponsiveTabItem[] = [{ value: "detail", label: "Détail du courrier" }];
+    if (isInitiative) {
+      items.push({
+        value: "redaction",
+        label: "Rédaction",
+        badge: replyState ? (
+          <span
+            className={cn(
+              "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold leading-none",
+              categoryTone(replyState.category).pill,
+            )}
+          >
+            {replyState.name}
+          </span>
+        ) : null,
+      });
+    }
     if (!isOutbound) {
       items.push({ value: "content", label: "Contenu et intentions" });
       items.push({ value: "actions", label: "Actions liées", count: ticketsList.length });
@@ -324,12 +347,15 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
     }
     items.push({ value: "history", label: "Historique" });
     return items;
-  }, [isOutbound, ticketsList.length, replyList.length, replyState, participants.length, relationsList.length]);
+  }, [isOutbound, isInitiative, ticketsList.length, replyList.length, replyState, participants.length, relationsList.length]);
 
   const origin = originList(currentStateInfo?.category, isOutbound);
   const tone = categoryTone(currentStateInfo?.category);
+  // Un sortant est « de » son organisation émettrice : celle du courrier reçu
+  // pour une réponse, la sienne pour un courrier à l'initiative.
+  const issuerName = isInitiative ? localAssignedService : parentCourier?.assigned_service ?? null;
   const senderLabel = isOutbound
-    ? parentCourier?.assigned_service ?? null
+    ? issuerName
     : sender?.name ?? null;
   const dateLabel = isOutbound
     ? formatLongDate(courier.sent_at as string | null)
@@ -341,7 +367,8 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
     dateLabel
       ? `${isOutbound ? "envoyé" : inboundChannelPhrase(courier.channel)} le ${dateLabel}`
       : null,
-    localAssignedService ? `organisation gestionnaire ${localAssignedService}` : null,
+    // Un courrier à l'initiative est déjà « de » son organisation émettrice.
+    localAssignedService && !isInitiative ? `organisation gestionnaire ${localAssignedService}` : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -441,6 +468,7 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
             la rangee et `whitespace-nowrap` sur les boutons rendaient un
             libelle de transition long — « Transmettre au service instructeur »
             — irreductible : la page entiere s'elargissait derriere lui. */}
+        {!isInitiative && (
         <div className="flex w-full shrink-0 flex-col gap-2.5 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
           {!effectiveReadOnly && prevTransition && (
             <Button
@@ -536,6 +564,7 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
             </DropdownMenu>
           )}
         </div>
+        )}
       </div>
 
       <div className="flex flex-wrap items-start gap-5 lg:min-h-0 lg:flex-1 lg:flex-nowrap lg:items-stretch">
@@ -587,7 +616,9 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
                           ? (courier.sent_at as string | null)?.slice(0, 10) ?? ""
                           : courier.received_at?.slice(0, 10) ?? ""
                       }
-                      readOnly={effectiveReadOnly}
+                      // La date d'envoi d'un courrier à l'initiative est posée par
+                      // l'envoi lui-même : elle ne se saisit pas.
+                      readOnly={effectiveReadOnly || isInitiative}
                       displayClassName="text-base font-semibold"
                       onSave={(v) =>
                         persistCourierUpdate(
@@ -625,7 +656,7 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
                   )}
                   <Field label="Destinataire">
                     {isOutbound ? (
-                      parentSender?.name ?? EMPTY
+                      (isInitiative ? recipient?.name : parentSender?.name) ?? EMPTY
                     ) : (
                       <InlineEditField
                         label=""
@@ -752,6 +783,22 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
               </TabsContent>
             )}
 
+            {isInitiative && (
+              <TabsContent
+                value="redaction"
+                className="mt-0 focus-visible:outline-none data-[state=inactive]:hidden"
+              >
+                <Card className="flex min-h-[60vh] flex-col p-6 shadow-airbnb-sm">
+                  <InitiativeComposer
+                    organizationId={organizationId}
+                    courier={courier}
+                    readOnly={effectiveReadOnly}
+                    onStateChange={setReplyState}
+                  />
+                </Card>
+              </TabsContent>
+            )}
+
             <TabsContent value="participants" className="mt-0 focus-visible:outline-none">
               <Card className="p-6 shadow-airbnb-sm">
                 <ParticipantManager
@@ -833,7 +880,7 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
               >
                 {isOutbound ? (
                   <div className="text-sm font-semibold">
-                    {parentCourier?.assigned_service ?? EMPTY}
+                    {issuerName ?? EMPTY}
                   </div>
                 ) : (
                   <div className="space-y-1.5">

@@ -152,7 +152,10 @@ export default function CourierHistoryTab({ courierId, organizationId }: Props) 
   const unified = useMemo<UnifiedEvent[]>(() => {
     const out: UnifiedEvent[] = [];
 
-    if (courier?.created_at) {
+    // Un courrier à l'initiative porte son propre événement de création, plus
+    // parlant (émettrice, destinataire) : pas de doublon.
+    const hasCreationEvent = events.some((e: { event_type: string }) => e.event_type === "outbound_created");
+    if (courier?.created_at && !hasCreationEvent) {
       out.push({
         id: `created-${courier.id}`,
         type: "courier_created",

@@ -27,6 +27,10 @@ export const COURIER_EVENT_LABELS: Record<string, string> = {
   reply_unsigned: "Signature retirée",
   reply_visa_granted: "Réponse visée",
   reply_send_reset: "Envoi annulé",
+  outbound_created: "Courrier créé",
+  outbound_recipient_changed: "Destinataire modifié",
+  outbound_channel_changed: "Mode d'envoi modifié",
+  outbound_org_changed: "Organisation émettrice modifiée",
   ticket_created: "Ticket créé",
   ticket_updated: "Ticket mis à jour",
   ticket_deleted: "Ticket supprimé",
@@ -108,6 +112,23 @@ export function describeCourierEvent(
       break;
     case "task_reopened":
       detail = p.title ? `« ${p.title} »` : null;
+      break;
+    case "reply_state_changed":
+      detail = p.to_state_name ? `→ ${p.to_state_name}` : null;
+      break;
+    case "outbound_created":
+      detail = [p.organization_name ? `Par ${p.organization_name}` : null, p.recipient_name ? `à ${p.recipient_name}` : null]
+        .filter(Boolean)
+        .join(" ") || null;
+      break;
+    case "outbound_recipient_changed":
+      detail = p.recipient_name ? `→ ${p.recipient_name}` : null;
+      break;
+    case "outbound_channel_changed":
+      detail = p.channel === "email" ? "→ Courriel" : p.channel === "paper" ? "→ Courrier postal" : null;
+      break;
+    case "outbound_org_changed":
+      detail = p.to ? `→ ${p.to}` : null;
       break;
     case "reply_visa_granted":
       detail = [

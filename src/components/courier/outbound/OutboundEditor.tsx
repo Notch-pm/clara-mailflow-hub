@@ -92,6 +92,12 @@ export interface OutboundEditorProps {
    * (`eventAnchor`) et quel contexte reçoit l'assistant.
    */
   parentCourierId: string | null;
+  /**
+   * Une réponse, ou un courrier à l'initiative de la collectivité : le
+   * vocabulaire change, et l'assistant « type de réponse » n'a de sens que
+   * pour une réponse (la rédaction sur consigne viendra au lot 3).
+   */
+  kind?: "reply" | "initiative";
   /** Organisation émettrice (miroir Socle) : signataires, viseurs, coordonnées. */
   service: SocleOrgWithConfig;
   /** Workflow réponse de l'organisation émettrice. */
@@ -117,6 +123,30 @@ export interface OutboundEditorProps {
   onStateChange?: (state: { name: string; category: string | null } | null) => void;
 }
 
+/** Le vocabulaire de l'éditeur : une réponse, ou un courrier qui ne répond à rien. */
+const WORDING = {
+  reply: {
+    signed: "Réponse signée",
+    visaed: "Réponse visée",
+    lockedSigned: "Réponse verrouillée (signée). Retirez la signature pour modifier.",
+    locked: "Réponse verrouillée.",
+    lockedVisa: "Réponse verrouillée pendant l'étape de visa. Renvoyez-la en rédaction pour la modifier.",
+    frozen: "Réponse visée : son contenu est figé. Pour le modifier, renvoyez-la en rédaction — un nouveau visa sera demandé.",
+    emailPlaceholder: (to: string | null) => `Rédigez la réponse à envoyer à ${to ?? "l'expéditeur"}…`,
+    paperPlaceholder: "Rédigez le contenu du courrier de réponse…",
+  },
+  initiative: {
+    signed: "Courrier signé",
+    visaed: "Courrier visé",
+    lockedSigned: "Courrier verrouillé (signé). Retirez la signature pour modifier.",
+    locked: "Courrier verrouillé.",
+    lockedVisa: "Courrier verrouillé pendant l'étape de visa. Renvoyez-le en rédaction pour le modifier.",
+    frozen: "Courrier visé : son contenu est figé. Pour le modifier, renvoyez-le en rédaction — un nouveau visa sera demandé.",
+    emailPlaceholder: (to: string | null) => `Rédigez le courriel à envoyer à ${to ?? "votre destinataire"}…`,
+    paperPlaceholder: "Rédigez le contenu du courrier…",
+  },
+} as const;
+
 /** Dit aussi OÙ ajouter l'adresse manquante : le courrier ou la fiche usager. */
 const NO_EMAIL_REASON =
   "Aucune adresse email : ni sur le courrier, ni sur la fiche de l'expéditeur dans le référentiel.";
@@ -133,6 +163,7 @@ export function OutboundEditor({
   organizationId,
   reply,
   parentCourierId,
+  kind = "reply",
   service: currentService,
   workflow,
   recipient: sender,
@@ -152,8 +183,11 @@ export function OutboundEditor({
   const currentUserId = user?.id ?? null;
   const senderEmail = recipientEmail?.trim() || null;
   const canEmail = !!senderEmail;
-  // Contexte de l'assistant : le courrier reçu pour une réponse.
+  const words = WORDING[kind];
+  // Contexte de l'assistant : le courrier reçu pour une réponse ; le sortant
+  // lui-même pour « Améliorer » (la langue, jamais le sens).
   const aiCourierId = parentCourierId ?? reply?.id ?? null;
+  const canDraft = kind === "reply" && !!parentCourierId;
 
   // ─── Organization (for merge tags) ──────────────────────────────────
   // Les coordonnées propres de Clara sont souvent vides : depuis la bascule vers
@@ -463,7 +497,7 @@ export function OutboundEditor({
       invalidate();
       queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
       onChanged();
-      toast.success("Réponse signée");
+      toast.success(words.signed);
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -533,7 +567,7 @@ export function OutboundEditor({
       invalidate();
       queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
       onChanged();
-      toast.success("Réponse visée");
+      toast.success(words.visaed);
     },
     onError: (err: Error) => {
       queryClient.invalidateQueries({ queryKey: ["reply-visas"] });
@@ -596,11 +630,11 @@ export function OutboundEditor({
 
   async function handleDraft() {
     if (!aiResponseType) { toast.error("Sélectionnez un type de réponse."); return; }
-    if (!aiCourierId) return;
+    if (!canDraft || !parentCourierId) return;
     setIsDrafting(true);
     try {
       const draft = await draftReply({
-        courierId: aiCourierId,
+        courierId: parentCourierId,
         orgId: organizationId,
         responseType: aiResponseType,
         additionalInstructions: aiInstructions.trim() || undefined,
@@ -683,11 +717,11 @@ export function OutboundEditor({
   }
 
   const saveDisabledReason = isSigned
-    ? "Réponse verrouillée (signée). Retirez la signature pour modifier."
+    ? words.lockedSigned
     : isFinal
-      ? "Réponse verrouillée."
+      ? words.locked
       : isVisaState
-        ? "Réponse verrouillée pendant l'étape de visa. Renvoyez-la en rédaction pour la modifier."
+        ? words.lockedVisa
       : !dirty && !!reply
         ? "Aucune modification à enregistrer."
         : null;
@@ -1016,7 +1050,7 @@ export function OutboundEditor({
       </div>
 
       {/* Assistant IA */}
-      {!body && !editorDisabled && aiCourierId && (
+      {!body && !editorDisabled && canDraft && (
         <div className="border rounded-md shrink-0">
           <button
             type="button"
@@ -1141,7 +1175,7 @@ export function OutboundEditor({
       {frozenByVisa && !isVisaState && !isFinal && !isSigned && (
         <p className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
           <Lock className="h-3 w-3 shrink-0" aria-hidden="true" />
-          Réponse visée : son contenu est figé. Pour le modifier, renvoyez-la en rédaction — un nouveau visa sera demandé.
+          {words.frozen}
         </p>
       )}
 
@@ -1167,8 +1201,8 @@ export function OutboundEditor({
         onChange={(html) => { setBody(html); setDirty(true); }}
         placeholder={
           channel === "email"
-            ? `Rédigez la réponse à envoyer à ${senderEmail ?? "l'expéditeur"}…`
-            : "Rédigez le contenu du courrier de réponse…"
+            ? words.emailPlaceholder(senderEmail)
+            : words.paperPlaceholder
         }
         disabled={editorDisabled || isImproving}
         minHeight={220}
@@ -1176,7 +1210,7 @@ export function OutboundEditor({
       />
 
       {/* Rappel des mentions de l'art. R112-5 CRPA, que l'assistant IA reçoit aussi. */}
-      {!readOnly && (
+      {!readOnly && kind === "reply" && (
         <AcknowledgmentChecklist
           ack={ackDetails}
           receivedAt={receivedAt}

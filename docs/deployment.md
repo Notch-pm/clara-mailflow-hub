@@ -112,6 +112,17 @@ bunx supabase functions deploy <nom> --project-ref aullweizxcjbvtdspjli
 bun run build && npx wrangler deploy --dry-run
 ```
 
+### Lot « courriers sortants à l'initiative, lot 1 » (2026-10-13) — appliqué le 2026-10-13
+
+Spécification : `docs/specs/courriers-sortants.md`.
+
+| # | Étape | Pourquoi cet ordre | État |
+|---|---|---|---|
+| 1 | `20261013114656_sortants_sent_at_reel.sql` (`check_dates` : un sortant peut naître sans `sent_at`) | `createReply` cesse de poser une date d'envoi fictive | **Appliqué** via `apply_migration` — registre `20261013114656` (fichier renommé pour coller) |
+| 2 | `20261013114800_sortants_initiative.sql` (`outbound_initiative_block_reason`, trigger `trg_couriers_enforce_outbound_initiative`, RPC `create_outbound_courier`) | ⚠️ Refuse l'ancien dialogue « coquille » de `/courriers-sortants` : le frontend suit aussitôt | **Appliqué** via `apply_migration` — registre `20261013114800`. `supabase/tests/outbound_initiative.test.sql` : VERDICT OK (6 scénarios) ; intégration `sortants-initiative.itest.ts` verte |
+| 3 | `src/integrations/supabase/types.ts` régénéré | Type de la RPC | **Fait** — emporte aussi les tables et RPC manquantes (dont `push_subscriptions`) |
+| 4 | Frontend (formulaire de création, onglet « Rédaction », colonne Type) | Push sur `main` | **Fait** |
+
 ### Lot « Démarches Arpège servies par le Socle » (2026-10-02)
 
 Public-api 1.35.0 (champ `partner`) ; suppression de `sync-arpege-services` et du bouton

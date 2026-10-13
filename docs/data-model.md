@@ -129,7 +129,7 @@ Table centrale. Tags stockés dans `metadata->'tags'` (tableau JSON de strings).
 | `subject` | text | |
 | `workflow_state_id` | uuid FK → workflow_states | |
 | `received_at` | timestamp | date réception (inbound) |
-| `sent_at` | timestamp | date envoi (outbound) |
+| `sent_at` | timestamp | date d'envoi RÉELLE d'un sortant — vide tant que rien n'est parti (depuis le 2026-10-13 ; avant, posée dès la création du brouillon) |
 | `parent_courier_id` | uuid FK → couriers | réponse à un courrier |
 | `assigned_service` | varchar | nom de l'organisation gestionnaire — **pure dénormalisation d'affichage** (toujours écrite en double, mais plus aucune logique ne compare ce texte) |
 | `socle_organization_id` | uuid FK → socle_organizations | organisation gestionnaire — **clé de toute la logique** : RPC `stats_*` (`p_socle_organization_id`), `search_couriers`, filtres de droits (`useUserServiceFilter` → UUIDs via `socle_organization_members`), résolutions dans le panneau courrier/composer |

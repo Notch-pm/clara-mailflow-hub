@@ -5,7 +5,7 @@
 ## 1. Saisie & réception des courriers
 
 ### Saisie manuelle
-- Dialogue `NewCourierDialog.tsx` : direction, canal, sujet, expéditeur/destinataire (via `ContactPicker`, branché sur le référentiel de contacts du Socle), pièces jointes.
+- Dialogue `NewCourierDialog.tsx` (courriers **entrants** ; les sortants à l'initiative se créent depuis « Courriers sortants », voir `docs/specs/courriers-sortants.md`) : canal, sujet, expéditeur/destinataire (via `ContactPicker`, branché sur le référentiel de contacts du Socle), pièces jointes.
 - Création via `courierService.createCourier` → numérotation automatique (`courier_sequences` annuel par direction).
 
 ### Dictée vocale (depuis le 2026-10-09)
