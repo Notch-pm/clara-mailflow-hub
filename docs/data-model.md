@@ -231,6 +231,8 @@ Expéditeurs, destinataires, copies d'un courrier.
 | `fts_participant` | tsvector | full-text sur name + email |
 
 > `courier_participants` est la **table de liaison** courrier ↔ contacts Socle : N participants par courrier, chacun typé par `role` et liable individuellement à un contact. Dissocier = `socle_contact_id = NULL` (la fiche Socle n'est jamais supprimée par Clara).
+>
+> Depuis le 2026-10-13 : le `recipient` d'un courrier **reçu** se choisit parmi les contacts **Interne / Élus** (nom libre en repli — l'IMAP et l'import en masse n'écrivent qu'un nom) ; un courrier **sortant** peut porter un `sender` facultatif, contact Interne ou Élu au nom de qui il part (R7bis de `docs/specs/courriers-sortants.md`) — il apparaît alors dans la colonne expéditeur de la recherche et dans l'historique de sa fiche.
 
 #### `courier_documents`
 Pièces jointes (stockées dans le bucket `clara-documents`).
@@ -505,6 +507,10 @@ tables `usagers` et `quartiers` (et leurs RPC, enums, colonnes `organizations.do
   la fiche `Contact` (`relations` sortantes éditables en replace-set, `reverse_relations`
   entrantes en lecture) ; affichées dans Clara sur la fiche contact, les participants
   d'un courrier et l'expéditeur du panneau courrier.
+- **Catégories Interne / Élus** (2026-10-13) : des **rôles codés** du catalogue `contact_roles`
+  (`code` `interne` / `elu`, immuable, contacts-api ≥ 1.3.0), jamais un `contact_type` — le contact
+  reste une `personne`. Filtre `?role=interne,elu` ; reconnaissance par code dans
+  `src/lib/contact-categories.ts` (nom en repli seulement). « Agent » n'en fait pas partie.
 - Suppression côté Socle : `contacts-api` n'expose qu'archive/restore ; un contact
   disparu (hard delete SQL) rend un 404 que l'UI gère (proposition de dissociation).
 - **Quartiers** : la fonctionnalité a quitté Clara le 2026-07-16 et vit désormais **côté

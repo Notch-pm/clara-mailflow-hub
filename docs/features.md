@@ -342,7 +342,10 @@ base tient la même règle — voir § 5 et `docs/data-model.md` § `action_tick
 
 Le bouton « Créer » de l'onglet Actions liées propose **Demande** (dialogue des démarches) ou
 **Tâche** (`CreateTaskDialog.tsx`) : intitulé (obligatoire), commentaire (facultatif), agent
-affecté — un **membre** de l'organisation, ou une **autre adresse mail** avec un nom facultatif.
+affecté — un **membre** de l'organisation, un **contact Interne ou Élu** du référentiel (2026-10-13 :
+adresse et nom repris de la fiche, `assignee_socle_contact_id` gardé, création bloquée si la fiche
+n'a pas d'adresse mail valide ; la liste renvoie vers la fiche), ou une **autre adresse mail** avec
+un nom facultatif.
 Réservée aux éditeurs (RLS `is_editor_of`) ; l'espace élu les affiche en lecture seule.
 
 - **Mail à l'affecté** (`action-task-mail`, `notify` à la création) par le serveur d'envoi de
@@ -434,9 +437,13 @@ information, relance…). Spécification et décisions : `docs/specs/courriers-s
 
 - **Création** : « Nouveau » dans *Courriers sortants* (`NewOutboundDialog`) — organisation
   émettrice (celles du périmètre ; sans workflow de réponse = grisée avec le motif), destinataire
-  choisi ou créé dans le référentiel (adresse comprise), mode courriel ou courrier, objet. RPC
+  choisi ou créé dans le référentiel (adresse comprise), **expéditeur facultatif** (contact Interne
+  ou Élu au nom de qui le courrier part — R7bis), mode courriel ou courrier, objet. RPC
   `create_outbound_courier` : courrier à l'état initial du **workflow de réponse de l'émettrice**,
   destinataire (instantané de la fiche), événement `outbound_created`, en une transaction.
+- **Expéditeur** : la carte « Expéditeur » montre l'organisation émettrice puis, en dessous, le
+  sélecteur Interne / Élus (réponses comprises) ; figé une fois signé, envoyé ou posté
+  (`isOutboundSettled`, `src/lib/outbound-kind.ts`).
 - **Rédaction** : onglet « Rédaction » (`InitiativeComposer` → `OutboundEditor`, l'éditeur partagé
   avec les réponses) : visa, signature, transitions comme une réponse ; « Que doit dire ce courrier ? »
   fait rédiger l'assistant sur consigne (`draft-reply`, mode `initiative`).
