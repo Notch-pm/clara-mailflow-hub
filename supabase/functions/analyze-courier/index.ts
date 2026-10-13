@@ -49,6 +49,7 @@ import {
   type SanitizedPrefill,
 } from "./logic.ts";
 import { assertEditor } from "../_shared/authz.ts";
+import { canReadCourier } from "../_shared/courierAccess.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -858,6 +859,10 @@ Deno.serve(async (req) => {
     if (req.method === "POST" && action === "ocr-courier") {
       const { courier_id } = await req.json();
       if (!courier_id) return jsonResponse({ error: "Missing courier_id" }, 400);
+      // Courrier confidentiel : l'appelant doit pouvoir le lire (le cron, lui, n'a pas d'utilisateur).
+      if (userId && !(await canReadCourier(req.headers.get("authorization"), courier_id))) {
+        return jsonResponse({ error: "Courrier confidentiel : accès refusé" }, 403);
+      }
 
       // Fetch all docs of the courier
       const { data: docs, error: dErr } = await admin
@@ -893,6 +898,10 @@ Deno.serve(async (req) => {
     if (req.method === "POST" && action === "analyze") {
       const { courier_id } = await req.json();
       if (!courier_id) return jsonResponse({ error: "Missing courier_id" }, 400);
+      // Courrier confidentiel : l'appelant doit pouvoir le lire (le cron, lui, n'a pas d'utilisateur).
+      if (userId && !(await canReadCourier(req.headers.get("authorization"), courier_id))) {
+        return jsonResponse({ error: "Courrier confidentiel : accès refusé" }, 403);
+      }
       const row = await analyzeCourier(admin, orgId, courier_id, aiContext);
       return jsonResponse(row);
     }

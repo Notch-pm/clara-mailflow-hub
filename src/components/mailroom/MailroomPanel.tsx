@@ -18,6 +18,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import DocumentViewer from "@/components/courier/DocumentViewer";
+import { MaskedSubject } from "@/components/courier/ConfidentialBadge";
+import { ConfidentialToggle } from "@/components/courier/ConfidentialToggle";
 import { channelLabels } from "@/hooks/useCourierWorkspace";
 import { useCourierDisplayDocuments } from "@/hooks/useCourierDisplayDocuments";
 import { getMailroomCourier } from "@/services/mailroomService";
@@ -82,6 +84,9 @@ export default function MailroomPanel({
 }: Props) {
   const navigate = useNavigate();
   const { row } = item;
+  // Confidentiel et illisible pour moi : on route sans lire (objet, noms,
+  // intentions et pièces restent cachés ; la base les masque déjà).
+  const blind = !!row.is_confidential && row.can_read === false;
   const stage = stageLabel(item);
   const channel = channelLabels[row.channel as CourierChannel] ?? row.channel;
   const orgName = (id: string | null) => (id ? (orgs.find((o) => o.id === id)?.name ?? null) : null);
@@ -105,9 +110,9 @@ export default function MailroomPanel({
 
   const { data: courier } = useQuery({
     queryKey: ["mailroom-courier", row.id],
-    queryFn: () => getMailroomCourier(organizationId, row.id),
+    queryFn: () => getMailroomCourier(organizationId, row.id, row),
   });
-  const { displayDocuments } = useCourierDisplayDocuments(courier ?? null, organizationId);
+  const { displayDocuments } = useCourierDisplayDocuments(blind ? null : (courier ?? null), organizationId);
 
   const dims: { label: string; value: string; tone: Tone }[] = [
     { label: "Canal", value: channel, tone: "muted" },
@@ -178,9 +183,12 @@ export default function MailroomPanel({
         </span>
         {row.chrono && <span className="font-mono text-xs text-muted-foreground">{row.chrono}</span>}
         <div className="flex-1" />
-        <Button variant="outline" size="icon" className="h-8 w-8" title="Ouvrir la fiche" onClick={() => navigate(`/courrier/${row.id}`)}>
-          <Maximize2 className="h-4 w-4" />
-        </Button>
+        {canEdit && <ConfidentialToggle courierId={row.id} isConfidential={!!row.is_confidential} />}
+        {!blind && (
+          <Button variant="outline" size="icon" className="h-8 w-8" title="Ouvrir la fiche" onClick={() => navigate(`/courrier/${row.id}`)}>
+            <Maximize2 className="h-4 w-4" />
+          </Button>
+        )}
         {onDelete && (
           <Button
             variant="outline"
@@ -196,13 +204,26 @@ export default function MailroomPanel({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <h3 className="text-lg font-bold leading-snug [text-wrap:pretty]">{row.subject || "Sans objet"}</h3>
+        <h3 className="text-lg font-bold leading-snug [text-wrap:pretty]">
+          {blind ? <MaskedSubject>{row.subject}</MaskedSubject> : row.subject || "Sans objet"}
+        </h3>
         <p className="text-sm text-muted-foreground">
-          {[row.sender_name || "Expéditeur non identifié", channel, `reçu le ${fullDate(row.received_at ?? row.created_at)}`].join(" · ")}
+          {[
+            blind ? "Expéditeur masqué" : row.sender_name || "Expéditeur non identifié",
+            channel,
+            `reçu le ${fullDate(row.received_at ?? row.created_at)}`,
+          ].join(" · ")}
         </p>
       </div>
 
-      {row.has_analysis && (
+      {blind && (
+        <p className="rounded-lg border bg-muted/40 px-3.5 py-3 text-sm leading-relaxed text-muted-foreground">
+          Courrier confidentiel : son contenu est réservé aux membres habilités et aux viseurs et signataires
+          désignés. Vous pouvez le router sans le lire.
+        </p>
+      )}
+
+      {row.has_analysis && !blind && (
         <SubjectSuggestion
           organizationId={organizationId}
           courierId={row.id}
@@ -212,7 +233,7 @@ export default function MailroomPanel({
       )}
       {/* Attend le courrier chargé : l'ajout réécrit `metadata`, il ne doit
           jamais partir d'un objet vide (il effacerait le reste). */}
-      {row.has_analysis && courier && (
+      {row.has_analysis && courier && !blind && (
         <TagSuggestion
           organizationId={organizationId}
           courierId={row.id}
@@ -255,7 +276,7 @@ export default function MailroomPanel({
               {item.reason === "analysis_failed" ? "Relancer l'analyse IA" : "Lancer l'analyse IA"}
             </Button>
           )}
-          {(!row.sender_name || !row.subject) && (
+          {!blind && (!row.sender_name || !row.subject) && (
             <p className="text-xs text-muted-foreground">
               {!row.sender_name ? "Expéditeur" : "Objet"} à compléter —{" "}
               <button type="button" className="font-bold text-primary hover:underline" onClick={() => navigate(`/courrier/${row.id}`)}>

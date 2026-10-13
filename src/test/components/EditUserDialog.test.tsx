@@ -30,6 +30,7 @@ const fakeMember = {
   signataire_title: null,
   is_service_courrier: false,
   is_viseur: false,
+  can_read_confidential: false,
 };
 
 beforeEach(() => {

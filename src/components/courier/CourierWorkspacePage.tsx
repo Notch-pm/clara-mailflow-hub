@@ -88,6 +88,8 @@ import {
 } from "@/hooks/useCourierWorkspace";
 import type { CourierChannel } from "@/types/courier";
 import { courierCreationBlockReason } from "../../../supabase/functions/_shared/courierCreationGuard";
+import { ConfidentialBadge } from "@/components/courier/ConfidentialBadge";
+import { ConfidentialToggle } from "@/components/courier/ConfidentialToggle";
 
 interface Props {
   courier: WorkspaceCourier;
@@ -606,6 +608,19 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
                 <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-x-6 gap-y-5">
                   <Field label="Référence">
                     <span className="font-mono text-sm">{courier.chrono ?? EMPTY}</span>
+                  </Field>
+                  {/* Poser : habilité ou service courrier ; lever : habilité (la base tranche).
+                      Une réponse suit son courrier reçu : la base refuse de la lever seule. */}
+                  <Field label="Confidentialité">
+                    {effectiveReadOnly ? (
+                      courier.is_confidential ? <ConfidentialBadge /> : <span className="text-sm">{EMPTY}</span>
+                    ) : (
+                      <ConfidentialToggle
+                        courierId={courier.id}
+                        isConfidential={!!courier.is_confidential}
+                        emptyLabel={<span className="text-sm">Non</span>}
+                      />
+                    )}
                   </Field>
                   <Field label={isOutbound ? "Date d'envoi" : "Date de réception"}>
                     <InlineEditField

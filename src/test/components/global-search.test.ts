@@ -83,6 +83,19 @@ describe("toCourierResult", () => {
     expect(r.date).toBe("12/08/2026");
   });
 
+  it("un courrier confidentiel illisible : masqué, sans expéditeur", () => {
+    const r = toCourierResult(
+      courier({ subject: "[courrier confidentiel]", sender_name: null, is_confidential: true, can_read: false }),
+      stateOf,
+    );
+    expect(r).toMatchObject({ subject: "[courrier confidentiel]", sender: "Confidentiel", masked: true });
+  });
+
+  it("un courrier confidentiel lisible s'affiche normalement", () => {
+    const r = toCourierResult(courier({ is_confidential: true, can_read: true }), stateOf);
+    expect(r).toMatchObject({ subject: "Demande de raccordement", sender: "Dupont Marie", masked: false });
+  });
+
   it("un courrier sans état ne porte pas de libellé — pas un état « inconnu »", () => {
     const r = toCourierResult(courier({ workflow_state_id: null }), stateOf);
     expect(r.stateLabel).toBe("");

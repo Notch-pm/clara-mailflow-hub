@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
+import { canReadCourier } from "../_shared/courierAccess.ts";
 import { assertEditor } from "../_shared/authz.ts";
 
 const corsHeaders = {
@@ -186,6 +187,19 @@ Deno.serve(async (req) => {
       // Accept both new format `org_{orgId}/...` and legacy `{orgId}/...`
       if (!storageKey.startsWith(pathPrefix) && !storageKey.startsWith(`${orgId}/`)) {
         return jsonResponse({ error: "Access denied" }, 403);
+      }
+
+      // Pièce d'un courrier : l'appartenance ne suffit plus, le courrier peut
+      // être confidentiel. Le service role bypasse la RLS : on demande à la
+      // base, avec le jeton de l'appelant, s'il peut le lire.
+      const { data: doc } = await admin
+        .from("courier_documents")
+        .select("courier_id")
+        .eq("storage_key", storageKey)
+        .eq("organization_id", orgId)
+        .maybeSingle();
+      if (doc?.courier_id && !(await canReadCourier(req.headers.get("authorization"), doc.courier_id))) {
+        return jsonResponse({ error: "Courrier confidentiel : accès refusé" }, 403);
       }
 
       const { data, error } = await admin.storage

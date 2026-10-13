@@ -77,8 +77,10 @@ export interface CourierResult {
   stateTone: StatusTone;
   /** Date de réception (entrant) ou d'envoi (sortant), au format français. */
   date: string;
-  /** Expéditeur, ou « Expéditeur inconnu ». */
+  /** Expéditeur, ou « Expéditeur inconnu » (« Confidentiel » quand il est masqué). */
   sender: string;
+  /** Courrier confidentiel que l'utilisateur ne peut pas lire : objet et noms masqués. */
+  masked: boolean;
   /** Organisation gestionnaire telle qu'affichée dans les listes, ou « — ». */
   service: string;
   /**
@@ -140,6 +142,7 @@ export function toCourierResult(
 ): CourierResult {
   const state = row.workflow_state_id ? stateOf(row.workflow_state_id) : undefined;
   const sender = courierSenderName(row).trim();
+  const masked = !!row.is_confidential && row.can_read === false;
   return {
     kind: "courrier",
     id: row.id,
@@ -150,7 +153,8 @@ export function toCourierResult(
     stateLabel: state?.name ?? "",
     stateTone: state ? CATEGORY_TONE[state.category] ?? "muted" : "muted",
     date: frDate(row.received_at ?? row.sent_at ?? row.created_at),
-    sender: sender || "Expéditeur inconnu",
+    sender: masked ? "Confidentiel" : sender || "Expéditeur inconnu",
+    masked,
     service: row.assigned_service?.trim() || "—",
     matchIn: (row.match_in ?? []).map((m) => MATCH_IN_LABELS[m] ?? m),
   };

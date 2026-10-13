@@ -30,6 +30,7 @@ import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { DataTablePagination } from "@/components/data-table/data-table-pagination";
 import { SortableHeader, type SortDirection } from "@/components/data-table/data-table-column-header";
 import { LIST_HEADER_SURFACE, ListCellDate, ListCellText, ListCellTitle } from "@/components/list/ListCells";
+import { ConfidentialBadge, MaskedSubject } from "@/components/courier/ConfidentialBadge";
 import { ListActiveFilters, ListFilterButton } from "@/components/list/ListFilters";
 import {
   ListDensityToggle,
@@ -282,6 +283,11 @@ export default function BoiteAuxLettres() {
   // reçoit un enregistrement plus riche (documents, événements). Sans panneau,
   // ce même chemin redirige vers la page dédiée du courrier.
   function handleRowClick(courier: CourierListRow) {
+    // Courrier confidentiel illisible : la ligne existe, le détail ne s'ouvre pas.
+    if (courier.is_confidential && courier.can_read === false) {
+      toast({ title: "Courrier confidentiel", description: "Vous n'avez pas accès à son contenu." });
+      return;
+    }
     setPendingOpenId(courier.id);
   }
 
@@ -319,9 +325,12 @@ export default function BoiteAuxLettres() {
         </span>
 
         <ListCellTitle
-          title={c.subject ?? "Sans titre"}
+          title={
+            c.is_confidential && c.can_read === false ? <MaskedSubject>{c.subject}</MaskedSubject> : c.subject ?? "Sans titre"
+          }
           leading={
             <>
+              {c.is_confidential && <ConfidentialBadge compact />}
               <span className="md:hidden">{newMark}</span>
               {/* Remplace l'encadré « Courriers transférés » : l'information reste
                   visible ligne par ligne, y compris dans l'onglet « Tous ». */}

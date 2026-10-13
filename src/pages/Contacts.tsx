@@ -82,6 +82,7 @@ import {
   type SocleContactType,
 } from "@/services/socleContactService";
 import { listContactCouriers, type ContactCourier } from "@/services/courierParticipantService";
+import { ConfidentialBadge } from "@/components/courier/ConfidentialBadge";
 import ContactPicker from "@/components/courier/ContactPicker";
 
 /**
@@ -711,8 +712,9 @@ function ContactDetail({ contactId }: { contactId: string }) {
   });
 
   const couriersQuery = useQuery({
-    queryKey: ["socle-contact-couriers", contactId],
-    queryFn: () => listContactCouriers(contactId),
+    queryKey: ["socle-contact-couriers", organizationId, contactId],
+    queryFn: () => listContactCouriers(organizationId!, contactId),
+    enabled: !!organizationId,
   });
 
   const archiveMutation = useMutation({
@@ -916,7 +918,14 @@ function ContactDetail({ contactId }: { contactId: string }) {
                         onClick={() => navigate(`/courrier/${c.id}`)}
                       >
                         <TableCell className="font-mono text-xs">{c.chrono ?? "—"}</TableCell>
-                        <TableCell className="max-w-[320px] truncate">{c.subject ?? "—"}</TableCell>
+                        <TableCell className="max-w-[320px]">
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            {c.is_confidential && <ConfidentialBadge compact />}
+                            <span className={c.is_confidential && !c.can_read ? "truncate italic text-muted-foreground" : "truncate"}>
+                              {c.subject ?? "—"}
+                            </span>
+                          </span>
+                        </TableCell>
                         <TableCell>{c.direction === "inbound" ? "Entrant" : "Sortant"}</TableCell>
                         <TableCell>{formatDate(c.received_at ?? c.sent_at ?? c.created_at)}</TableCell>
                         <TableCell>{c.workflow_state?.name ?? "—"}</TableCell>

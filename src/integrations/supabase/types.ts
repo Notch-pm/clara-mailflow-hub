@@ -932,6 +932,7 @@ export type Database = {
           fts_body: unknown
           fts_subject: unknown
           id: string
+          is_confidential: boolean
           metadata: Json | null
           organization_id: string
           parent_courier_id: string | null
@@ -959,6 +960,7 @@ export type Database = {
           fts_body?: unknown
           fts_subject?: unknown
           id?: string
+          is_confidential?: boolean
           metadata?: Json | null
           organization_id: string
           parent_courier_id?: string | null
@@ -986,6 +988,7 @@ export type Database = {
           fts_body?: unknown
           fts_subject?: unknown
           id?: string
+          is_confidential?: boolean
           metadata?: Json | null
           organization_id?: string
           parent_courier_id?: string | null
@@ -1243,6 +1246,7 @@ export type Database = {
       }
       organization_users: {
         Row: {
+          can_read_confidential: boolean
           created_at: string
           id: string
           is_active: boolean | null
@@ -1255,6 +1259,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          can_read_confidential?: boolean
           created_at?: string
           id?: string
           is_active?: boolean | null
@@ -1267,6 +1272,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          can_read_confidential?: boolean
           created_at?: string
           id?: string
           is_active?: boolean | null
@@ -2607,6 +2613,26 @@ export type Database = {
         Args: { p_org_id: string }
         Returns: boolean
       }
+      can_read_courier: { Args: { p_courier_id: string }; Returns: boolean }
+      contact_couriers: {
+        Args: { p_organization_id: string; p_socle_contact_id: string }
+        Returns: {
+          can_read: boolean
+          channel: string
+          chrono: string
+          created_at: string
+          direction: string
+          id: string
+          is_confidential: boolean
+          parent_courier_id: string
+          received_at: string
+          sent_at: string
+          subject: string
+          workflow_state_category: string
+          workflow_state_name: string
+        }[]
+      }
+      courier_access: { Args: { p_courier_id: string }; Returns: string }
       courier_creation_block_reason: {
         Args: { p_courier_id: string }
         Returns: string
@@ -2617,6 +2643,7 @@ export type Database = {
           p_organization_id: string
           p_recipient: Json
           p_socle_organization_id: string
+          p_is_confidential?: boolean
           p_subject: string
         }
         Returns: string
@@ -2656,6 +2683,8 @@ export type Database = {
       mailroom_couriers: {
         Args: { p_organization_id: string; p_since?: string }
         Returns: {
+          can_read: boolean
+          is_confidential: boolean
           acknowledged_at: string
           analysis_status: string
           assigned_service: string
@@ -2695,6 +2724,8 @@ export type Database = {
       outbound_couriers: {
         Args: { p_organization_id: string; p_since?: string }
         Returns: {
+          can_read: boolean
+          is_confidential: boolean
           channel: string
           chrono: string
           created_at: string
@@ -2759,6 +2790,10 @@ export type Database = {
         Args: { p_courier_id: string; p_organization_id: string }
         Returns: undefined
       }
+      route_courier_blind: {
+        Args: { p_courier_id: string; p_socle_organization_id: string; p_transfer?: boolean }
+        Returns: Json
+      }
       search_couriers: {
         Args: {
           p_date_from?: string
@@ -2780,6 +2815,8 @@ export type Database = {
           p_workflow_state_ids?: string[]
         }
         Returns: {
+          can_read: boolean
+          is_confidential: boolean
           acknowledged_at: string
           assigned_service: string
           channel: string
@@ -2805,6 +2842,10 @@ export type Database = {
           updated_at: string
           workflow_state_id: string
         }[]
+      }
+      set_courier_confidential: {
+        Args: { p_confidential: boolean; p_courier_id: string }
+        Returns: undefined
       }
       settle_notification_push: {
         Args: { p_error?: string; p_id: string; p_ok: boolean }
@@ -2926,6 +2967,8 @@ export type Database = {
       trashed_couriers: {
         Args: { p_organization_id: string }
         Returns: {
+          can_read: boolean
+          is_confidential: boolean
           channel: string
           chrono: string
           created_at: string

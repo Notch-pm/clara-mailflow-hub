@@ -28,6 +28,7 @@ const editSchema = z
     is_signataire: z.boolean().default(false),
     is_service_courrier: z.boolean().default(false),
     is_viseur: z.boolean().default(false),
+    can_read_confidential: z.boolean().default(false),
     signataire_title: z.string().max(150, "150 caractères maximum").optional().or(z.literal("")),
   })
   .refine((d) => !d.is_signataire || (d.signataire_title && d.signataire_title.trim().length > 0), {
@@ -56,8 +57,9 @@ export function EditUserDialog({ member, organizationId, onClose }: Props) {
           signataire_title: member.signataire_title ?? "",
           is_service_courrier: member.is_service_courrier ?? false,
           is_viseur: member.is_viseur ?? false,
+          can_read_confidential: member.can_read_confidential ?? false,
         }
-      : { first_name: "", last_name: "", role: "consultant" as const, is_signataire: false, signataire_title: "", is_service_courrier: false, is_viseur: false },
+      : { first_name: "", last_name: "", role: "consultant" as const, is_signataire: false, signataire_title: "", is_service_courrier: false, is_viseur: false, can_read_confidential: false },
   });
 
   const isSignataire = form.watch("is_signataire");
@@ -80,6 +82,7 @@ export function EditUserDialog({ member, organizationId, onClose }: Props) {
         signataire_title: values.is_signataire ? (values.signataire_title?.trim() || null) : null,
         is_service_courrier: values.is_service_courrier,
         is_viseur: values.is_viseur,
+        can_read_confidential: values.can_read_confidential,
       });
     },
     onSuccess: () => {
@@ -265,6 +268,20 @@ export function EditUserDialog({ member, organizationId, onClose }: Props) {
                       <FormLabel className="text-sm">Gestionnaire courrier</FormLabel>
                       <p className="text-xs text-muted-foreground">
                         Qualifie, route et suit les courriers reçus depuis l'écran « Courrier entrant ».
+                      </p>
+                    </div>
+                    <FormControl>
+                      <Switch checked={field.value} onCheckedChange={field.onChange} />
+                    </FormControl>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="can_read_confidential" render={({ field }) => (
+                  <FormItem className="flex items-center justify-between rounded-md border p-3">
+                    <div className="space-y-0.5">
+                      <FormLabel className="text-sm">Accès aux courriers confidentiels</FormLabel>
+                      <p className="text-xs text-muted-foreground">
+                        Lit les courriers marqués confidentiels et peut lever leur confidentialité. Sans cet
+                        accès, même un administrateur n'en voit que la ligne masquée. Chaque changement est tracé.
                       </p>
                     </div>
                     <FormControl>

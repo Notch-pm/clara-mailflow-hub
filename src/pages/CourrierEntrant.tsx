@@ -92,7 +92,8 @@ export default function CourrierEntrant() {
   const [toDelete, setToDelete] = useState<MailroomItem | null>(null);
 
   const mailroom = useMailroom(organizationId, period);
-  const actions = useMailroomActions(organizationId ?? "");
+  // La ligne de l'écran sert de fiche aux gestes sur un courrier confidentiel illisible.
+  const actions = useMailroomActions(organizationId ?? "", (id) => mailroom.items.find((i) => i.row.id === id)?.row);
 
   // « Synchronisé il y a … » : relu toutes les 30 s.
   const [, setTick] = useState(0);

@@ -110,6 +110,7 @@ Appartenance d'un user à une org. Source unique des permissions d'org.
 | `is_signataire` | boolean | |
 | `is_viseur` | boolean | droit de viser une réponse (étape de visa), indépendant du rôle — 2026-10-01 |
 | `is_service_courrier` | boolean | profil « gestionnaire courrier » (écran Courrier entrant), indépendant du rôle — 2026-10-01 |
+| `can_read_confidential` | boolean | lit les courriers confidentiels ; l'attribut seul compte (administrateur compris). Chaque changement tracé dans `confidential_access_log` (lecture : administrateurs) — 2026-10-13 |
 | `signataire_title` | text | |
 
 ---
@@ -139,6 +140,7 @@ Table centrale. Tags stockés dans `metadata->'tags'` (tableau JSON de strings).
 | `consents` | jsonb NOT NULL défaut `[]` | Consentements RGPD recueillis **au dépôt portail** : `[{kind, granted, statement, collected_at}]`. Écrit par `portal-form` seul, **immuable** ensuite. Voir ci-dessous. |
 | `fts_subject` / `fts_body` | tsvector | index full-text français |
 | `deleted_at` / `deleted_by` | timestamptz / uuid FK → users | **Corbeille** (2026-10-01). NULL = courrier vivant. Posés par `trash_courier` sur le courrier ET ses réponses (même horodatage, d'où une restauration groupée). La policy `auth_select` ajoute `deleted_at IS NULL` ; les RPC SECURITY DEFINER (`search_couriers`, `mailroom_couriers`, `enqueue_courier_analysis`, `courier_creation_block_reason`) filtrent explicitement. Le service role voit tout — la déduplication IMAP doit voir la corbeille. Purge définitive à 30 jours par `purge_expired_data()` |
+| `is_confidential` | boolean | **Courrier confidentiel** (2026-10-13). Lisible par les habilités (`organization_users.can_read_confidential`) et les viseurs / signataires désignés (sur lui ou, pour un entrant, sur ses réponses) — `can_read_courier()`. Une réponse suit son parent. Se pose / se lève par `set_courier_confidential` (jamais d'UPDATE direct). Les RPC de liste rendent la ligne masquée ; voir `docs/security.md` |
 
 **Référence du registre (`chrono`) — implémentée le 2026-09-13.** Format `AAAA-E|S|I-NNNNN`,
 compteurs dans `courier_sequences` (une suite par organisation × année × sens).

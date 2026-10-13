@@ -19,6 +19,7 @@ import {
   socleOrgIdFor,
 } from "../_shared/socleAi.ts";
 import { assertEditor } from "../_shared/authz.ts";
+import { canReadCourier } from "../_shared/courierAccess.ts";
 import {
   buildImproveUserMessage,
   cleanImproveOutput,
@@ -95,6 +96,10 @@ Deno.serve(async (req) => {
     // Le consultant est en lecture seule : il ne rédige pas de réponse.
     if (!(await assertEditor(admin, user.id, orgId))) {
       return jsonResponse({ error: "Accès refusé : rôle consultant en lecture seule" }, 403);
+    }
+    // Courrier confidentiel : l'assistant ne lit que ce que l'appelant peut lire.
+    if (!(await canReadCourier(authHeader, courierId))) {
+      return jsonResponse({ error: "Courrier confidentiel : accès refusé" }, 403);
     }
 
     if (!isAiConfigured()) {

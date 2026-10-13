@@ -13,6 +13,7 @@ import { searchCouriers, type CourierSearchResult } from "@/services/courierSear
 import { useUserServiceFilter } from "@/hooks/useUserServiceFilter";
 import { DataTable } from "@/components/data-table/data-table";
 import { ListCellDate, ListCellText, ListCellTitle, StatusDot, type StatusTone } from "@/components/list/ListCells";
+import { ConfidentialBadge, MaskedSubject } from "@/components/courier/ConfidentialBadge";
 import {
   FilterChips,
   FilterOptionList,
@@ -207,7 +208,14 @@ export default function RechercheCourrierPage() {
           const matchIn = row.original.match_in ?? [];
           return (
             <ListCellTitle
-              title={row.original.subject || "Sans objet"}
+              leading={row.original.is_confidential ? <ConfidentialBadge compact /> : undefined}
+              title={
+                row.original.is_confidential && row.original.can_read === false ? (
+                  <MaskedSubject>{row.original.subject}</MaskedSubject>
+                ) : (
+                  row.original.subject || "Sans objet"
+                )
+              }
               meta={
                 matchIn.length
                   ? `Trouvé dans : ${matchIn.map((m) => MATCH_IN_LABELS[m] ?? m).join(" · ")}`

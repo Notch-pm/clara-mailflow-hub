@@ -90,6 +90,30 @@ export function showsMailbox(
 }
 
 /**
+ * Courriers confidentiels : seul l'attribut `can_read_confidential` ouvre leur
+ * lecture (administrateur et superadmin compris) — hors viseurs et signataires
+ * désignés, que le serveur reconnaît courrier par courrier. Ces deux helpers ne
+ * décident que de ce que l'écran PROPOSE : la base tranche
+ * (`couriers_guard_confidential`).
+ */
+export function hasConfidentialAccess(membership: { can_read_confidential?: boolean | null } | null | undefined): boolean {
+  return membership?.can_read_confidential === true;
+}
+
+/** Marquer un courrier confidentiel : un habilité, ou le service courrier (qui route sans lire). */
+export function canSetConfidential(
+  profile: Profile,
+  membership: (Membership & { is_service_courrier?: boolean | null; can_read_confidential?: boolean | null }) | null | undefined,
+): boolean {
+  return hasConfidentialAccess(membership) || canAccessMailroom(profile, membership);
+}
+
+/** Lever la confidentialité : un habilité seulement — sinon on démasquerait ce qu'on ne peut lire. */
+export function canClearConfidential(membership: { can_read_confidential?: boolean | null } | null | undefined): boolean {
+  return hasConfidentialAccess(membership);
+}
+
+/**
  * Parapheur : réservé à qui peut viser ou signer. Les deux attributs sont
  * indépendants du rôle ; l'écran ne promet rien de plus — le serveur décide
  * de chaque visa (rattachement à l'organisation gestionnaire) et chaque

@@ -6,6 +6,7 @@ import { readableTextColor } from "@/lib/tag-color";
 import type { CourierListRow } from "@/services/courierListService";
 import type { CourierChannel } from "@/types/courier";
 import { SlaStatusDot } from "@/components/courier/SlaStatus";
+import { ConfidentialBadge, MaskedSubject } from "@/components/courier/ConfidentialBadge";
 import {
   SLA_AXIS_LABELS,
   parisDay,
@@ -83,9 +84,18 @@ export function subjectColumn(correspondent: "sender" | "recipient"): CourierCol
   return {
     accessorKey: "subject",
     header: ({ column }) => <DataTableColumnHeader column={column} title="Objet" />,
-    cell: ({ row }) => (
-      <ListCellTitle title={row.original.subject || "Sans objet"} meta={who(row.original) || undefined} />
-    ),
+    cell: ({ row }) => {
+      const c = row.original;
+      // Illisible : le serveur a déjà remplacé l'objet et retiré les noms.
+      const masked = c.is_confidential && c.can_read === false;
+      return (
+        <ListCellTitle
+          leading={c.is_confidential ? <ConfidentialBadge compact /> : undefined}
+          title={masked ? <MaskedSubject>{c.subject}</MaskedSubject> : c.subject || "Sans objet"}
+          meta={who(c) || undefined}
+        />
+      );
+    },
     // Colonne principale : c'est elle qui absorbe la largeur, on ne la masque pas.
     enableHiding: false,
     enableGrouping: false,

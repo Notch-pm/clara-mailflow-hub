@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import { relationLabel } from "@/services/courierRelationService";
 import { TAG_GROUPS } from "@/services/courierTagService";
 import { storage } from "@/services/storageService";
+import { CourierUnavailable } from "@/components/courier/ConfidentialAccessDenied";
 
 const CHANNEL_LABELS: Record<string, string> = {
   email: "par courriel",
@@ -127,8 +128,11 @@ export default function EluCourrier() {
   if (!detail.courier) {
     return (
       <EluScreen>
-        <EluScreenHeader title="Courrier introuvable" withBack />
-        <EluEmptyState>Ce courrier n'existe plus, ou ne vous est pas accessible.</EluEmptyState>
+        <EluScreenHeader title="Courrier reçu" withBack />
+        <CourierUnavailable
+          courierId={courierId}
+          fallback={<EluEmptyState>Ce courrier n'existe plus, ou ne vous est pas accessible.</EluEmptyState>}
+        />
       </EluScreen>
     );
   }

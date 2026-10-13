@@ -160,6 +160,8 @@ export async function createOutboundCourier(args: {
   channel: OutboundChannel;
   subject: string;
   recipient: SocleContact;
+  /** Confidentiel dès la création (la base vérifie le droit de le poser). */
+  confidential?: boolean;
 }): Promise<string> {
   const { data, error } = await supabase.rpc("create_outbound_courier", {
     p_organization_id: args.organizationId,
@@ -167,6 +169,7 @@ export async function createOutboundCourier(args: {
     p_channel: args.channel,
     p_subject: args.subject,
     p_recipient: recipientSnapshot(args.recipient),
+    ...(args.confidential ? { p_is_confidential: true } : {}),
   });
   if (error) throw error;
   return data as string;

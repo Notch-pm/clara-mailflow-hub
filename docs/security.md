@@ -15,6 +15,33 @@ Toutes les tables métier ont RLS activée (cf `docs/data-model.md`). Policies p
 
 ⚠️ Le header `x-org-id` seul ne suffit jamais : un user malveillant peut le forger. Toute edge function qui le lit doit revérifier côté serveur que `auth.uid()` appartient bien à l'org demandée, et les policies doivent continuer à passer par `is_member_of(...)` / `is_admin_of(...)`.
 
+## Courriers confidentiels
+
+La règle « confidentiel » (voir `docs/permissions.md`) vit en base, pas à l'écran
+(`20261013160000_courriers_confidentiels.sql`) :
+
+- politiques de lecture de `couriers` et de ses tables filles (participants, documents, extraits
+  OCR, analyses et jobs, événements, notes, liens, tickets d'action, visas, relations — les deux
+  bouts) : `is_member_of(org) AND can_read_courier(courier_id)` ;
+- les RPC de liste (`search_couriers`, `mailroom_couriers`, `outbound_couriers`,
+  `trashed_couriers`, `contact_couriers`) rendent la ligne masquée et deux colonnes
+  `is_confidential` / `can_read` ; `search_couriers` ne cherche que la référence d'une ligne
+  illisible (pas d'oracle sur le corps, les noms ou l'OCR) ;
+- trigger `notifications_mask_confidential` : aucun titre de notification (cloche, push) ne porte
+  l'objet d'un courrier confidentiel ; les titres existants sont réécrits quand le drapeau se pose ;
+- drapeau posé / levé par `set_courier_confidential` (la nouvelle ligne échouerait au contrôle de
+  lecture pour le service courrier), droits vérifiés par `couriers_guard_confidential`, trace
+  `confidentiality_set` / `_cleared` ;
+- edge functions (service role, RLS contournée) : `_shared/courierAccess.ts` →
+  `canReadCourier(jeton de l'appelant)` avant de rendre une pièce (`storage-documents`), de lancer
+  l'IA (`analyze-courier` côté utilisateur, `draft-reply`, `improve-reply`) ou d'envoyer
+  (`send-courier-reply`) ; objet masqué dans les courriels de `send-assignment-notification` et
+  `send-mention-notification`.
+
+Hors périmètre, assumé : un courrier déjà déposé dans **Iris** y garde son objet.
+Test : `supabase/tests/courier_confidential.test.sql` (identités réelles `[TEST]`, rôle
+`authenticated`, transaction annulée).
+
 ## Garde-fous DB
 
 - **Trigger `prevent_superadmin_escalation`** sur `public.users` : empêche un user d'updater son propre `is_superadmin` à `true`.

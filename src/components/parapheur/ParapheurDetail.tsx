@@ -11,6 +11,7 @@ import { useEluReply } from "@/hooks/useEluReply";
 import { useSignAndAdvance } from "@/hooks/useSignAndAdvance";
 import { visaPersonName } from "@/services/courierVisaService";
 import { cn } from "@/lib/utils";
+import { CourierUnavailable } from "@/components/courier/ConfidentialAccessDenied";
 
 const CHANNEL_LABELS: Record<string, string> = { email: "Courriel", paper: "Courrier" };
 
@@ -85,9 +86,15 @@ export function ParapheurDetail({
 
   if (!detail.reply) {
     return (
-      <div className="grid flex-1 place-items-center p-6 text-center text-sm text-muted-foreground">
-        Cette réponse n'existe plus, ou ne vous est pas accessible.
-      </div>
+      <CourierUnavailable
+        courierId={replyId}
+        className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center"
+        fallback={
+          <div className="grid flex-1 place-items-center p-6 text-center text-sm text-muted-foreground">
+            Ce courrier n'existe plus, ou ne vous est pas accessible.
+          </div>
+        }
+      />
     );
   }
 

@@ -12,7 +12,11 @@ import { supabase } from "@/integrations/supabase/client";
 export interface MailroomRow {
   id: string;
   chrono: string | null;
+  /** « [courrier confidentiel] » quand `can_read` est faux : le serveur masque. */
   subject: string | null;
+  /** Courrier confidentiel ; illisible pour moi si `can_read` est faux (noms, intentions et notes à null). */
+  is_confidential?: boolean;
+  can_read?: boolean;
   channel: "paper" | "email" | "portal" | string;
   received_at: string | null;
   created_at: string;
@@ -68,9 +72,33 @@ export interface MailroomCourierRef {
   assigned_service: string | null;
   socle_organization_id: string | null;
   metadata: Record<string, unknown> | null;
+  /**
+   * Courrier confidentiel que je ne peux pas lire : la base m'en cache la
+   * ligne, le routage passe par `route_courier_blind`.
+   */
+  blind?: boolean;
 }
 
-export async function getMailroomCourier(organizationId: string, courierId: string): Promise<MailroomCourierRef> {
+/**
+ * La fiche que les gestes de routage écrivent. Pour un courrier confidentiel
+ * illisible, la base n'en rend rien : on part de la ligne de l'écran (déjà
+ * masquée par le serveur), qui suffit à router sans lire.
+ */
+export async function getMailroomCourier(
+  organizationId: string,
+  courierId: string,
+  row?: Pick<MailroomRow, "is_confidential" | "can_read" | "assigned_service" | "socle_organization_id"> | null,
+): Promise<MailroomCourierRef> {
+  if (row?.is_confidential && row.can_read === false) {
+    return {
+      id: courierId,
+      subject: null,
+      assigned_service: row.assigned_service,
+      socle_organization_id: row.socle_organization_id,
+      metadata: null,
+      blind: true,
+    };
+  }
   const { data, error } = await supabase
     .from("couriers")
     .select("id, subject, assigned_service, socle_organization_id, metadata")

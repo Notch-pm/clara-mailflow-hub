@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { ChevronRight } from "lucide-react";
 import { OutboundKindBadge } from "@/components/courier/outbound/OutboundKindBadge";
+import { ConfidentialBadge } from "@/components/courier/ConfidentialBadge";
 import { LIST_HEADER_SURFACE } from "@/components/list/ListCells";
 import { ListFooter, ListMessage } from "@/components/list/ListPage";
 import { ListScrollArea } from "@/components/list/ListScrollArea";
@@ -94,7 +95,15 @@ export default function OutboxList({ view, items, selectedId, onSelect, orgName,
                   <span className="flex min-w-0 flex-col gap-0.5">
                     <span className="flex min-w-0 items-center gap-2">
                       <OutboundKindBadge kind={item.kind} />
-                      <span className="truncate text-[13.5px] font-semibold text-foreground">{outboxTitle(item)}</span>
+                      {row.is_confidential && <ConfidentialBadge compact />}
+                      <span
+                        className={cn(
+                          "truncate text-[13.5px] font-semibold text-foreground",
+                          row.is_confidential && row.can_read === false && "font-normal italic text-muted-foreground",
+                        )}
+                      >
+                        {outboxTitle(item)}
+                      </span>
                     </span>
                     <span className="flex min-w-0 items-center gap-1.5 truncate text-xs text-muted-foreground group-data-[density=compact]/list:hidden">
                       {chrono && (

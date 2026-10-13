@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import nodemailer from "npm:nodemailer@6";
 import { assertEditor } from "../_shared/authz.ts";
+import { canReadCourier } from "../_shared/courierAccess.ts";
 import { contactsApiKeyForOrg, fetchContactsApi } from "../_shared/socleContactsClient.ts";
 import { planOutboundAttachments, type OutboundDocument } from "../_shared/outboundAttachments.ts";
 
@@ -91,6 +92,14 @@ Deno.serve(async (req) => {
     if (!(await assertEditor(supabase, userData.user.id, organization_id))) {
       return new Response(
         JSON.stringify({ error: "Accès refusé : rôle consultant en lecture seule" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // Courrier confidentiel : on n'envoie que ce que l'appelant peut lire.
+    if (!(await canReadCourier(authHeader, reply_id))) {
+      return new Response(
+        JSON.stringify({ error: "Courrier confidentiel : accès refusé" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }

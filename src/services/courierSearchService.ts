@@ -39,6 +39,9 @@ export interface CourierSearchResult {
   organization_id: string;
   match_in: string[];
   total_count: number;
+  /** Courrier confidentiel ; illisible pour moi si `can_read` est faux (objet masqué par le serveur). */
+  is_confidential?: boolean;
+  can_read?: boolean;
 }
 
 export interface CourierSearchPage {

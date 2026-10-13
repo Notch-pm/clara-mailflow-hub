@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -17,6 +18,8 @@ import { defaultChannel, emailBlocker, postalBlocker, type OutboundChannel } fro
 import { consentViews } from "@/lib/consents";
 import { issuerBlockReason } from "../../../../supabase/functions/_shared/outboundInitiativeGuard";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
+import { canSetConfidential } from "@/lib/permissions";
 
 interface Props {
   open: boolean;
@@ -52,6 +55,9 @@ export function NewOutboundDialog({ open, onOpenChange, organizationId, services
   const [recipient, setRecipient] = useState<SocleContact | null>(null);
   const [channel, setChannel] = useState<OutboundChannel>("paper");
   const [subject, setSubject] = useState("");
+  const [confidential, setConfidential] = useState(false);
+  const { profile, membership } = useAuth();
+  const mayMarkConfidential = canSetConfidential(profile, membership);
 
   useEffect(() => {
     if (!open) return;
@@ -59,6 +65,7 @@ export function NewOutboundDialog({ open, onOpenChange, organizationId, services
     setRecipient(null);
     setChannel("paper");
     setSubject("");
+    setConfidential(false);
     // Réinitialisé à chaque ouverture seulement.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -90,6 +97,7 @@ export function NewOutboundDialog({ open, onOpenChange, organizationId, services
         channel,
         subject: subject.trim(),
         recipient: recipient!,
+        confidential,
       }),
     onSuccess: (id) => {
       queryClient.invalidateQueries({ queryKey: ["couriers-outbound"] });
@@ -209,6 +217,25 @@ export function NewOutboundDialog({ open, onOpenChange, organizationId, services
               maxLength={200}
             />
           </div>
+
+          {mayMarkConfidential && (
+            <label className="flex cursor-pointer items-start gap-2.5 rounded-md border p-3 text-sm">
+              <Checkbox
+                checked={confidential}
+                onCheckedChange={(v) => setConfidential(v === true)}
+                className="mt-0.5"
+              />
+              <span className="flex flex-col gap-0.5">
+                <span className="flex items-center gap-1.5 font-semibold">
+                  <Lock className="h-3.5 w-3.5" aria-hidden="true" />
+                  Courrier confidentiel
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  Lisible par les seuls membres habilités, et par les viseurs et signataires désignés.
+                </span>
+              </span>
+            </label>
+          )}
 
           <Button className="w-full" disabled={!!missing || create.isPending} onClick={() => create.mutate()}>
             {create.isPending ? "Création…" : "Créer et rédiger"}

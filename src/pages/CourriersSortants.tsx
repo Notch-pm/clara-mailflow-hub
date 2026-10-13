@@ -317,7 +317,9 @@ export default function CourriersSortants() {
                 className="flex w-[480px] min-w-0 shrink-0 flex-col border-l bg-background xl:w-[560px]"
                 aria-label="Courrier sélectionné"
               >
-                {selected ? (
+                {selected?.row.is_confidential && selected.row.can_read === false ? (
+                  <ListMessage>Courrier confidentiel : son contenu est réservé aux membres habilités et aux viseurs et signataires désignés.</ListMessage>
+                ) : selected ? (
                   <ParapheurDetail
                     key={selected.row.id}
                     replyId={selected.row.id}

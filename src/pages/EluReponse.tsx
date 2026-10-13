@@ -9,6 +9,7 @@ import { useSignAndAdvance } from "@/hooks/useSignAndAdvance";
 import { ReplyVisaTrail } from "@/components/courier/ReplyVisaTrail";
 import { OutboundKindBadge } from "@/components/courier/outbound/OutboundKindBadge";
 import { visaPersonName } from "@/services/courierVisaService";
+import { CourierUnavailable } from "@/components/courier/ConfidentialAccessDenied";
 
 /** « Réponse n°2 · courrier 2026-E-00025 · service Environnement » */
 function metaLine(parts: Array<string | null>): string {
@@ -62,8 +63,11 @@ export default function EluReponse() {
   if (!detail.reply) {
     return (
       <EluScreen>
-        <EluScreenHeader title="Réponse introuvable" withBack />
-        <EluEmptyState>Ce courrier n'existe plus, ou ne vous est pas accessible.</EluEmptyState>
+        <EluScreenHeader title="Courrier sortant" withBack />
+        <CourierUnavailable
+          courierId={replyId}
+          fallback={<EluEmptyState>Ce courrier n'existe plus, ou ne vous est pas accessible.</EluEmptyState>}
+        />
       </EluScreen>
     );
   }

@@ -11,7 +11,10 @@ import { supabase } from "@/integrations/supabase/client";
 export interface TrashRow {
   id: string;
   chrono: string | null;
+  /** « [courrier confidentiel] » quand `can_read` est faux : le serveur masque. */
   subject: string | null;
+  is_confidential?: boolean;
+  can_read?: boolean;
   direction: "inbound" | "outbound" | string;
   channel: "paper" | "email" | "portal" | string;
   received_at: string | null;

@@ -34,6 +34,8 @@ export interface OrganizationUser {
   is_service_courrier: boolean;
   /** Droit de viser une réponse (étape de visa), indépendant du rôle. */
   is_viseur: boolean;
+  /** Lit les courriers confidentiels, indépendant du rôle. */
+  can_read_confidential: boolean;
   created_at: string;
 }
 
@@ -47,6 +49,7 @@ export interface OrganizationUserInsert {
   signataire_title?: string | null;
   is_service_courrier?: boolean;
   is_viseur?: boolean;
+  can_read_confidential?: boolean;
 }
 
 export interface OrgRole {
@@ -71,6 +74,8 @@ export interface OrgMember {
   is_service_courrier: boolean;
   /** Droit de viser une réponse (étape de visa), indépendant du rôle. */
   is_viseur: boolean;
+  /** Lit les courriers confidentiels, indépendant du rôle. */
+  can_read_confidential: boolean;
   membership_id: string; // organization_users.id
   membership_active: boolean | null;
 }

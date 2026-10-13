@@ -4,6 +4,7 @@ import type { CourierParticipantInsert } from "@/types/courier";
 /** Courrier lié à un contact Socle (via courier_participants.socle_contact_id). */
 export interface ContactCourier {
   id: string;
+  /** « [courrier confidentiel] » quand `can_read` est faux : le serveur masque. */
   subject: string | null;
   received_at: string | null;
   sent_at: string | null;
@@ -13,45 +14,32 @@ export interface ContactCourier {
   channel: string | null;
   chrono: string | null;
   created_at: string;
-  metadata: Record<string, unknown> | null;
   workflow_state: { name: string; category: string } | null;
+  is_confidential: boolean;
+  can_read: boolean;
+}
+
+interface ContactCourierRow extends Omit<ContactCourier, "workflow_state"> {
+  workflow_state_name: string | null;
+  workflow_state_category: string | null;
 }
 
 /**
- * Liste des courriers auxquels un contact Socle participe (tous rôles),
- * dédupliqués et triés du plus récent au plus ancien. Donnée 100 % Clara :
- * seul l'identifiant Socle est stocké, jamais l'identité.
+ * Liste des courriers auxquels un contact Socle participe (tous rôles), du plus
+ * récent au plus ancien. Par RPC (`contact_couriers`) : une lecture directe des
+ * participants ferait DISPARAÎTRE un courrier confidentiel, que l'historique
+ * doit montrer masqué. Donnée 100 % Clara : seul l'identifiant Socle est stocké.
  */
-export async function listContactCouriers(socleContactId: string): Promise<ContactCourier[]> {
-  const { data, error } = await supabase
-    .from("courier_participants")
-    .select(
-      "courier_id, role, courier:couriers(id, subject, received_at, sent_at, direction, parent_courier_id, channel, chrono, created_at, metadata, workflow_state:workflow_states(name, category))",
-    )
-    .eq("socle_contact_id", socleContactId);
-  if (error) throw error;
-
-  interface ParticipantRow {
-    courier: ContactCourier | null;
-  }
-  const couriers = ((data ?? []) as unknown as ParticipantRow[])
-    .map((r) => r.courier)
-    .filter((c): c is ContactCourier => c !== null);
-
-  const seen = new Set<string>();
-  const out: ContactCourier[] = [];
-  for (const c of couriers) {
-    if (!seen.has(c.id)) {
-      seen.add(c.id);
-      out.push(c);
-    }
-  }
-  out.sort((a, b) => {
-    const da = a.received_at ?? a.sent_at ?? a.created_at;
-    const db = b.received_at ?? b.sent_at ?? b.created_at;
-    return new Date(db).getTime() - new Date(da).getTime();
+export async function listContactCouriers(organizationId: string, socleContactId: string): Promise<ContactCourier[]> {
+  const { data, error } = await supabase.rpc("contact_couriers", {
+    p_organization_id: organizationId,
+    p_socle_contact_id: socleContactId,
   });
-  return out;
+  if (error) throw error;
+  return ((data ?? []) as unknown as ContactCourierRow[]).map(({ workflow_state_name, workflow_state_category, ...c }) => ({
+    ...c,
+    workflow_state: workflow_state_name ? { name: workflow_state_name, category: workflow_state_category ?? "" } : null,
+  }));
 }
 
 export async function getParticipants(courierId: string) {

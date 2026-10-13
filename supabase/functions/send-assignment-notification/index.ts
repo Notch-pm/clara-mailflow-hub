@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import nodemailer from "npm:nodemailer@6";
 import { hexOr, renderBrandedEmail } from "../_shared/emailLayout.ts";
+import { CONFIDENTIAL_SUBJECT } from "../_shared/courierAccess.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -114,7 +115,7 @@ Deno.serve(async (req) => {
     if (!targetMembership) return json({ success: true, notified: false, reason: "not_a_member" });
 
     const [{ data: courier }, { data: assignee }, { data: caller }, { data: org }] = await Promise.all([
-      admin.from("couriers").select("id, subject").eq("id", ticket.courier_id).single(),
+      admin.from("couriers").select("id, subject, is_confidential").eq("id", ticket.courier_id).single(),
       admin.from("users").select("id, email, first_name, last_name").eq("id", recipientId).single(),
       admin.from("users").select("first_name, last_name, email").eq("id", callerUser.id).single(),
       admin
@@ -126,7 +127,8 @@ Deno.serve(async (req) => {
 
     const procedureName = (ticket.procedure as { name?: string } | null)?.name ?? null;
     const actionLabel = ticket.title?.trim() || procedureName || "Action";
-    const subjectLine = courier?.subject || "(sans objet)";
+    // Courrier confidentiel : son objet ne part ni par courriel ni dans la cloche.
+    const subjectLine = courier?.is_confidential ? CONFIDENTIAL_SUBJECT : courier?.subject || "(sans objet)";
     const siteName = org?.name || "Clara";
     const authorName =
       [caller?.first_name, caller?.last_name].filter(Boolean).join(" ").trim() ||

@@ -59,6 +59,34 @@ Contrairement aux courriers, ce filtre n'est **pas** UI-only : ce sont les donn�
 
 ---
 
+## Courriers confidentiels (2026-10-13)
+
+Un courrier, entrant ou sortant, peut porter `couriers.is_confidential`. Il n'est alors **lisible**
+(fiche, pièces, historique, analyse IA, notes, participants) que par :
+
+- les membres portant l'attribut **`organization_users.can_read_confidential`** — l'attribut seul
+  compte : un administrateur ou un superadmin sans lui ne lit pas ;
+- les viseurs et signataires **désignés** sur le courrier (à l'étape de visa sans viseur désigné : les
+  viseurs de son organisation) ;
+- pour un entrant : les désignés de l'une de ses réponses. Une réponse à un entrant confidentiel
+  l'est d'office.
+
+Les autres membres voient la ligne dans les listes, **masquée** : objet « [courrier confidentiel] »,
+ni expéditeur ni destinataire ; la recherche ne porte que sur la référence ; le détail affiche
+« Courrier confidentiel ».
+
+| Geste | Qui |
+|---|---|
+| Lire | habilité, viseur / signataire désigné |
+| Poser le drapeau | habilité, service courrier (`can_access_mailroom`, administrateurs compris) |
+| Lever le drapeau | habilité seulement |
+| Router un entrant confidentiel sans le lire | service courrier (RPC `route_courier_blind`) |
+| Accorder l'attribut | administrateur (tracé dans `confidential_access_log`) |
+
+Règle unique côté base : `can_read_courier(id)` / `can_read_confidential_courier(...)` ; côté écran,
+`hasConfidentialAccess`, `canSetConfidential`, `canClearConfidential` (`src/lib/permissions.ts`)
+ne décident que de ce qui est PROPOSÉ.
+
 ## Pages publiques (aucune authentification)
 
 | Route | Écran | Notes |

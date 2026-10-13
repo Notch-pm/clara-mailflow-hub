@@ -20,7 +20,21 @@ type CourierRef = {
   assigned_service: string | null;
   socle_organization_id?: string | null;
   metadata: unknown;
+  /** Courrier confidentiel illisible : routé côté serveur, sans lecture (`route_courier_blind`). */
+  blind?: boolean;
 };
+
+/** Routage sans lecture : la base reprend `assignOrganization` pour un courrier qu'on ne peut pas lire. */
+async function routeBlind(courierId: string, org: SocleOrgWithConfig, transfer: boolean) {
+  const { data, error } = await supabase.rpc("route_courier_blind", {
+    p_courier_id: courierId,
+    p_socle_organization_id: org.id,
+    p_transfer: transfer,
+  });
+  if (error) throw error;
+  const result = (data ?? {}) as { name?: string; initial_state_id?: string | null };
+  return { name: result.name ?? org.name, initialStateId: result.initial_state_id ?? null };
+}
 
 /**
  * Notifie une liste d'utilisateurs, sauf l'auteur du geste (comme `new_courier`)
@@ -77,6 +91,8 @@ async function insertRoutingEvent(
 }
 
 function subjectOf(courier: CourierRef): string {
+  // La base masque aussi le titre d'une notification confidentielle ; on ne lui envoie pas l'objet.
+  if (courier.blind) return "Courrier confidentiel";
   return courier.subject?.trim() || "(sans objet)";
 }
 
@@ -96,6 +112,8 @@ export async function routeCourier(
   let result: { name: string; initialStateId: string | null } | null = null;
   if (courier.socle_organization_id === org.id) {
     await insertRoutingEvent(organizationId, courier.id, "courier_routed", { to: org.name });
+  } else if (courier.blind) {
+    result = await routeBlind(courier.id, org, false);
   } else {
     result = await assignOrganization(organizationId, courier, org);
   }
@@ -128,6 +146,11 @@ export async function transferCourier(
   courier: CourierRef,
   targetOrg: SocleOrgWithConfig,
 ): Promise<{ id: string; name: string; initialStateId: string | null }> {
+  if (courier.blind) {
+    const blind = await routeBlind(courier.id, targetOrg, true);
+    await notifyUsers(organizationId, await orgMemberIds(targetOrg.id), "courier_transferred", `Transféré : ${subjectOf(courier)}`, courier.id);
+    return { id: targetOrg.id, ...blind };
+  }
   let initial: { id: string } | null = null;
   if (targetOrg.workflow_id) {
     const { data, error } = await supabase

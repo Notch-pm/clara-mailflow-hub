@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { getMailroomCourier } from "@/services/mailroomService";
+import { getMailroomCourier, type MailroomRow } from "@/services/mailroomService";
 import { enqueueCourierAnalyses } from "@/services/courierAnalysisJobService";
 import { deleteCourier } from "@/services/courierService";
 import { TRASH_RETENTION_DAYS } from "@/lib/trash";
@@ -16,13 +16,13 @@ const INVALIDATED = ["mailroom-couriers", "mailbox-couriers", "instruction-couri
  * l'écran qui le fait (`useMailroomMoves`), une fois la liste relue, pour nommer
  * l'onglet où le courrier s'est rangé. Les erreurs, elles, se disent ici.
  */
-export function useMailroomActions(organizationId: string) {
+export function useMailroomActions(organizationId: string, rowOf?: (courierId: string) => MailroomRow | undefined) {
   const queryClient = useQueryClient();
   const refresh = () => INVALIDATED.forEach((key) => queryClient.invalidateQueries({ queryKey: [key] }));
 
   const route = useMutation({
     mutationFn: async ({ courierId, org }: { courierId: string; org: SocleOrgWithConfig }) => {
-      const courier = await getMailroomCourier(organizationId, courierId);
+      const courier = await getMailroomCourier(organizationId, courierId, rowOf?.(courierId));
       await routeCourier(organizationId, courier, org);
       return org.name;
     },
@@ -32,7 +32,9 @@ export function useMailroomActions(organizationId: string) {
 
   const routeBatch = useMutation({
     mutationFn: async (items: { courierId: string; org: SocleOrgWithConfig }[]) => {
-      const couriers = await Promise.all(items.map((i) => getMailroomCourier(organizationId, i.courierId)));
+      const couriers = await Promise.all(
+        items.map((i) => getMailroomCourier(organizationId, i.courierId, rowOf?.(i.courierId))),
+      );
       return routeCouriers(
         organizationId,
         couriers.map((courier, idx) => ({ courier, org: items[idx].org })),
@@ -51,7 +53,7 @@ export function useMailroomActions(organizationId: string) {
 
   const reassign = useMutation({
     mutationFn: async ({ courierId, org }: { courierId: string; org: SocleOrgWithConfig }) => {
-      const courier = await getMailroomCourier(organizationId, courierId);
+      const courier = await getMailroomCourier(organizationId, courierId, rowOf?.(courierId));
       await transferCourier(organizationId, courier, org);
       return org.name;
     },
@@ -61,7 +63,7 @@ export function useMailroomActions(organizationId: string) {
 
   const remind = useMutation({
     mutationFn: async (courierId: string) => {
-      const courier = await getMailroomCourier(organizationId, courierId);
+      const courier = await getMailroomCourier(organizationId, courierId, rowOf?.(courierId));
       await remindService(organizationId, courier);
       return courier.assigned_service;
     },

@@ -61,9 +61,9 @@ export default function EluUsager() {
   });
 
   const { data: couriers = [] } = useQuery({
-    queryKey: ["contact-couriers", contactId],
-    queryFn: () => listContactCouriers(contactId!),
-    enabled: !!contactId,
+    queryKey: ["contact-couriers", organizationId, contactId],
+    queryFn: () => listContactCouriers(organizationId!, contactId!),
+    enabled: !!contactId && !!organizationId,
     gcTime: 0,
   });
 

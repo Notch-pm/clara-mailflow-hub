@@ -35,6 +35,9 @@ export interface OutboxRow {
   recipient_contact_id: string | null;
   /** Entrée dans l'état courant (à défaut, création du courrier). */
   state_since: string;
+  /** Courrier confidentiel ; illisible pour moi si `can_read` est faux (objet et destinataire masqués). */
+  is_confidential?: boolean;
+  can_read?: boolean;
 }
 
 export async function fetchOutboundCouriers(organizationId: string, since: Date): Promise<OutboxRow[]> {

@@ -10,6 +10,7 @@ import {
   socleOrgIdFor,
 } from "../_shared/socleAi.ts";
 import { assertEditor } from "../_shared/authz.ts";
+import { canReadCourier } from "../_shared/courierAccess.ts";
 import { contactsApiKeyForOrg, fetchContactsApi } from "../_shared/socleContactsClient.ts";
 import {
   buildDraftUserPrompt,
@@ -196,6 +197,12 @@ Deno.serve(async (req) => {
     // Le consultant est en lecture seule : pas de rédaction IA de réponse.
     if (!(await assertEditor(admin, user.id, orgId))) {
       return jsonResponse({ error: "Accès refusé : rôle consultant en lecture seule" }, 403);
+    }
+
+    // Courrier confidentiel : l'assistant ne lit que ce que l'appelant peut lire.
+    const readId = isInitiative ? (payload.outboundId as string | undefined) : courierId;
+    if (readId && !(await canReadCourier(req.headers.get("authorization"), readId))) {
+      return jsonResponse({ error: "Courrier confidentiel : accès refusé" }, 403);
     }
 
     // ⚠️ Ce n'est PAS la clé d'un fournisseur — Clara n'en a plus. C'est le

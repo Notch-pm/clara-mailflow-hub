@@ -80,7 +80,11 @@ export interface CourierListFilters {
 /** Une ligne telle que renvoyée par le RPC (à plat, déjà dénormalisée). */
 export interface CourierListRow {
   id: string;
+  /** « [courrier confidentiel] » quand `can_read` est faux : le serveur masque. */
   subject: string | null;
+  /** Courrier confidentiel ; `can_read` dit si l'utilisateur courant peut l'ouvrir. */
+  is_confidential?: boolean;
+  can_read?: boolean;
   direction: CourierDirection;
   channel: CourierChannel | null;
   chrono: string | null;

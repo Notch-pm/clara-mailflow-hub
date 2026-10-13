@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { DataTable } from "@/components/data-table/data-table";
 import { ListCellDate, ListCellText, ListCellTitle } from "@/components/list/ListCells";
+import { ConfidentialBadge, MaskedSubject } from "@/components/courier/ConfidentialBadge";
 import {
   FilterSection,
   ListActiveFilters,
@@ -130,7 +131,14 @@ export default function Corbeille() {
         cell: ({ row }) => {
           const r = row.original;
           const replies = r.reply_count ? ` · ${r.reply_count} réponse${r.reply_count > 1 ? "s" : ""}` : "";
-          return <ListCellTitle title={r.subject || "Sans objet"} meta={`${r.sender_name || "Expéditeur inconnu"}${replies}`} />;
+          const masked = r.is_confidential && r.can_read === false;
+          return (
+            <ListCellTitle
+              leading={r.is_confidential ? <ConfidentialBadge compact /> : undefined}
+              title={masked ? <MaskedSubject>{r.subject}</MaskedSubject> : r.subject || "Sans objet"}
+              meta={`${masked ? "Expéditeur masqué" : r.sender_name || "Expéditeur inconnu"}${replies}`}
+            />
+          );
         },
         meta: { minWidth: 260 },
       },

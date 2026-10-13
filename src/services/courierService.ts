@@ -63,6 +63,32 @@ export async function createCourier(data: CourierInsert) {
     .single();
 }
 
+/**
+ * Poser ou lever la confidentialité. Par RPC et non par `updateCourier` : pour
+ * le service courrier non habilité, la ligne devenue confidentielle lui est
+ * cachée et l'écriture directe échouerait. Les droits (poser : habilité ou
+ * service courrier ; lever : habilité) sont vérifiés par la base.
+ */
+export async function setCourierConfidential(courierId: string, confidential: boolean): Promise<void> {
+  const { error } = await supabase.rpc("set_courier_confidential", {
+    p_courier_id: courierId,
+    p_confidential: confidential,
+  });
+  if (error) throw error;
+}
+
+export type CourierAccess = "ok" | "confidential" | "missing";
+
+/**
+ * Pourquoi un courrier ne s'ouvre pas : confidentiel (il existe, je n'y ai pas
+ * accès) ou absent. Appelé quand la lecture directe ne rend rien.
+ */
+export async function getCourierAccess(courierId: string): Promise<CourierAccess> {
+  const { data, error } = await supabase.rpc("courier_access", { p_courier_id: courierId });
+  if (error) throw error;
+  return (data as CourierAccess) ?? "missing";
+}
+
 export async function updateCourier(organizationId: string, courierId: string, data: CourierUpdate) {
   return supabase
     .from("couriers")

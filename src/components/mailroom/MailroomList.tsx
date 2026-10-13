@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { LIST_HEADER_SURFACE } from "@/components/list/ListCells";
 import { ListFooter, ListMessage } from "@/components/list/ListPage";
 import { ListScrollArea } from "@/components/list/ListScrollArea";
+import { ConfidentialBadge } from "@/components/courier/ConfidentialBadge";
 import { channelLabels } from "@/hooks/useCourierWorkspace";
 import { cn } from "@/lib/utils";
 import { isLate, MAILROOM_SORTS, MAILROOM_VIEWS, type MailroomItem, type MailroomSort, type MailroomView } from "@/lib/mailroom";
@@ -160,7 +161,17 @@ export default function MailroomList({
                 )}
               >
                 <span className="flex min-w-0 flex-col gap-0.5">
-                  <span className="truncate text-[13.5px] font-semibold text-foreground">{title}</span>
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    {row.is_confidential && <ConfidentialBadge compact />}
+                    <span
+                      className={cn(
+                        "truncate text-[13.5px] font-semibold text-foreground",
+                        row.is_confidential && row.can_read === false && "font-normal italic text-muted-foreground",
+                      )}
+                    >
+                      {title}
+                    </span>
+                  </span>
                   <span className="flex min-w-0 items-center gap-1.5 truncate text-xs text-muted-foreground group-data-[density=compact]/list:hidden">
                     {row.chrono && (
                       <>

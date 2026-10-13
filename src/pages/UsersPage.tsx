@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Search, UserCog, UserX, UserCheck, Pencil, KeyRound, Loader2 } from "lucide-react";
+import { Plus, Search, UserCog, UserX, UserCheck, Pencil, KeyRound, Loader2, Lock } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -225,6 +225,12 @@ export default function UsersPage({ organizationId: propOrgId }: UsersPageProps 
                       {m.is_viseur && (
                         <Badge variant="outline" className="border-primary/40 text-primary">
                           Viseur
+                        </Badge>
+                      )}
+                      {m.can_read_confidential && (
+                        <Badge variant="outline" className="gap-1 border-foreground/30">
+                          <Lock className="h-3 w-3" aria-hidden="true" />
+                          Confidentiel
                         </Badge>
                       )}
                       {m.is_service_courrier && (

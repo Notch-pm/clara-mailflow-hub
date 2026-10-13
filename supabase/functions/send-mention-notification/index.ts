@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import nodemailer from "npm:nodemailer@6";
 import { assertEditor } from "../_shared/authz.ts";
 import { hexOr, renderBrandedEmail } from "../_shared/emailLayout.ts";
+import { CONFIDENTIAL_SUBJECT } from "../_shared/courierAccess.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -67,7 +68,7 @@ Deno.serve(async (req) => {
     // Fetch courier + verify caller membership
     const { data: courier } = await admin
       .from("couriers")
-      .select("id, subject, organization_id")
+      .select("id, subject, organization_id, is_confidential")
       .eq("id", courier_id)
       .single();
     if (!courier) {
@@ -144,7 +145,8 @@ Deno.serve(async (req) => {
     const origin = Deno.env.get("APP_ORIGIN") || req.headers.get("origin") || supabaseUrl.replace(".supabase.co", ".lovableproject.com");
     const link = `${origin}/courrier/${courier.id}`;
     const siteName = org?.name || "Clara";
-    const subjectLine = courier.subject || "(sans objet)";
+    // Courrier confidentiel : son objet ne part pas par courriel.
+    const subjectLine = courier.is_confidential ? CONFIDENTIAL_SUBJECT : courier.subject || "(sans objet)";
 
     const transporter = nodemailer.createTransport({
       host: smtp.host,

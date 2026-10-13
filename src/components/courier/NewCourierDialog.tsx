@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
-import { Check, ChevronLeft, ChevronRight, FileText, FileUp, Loader2, Mic, Plus, Sparkles, Upload, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, FileText, FileUp, Loader2, Lock, Mic, Plus, Sparkles, Upload, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -36,7 +37,8 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { readableTextColor } from "@/lib/tag-color";
 import { useAuth } from "@/contexts/AuthContext";
-import { canEditCouriers } from "@/lib/permissions";
+import { canEditCouriers, canSetConfidential, hasConfidentialAccess } from "@/lib/permissions";
+import { setCourierConfidential } from "@/services/courierService";
 import { findSuggestedOrg } from "@/lib/service-suggestion";
 import { supabase } from "@/integrations/supabase/client";
 import { createCourier } from "@/services/courierService";
@@ -122,6 +124,7 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
   // pourquoi, ou pourquoi elle n'en fait pas. Se taire laissait croire à une panne.
   const [serviceHint, setServiceHint] = useState<{ orgId: string | null; text: string } | null>(null);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [confidential, setConfidential] = useState(false);
   const [tagPopoverGroup, setTagPopoverGroup] = useState<TagGroup | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [bodyText, setBodyText] = useState("");
@@ -151,6 +154,7 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
     setServiceId("");
     setServiceHint(null);
     setSelectedTags([]);
+    setConfidential(false);
     setErrors({});
     setBodyText("");
     setPendingFiles([]);
@@ -359,7 +363,12 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
         });
       }
 
-      return { courierId: courier.id, uploaded, total: pendingFiles.length };
+      // Le drapeau en DERNIER : posé à l'insertion, il cacherait aussitôt le
+      // courrier au service courrier non habilité, et les écritures qui suivent
+      // (participants, pièces) échoueraient.
+      if (confidential) await setCourierConfidential(courier.id, true);
+
+      return { courierId: courier.id, uploaded, total: pendingFiles.length, confidential };
     },
     onSuccess: (res) => {
       // Toutes les listes, « Courrier entrant » comprise : n'invalider que la
@@ -372,7 +381,8 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
         toast.success("Courrier créé");
       }
       onOpenChange(false);
-      if (onCreated) onCreated(res.courierId);
+      // Confidentiel et je ne suis pas habilité : la fiche me serait fermée.
+      if (onCreated && !(res.confidential && !hasConfidentialAccess(membership))) onCreated(res.courierId);
     },
     onError: (err: Error) => {
       if (err.message !== "Veuillez corriger les erreurs du formulaire.") {
@@ -1010,6 +1020,26 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
                     );
                   })}
                 </div>
+
+                {canSetConfidential(profile, membership) && (
+                  <label className="flex cursor-pointer items-start gap-2.5 rounded-md border p-3 text-sm">
+                    <Checkbox
+                      checked={confidential}
+                      onCheckedChange={(v) => setConfidential(v === true)}
+                      className="mt-0.5"
+                    />
+                    <span className="flex flex-col gap-0.5">
+                      <span className="flex items-center gap-1.5 font-semibold">
+                        <Lock className="h-3.5 w-3.5" aria-hidden="true" />
+                        Courrier confidentiel
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        Lisible par les seuls membres habilités, et par les viseurs et signataires désignés
+                        sur ses réponses.
+                      </span>
+                    </span>
+                  </label>
+                )}
 
                 {/* Organisation gestionnaire — en bas de la colonne droite */}
                 <div className="space-y-2">

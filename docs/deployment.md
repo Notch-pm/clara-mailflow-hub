@@ -112,6 +112,14 @@ bunx supabase functions deploy <nom> --project-ref aullweizxcjbvtdspjli
 bun run build && npx wrangler deploy --dry-run
 ```
 
+### Courriers confidentiels (2026-10-13)
+
+| # | Étape | État |
+|---|---|---|
+| 1 | `20261013160000_courriers_confidentiels.sql` (colonnes, `can_read_courier`, politiques de lecture de `couriers` + 11 tables filles, triggers drapeau / notifications, RPC de liste masquées, `route_courier_blind`, `set_courier_confidential`, `contact_couriers`, `create_outbound_courier(+p_is_confidential)`) | **Appliqué via `execute_sql` en blocs** (`apply_migration` répondait « Invalid or expired requestState ») après un essai en transaction annulée ; **ligne de registre posée à la main** pour `20261013160000`. `supabase/tests/courier_confidential.test.sql` : VERDICT OK (12 scénarios) |
+| 2 | Edge functions `storage-documents`, `analyze-courier`, `draft-reply`, `improve-reply`, `send-courier-reply`, `send-assignment-notification`, `send-mention-notification` (`_shared/courierAccess.ts`) | **Déployées** |
+| 3 | Frontend : attribut (utilisateurs), drapeau (fiche, saisie, nouveau sortant, Courrier entrant), listes masquées, détail bloqué, historique contact par RPC | Après 1 et 2 |
+
 ### Écran « Courriers sortants » par état (2026-10-13)
 
 | # | Étape | État |
