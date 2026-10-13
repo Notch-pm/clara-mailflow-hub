@@ -49,3 +49,9 @@ export function issuerBlockReason(org: IssuerCandidate | null | undefined): stri
 
 export const UNSENT_EMAIL_CLOSE_REASON =
   "Ce courriel n'est pas encore parti : envoyez-le avant de le clore (ou abandonnez-le).";
+
+export const UNPOSTED_LETTER_CLOSE_REASON =
+  "Ce courrier n'a pas encore été posté : déclarez-le « posté » avant de le clore (ou abandonnez-le).";
+
+export const POSTED_DATE_REASON =
+  "La date d'envoi ne peut être ni dans le futur, ni antérieure à la création du courrier.";

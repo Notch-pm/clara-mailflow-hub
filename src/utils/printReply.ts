@@ -228,21 +228,22 @@ export function mergeContext(
   };
 }
 
-export function printReply(options: PrintReplyOptions): void {
-  const printWin = window.open("", "_blank", "width=900,height=700");
-  if (!printWin) throw new Error("La fenêtre d'impression a été bloquée par le navigateur. Autorisez les popups pour ce site.");
-
+/**
+ * La lettre telle qu'elle s'imprime : le modèle de l'organisation s'il y en
+ * a un, sinon la mise en page standard. Sert à l'impression ET à l'exemplaire
+ * conservé d'un courrier posté — les deux doivent être la même lettre.
+ */
+export function renderLetterHtml(options: PrintReplyOptions): string {
   const dateStr = formatDate(options.date);
 
   if (options.templateHtml) {
     const compiled = Handlebars.compile(options.templateHtml);
     const merged = compiled(mergeContext(options, dateStr));
-    openAndPrint(printWin, withPrintCss(merged, SIGNATURE_PRINT_CSS));
-    return;
+    return withPrintCss(merged, SIGNATURE_PRINT_CSS);
   }
 
   // Standard layout (no template)
-  openAndPrint(printWin, `<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="utf-8">
@@ -265,5 +266,11 @@ export function printReply(options: PrintReplyOptions): void {
   ${options.subject ? `<div class="letter-subject">Objet : ${escape(options.subject)}</div>` : ""}
   <div class="letter-body">${options.bodyHtml}</div>
 </body>
-</html>`);
+</html>`;
+}
+
+export function printReply(options: PrintReplyOptions): void {
+  const printWin = window.open("", "_blank", "width=900,height=700");
+  if (!printWin) throw new Error("La fenêtre d'impression a été bloquée par le navigateur. Autorisez les popups pour ce site.");
+  openAndPrint(printWin, renderLetterHtml(options));
 }

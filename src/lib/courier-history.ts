@@ -31,6 +31,7 @@ export const COURIER_EVENT_LABELS: Record<string, string> = {
   reply_email_failed: "Échec de l'envoi du courriel",
   outbound_created: "Courrier créé",
   outbound_ai_drafted: "Texte proposé par l'assistant",
+  outbound_posted: "Courrier posté",
   outbound_recipient_changed: "Destinataire modifié",
   outbound_channel_changed: "Mode d'envoi modifié",
   outbound_org_changed: "Organisation émettrice modifiée",
@@ -126,6 +127,9 @@ export function describeCourierEvent(
       break;
     case "reply_email_failed":
       detail = p.reason ?? null;
+      break;
+    case "outbound_posted":
+      detail = p.posted_on ? `le ${new Date(p.posted_on).toLocaleDateString("fr-FR")}` : null;
       break;
     case "outbound_created":
       detail = [p.organization_name ? `Par ${p.organization_name}` : null, p.recipient_name ? `à ${p.recipient_name}` : null]

@@ -27,6 +27,41 @@ export async function listOutboundKinds(
   );
 }
 
+/**
+ * Déclare un courrier postal « posté » le jour donné (AAAA-MM-JJ), avec
+ * l'exemplaire conservé. La base refuse une date future ou antérieure à la
+ * création, une seconde déclaration, un courrier qui n'est pas postal, et
+ * fixe elle-même `sent_at` à ce jour.
+ */
+export async function markOutboundPosted(args: {
+  organizationId: string;
+  outboundId: string;
+  postedOn: string;
+  postedBy: string;
+  documentId: string | null;
+}): Promise<void> {
+  const { data: existing, error: fErr } = await supabase
+    .from("couriers")
+    .select("metadata")
+    .eq("id", args.outboundId)
+    .eq("organization_id", args.organizationId)
+    .single();
+  if (fErr) throw fErr;
+  const meta = ((existing as { metadata: Record<string, unknown> | null }).metadata) ?? {};
+  const { error } = await supabase
+    .from("couriers")
+    .update({
+      metadata: { ...meta, posted_at: args.postedOn, posted_by: args.postedBy, posted_document_id: args.documentId },
+    } as never)
+    .eq("id", args.outboundId)
+    .eq("organization_id", args.organizationId);
+  if (error) throw error;
+  await logEvent(args.organizationId, args.outboundId, "outbound_posted", {
+    reply_id: args.outboundId,
+    posted_on: args.postedOn,
+  });
+}
+
 /** Instantané d'une fiche du référentiel, tel que le participant le garde. */
 export function recipientSnapshot(contact: SocleContact) {
   const lines = addressLines(contact);

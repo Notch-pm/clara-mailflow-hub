@@ -16,6 +16,8 @@
 > d'un courriel non parti refusée. Les PJ restent réservées aux courriers à l'initiative.
 > **Lot 3 livré le 2026-10-13** : assistant sur consigne (mode `initiative` de `draft-reply`), lit le
 > brouillon de l'éditeur et les courriers liés, jamais les notes internes.
+> **Lot 4 livré le 2026-10-13** : « Imprimer et marquer posté » (date déclarée, exemplaire HTML
+> conservé, `sent_at` fixé par la base). La garde de clôture couvre désormais courriel ET courrier.
 > Écart au plan : pas de hook `useOutboundComposer` séparé — l'éditeur porte son état ; à
 > extraire au lot 1 seulement si `InitiativeComposer` en a besoin.
 

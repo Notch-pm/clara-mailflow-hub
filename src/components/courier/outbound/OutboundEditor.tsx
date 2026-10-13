@@ -52,7 +52,10 @@ import { isContentFrozenByVisa, isFreeExitFromVisa } from "@/lib/reply-visa";
 import { Input } from "@/components/ui/input";
 import { appendSignature, buildSignatureBlock } from "@/lib/reply-signature";
 import { useAuth } from "@/contexts/AuthContext";
-import { printReply, buildContactBlock } from "@/utils/printReply";
+import { printReply, buildContactBlock, renderLetterHtml } from "@/utils/printReply";
+import { storage } from "@/services/storageService";
+import { markOutboundPosted } from "@/services/outboundCourierService";
+import { postalBlocker, type OutboundRecipientInfo } from "@/lib/outbound-channel";
 import { getOrgHtmlTemplate } from "@/services/templateService";
 import { draftOutbound, draftReply, improveReply } from "@/services/courierDraftService";
 import {
@@ -131,6 +134,8 @@ export interface OutboundEditorProps {
   /** Après chaque écriture : le conteneur relit le sortant. */
   onChanged: () => void;
   onStateChange?: (state: { name: string; category: string | null } | null) => void;
+  /** Adresse postale du destinataire (courrier à l'initiative) : exigée pour déclarer « posté ». */
+  recipientPostal?: OutboundRecipientInfo | null;
 }
 
 /** Le vocabulaire de l'éditeur : une réponse, ou un courrier qui ne répond à rien. */
@@ -187,6 +192,7 @@ export function OutboundEditor({
   onCreated,
   onChanged,
   onStateChange,
+  recipientPostal = null,
 }: OutboundEditorProps) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -349,6 +355,12 @@ export function OutboundEditor({
 
   const isSigned = !!replyMeta.signed_at;
   const isSent = !!replyMeta.sent_email_at;
+  // Courrier postal à l'initiative : déclaré « posté » à une date choisie.
+  const postedOn = (reply?.metadata as { posted_at?: string | null } | null)?.posted_at ?? null;
+  const isPosted = !!postedOn;
+  const postBlocker = postalBlocker(recipientPostal);
+  const hasSendStep = !!workflow?.states.some((s) => s.is_send);
+  const canDeclarePosted = kind === "initiative" && !!reply && !isPosted;
   const isFinal = currentState?.category === "processed" || currentState?.is_final === true;
   const isSignatureState = currentState?.requires_signature === true;
   const isSendState = currentState?.is_send === true;
@@ -589,7 +601,60 @@ export function OutboundEditor({
     },
   });
 
-  const isBusy = saveDraft.isPending || doUnsign.isPending ||
+  const todayIso = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+  const [postDialog, setPostDialog] = useState<{ advance: boolean } | null>(null);
+  const [postDate, setPostDate] = useState<string>(todayIso());
+
+  /** La lettre telle qu'elle part : le modèle de l'organisation s'il existe. */
+  async function letterHtml(): Promise<string> {
+    if (hasTemplate) {
+      const { html } = await getOrgHtmlTemplate(organizationId);
+      const { content, signature } = splitSignatureBlock(body);
+      return renderLetterHtml({ ...printArgs, bodyHtml: content, signatureHtml: signature, templateHtml: html });
+    }
+    return renderLetterHtml({ ...printArgs });
+  }
+
+  // Imprimer, mettre sous pli, puis déclarer « posté » : l'exemplaire conservé
+  // est la lettre telle qu'elle est partie.
+  const doPost = useMutation({
+    mutationFn: async (args: { advance: boolean; postedOn: string }) => {
+      if (!reply) throw new Error("Aucun courrier.");
+      if (postBlocker) throw new Error(postBlocker);
+      if (dirty) await ensureReply();
+      const html = await letterHtml();
+      const file = new File([html], `exemplaire posté le ${args.postedOn}.html`, { type: "text/html" });
+      const doc = await storage.upload(organizationId, reply.id, file, "response");
+      await markOutboundPosted({
+        organizationId,
+        outboundId: reply.id,
+        postedOn: args.postedOn,
+        postedBy: currentUserId!,
+        documentId: doc.id,
+      });
+      if (args.advance && nextForward) {
+        await transitionReplyState(
+          organizationId, anchor(reply.id), reply.id,
+          nextForward.target.id, nextForward.target.name, nextForward.target.category,
+        );
+      }
+    },
+    onSuccess: (_, args) => {
+      setPostDialog(null);
+      setDirty(false);
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ["courier-documents"] });
+      queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
+      onChanged();
+      toast.success(`Courrier déclaré posté le ${new Date(args.postedOn).toLocaleDateString("fr-FR")}`);
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const isBusy = doPost.isPending || saveDraft.isPending || doUnsign.isPending ||
     doTransition.isPending || isPrintingWithTemplate ||
     doSignAndAdvance.isPending || doSendAndAdvance.isPending || isImproving ||
     setViseur.isPending || doVisaAndAdvance.isPending;
@@ -812,7 +877,10 @@ export function OutboundEditor({
     const nextRequiresVisa = !!nextEntry && isVisaState && !activeVisa;
     const nextRequiresSign = !!nextEntry && isSignatureState && !isSigned;
     const nextRequiresSend = !!nextEntry && isSendState && !isSent && channel === "email";
-    const nextDisabledReason = nextRequiresVisa
+    const nextRequiresPost = !!nextEntry && isSendState && channel === "paper" && canDeclarePosted;
+    const nextDisabledReason = nextRequiresPost
+      ? postBlocker
+      : nextRequiresVisa
       ? (!currentUserIsViseur ? "Vous n'êtes pas viseur de cette organisation." : null)
       : nextRequiresSign
       ? (!currentUserIsSignatory
@@ -826,6 +894,11 @@ export function OutboundEditor({
 
     const onClickNext = () => {
       if (!nextEntry) return;
+      if (nextRequiresPost) {
+        setPostDate(todayIso());
+        setPostDialog({ advance: true });
+        return;
+      }
       if (nextRequiresVisa) {
         doVisaAndAdvance.mutate();
         return;
@@ -847,7 +920,9 @@ export function OutboundEditor({
     };
 
     const nextLabel = nextEntry
-      ? (nextRequiresVisa
+      ? (nextRequiresPost
+          ? "Imprimer et marquer posté"
+          : nextRequiresVisa
           ? approvalLabel("visa", nextEntry.transition.name || nextEntry.target.name)
           : nextRequiresSign
           ? approvalLabel("sign", nextEntry.transition.name || nextEntry.target.name)
@@ -856,7 +931,9 @@ export function OutboundEditor({
             : (nextEntry.transition.name || nextEntry.target.name))
       : "";
 
-    const nextIcon = nextRequiresVisa
+    const nextIcon = nextRequiresPost
+      ? <Printer className="h-3.5 w-3.5" />
+      : nextRequiresVisa
       ? <Stamp className="h-3.5 w-3.5" />
       : nextRequiresSign
       ? <PenLine className="h-3.5 w-3.5" />
@@ -1087,6 +1164,26 @@ export function OutboundEditor({
               <PenLine className="h-3 w-3" />Signée
             </Badge>
           )}
+          {/* Sans étape d'envoi dans le workflow, la déclaration se fait d'ici. */}
+          {canDeclarePosted && channel === "paper" && !hasSendStep && !isFinal && !readOnly &&
+            renderMaybeTooltip(
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5"
+                disabled={isBusy || !!postBlocker}
+                onClick={() => { setPostDate(todayIso()); setPostDialog({ advance: false }); }}
+              >
+                <Printer className="h-4 w-4" />Marquer posté
+              </Button>,
+              postBlocker,
+              "post-btn",
+            )}
+          {isPosted && (
+            <Badge variant="secondary" className="gap-1 bg-emerald-100 text-emerald-700 border-emerald-200">
+              Posté le {new Date(postedOn!).toLocaleDateString("fr-FR")}
+            </Badge>
+          )}
           {isSent && (
             <Badge variant="secondary" className="gap-1 bg-emerald-100 text-emerald-700 border-emerald-200">
               Envoyé
@@ -1169,6 +1266,44 @@ export function OutboundEditor({
           <AlertDialogFooter>
             <AlertDialogCancel>Garder mon texte</AlertDialogCancel>
             <AlertDialogAction onClick={() => void runInitiativeDraft()}>Remplacer</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!postDialog} onOpenChange={(o) => !o && !doPost.isPending && setPostDialog(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Imprimer et marquer posté</AlertDialogTitle>
+            <AlertDialogDescription>
+              Imprimez la lettre, mettez-la sous pli, puis confirmez la date à laquelle elle part. Un exemplaire de la lettre
+              est conservé dans les documents du courrier ; la déclaration ne se modifie plus ensuite.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-3">
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => void handlePrintPdf(hasTemplate)}>
+              <Printer className="h-4 w-4" />Imprimer la lettre
+            </Button>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="posted-on" className="text-sm">Posté le</Label>
+              <Input
+                id="posted-on"
+                type="date"
+                value={postDate}
+                max={todayIso()}
+                min={reply?.created_at?.slice(0, 10)}
+                onChange={(e) => setPostDate(e.target.value)}
+                className="h-9 w-[170px]"
+              />
+            </div>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={doPost.isPending}>Annuler</AlertDialogCancel>
+            <Button
+              disabled={doPost.isPending || !postDate}
+              onClick={() => postDialog && doPost.mutate({ advance: postDialog.advance, postedOn: postDate })}
+            >
+              {doPost.isPending ? "Enregistrement…" : "Confirmer l'envoi"}
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

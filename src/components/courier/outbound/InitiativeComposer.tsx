@@ -88,6 +88,17 @@ export function InitiativeComposer({ organizationId, courier, readOnly, onStateC
     staleTime: 60_000,
   });
   const recipientEmail = recipient?.email?.trim() || recipientContact?.email?.trim() || null;
+  // Adresse postale : la fiche du référentiel si elle répond, sinon
+  // l'instantané pris à la création (`courier_participants.metadata`).
+  const snapshot = ((recipient as { metadata?: Record<string, string | null> | null } | null)?.metadata ?? {}) as Record<
+    string,
+    string | null
+  >;
+  const recipientPostal = recipientContact ?? {
+    address_line1: snapshot.address_line1 ?? null,
+    postal_code: snapshot.postal_code ?? null,
+    city: snapshot.city ?? null,
+  };
 
   const meta = record.metadata ?? {};
   const state = workflow?.states.find((s) => s.id === courier.workflow_state_id) ?? null;
@@ -221,6 +232,7 @@ export function InitiativeComposer({ organizationId, courier, readOnly, onStateC
         readOnly={readOnly}
         onChanged={refresh}
         onStateChange={onStateChange}
+        recipientPostal={recipientPostal}
       />
     </div>
   );

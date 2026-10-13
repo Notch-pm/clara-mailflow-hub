@@ -112,6 +112,13 @@ bunx supabase functions deploy <nom> --project-ref aullweizxcjbvtdspjli
 bun run build && npx wrangler deploy --dry-run
 ```
 
+### Lot « courriers sortants à l'initiative, lot 4 : envoi postal » (2026-10-13) — appliqué le 2026-10-13
+
+| # | Étape | État |
+|---|---|---|
+| 1 | `20261013150000_sortants_poste.sql` (trigger aussi sur `metadata` : `posted_at` sur un courrier postal seulement, date ni future ni antérieure à la création, immuable, fixe `sent_at` ; pas de clôture `processed` d'un courrier postal non posté) | **Appliqué via `execute_sql` en deux appels** (`apply_migration` puis un `execute_sql` d'un bloc répondaient « Invalid or expired requestState ») ; **ligne de registre posée à la main** pour `20261013150000`. Le corps en base est le même code, mis en forme plus compacte. `supabase/tests/outbound_posted.test.sql` : VERDICT OK (9 scénarios) |
+| 2 | Frontend : « Imprimer et marquer posté » (à l'étape d'envoi, ou bouton « Marquer posté » si le workflow n'en a pas), exemplaire HTML de la lettre déposé dans les documents (`renderLetterHtml`, type `response`), badge « Posté le » | **Fait**. Vérifié sur [TEST] Alpha : exemplaire déposé et lié (`posted_document_id`), `sent_at` = jour déclaré, événement `outbound_posted` |
+
 ### Lot « courriers sortants à l'initiative, lot 3 : assistant sur consigne » (2026-10-13) — déployé le 2026-10-13
 
 | # | Étape | État |
