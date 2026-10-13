@@ -26,6 +26,9 @@ import { getOrgMembers } from "@/services/userService";
 import { createTask, sendTaskMail, type TaskAssignee } from "@/services/actionTicketService";
 import { logEvent } from "@/services/courierEventService";
 import { isValidTaskEmail } from "@/lib/action-task";
+import ContactPicker, { contactDisplay } from "./ContactPicker";
+import { CONTACT_CATEGORIES } from "@/lib/contact-categories";
+import type { SocleContact } from "@/services/socleContactService";
 
 interface Props {
   open: boolean;
@@ -36,7 +39,7 @@ interface Props {
   initialTitle?: string | null;
 }
 
-type AssigneeMode = "membre" | "adresse";
+type AssigneeMode = "membre" | "contact" | "adresse";
 
 const TITLE_MAX = 200;
 
@@ -59,6 +62,7 @@ export default function CreateTaskDialog({
   const [memberId, setMemberId] = useState("");
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
+  const [contact, setContact] = useState<SocleContact | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -68,6 +72,7 @@ export default function CreateTaskDialog({
     setMemberId("");
     setEmail("");
     setName("");
+    setContact(null);
   }, [open, initialTitle]);
 
   const { data: members = [], isLoading: loadingMembers } = useQuery({
@@ -93,8 +98,15 @@ export default function CreateTaskDialog({
       const m = activeMembers.find((x) => x.id === memberId);
       return m ? { userId: m.id, email: m.email, name: m.label } : null;
     }
+    if (mode === "contact") {
+      // L'adresse et le nom viennent de la fiche ; sans adresse valide, pas de tâche.
+      const contactEmail = contact?.email?.trim() ?? "";
+      return contact && isValidTaskEmail(contactEmail)
+        ? { userId: null, email: contactEmail, name: contactDisplay(contact), socleContactId: contact.id }
+        : null;
+    }
     return isValidTaskEmail(email) ? { userId: null, email: email.trim(), name: name.trim() || null } : null;
-  }, [mode, activeMembers, memberId, email, name]);
+  }, [mode, activeMembers, memberId, email, name, contact]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -127,6 +139,7 @@ export default function CreateTaskDialog({
   });
 
   const emailInvalid = mode === "adresse" && email.trim() !== "" && !isValidTaskEmail(email);
+  const contactWithoutEmail = mode === "contact" && !!contact && !isValidTaskEmail(contact.email?.trim() ?? "");
   const canSubmit = !saveMutation.isPending && title.trim() !== "" && !!assignee;
 
   return (
@@ -179,6 +192,7 @@ export default function CreateTaskDialog({
               variant="outline"
             >
               <ToggleGroupItem value="membre">Utilisateur de Clara</ToggleGroupItem>
+              <ToggleGroupItem value="contact">Interne / Élu</ToggleGroupItem>
               <ToggleGroupItem value="adresse">Autre adresse mail</ToggleGroupItem>
             </ToggleGroup>
 
@@ -198,6 +212,25 @@ export default function CreateTaskDialog({
                   ))}
                 </SelectContent>
               </Select>
+            ) : mode === "contact" ? (
+              <div className="space-y-1">
+                <ContactPicker
+                  organizationId={organizationId}
+                  value={contact}
+                  onChange={setContact}
+                  roles={[...CONTACT_CATEGORIES]}
+                  requireEmail
+                  placeholder="Choisir un contact interne ou un élu…"
+                />
+                {contactWithoutEmail && (
+                  <p className="text-[11px] text-destructive">
+                    Ce contact n'a pas d'adresse mail valide : complétez sa fiche pour lui affecter la tâche.
+                  </p>
+                )}
+                {contact && !contactWithoutEmail && (
+                  <p className="text-[11px] text-muted-foreground">Le mail partira à {contact.email}.</p>
+                )}
+              </div>
             ) : (
               <div className="grid gap-2 sm:grid-cols-2">
                 <div className="space-y-1">

@@ -10,11 +10,20 @@ import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import {
   createContact,
   listContacts,
+  resolveCategoryRoleIds,
   SOCLE_CONTACT_TYPE_LABELS,
+  updateContact,
   type SocleContact,
   type SocleContactCivility,
   type SocleContactType,
 } from "@/services/socleContactService";
+import {
+  CONTACT_CATEGORY_LABELS,
+  contactCategories,
+  matchesCategories,
+  type ContactCategory,
+} from "@/lib/contact-categories";
+import { ContactCategoryBadges } from "@/components/contacts/ContactCategoryBadge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -54,6 +63,19 @@ interface Props {
    * sortant envoyé par la poste, une fiche sans adresse ne sert à rien.
    */
   withAddress?: boolean;
+  /**
+   * Restreint aux catégories Interne / Élus (rôles codés du référentiel) —
+   * recherche ET création rapide, qui pose alors le rôle choisi. Implique
+   * `types=["personne"]`.
+   */
+  roles?: ContactCategory[];
+  /**
+   * L'adresse mail est indispensable (destinataire d'une tâche) : obligatoire à
+   * la création rapide, signalée sur les fiches qui n'en ont pas.
+   */
+  requireEmail?: boolean;
+  /** Texte du déclencheur quand rien n'est choisi (défaut : « Sélectionner un contact… »). */
+  placeholder?: string;
 }
 
 /**
@@ -65,13 +87,19 @@ export default function ContactPicker({
   organizationId,
   value,
   onChange,
-  types,
+  types: typesProp,
   disabled,
   fallbackLabel,
   triggerClassName,
   showTypeBadge = true,
   withAddress = false,
+  roles,
+  requireEmail = false,
+  placeholder = "Sélectionner un contact…",
 }: Props) {
+  const categoryMode = !!roles && roles.length > 0;
+  // Une catégorie (Interne, Élu) ne se porte que par une personne.
+  const types: SocleContactType[] | undefined = categoryMode ? ["personne"] : typesProp;
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -84,7 +112,14 @@ export default function ContactPicker({
   );
 
   const { data: contacts = [], isLoading } = useQuery({
-    queryKey: ["socle-contacts", organizationId, "picker", debouncedSearch, types?.join(",") ?? "all"],
+    queryKey: [
+      "socle-contacts",
+      organizationId,
+      "picker",
+      debouncedSearch,
+      types?.join(",") ?? "all",
+      roles?.join(",") ?? "",
+    ],
     queryFn: async () => {
       const filters = {
         search: debouncedSearch || undefined,
@@ -92,6 +127,7 @@ export default function ContactPicker({
         limit: 50,
         // L'API ne filtre que sur UN type : au-delà, on filtre côté client.
         ...(types?.length === 1 ? { type: types[0] } : {}),
+        ...(categoryMode ? { roles } : {}),
       };
       const list = await listContacts(organizationId, filters);
       return types && types.length > 1 ? list.filter((c) => types.includes(c.contact_type)) : list;
@@ -111,10 +147,12 @@ export default function ContactPicker({
   const [c_line2, setCLine2] = useState("");
   const [c_postal, setCPostal] = useState("");
   const [c_city, setCCity] = useState("");
+  const [c_category, setCCategory] = useState<ContactCategory | "">(roles?.length === 1 ? roles[0] : "");
   const [creating, setCreating] = useState(false);
 
   function resetCreate() {
     setCType(defaultType);
+    setCCategory(roles?.length === 1 ? roles[0] : "");
     setCCiv("");
     setCFirst("");
     setCLast("");
@@ -126,7 +164,51 @@ export default function ContactPicker({
     setCCity("");
   }
 
+  /** Identifiant du rôle de la catégorie — erreur explicite s'il manque au catalogue. */
+  async function categoryRoleId(category: ContactCategory): Promise<string> {
+    const ids = await resolveCategoryRoleIds(organizationId);
+    const id = ids[category];
+    if (!id) {
+      throw new Error(`Rôle « ${CONTACT_CATEGORY_LABELS[category]} » absent du référentiel de l'organisation.`);
+    }
+    return id;
+  }
+
+  /**
+   * Fiche existante choisie depuis l'alerte de doublons : en mode catégorie, on
+   * lui ajoute le rôle si elle ne le porte pas (les autres rôles sont gardés —
+   * le référentiel remplace l'ensemble).
+   */
+  async function selectExisting(contact: SocleContact) {
+    let chosen = contact;
+    if (categoryMode && !matchesCategories(contact, roles)) {
+      const category = c_category || roles![0];
+      try {
+        const roleId = await categoryRoleId(category);
+        chosen = await updateContact(organizationId, contact.id, {
+          role_ids: [...new Set([...(contact.roles ?? []).map((r) => r.id), roleId])],
+        });
+        qc.invalidateQueries({ queryKey: ["socle-contacts"] });
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Impossible d'ajouter le rôle au contact");
+        return;
+      }
+    }
+    onChange(chosen);
+    setCreateOpen(false);
+    resetCreate();
+    toast.success("Contact existant sélectionné");
+  }
+
   async function handleCreate() {
+    if (categoryMode && !c_category) {
+      toast.error("Choisissez la catégorie du contact");
+      return;
+    }
+    if (requireEmail && !c_email.trim()) {
+      toast.error("L'adresse mail est obligatoire");
+      return;
+    }
     if (c_type === "personne") {
       if (!c_civ || !c_first.trim() || !c_last.trim()) {
         toast.error("Civilité, prénom et nom obligatoires pour une personne");
@@ -138,7 +220,9 @@ export default function ContactPicker({
     }
     setCreating(true);
     try {
+      const roleIds = categoryMode && c_category ? [await categoryRoleId(c_category)] : undefined;
       const contact = await createContact(organizationId, {
+        ...(roleIds ? { role_ids: roleIds } : {}),
         contact_type: c_type,
         civility: c_type === "personne" ? (c_civ || null) : null,
         first_name: c_type === "personne" ? c_first.trim() || null : null,
@@ -181,17 +265,18 @@ export default function ContactPicker({
           >
             {value ? (
               <span className="flex items-center gap-2 truncate">
-                {showTypeBadge && (
+                {showTypeBadge && !categoryMode && (
                   <Badge variant="secondary" className="shrink-0">
                     {SOCLE_CONTACT_TYPE_LABELS[value.contact_type]}
                   </Badge>
                 )}
                 <span className="truncate">{contactDisplay(value)}</span>
+                {categoryMode && <ContactCategoryBadges contact={value} className="shrink-0" />}
               </span>
             ) : fallbackLabel ? (
               <span className="truncate">{fallbackLabel}</span>
             ) : (
-              <span className="text-muted-foreground">Sélectionner un contact…</span>
+              <span className="text-muted-foreground">{placeholder}</span>
             )}
             <ChevronsUpDown className="h-4 w-4 opacity-50 shrink-0 ml-2" />
           </Button>
@@ -238,11 +323,18 @@ export default function ContactPicker({
                         tronquent en se disputant la largeur. */}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <Badge variant="secondary" className="shrink-0">
-                          {SOCLE_CONTACT_TYPE_LABELS[c.contact_type]}
-                        </Badge>
+                        {categoryMode ? (
+                          <ContactCategoryBadges contact={c} className="shrink-0" />
+                        ) : (
+                          <Badge variant="secondary" className="shrink-0">
+                            {SOCLE_CONTACT_TYPE_LABELS[c.contact_type]}
+                          </Badge>
+                        )}
                         <span className="truncate">{contactDisplay(c)}</span>
                       </div>
+                      {requireEmail && !c.email && (
+                        <div className="truncate text-xs text-destructive">Pas d'adresse mail sur la fiche</div>
+                      )}
                       {c.email && (
                         // Sur la ligne active, le fond passe en accent : un gris
                         // « muted » y devient illisible.
@@ -282,14 +374,22 @@ export default function ContactPicker({
                 email: c_email,
                 mobile_phone: c_phone,
               }}
-              onSelect={(contact) => {
-                onChange(contact);
-                setCreateOpen(false);
-                resetCreate();
-                toast.success("Contact existant sélectionné");
-              }}
+              onSelect={(contact) => { void selectExisting(contact); }}
             />
-            <div className="space-y-2">
+            {categoryMode && (
+              <div className="space-y-2">
+                <Label>Catégorie *</Label>
+                <Select value={c_category || undefined} onValueChange={(v) => setCCategory(v as ContactCategory)}>
+                  <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+                  <SelectContent>
+                    {roles!.map((c) => (
+                      <SelectItem key={c} value={c}>{CONTACT_CATEGORY_LABELS[c]}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className={cn("space-y-2", categoryMode && "hidden")}>
               <Label>Type *</Label>
               <Select value={c_type} onValueChange={(v) => setCType(v as SocleContactType)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -324,7 +424,7 @@ export default function ContactPicker({
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label>Email</Label>
+                <Label>{requireEmail ? "Email *" : "Email"}</Label>
                 <Input type="email" value={c_email} onChange={(e) => setCEmail(e.target.value)} />
               </div>
               <div className="space-y-2">

@@ -84,6 +84,14 @@ import {
 import { listContactCouriers, type ContactCourier } from "@/services/courierParticipantService";
 import { ConfidentialBadge } from "@/components/courier/ConfidentialBadge";
 import ContactPicker from "@/components/courier/ContactPicker";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ContactCategoryBadges } from "@/components/contacts/ContactCategoryBadge";
+import {
+  CONTACT_CATEGORIES,
+  CONTACT_CATEGORY_PLURAL_LABELS,
+  roleCategory,
+  type ContactCategory,
+} from "@/lib/contact-categories";
 
 /**
  * Annuaire des contacts — données servies par le référentiel Socle (source de
@@ -217,9 +225,42 @@ function ContactFormDialog({ organizationId, contact, open, onOpenChange, onSave
   const contactType = values.contact_type;
   const isPerson = contactType === "personne";
 
+  // Rôles : hors du schéma zod, car le référentiel REMPLACE l'ensemble — on
+  // n'envoie `role_ids` que si l'agent y a touché ET que le catalogue est
+  // chargé, pour ne jamais effacer les rôles d'une fiche par mégarde.
+  const rolesQuery = useQuery({
+    queryKey: ["socle-contact-roles", organizationId],
+    queryFn: () => listContactRoles(organizationId),
+    enabled: open && !!organizationId,
+    staleTime: 5 * 60_000,
+  });
+  const initialRoleIds = useMemo(() => (contact?.roles ?? []).map((r) => r.id), [contact]);
+  const [roleIds, setRoleIds] = useState<string[] | null>(null);
+  const currentRoleIds = roleIds ?? initialRoleIds;
+  // Catégories Interne / Élu en tête, puis le reste du catalogue par nom.
+  const roleOptions = useMemo(() => {
+    const rank = (r: { name: string; code?: string | null }) => {
+      const c = roleCategory(r);
+      return c ? CONTACT_CATEGORIES.indexOf(c) : CONTACT_CATEGORIES.length;
+    };
+    return [...(rolesQuery.data ?? [])].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
+  }, [rolesQuery.data]);
+
+  function toggleRole(id: string, checked: boolean) {
+    setRoleIds((cur) => {
+      const base = cur ?? initialRoleIds;
+      return checked ? [...new Set([...base, id])] : base.filter((x) => x !== id);
+    });
+  }
+
   const mutation = useMutation({
     mutationFn: async (values: FormValues) => {
       const payload = formValuesToPayload(values);
+      const rolesChanged =
+        rolesQuery.isSuccess &&
+        roleIds !== null &&
+        (roleIds.length !== initialRoleIds.length || roleIds.some((id) => !initialRoleIds.includes(id)));
+      if (rolesChanged) payload.role_ids = roleIds;
       if (isEdit) {
         // contact_type est immuable côté Socle : on ne l'envoie pas en PATCH.
         const { contact_type: _omit, ...patch } = payload;
@@ -229,6 +270,7 @@ function ContactFormDialog({ organizationId, contact, open, onOpenChange, onSave
     },
     onSuccess: (saved) => {
       toast.success(isEdit ? "Contact mis à jour dans le référentiel" : "Contact créé dans le référentiel");
+      setRoleIds(null);
       onOpenChange(false);
       onSaved(saved);
     },
@@ -238,7 +280,7 @@ function ContactFormDialog({ organizationId, contact, open, onOpenChange, onSave
   });
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(o) => { if (!o) setRoleIds(null); onOpenChange(o); }}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Modifier le contact" : "Nouveau contact"}</DialogTitle>
@@ -487,6 +529,33 @@ function ContactFormDialog({ organizationId, contact, open, onOpenChange, onSave
                   </FormItem>
                 )}
               />
+            </div>
+
+            <div className="space-y-2">
+              <div className="text-sm font-medium">Rôles</div>
+              <p className="text-xs text-muted-foreground">
+                « Interne » (agents et services de la collectivité) et « Élu » font du contact un
+                destinataire possible des courriers reçus et des tâches, et un expéditeur des courriers sortants.
+              </p>
+              {rolesQuery.isLoading && <p className="text-xs text-muted-foreground">Chargement des rôles…</p>}
+              {rolesQuery.isError && (
+                <p className="text-xs text-destructive">Rôles indisponibles : ils ne seront pas modifiés.</p>
+              )}
+              <div className="flex flex-wrap gap-x-4 gap-y-2">
+                {roleOptions.map((role) => {
+                  const id = `role-${role.id}`;
+                  return (
+                    <label key={role.id} htmlFor={id} className="flex items-center gap-2 text-sm cursor-pointer">
+                      <Checkbox
+                        id={id}
+                        checked={currentRoleIds.includes(role.id)}
+                        onCheckedChange={(v) => toggleRole(role.id, v === true)}
+                      />
+                      <span className={cn(roleCategory(role) && "font-medium")}>{role.name}</span>
+                    </label>
+                  );
+                })}
+              </div>
             </div>
 
             <FormField
@@ -794,6 +863,7 @@ function ContactDetail({ contactId }: { contactId: string }) {
                 <TypeIcon className="h-6 w-6 text-muted-foreground" />
                 <CardTitle className="text-xl">{contact.display_name || "—"}</CardTitle>
                 <Badge variant="secondary">{SOCLE_CONTACT_TYPE_LABELS[contact.contact_type]}</Badge>
+                <ContactCategoryBadges contact={contact} />
                 {contact.status === "archived" && <Badge variant="destructive">Archivé</Badge>}
                 <Badge variant="outline" className="ml-auto">Contact référentiel</Badge>
               </div>
@@ -966,6 +1036,7 @@ function ContactsList() {
   const debouncedSearch = useDebouncedValue(search, 300);
   const [typeFilter, setTypeFilter] = useState<SocleContactType | "all">("all");
   const [statusFilter, setStatusFilter] = useState<"active" | "archived" | "all">("active");
+  const [categoryFilter, setCategoryFilter] = useState<ContactCategory[]>([]);
   const [page, setPage] = useState(0);
   const [createOpen, setCreateOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -976,8 +1047,9 @@ function ContactsList() {
       search: debouncedSearch || undefined,
       type: typeFilter === "all" ? undefined : typeFilter,
       status: statusFilter === "all" ? undefined : statusFilter,
+      roles: categoryFilter.length > 0 ? categoryFilter : undefined,
     }),
-    [debouncedSearch, typeFilter, statusFilter],
+    [debouncedSearch, typeFilter, statusFilter, categoryFilter],
   );
 
   // On demande PAGE_SIZE + 1 pour savoir s'il existe une page suivante, sans
@@ -1012,6 +1084,7 @@ function ContactsList() {
         { header: "Code postal", accessor: (c) => c.postal_code ?? "" },
         { header: "Ville", accessor: (c) => c.city ?? "" },
         { header: "Quartier", accessor: (c) => c.quartier?.name ?? "" },
+        { header: "Rôles", accessor: (c) => (c.roles ?? []).map((r) => r.name).join(", ") },
         { header: "SIRET", accessor: (c) => c.siret ?? "" },
         { header: "Statut", accessor: (c) => (c.status === "active" ? "Actif" : "Archivé") },
       ];
@@ -1048,6 +1121,13 @@ function ContactsList() {
         cell: ({ row }) => <ListCellTitle title={row.original.display_name ?? "—"} />,
         enableHiding: false,
         meta: { label: "Nom", minWidth: 220 },
+      },
+      {
+        id: "category",
+        accessorFn: (c) => (c.roles ?? []).map((r) => r.name).join(", "),
+        header: "Catégorie",
+        cell: ({ row }) => <ContactCategoryBadges contact={row.original} />,
+        meta: { label: "Catégorie", width: 140 },
       },
       {
         id: "email",
@@ -1094,6 +1174,7 @@ function ContactsList() {
     setSearch("");
     setTypeFilter("all");
     setStatusFilter("active");
+    setCategoryFilter([]);
     setPage(0);
   }
 
@@ -1106,6 +1187,13 @@ function ContactsList() {
       : []),
     ...(typeFilter !== "all"
       ? [{ key: "type", label: `Type : ${SOCLE_CONTACT_TYPE_LABELS[typeFilter]}`, onRemove: () => { setTypeFilter("all"); setPage(0); } }]
+      : []),
+    ...(categoryFilter.length > 0
+      ? [{
+          key: "category",
+          label: `Catégorie : ${categoryFilter.map((c) => CONTACT_CATEGORY_PLURAL_LABELS[c].toLowerCase()).join(", ")}`,
+          onRemove: () => { setCategoryFilter([]); setPage(0); },
+        }]
       : []),
     ...(statusFilter !== "active"
       ? [{
@@ -1151,6 +1239,17 @@ function ContactsList() {
               selected={typeFilter === "all" ? [] : [typeFilter]}
               onToggle={(v) => {
                 setTypeFilter((cur) => (cur === v ? "all" : (v as SocleContactType)));
+                setPage(0);
+              }}
+            />
+          </FilterSection>
+          <FilterSection label="Catégorie">
+            <FilterChips
+              options={CONTACT_CATEGORIES.map((c) => ({ value: c, label: CONTACT_CATEGORY_PLURAL_LABELS[c] }))}
+              selected={categoryFilter}
+              onToggle={(v) => {
+                const c = v as ContactCategory;
+                setCategoryFilter((cur) => (cur.includes(c) ? cur.filter((x) => x !== c) : [...cur, c]));
                 setPage(0);
               }}
             />

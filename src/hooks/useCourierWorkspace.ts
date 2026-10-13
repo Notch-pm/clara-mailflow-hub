@@ -173,6 +173,21 @@ export function useCourierWorkspace({
   });
   const senderRelationLines = senderContact ? contactRelationLines(senderContact) : [];
 
+  // Fiche du destinataire lié (contact Interne ou Élu) : badge de catégorie.
+  // Best-effort, comme l'expéditeur.
+  const { data: recipientContact } = useQuery({
+    queryKey: ["socle-contact", organizationId, recipient?.socle_contact_id],
+    queryFn: async () => {
+      try {
+        return await getContact(organizationId, recipient!.socle_contact_id!);
+      } catch {
+        return null;
+      }
+    },
+    enabled: open && !!organizationId && !!recipient?.socle_contact_id,
+    staleTime: 30_000,
+  });
+
   // Adresse à laquelle répondre : celle portée par le courrier d'abord (c'est
   // l'adresse qui a écrit), sinon celle de la fiche du référentiel. Sans ce
   // repli, un courrier déposé alors que l'usager n'avait pas encore d'email
@@ -665,6 +680,47 @@ export function useCourierWorkspace({
   }
 
   /**
+   * Rattache un participant à un contact Interne ou Élu du référentiel —
+   * destinataire d'un courrier reçu, ou expéditeur d'un courrier sortant. Pas de
+   * report de consentement : ce n'est pas l'usager qui a déposé. `null`
+   * dissocie la fiche sans effacer le nom porté par le courrier.
+   */
+  async function linkInternalContact(role: "sender" | "recipient", contact: SocleContact | null) {
+    const label = role === "recipient" ? "Destinataire" : "Expéditeur";
+    if (!contact) {
+      await upsertParticipant(role, { socle_contact_id: null }, `${label} dissocié`);
+      return;
+    }
+    await upsertParticipant(
+      role,
+      {
+        socle_contact_id: contact.id,
+        name: contactDisplay(contact),
+        first_name: contact.first_name,
+        last_name: contact.last_name ?? contact.legal_name,
+        email: contact.email,
+      },
+      `${label} associé au référentiel`,
+    );
+  }
+
+  /**
+   * Destinataire saisi en texte libre : nom seul, sans fiche. Quitter une fiche
+   * efface aussi ce qui venait d'elle (e-mail, prénom, nom) ; un nom corrigé
+   * sur un destinataire jamais rattaché garde le reste (boîte IMAP).
+   */
+  async function setRecipientName(name: string) {
+    const fromContact = recipient?.socle_contact_id
+      ? { email: null, first_name: null, last_name: null }
+      : {};
+    await upsertParticipant(
+      "recipient",
+      { name, socle_contact_id: null, ...fromContact },
+      "Destinataire modifié",
+    );
+  }
+
+  /**
    * Report au Socle de la trace de consentement d'un dépôt portail
    * (`couriers.consents`), sur la fiche que l'agent vient de rattacher.
    * Idempotent côté Socle (référence = id du courrier) : re-rattacher ne
@@ -689,6 +745,9 @@ export function useCourierWorkspace({
     senderContact,
     senderRelationLines,
     senderReplyEmail,
+    recipientContact,
+    linkInternalContact,
+    setRecipientName,
     parentCourier,
     parentSender,
     // Onglets et compteurs

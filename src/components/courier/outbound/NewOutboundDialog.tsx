@@ -11,6 +11,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import ContactPicker from "@/components/courier/ContactPicker";
+import { CONTACT_CATEGORIES } from "@/lib/contact-categories";
 import { assignableOrgs, type SocleOrgWithConfig } from "@/services/socleOrgConfigService";
 import type { SocleContact } from "@/services/socleContactService";
 import { createOutboundCourier } from "@/services/outboundCourierService";
@@ -53,6 +54,8 @@ export function NewOutboundDialog({ open, onOpenChange, organizationId, services
 
   const [issuerId, setIssuerId] = useState<string>("");
   const [recipient, setRecipient] = useState<SocleContact | null>(null);
+  // Facultatif : contact Interne ou Élu au nom de qui le courrier part.
+  const [sender, setSender] = useState<SocleContact | null>(null);
   const [channel, setChannel] = useState<OutboundChannel>("paper");
   const [subject, setSubject] = useState("");
   const [confidential, setConfidential] = useState(false);
@@ -63,6 +66,7 @@ export function NewOutboundDialog({ open, onOpenChange, organizationId, services
     if (!open) return;
     setIssuerId("");
     setRecipient(null);
+    setSender(null);
     setChannel("paper");
     setSubject("");
     setConfidential(false);
@@ -98,6 +102,7 @@ export function NewOutboundDialog({ open, onOpenChange, organizationId, services
         subject: subject.trim(),
         recipient: recipient!,
         confidential,
+        sender,
       }),
     onSuccess: (id) => {
       queryClient.invalidateQueries({ queryKey: ["couriers-outbound"] });
@@ -171,6 +176,22 @@ export function NewOutboundDialog({ open, onOpenChange, organizationId, services
                 le justifie.
               </p>
             )}
+          </div>
+
+          <div className="space-y-2">
+            <Label>
+              Expéditeur <span className="font-normal text-muted-foreground">(facultatif)</span>
+            </Label>
+            <ContactPicker
+              organizationId={organizationId}
+              value={sender}
+              onChange={setSender}
+              roles={[...CONTACT_CATEGORIES]}
+              placeholder="Interne ou élu au nom de qui le courrier part…"
+            />
+            <p className="text-xs text-muted-foreground">
+              Le courrier part de l'organisation émettrice ; l'expéditeur nomme en plus l'agent ou l'élu qui l'adresse.
+            </p>
           </div>
 
           <div className="space-y-2">

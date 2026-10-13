@@ -88,6 +88,7 @@ export type Database = {
           assignee_email: string | null
           assignee_id: string | null
           assignee_name: string | null
+          assignee_socle_contact_id: string | null
           completed_at: string | null
           completed_by: string | null
           completed_via: string | null
@@ -124,6 +125,7 @@ export type Database = {
           assignee_email?: string | null
           assignee_id?: string | null
           assignee_name?: string | null
+          assignee_socle_contact_id?: string | null
           completed_at?: string | null
           completed_by?: string | null
           completed_via?: string | null
@@ -160,6 +162,7 @@ export type Database = {
           assignee_email?: string | null
           assignee_id?: string | null
           assignee_name?: string | null
+          assignee_socle_contact_id?: string | null
           completed_at?: string | null
           completed_by?: string | null
           completed_via?: string | null
@@ -2644,6 +2647,7 @@ export type Database = {
           p_recipient: Json
           p_socle_organization_id: string
           p_is_confidential?: boolean
+          p_sender?: Json
           p_subject: string
         }
         Returns: string

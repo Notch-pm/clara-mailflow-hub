@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { isOutboundSettled } from "@/lib/outbound-kind";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
@@ -102,7 +103,7 @@ export function InitiativeComposer({ organizationId, courier, readOnly, onStateC
 
   const meta = record.metadata ?? {};
   const state = workflow?.states.find((s) => s.id === courier.workflow_state_id) ?? null;
-  const settled = !!meta.signed_at || !!meta.sent_email_at || !!meta.posted_at;
+  const settled = isOutboundSettled(meta);
   const issuerLockReason = settled
     ? LOCKED_ISSUER_REASON
     : state && !state.is_initial

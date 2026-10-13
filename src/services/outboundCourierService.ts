@@ -151,6 +151,21 @@ export function recipientSnapshot(contact: SocleContact) {
 }
 
 /**
+ * Instantané de l'expéditeur facultatif d'un sortant — contact Interne ou Élu,
+ * au nom de qui le courrier part. Identité seule : l'adresse d'expédition reste
+ * celle de l'organisation émettrice.
+ */
+export function senderSnapshot(contact: SocleContact) {
+  return {
+    socle_contact_id: contact.id,
+    name: contact.display_name?.trim() || contact.email || null,
+    first_name: contact.first_name,
+    last_name: contact.last_name,
+    email: contact.email,
+  };
+}
+
+/**
  * Crée le sortant, son destinataire et l'événement de création en une seule
  * transaction (RPC `create_outbound_courier`). Rend l'identifiant du courrier.
  */
@@ -162,6 +177,8 @@ export async function createOutboundCourier(args: {
   recipient: SocleContact;
   /** Confidentiel dès la création (la base vérifie le droit de le poser). */
   confidential?: boolean;
+  /** Expéditeur facultatif : contact Interne ou Élu au nom de qui le courrier part. */
+  sender?: SocleContact | null;
 }): Promise<string> {
   const { data, error } = await supabase.rpc("create_outbound_courier", {
     p_organization_id: args.organizationId,
@@ -170,6 +187,7 @@ export async function createOutboundCourier(args: {
     p_subject: args.subject,
     p_recipient: recipientSnapshot(args.recipient),
     ...(args.confidential ? { p_is_confidential: true } : {}),
+    ...(args.sender ? { p_sender: senderSnapshot(args.sender) } : {}),
   });
   if (error) throw error;
   return data as string;

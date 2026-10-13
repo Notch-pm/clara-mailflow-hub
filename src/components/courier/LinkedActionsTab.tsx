@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -207,7 +208,14 @@ function TaskCardBody({ ticket: t }: { ticket: ActionTicketWithProcedure }) {
       <p className="text-[11px] text-muted-foreground flex items-center gap-1.5 mt-0.5 flex-wrap">
         <Mail className="h-3 w-3 shrink-0" />
         <span>
-          Affectée à {taskAssigneeLabel(t)}
+          Affectée à{" "}
+          {t.assignee_socle_contact_id ? (
+            <Link to={`/contacts/${t.assignee_socle_contact_id}`} className="text-primary hover:underline">
+              {taskAssigneeLabel(t)}
+            </Link>
+          ) : (
+            taskAssigneeLabel(t)
+          )}
           {t.assignee_name && t.assignee_email ? ` (${t.assignee_email})` : ""}
         </span>
       </p>

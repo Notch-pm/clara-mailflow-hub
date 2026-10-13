@@ -72,6 +72,10 @@ import DocumentManager from "./DocumentManager";
 import DocumentViewer from "./DocumentViewer";
 import FloatingNotesPanel from "./FloatingNotesPanel";
 import InlineEditField from "./InlineEditField";
+import RecipientField from "./RecipientField";
+import { CONTACT_CATEGORIES } from "@/lib/contact-categories";
+import { isOutboundSettled } from "@/lib/outbound-kind";
+import { ContactCategoryBadges } from "@/components/contacts/ContactCategoryBadge";
 import LinkedActionsTab from "./LinkedActionsTab";
 import ParticipantManager from "./ParticipantManager";
 import ReplyComposer from "./ReplyComposer";
@@ -263,6 +267,9 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
     persistCourierUpdate,
     upsertParticipant,
     linkSenderContact,
+    recipientContact,
+    linkInternalContact,
+    setRecipientName,
   } = ws;
 
   // Sortant sans parent : un courrier à l'initiative de la collectivité. Il se
@@ -673,14 +680,16 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
                     {isOutbound ? (
                       (isInitiative ? recipient?.name : parentSender?.name) ?? EMPTY
                     ) : (
-                      <InlineEditField
-                        label=""
-                        value={recipient?.name ?? ""}
-                        placeholder="Nom du destinataire"
-                        maxLength={150}
+                      <RecipientField
+                        key={recipient?.id ?? "none"}
+                        organizationId={organizationId}
+                        recipientName={recipient?.name}
+                        linked={!!recipient?.socle_contact_id}
+                        contact={recipientContact}
+                        onLink={(c) => linkInternalContact("recipient", c)}
+                        onSetName={(name) => setRecipientName(name ?? "")}
                         readOnly={effectiveReadOnly}
-                        displayClassName="text-base font-semibold"
-                        onSave={(v) => upsertParticipant("recipient", { name: v.trim() || null })}
+                        triggerClassName="h-9 w-full max-w-sm justify-between px-2.5 [&>span]:font-semibold"
                       />
                     )}
                   </Field>
@@ -895,8 +904,23 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
                 }
               >
                 {isOutbound ? (
-                  <div className="text-sm font-semibold">
-                    {issuerName ?? EMPTY}
+                  <div className="space-y-1.5">
+                    <div className="text-sm font-semibold">
+                      {issuerName ?? EMPTY}
+                    </div>
+                    {/* Facultatif : l'agent ou l'élu au nom de qui le courrier
+                        part. Figé, comme le destinataire, une fois signé,
+                        envoyé ou posté. */}
+                    <ContactPicker
+                      organizationId={organizationId}
+                      value={senderContact ?? null}
+                      onChange={(c) => void linkInternalContact("sender", c)}
+                      roles={[...CONTACT_CATEGORIES]}
+                      disabled={effectiveReadOnly || isOutboundSettled(courier.metadata as Record<string, unknown> | null)}
+                      fallbackLabel={sender?.name ?? undefined}
+                      placeholder="Au nom de… (interne ou élu, facultatif)"
+                      triggerClassName="h-9 w-full justify-between px-2.5"
+                    />
                   </div>
                 ) : (
                   <div className="space-y-1.5">
@@ -910,6 +934,7 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
                       fallbackLabel={sender?.name ?? undefined}
                       triggerClassName="h-9 w-full justify-between px-2.5 [&>span]:font-semibold"
                     />
+                    <ContactCategoryBadges contact={senderContact} />
                     {senderRelationLines.map((line) => (
                       <div key={line.key} className="truncate text-xs text-muted-foreground">
                         {line.text}

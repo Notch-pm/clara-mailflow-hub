@@ -77,6 +77,16 @@ describe("buildSocleRequest", () => {
     }
   });
 
+  it("list avec filtre role → transmis tel quel (codes séparés par des virgules)", () => {
+    const r = buildSocleRequest("list", { filters: { role: " elu,interne ", status: "active" } });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      const qs = new URLSearchParams(r.request.path.split("?")[1]);
+      expect(qs.get("role")).toBe("elu,interne");
+      expect(qs.get("status")).toBe("active");
+    }
+  });
+
   it("roles → GET /v1/contact-roles", () => {
     const r = buildSocleRequest("roles");
     expect(r).toEqual({

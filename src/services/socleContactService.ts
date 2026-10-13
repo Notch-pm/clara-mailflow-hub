@@ -15,6 +15,12 @@ import {
   type SenderIdentity,
   type SenderMatch,
 } from "../../supabase/functions/_shared/senderMatchLogic";
+import {
+  categoryRoleIds,
+  matchesCategories,
+  roleFilterParam,
+  type ContactCategory,
+} from "@/lib/contact-categories";
 
 /**
  * Contacts du référentiel Socle — point d'appel UNIQUE côté client.
@@ -40,12 +46,16 @@ export const SOCLE_CONTACT_TYPE_LABELS: Record<SocleContactType, string> = {
 export interface SocleContactRole {
   id: string;
   name: string;
+  /** Code stable d'un rôle reconnu (`elu`, `interne`) — contacts-api ≥ 1.3.0, absent avant. */
+  code?: string | null;
 }
 
 export interface SocleContactRoleCatalogEntry {
   id: string;
   organization_id: string;
   name: string;
+  /** Code stable (`elu`, `interne`), `null` pour un rôle ordinaire — contacts-api ≥ 1.3.0. */
+  code?: string | null;
   created_at: string | null;
 }
 
@@ -201,6 +211,12 @@ export interface SocleContactListFilters {
   email?: string;
   type?: SocleContactType;
   status?: SocleContactStatus;
+  /**
+   * Catégories Interne / Élus (rôles codés) — un contact portant l'une OU
+   * l'autre. Traduit en `role=interne,elu` pour le référentiel ; filtré aussi
+   * côté client, au cas où un référentiel antérieur à 1.3.0 l'ignorerait.
+   */
+  roles?: ContactCategory[];
   /** 1..500, défaut 100 côté Socle. */
   limit?: number;
   offset?: number;
@@ -282,7 +298,7 @@ interface InvokeBody {
   organization_id: string;
   id?: string;
   payload?: Record<string, unknown>;
-  filters?: SocleContactListFilters;
+  filters?: Omit<SocleContactListFilters, "roles"> & { role?: string };
 }
 
 async function invokeSocleContacts<T>(body: InvokeBody): Promise<T> {
@@ -318,11 +334,14 @@ export async function listContacts(
   organizationId: string,
   filters: SocleContactListFilters = {},
 ): Promise<SocleContact[]> {
-  return invokeSocleContacts<SocleContact[]>({
+  const { roles, ...rest } = filters;
+  const role = roleFilterParam(roles);
+  const contacts = await invokeSocleContacts<SocleContact[]>({
     action: "list",
     organization_id: organizationId,
-    filters,
+    filters: role ? { ...rest, role } : rest,
   });
+  return role ? contacts.filter((c) => matchesCategories(c, roles)) : contacts;
 }
 
 export async function getContact(organizationId: string, id: string): Promise<SocleContact> {
@@ -414,6 +433,17 @@ export async function listContactRoles(
     action: "roles",
     organization_id: organizationId,
   });
+}
+
+/**
+ * Identifiant du rôle de chaque catégorie (Interne, Élu) dans le catalogue de
+ * l'organisation — pour poser `role_ids` à la création d'un contact. Une
+ * catégorie absente du catalogue n'a pas de clé : Clara ne crée pas de rôle.
+ */
+export async function resolveCategoryRoleIds(
+  organizationId: string,
+): Promise<Partial<Record<ContactCategory, string>>> {
+  return categoryRoleIds(await listContactRoles(organizationId));
 }
 
 /** Rapprochement par email exact (auto-match de l'expéditeur). Null si aucun contact. */

@@ -24,6 +24,16 @@ export function outboundKind(parentCourierId: string | null | undefined): Outbou
   return parentCourierId ? "reply" : "initiative";
 }
 
+/**
+ * Le sortant est-il « parti » — signé, envoyé par courriel ou posté ? Dès lors,
+ * son destinataire et son expéditeur ne se changent plus.
+ */
+export function isOutboundSettled(
+  meta: { signed_at?: unknown; sent_email_at?: unknown; posted_at?: unknown } | null | undefined,
+): boolean {
+  return !!meta?.signed_at || !!meta?.sent_email_at || !!meta?.posted_at;
+}
+
 export interface ParticipantLike {
   role: string;
   name: string | null;

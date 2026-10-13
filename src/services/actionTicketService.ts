@@ -74,6 +74,8 @@ export interface ActionTicket {
   /** Destinataire d'une tâche, figé à la création (membre ou adresse libre). */
   assignee_email: string | null;
   assignee_name: string | null;
+  /** Tâche affectée à un contact Interne / Élu du référentiel (fiche Socle). */
+  assignee_socle_contact_id?: string | null;
   completed_at: string | null;
   /** Null quand la tâche a été close depuis le lien du mail. */
   completed_by: string | null;
@@ -154,10 +156,14 @@ export async function createTicket(payload: {
   return data as unknown as ActionTicket;
 }
 
-/** Agent affecté à une tâche : membre de l'organisation, ou simple adresse. */
+/**
+ * Destinataire d'une tâche : membre de l'organisation, contact Interne ou Élu du
+ * référentiel (adresse et nom recopiés depuis la fiche), ou simple adresse.
+ */
 export type TaskAssignee =
-  | { userId: string; email: string; name: string | null }
-  | { userId: null; email: string; name: string | null };
+  | { userId: string; email: string; name: string | null; socleContactId?: null }
+  | { userId: null; email: string; name: string | null; socleContactId: string }
+  | { userId: null; email: string; name: string | null; socleContactId?: null };
 
 export async function createTask(payload: {
   organizationId: string;
@@ -180,6 +186,7 @@ export async function createTask(payload: {
       assignee_id: payload.assignee.userId,
       assignee_email: payload.assignee.email.trim(),
       assignee_name: payload.assignee.name?.trim() || null,
+      assignee_socle_contact_id: payload.assignee.socleContactId ?? null,
       created_by: user?.id ?? null,
     })
     .select("*")

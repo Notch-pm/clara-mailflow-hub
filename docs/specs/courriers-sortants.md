@@ -139,6 +139,12 @@ l'écran, ou on change de mode.
   à l'état initial du nouveau workflow, signataire vidé.
 - **R7** Exactement un `recipient` lié par `socle_contact_id` ; nom, email et adresse en instantané,
   rafraîchi tant que rien n'est signé ni parti.
+- **R7bis** (2026-10-13) Au plus un `sender` **facultatif** : un contact du référentiel portant le rôle
+  **Interne** ou **Élu**, au nom de qui le courrier part. Il ne remplace ni l'organisation émettrice
+  (R3) ni le signataire ; posé à la création (`create_outbound_courier`, paramètre `p_sender`) ou
+  depuis la carte « Expéditeur », figé comme le destinataire une fois signé, envoyé ou posté
+  (`isOutboundSettled`). Effets : il apparaît dans la colonne expéditeur de la recherche et dans
+  l'historique de sa fiche.
 - **R8** `channel` ∈ {`email`, `paper`} ; modifiable jusqu'au visa ou à la signature.
 - **R9** IA uniquement via `_shared/socleAi.ts` ; contexte : consigne, organisation émettrice,
   destinataire, objet, mode, brouillon, entrant lié ; jamais les notes internes ; consigne de

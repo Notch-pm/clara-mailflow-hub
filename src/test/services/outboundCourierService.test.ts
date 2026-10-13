@@ -70,6 +70,32 @@ describe("createOutboundCourier", () => {
     });
   });
 
+  it("l'expéditeur Interne / Élu facultatif part avec la création", async () => {
+    mockSupabase.rpc.mockResolvedValueOnce({ data: "s-2", error: null });
+
+    await createOutboundCourier({
+      organizationId: "org-1",
+      socleOrganizationId: "so-1",
+      channel: "email",
+      subject: "Invitation",
+      recipient: CONTACT,
+      sender: { ...CONTACT, id: "c-elu", display_name: "Mme la Maire", email: "maire@ville.fr" },
+    });
+
+    expect(mockSupabase.rpc).toHaveBeenCalledWith(
+      "create_outbound_courier",
+      expect.objectContaining({
+        p_sender: {
+          socle_contact_id: "c-elu",
+          name: "Mme la Maire",
+          first_name: CONTACT.first_name,
+          last_name: CONTACT.last_name,
+          email: "maire@ville.fr",
+        },
+      }),
+    );
+  });
+
   it("le refus de la base remonte tel quel", async () => {
     const refusal = { message: "Aucun workflow de réponse n'est configuré pour l'organisation « Culture »." };
     mockSupabase.rpc.mockResolvedValueOnce({ data: null, error: refusal });

@@ -197,9 +197,29 @@ begin
     v_echecs := v_echecs || format('6. réponse avec parent refusée : %s', v_err);
   end;
 
+  -- ── 7. Expéditeur facultatif (contact Interne / Élu) ──────────────────────
+  -- Sans p_sender (scénario 1) : aucun participant sender.
+  select count(*) into v_n from public.courier_participants p
+   where p.courier_id = v_s1 and p.role = 'sender';
+  if v_n <> 0 then v_echecs := v_echecs || '7. sans expéditeur : participant sender inattendu'::text; end if;
+  v_s2 := public.create_outbound_courier(
+    v_org, v_so, 'email', 'Invitation', v_recipient, false,
+    '{"socle_contact_id":"22222222-2222-2222-2222-222222222222","name":"Mme la Maire","email":"maire@ville.fr"}'
+  );
+  select count(*) into v_n from public.courier_participants p
+   where p.courier_id = v_s2 and p.role = 'sender'
+     and p.socle_contact_id = '22222222-2222-2222-2222-222222222222' and p.name = 'Mme la Maire';
+  if v_n <> 1 then v_echecs := v_echecs || '7. expéditeur : participant sender absent ou incomplet'::text; end if;
+  select count(*) into v_n from public.courier_participants p
+   where p.courier_id = v_s2 and p.role = 'recipient';
+  if v_n <> 1 then v_echecs := v_echecs || '7. expéditeur : le destinataire doit rester unique'::text; end if;
+  select count(*) into v_n from public.courier_events e
+   where e.courier_id = v_s2 and e.event_type = 'outbound_created' and e.payload ->> 'sender_name' = 'Mme la Maire';
+  if v_n <> 1 then v_echecs := v_echecs || '7. expéditeur : absent de l''événement outbound_created'::text; end if;
+
   -- ── Verdict ──────────────────────────────────────────────────────────────
   if array_length(v_echecs, 1) is null then
-    raise exception 'VERDICT : OK — 6 scénarios (transaction annulée)';
+    raise exception 'VERDICT : OK — 7 scénarios (transaction annulée)';
   else
     raise exception 'VERDICT : % ÉCHEC(S) — %', array_length(v_echecs, 1), array_to_string(v_echecs, ' | ');
   end if;

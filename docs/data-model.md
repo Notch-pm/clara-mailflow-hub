@@ -616,7 +616,8 @@ Actions dérivées d'un courrier, de deux sortes (`kind`, 2026-10-09) :
 | `assignee_id` | uuid FK → users | demande : **plus saisi** depuis la fin de la demande libre, affiché s'il est renseigné. Tâche : l'agent affecté quand c'est un membre |
 | `status` | text | `'open'` par défaut. Tâche : `open` / `done` uniquement |
 | `kind` | text | `'demande'` (défaut, tous les tickets d'avant) ou `'tache'`. **Immuable** (trigger `trg_action_tickets_task_status`) |
-| `assignee_email` / `assignee_name` | text | tâche : destinataire figé à la création. Membre de Clara ⇒ `assignee_id` renseigné **aussi** ; simple adresse ⇒ seuls ces deux champs |
+| `assignee_email` / `assignee_name` | text | tâche : destinataire figé à la création. Membre de Clara ⇒ `assignee_id` renseigné **aussi** ; contact Interne / Élu ⇒ `assignee_socle_contact_id` **aussi** ; simple adresse ⇒ seuls ces deux champs |
+| `assignee_socle_contact_id` | uuid (sans FK) | tâche affectée à un **contact Interne ou Élu du référentiel** (2026-10-13) ; e-mail et nom recopiés de la fiche à la création. CHECK `action_tickets_assignee_contact_check` : nul hors `kind = 'tache'` |
 | `completed_at` / `completed_by` / `completed_via` / `completion_note` | timestamptz / uuid FK → users / text (`app` \| `lien`) / text (≤ 1000) | clôture d'une tâche. `completed_by` nul quand elle vient du lien du mail. Le trigger `trg_action_tickets_task_status` pose la date au passage à `done`, **révoque les jetons** de la tâche, et efface ces quatre colonnes à la réouverture |
 | `last_reminded_at` / `reminder_count` | timestamptz / int | relances par mail (`action-task-mail`, mode `remind`), comptées seulement si elles ont atteint l'affecté |
 | `socle_data` | jsonb | démarche du référentiel : demandeur déclaré + réponses au formulaire + pièces sélectionnées (`src/lib/socle-form.ts`) |

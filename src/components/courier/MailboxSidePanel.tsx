@@ -63,6 +63,8 @@ import CourierNotes from "./CourierNotes";
 import DocumentManager from "./DocumentManager";
 import DocumentViewer from "./DocumentViewer";
 import InlineEditField from "./InlineEditField";
+import RecipientField from "./RecipientField";
+import { ContactCategoryBadges } from "@/components/contacts/ContactCategoryBadge";
 import LinkedCouriersSection from "./LinkedCouriersSection";
 import CloseLinkedCouriersDialog from "./CloseLinkedCouriersDialog";
 import ReturnToMailroomDialog from "./ReturnToMailroomDialog";
@@ -207,6 +209,9 @@ export default function MailboxSidePanel({
     persistCourierUpdate,
     upsertParticipant,
     linkSenderContact,
+    recipientContact,
+    linkInternalContact,
+    setRecipientName,
   } = useCourierWorkspace({
     courier,
     organizationId,
@@ -461,6 +466,7 @@ export default function MailboxSidePanel({
                     <QuartierBadge quartier={senderContact.quartier} />
                   </>
                 )}
+                <ContactCategoryBadges contact={senderContact} />
               </div>
             )}
             {senderRelationLines.map((line) => (
@@ -471,14 +477,17 @@ export default function MailboxSidePanel({
           </Field>
 
           <Field label="Destinataire">
-            <InlineEditField
-              label=""
-              value={recipient?.name ?? ""}
-              placeholder="Nom du destinataire"
-              maxLength={150}
+            <RecipientField
+              key={recipient?.id ?? "none"}
+              organizationId={organizationId}
+              recipientName={recipient?.name}
+              linked={!!recipient?.socle_contact_id}
+              contact={recipientContact}
+              onLink={(c) => linkInternalContact("recipient", c)}
+              onSetName={(name) => setRecipientName(name ?? "")}
               readOnly={effectiveReadOnly}
               displayClassName="text-sm font-semibold"
-              onSave={(v) => upsertParticipant("recipient", { name: v.trim() || null })}
+              triggerClassName="-ml-2 h-7 border-0 bg-transparent px-2 shadow-none hover:bg-muted hover:shadow-none [&>span]:font-semibold"
             />
           </Field>
 

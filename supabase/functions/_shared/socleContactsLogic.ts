@@ -81,6 +81,8 @@ export interface SocleContactsListFilters {
   email?: string;
   type?: string;
   status?: string;
+  /** Codes de rôle séparés par des virgules (`elu,interne`) — contacts-api ≥ 1.3.0. */
+  role?: string;
   limit?: number;
   offset?: number;
 }
@@ -93,7 +95,7 @@ export interface BuildParams {
 
 function listQueryString(filters: SocleContactsListFilters): string {
   const qs = new URLSearchParams();
-  for (const key of ["search", "email", "type", "status"] as const) {
+  for (const key of ["search", "email", "type", "status", "role"] as const) {
     const value = filters[key];
     if (typeof value === "string" && value.trim() !== "") qs.set(key, value.trim());
   }

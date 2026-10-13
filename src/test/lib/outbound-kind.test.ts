@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { outboundKind, outboundMetaLine, outboundRecipient } from "@/lib/outbound-kind";
+import { isOutboundSettled, outboundKind, outboundMetaLine, outboundRecipient } from "@/lib/outbound-kind";
 
 const person = (role: string, name: string | null, socle_contact_id: string | null = null) => ({
   role,
@@ -55,5 +55,18 @@ describe("outboundMetaLine", () => {
     );
     expect(outboundMetaLine({ kind: "initiative", recipientName: "Jeanne Martin", receivedAt })).toBe("À Jeanne Martin");
     expect(outboundMetaLine({ kind: "initiative", recipientName: null, receivedAt: null })).toBeNull();
+  });
+});
+
+describe("isOutboundSettled", () => {
+  it("signé, envoyé ou posté : figé", () => {
+    expect(isOutboundSettled({ signed_at: "2026-10-13T10:00:00Z" })).toBe(true);
+    expect(isOutboundSettled({ sent_email_at: "2026-10-13T10:00:00Z" })).toBe(true);
+    expect(isOutboundSettled({ posted_at: "2026-10-13" })).toBe(true);
+  });
+  it("brouillon : modifiable", () => {
+    expect(isOutboundSettled({})).toBe(false);
+    expect(isOutboundSettled(null)).toBe(false);
+    expect(isOutboundSettled({ signed_at: null })).toBe(false);
   });
 });

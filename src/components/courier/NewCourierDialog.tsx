@@ -54,6 +54,8 @@ import {
 } from "@/services/courierAnalysisService";
 import { enqueueCourierAnalysis } from "@/services/courierAnalysisJobService";
 import ContactPicker from "@/components/courier/ContactPicker";
+import { ContactCategoryBadges } from "@/components/contacts/ContactCategoryBadge";
+import { CONTACT_CATEGORIES } from "@/lib/contact-categories";
 import SenderMatchNotice from "@/components/courier/SenderMatchNotice";
 import DictationRecorder from "@/components/courier/DictationRecorder";
 import { useDictationEnabled } from "@/hooks/useDictationEnabled";
@@ -119,6 +121,8 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
   const [senderContact, setSenderContact] = useState<SocleContact | null>(null);
   const [extractedCivility, setExtractedCivility] = useState<SocleContactCivility | "">("");
   const [recipientName, setRecipientName] = useState("");
+  // Destinataire choisi parmi les contacts Interne / Élus ; le nom libre reste le repli.
+  const [recipientContact, setRecipientContact] = useState<SocleContact | null>(null);
   const [serviceId, setServiceId] = useState<string>("");
   // Ce que l'analyse a dit de l'organisation gestionnaire : sa proposition et
   // pourquoi, ou pourquoi elle n'en fait pas. Se taire laissait croire à une panne.
@@ -151,6 +155,7 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
     setSenderContact(null);
     setExtractedCivility("");
     setRecipientName("");
+    setRecipientContact(null);
     setServiceId("");
     setServiceHint(null);
     setSelectedTags([]);
@@ -326,7 +331,18 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
           socle_contact_id: sender.id,
         });
       }
-      if (recipientName.trim()) {
+      if (recipientContact) {
+        await addParticipant({
+          courier_id: courier.id,
+          organization_id: organizationId,
+          role: "recipient",
+          name: recipientContact.display_name,
+          first_name: recipientContact.first_name,
+          last_name: recipientContact.last_name ?? recipientContact.legal_name,
+          email: recipientContact.email,
+          socle_contact_id: recipientContact.id,
+        });
+      } else if (recipientName.trim()) {
         await addParticipant({
           courier_id: courier.id,
           organization_id: organizationId,
@@ -925,6 +941,7 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
                   )}
                   {senderContact && (
                     <div className="text-xs text-muted-foreground space-y-0.5 pt-1">
+                      <ContactCategoryBadges contact={senderContact} />
                       <div><span className="font-medium">Type :</span> {SOCLE_CONTACT_TYPE_LABELS[senderContact.contact_type]}</div>
                       {senderContact.email && <div><span className="font-medium">Email :</span> {senderContact.email}</div>}
                       {(senderContact.mobile_phone || senderContact.landline_phone) && (
@@ -936,13 +953,22 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
 
                 <div className="space-y-2">
                   <Label htmlFor="nc-recipient">Destinataire</Label>
-                  <Input
-                    id="nc-recipient"
-                    value={recipientName}
-                    onChange={(e) => setRecipientName(e.target.value)}
-                    maxLength={150}
-                    placeholder="Nom du destinataire"
+                  <ContactPicker
+                    organizationId={organizationId}
+                    value={recipientContact}
+                    onChange={setRecipientContact}
+                    roles={[...CONTACT_CATEGORIES]}
+                    placeholder="Interne ou élu…"
                   />
+                  {!recipientContact && (
+                    <Input
+                      id="nc-recipient"
+                      value={recipientName}
+                      onChange={(e) => setRecipientName(e.target.value)}
+                      maxLength={150}
+                      placeholder="… ou nom libre du destinataire"
+                    />
+                  )}
                 </div>
 
                 {/* Un bloc par groupe : le thème dit de quoi parle le
