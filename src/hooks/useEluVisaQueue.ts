@@ -6,6 +6,7 @@ import { useOrganization } from "@/contexts/OrganizationContext";
 import { listMyVisaQueue } from "@/services/courierVisaService";
 import { waitingDays } from "@/lib/elu-delay";
 import { eventAnchor } from "@/lib/courier-events";
+import { outboundKind, outboundRecipient, participantName, type OutboundKind } from "@/lib/outbound-kind";
 
 /** Une réponse qui attend le visa de l'utilisateur courant. */
 export interface EluVisaItem {
@@ -17,6 +18,11 @@ export interface EluVisaItem {
   /** L'usager : expéditeur du courrier reçu. */
   senderName: string | null;
   receivedAt: string | null;
+  /** Réponse à un courrier reçu, ou courrier à l'initiative de la collectivité. */
+  kind: OutboundKind;
+  /** À qui part le courrier, et sa fiche du Socle quand elle est connue. */
+  recipientName: string | null;
+  recipientContactId: string | null;
   /** Nom de l'étape de visa (« Visa du DGS »). */
   stateName: string;
   /** Je suis le viseur désigné ; sinon je peux viser à la place du désigné. */
@@ -28,14 +34,6 @@ export interface EluVisaItem {
 }
 
 const FIVE_MINUTES = 5 * 60 * 1000;
-
-function participantName(p: {
-  name: string | null;
-  first_name: string | null;
-  last_name: string | null;
-}): string | null {
-  return p.name?.trim() || [p.first_name, p.last_name].filter(Boolean).join(" ").trim() || null;
-}
 
 /**
  * La file des réponses en attente de MON visa, pour l'espace élu.
@@ -76,7 +74,9 @@ export function useEluVisaQueue() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("couriers")
-        .select("id, subject, chrono, received_at, courier_participants(role, name, first_name, last_name)")
+        .select(
+          "id, subject, chrono, received_at, courier_participants(role, name, first_name, last_name, socle_contact_id)",
+        )
         .eq("organization_id", organizationId!)
         .in("id", parentIds);
       if (error) throw error;
@@ -121,6 +121,7 @@ export function useEluVisaQueue() {
         const parent = row.parent_courier_id ? parentById?.[row.parent_courier_id] : null;
         const sender = (parent?.courier_participants ?? []).find((p: { role: string }) => p.role === "sender");
         const since = waitingSince?.[row.id] ?? null;
+        const to = outboundRecipient(row.courier_participants, parent?.courier_participants);
         return {
           replyId: row.id,
           parentCourierId: row.parent_courier_id,
@@ -128,6 +129,9 @@ export function useEluVisaQueue() {
           chrono: parent?.chrono ?? row.chrono ?? null,
           senderName: sender ? participantName(sender) : null,
           receivedAt: parent?.received_at ?? null,
+          kind: outboundKind(row.parent_courier_id),
+          recipientName: to?.name ?? null,
+          recipientContactId: to?.contactId ?? null,
           stateName: row.state_name,
           designatedToMe: row.designated_to_me,
           designatedToOther: !!row.designated_user_id && !row.designated_to_me,

@@ -125,6 +125,15 @@ export interface VisaQueueItem {
   state_name: string;
   designated_to_me: boolean;
   designated_user_id: string | null;
+  courier_participants: VisaQueueParticipant[];
+}
+
+export interface VisaQueueParticipant {
+  role: string;
+  name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  socle_contact_id: string | null;
 }
 
 /**
@@ -162,7 +171,9 @@ export async function listMyVisaQueue(organizationId: string, userId: string): P
 
   const { data: replies, error: rErr } = await supabase
     .from("couriers")
-    .select("id, parent_courier_id, chrono, subject, workflow_state_id, metadata")
+    .select(
+      "id, parent_courier_id, chrono, subject, workflow_state_id, metadata, courier_participants(role, name, first_name, last_name, socle_contact_id)",
+    )
     .eq("organization_id", organizationId)
     .eq("direction", "outbound")
     .is("deleted_at", null)
@@ -176,6 +187,7 @@ export async function listMyVisaQueue(organizationId: string, userId: string): P
     subject: string | null;
     workflow_state_id: string;
     metadata: Record<string, unknown> | null;
+    courier_participants: VisaQueueParticipant[] | null;
   }[];
   if (rows.length === 0) return [];
 
@@ -193,6 +205,7 @@ export async function listMyVisaQueue(organizationId: string, userId: string): P
         state_name: stateNames.get(r.workflow_state_id) ?? "",
         designated_user_id: designated,
         designated_to_me: designated === userId,
+        courier_participants: r.courier_participants ?? [],
       };
     })
     .sort((a, b) => Number(b.designated_to_me) - Number(a.designated_to_me));

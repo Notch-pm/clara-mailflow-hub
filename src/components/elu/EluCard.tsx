@@ -1,4 +1,4 @@
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Mail, UserRound } from "lucide-react";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
@@ -39,5 +39,38 @@ export function EluCard({
         className={cn("h-5 w-5 shrink-0", emphasis ? "text-primary" : "text-muted-foreground")}
       />
     </Link>
+  );
+}
+
+/**
+ * Les liens sous une carte de file : le courrier reçu (une réponse en a un) et
+ * la fiche du destinataire (quand il est rapproché d'une fiche du Socle).
+ */
+export function EluCardLinks({
+  parentCourierId,
+  recipientName,
+  recipientContactId,
+}: {
+  parentCourierId: string | null;
+  recipientName: string | null;
+  recipientContactId: string | null;
+}) {
+  if (!parentCourierId && !recipientContactId) return null;
+  const linkClass = "flex min-h-11 items-center gap-2 px-4 pt-1.5 text-[15px] font-bold text-primary";
+  return (
+    <div className="flex flex-wrap">
+      {parentCourierId && (
+        <Link to={`/elu/courrier/${parentCourierId}`} className={linkClass}>
+          <Mail className="h-4 w-4" aria-hidden="true" />
+          Lire le courrier reçu
+        </Link>
+      )}
+      {recipientContactId && (
+        <Link to={`/elu/usager/${recipientContactId}`} className={linkClass}>
+          <UserRound className="h-4 w-4" aria-hidden="true" />
+          {recipientName ? `Fiche de ${recipientName}` : "Fiche du destinataire"}
+        </Link>
+      )}
+    </div>
   );
 }

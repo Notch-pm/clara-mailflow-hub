@@ -1,11 +1,11 @@
-import { Mail } from "lucide-react";
-import { Link } from "react-router-dom";
-import { EluCard } from "@/components/elu/EluCard";
+import { OutboundKindBadge } from "@/components/courier/outbound/OutboundKindBadge";
+import { EluCard, EluCardLinks } from "@/components/elu/EluCard";
 import { EluEmptyState } from "@/components/elu/EluEmptyState";
 import { EluScreen, EluScreenHeader } from "@/components/elu/EluScreenHeader";
 import { EluStatusPill } from "@/components/elu/EluStatusPill";
 import { useEluSignatureQueue } from "@/hooks/useEluSignatureQueue";
 import { waitingLabel } from "@/lib/elu-delay";
+import { outboundMetaLine } from "@/lib/outbound-kind";
 
 function subtitle(count: number, isSignatory: boolean): string {
   if (!isSignatory) return "Vous n'êtes pas désigné signataire dans cette organisation.";
@@ -14,14 +14,6 @@ function subtitle(count: number, isSignatory: boolean): string {
   return `${count} courriers attendent votre signature`;
 }
 
-/** « De Thierry Henry · reçu le 04/09/2026 » */
-function originLine(senderName: string | null, receivedAt: string | null): string | null {
-  const parts = [
-    senderName ? `De ${senderName}` : null,
-    receivedAt ? `reçu le ${new Date(receivedAt).toLocaleDateString("fr-FR")}` : null,
-  ].filter(Boolean);
-  return parts.length ? parts.join(" · ") : null;
-}
 
 export default function EluASigner() {
   const { items, count, isSignatory, isLoading } = useEluSignatureQueue();
@@ -37,26 +29,27 @@ export default function EluASigner() {
       ) : (
         <div className="flex flex-col gap-3">
           {items.map((item) => (
-            // La carte mène à la réponse à signer ; le lien du dessous ouvre le
-            // courrier reçu. Deux destinations distinctes, donc deux zones
-            // cliquables séparées et non imbriquées.
+            // La carte mène au courrier à signer ; les liens du dessous ouvrent
+            // le courrier reçu et la fiche du destinataire. Des destinations
+            // distinctes, donc des zones cliquables séparées et non imbriquées.
             <div key={item.replyId} className="flex flex-col">
               <EluCard
                 to={`/elu/reponse/${item.replyId}`}
                 title={item.title}
-                meta={originLine(item.senderName, item.receivedAt)}
+                meta={outboundMetaLine(item)}
                 emphasis
-                badge={<EluStatusPill tone="attente">{waitingLabel(item.waitingDays)}</EluStatusPill>}
+                badge={
+                  <span className="flex flex-wrap gap-2">
+                    <OutboundKindBadge kind={item.kind} size="lg" />
+                    <EluStatusPill tone="attente">{waitingLabel(item.waitingDays)}</EluStatusPill>
+                  </span>
+                }
               />
-              {item.parentCourierId && (
-                <Link
-                  to={`/elu/courrier/${item.parentCourierId}`}
-                  className="flex min-h-11 items-center gap-2 self-start px-4 pt-1.5 text-[15px] font-bold text-primary"
-                >
-                  <Mail className="h-4 w-4" aria-hidden="true" />
-                  Lire le courrier reçu
-                </Link>
-              )}
+              <EluCardLinks
+                parentCourierId={item.parentCourierId}
+                recipientName={item.recipientName}
+                recipientContactId={item.recipientContactId}
+              />
             </div>
           ))}
         </div>

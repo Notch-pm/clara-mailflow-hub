@@ -7,6 +7,7 @@ import { useOrganization } from "@/contexts/OrganizationContext";
 import { useEluReply } from "@/hooks/useEluReply";
 import { useSignAndAdvance } from "@/hooks/useSignAndAdvance";
 import { ReplyVisaTrail } from "@/components/courier/ReplyVisaTrail";
+import { OutboundKindBadge } from "@/components/courier/outbound/OutboundKindBadge";
 import { visaPersonName } from "@/services/courierVisaService";
 
 /** « Réponse n°2 · courrier 2026-E-00025 · service Environnement » */
@@ -52,7 +53,7 @@ export default function EluReponse() {
   if (detail.isLoading) {
     return (
       <EluScreen>
-        <EluScreenHeader title="Réponse" withBack />
+        <EluScreenHeader title="Courrier sortant" withBack />
         <EluEmptyState>Chargement…</EluEmptyState>
       </EluScreen>
     );
@@ -80,6 +81,25 @@ export default function EluReponse() {
           withBack
         />
 
+        <OutboundKindBadge kind={detail.kind} size="lg" />
+
+        {/* À qui part le courrier : on ne signe pas sans savoir à qui l'on écrit. */}
+        <div className="flex flex-col gap-1.5 border-l-[3px] pl-4">
+          <span className="text-sm font-bold text-muted-foreground">Destinataire</span>
+          <span className="text-base leading-relaxed text-foreground">
+            {detail.recipientName ?? "Destinataire non renseigné"}
+          </span>
+          {detail.recipientContactId && (
+            <button
+              type="button"
+              onClick={() => navigate(`/elu/usager/${detail.recipientContactId}`)}
+              className="min-h-11 self-start text-left text-base font-bold text-primary"
+            >
+              {detail.recipientName ? `Voir la fiche de ${detail.recipientName}` : "Voir la fiche du destinataire"}
+            </button>
+          )}
+        </div>
+
         {/* Ce que l'usager a demandé : on ne signe pas une réponse sans pouvoir
             relire la demande. */}
         {detail.parentId && (
@@ -98,7 +118,7 @@ export default function EluReponse() {
             >
               Lire le courrier reçu
             </button>
-            {detail.senderContactId && (
+            {detail.senderContactId && detail.senderContactId !== detail.recipientContactId && (
               <button
                 type="button"
                 onClick={() => navigate(`/elu/usager/${detail.senderContactId}`)}
@@ -112,7 +132,7 @@ export default function EluReponse() {
 
         <div className="flex flex-col gap-3.5 rounded-[--radius] border bg-card p-[18px] shadow-airbnb-sm">
           <span className="text-sm font-bold text-muted-foreground">
-            Réponse préparée par le service
+            {detail.kind === "reply" ? "Réponse préparée par le service" : "Courrier préparé par le service"}
           </span>
           {detail.readableBody ? (
             <div

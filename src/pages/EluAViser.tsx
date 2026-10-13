@@ -1,11 +1,11 @@
-import { Mail } from "lucide-react";
-import { Link } from "react-router-dom";
-import { EluCard } from "@/components/elu/EluCard";
+import { OutboundKindBadge } from "@/components/courier/outbound/OutboundKindBadge";
+import { EluCard, EluCardLinks } from "@/components/elu/EluCard";
 import { EluEmptyState } from "@/components/elu/EluEmptyState";
 import { EluScreen, EluScreenHeader } from "@/components/elu/EluScreenHeader";
 import { EluStatusPill } from "@/components/elu/EluStatusPill";
 import { useEluVisaQueue, type EluVisaItem } from "@/hooks/useEluVisaQueue";
 import { waitingLabel } from "@/lib/elu-delay";
+import { outboundMetaLine } from "@/lib/outbound-kind";
 
 function subtitle(count: number, isViseur: boolean): string {
   if (!isViseur) return "Vous n'êtes pas désigné viseur dans cette organisation.";
@@ -14,13 +14,9 @@ function subtitle(count: number, isViseur: boolean): string {
   return `${count} réponses attendent votre visa`;
 }
 
-/** « Étape Visa du DGS · de Thierry Henry · reçu le 04/09/2026 » */
+/** « Étape « Visa du DGS » · À Thierry Henry · courrier reçu le 04/09/2026 » */
 function metaLine(item: EluVisaItem): string | null {
-  const parts = [
-    item.stateName ? `Étape « ${item.stateName} »` : null,
-    item.senderName ? `de ${item.senderName}` : null,
-    item.receivedAt ? `reçu le ${new Date(item.receivedAt).toLocaleDateString("fr-FR")}` : null,
-  ].filter(Boolean);
+  const parts = [item.stateName ? `Étape « ${item.stateName} »` : null, outboundMetaLine(item)].filter(Boolean);
   return parts.length ? parts.join(" · ") : null;
 }
 
@@ -38,8 +34,8 @@ export default function EluAViser() {
       ) : (
         <div className="flex flex-col gap-3">
           {items.map((item) => (
-            // Deux destinations — la réponse à viser, le courrier reçu — donc
-            // deux zones cliquables séparées, comme dans « À signer ».
+            // Plusieurs destinations — le courrier à viser, le courrier reçu, la
+            // fiche du destinataire — donc des zones cliquables séparées.
             <div key={item.replyId} className="flex flex-col">
               <EluCard
                 to={`/elu/reponse/${item.replyId}`}
@@ -48,6 +44,7 @@ export default function EluAViser() {
                 emphasis
                 badge={
                   <span className="flex flex-wrap gap-2">
+                    <OutboundKindBadge kind={item.kind} size="lg" />
                     {item.waitingSince && (
                       <EluStatusPill tone="attente">{waitingLabel(item.waitingDays)}</EluStatusPill>
                     )}
@@ -57,15 +54,11 @@ export default function EluAViser() {
                   </span>
                 }
               />
-              {item.parentCourierId && (
-                <Link
-                  to={`/elu/courrier/${item.parentCourierId}`}
-                  className="flex min-h-11 items-center gap-2 self-start px-4 pt-1.5 text-[15px] font-bold text-primary"
-                >
-                  <Mail className="h-4 w-4" aria-hidden="true" />
-                  Lire le courrier reçu
-                </Link>
-              )}
+              <EluCardLinks
+                parentCourierId={item.parentCourierId}
+                recipientName={item.recipientName}
+                recipientContactId={item.recipientContactId}
+              />
             </div>
           ))}
         </div>

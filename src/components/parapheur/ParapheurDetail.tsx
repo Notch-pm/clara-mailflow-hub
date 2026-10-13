@@ -4,6 +4,7 @@ import { ExternalLink, Loader2, Stamp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ReplyVisaTrail } from "@/components/courier/ReplyVisaTrail";
+import { OutboundKindBadge } from "@/components/courier/outbound/OutboundKindBadge";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { useEluReply } from "@/hooks/useEluReply";
@@ -109,6 +110,7 @@ export function ParapheurDetail({
         <div className="flex shrink-0 flex-wrap items-start gap-3">
           <div className="flex min-w-0 flex-[1_1_280px] flex-col gap-1">
             <div className="flex flex-wrap items-center gap-2 text-[12.5px] text-muted-foreground">
+              <OutboundKindBadge kind={detail.kind} />
               {[
                 detail.chrono ? <span key="c" className="whitespace-nowrap font-mono">{detail.chrono}</span> : null,
                 detail.rank ? <span key="r">Réponse n°{detail.rank}</span> : null,
@@ -119,22 +121,34 @@ export function ParapheurDetail({
             </div>
             <h2 className="text-xl font-bold leading-snug tracking-tight [text-wrap:pretty]">{title}</h2>
             <p className="text-[13px] text-muted-foreground">
-              {[
-                detail.senderName ? `À ${detail.senderName}` : null,
-                detail.serviceName ? `organisation gestionnaire ${detail.serviceName}` : null,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
+              {detail.recipientName && (
+                <>
+                  À{" "}
+                  {detail.recipientContactId ? (
+                    <Link
+                      to={`/contacts/${detail.recipientContactId}`}
+                      title="Ouvrir la fiche du destinataire"
+                      className="font-semibold text-primary hover:underline"
+                    >
+                      {detail.recipientName}
+                    </Link>
+                  ) : (
+                    <span className="font-semibold text-foreground">{detail.recipientName}</span>
+                  )}
+                </>
+              )}
+              {detail.recipientName && detail.serviceName && " · "}
+              {detail.serviceName && `organisation gestionnaire ${detail.serviceName}`}
             </p>
           </div>
-          {detail.parentId && (
-            <Button asChild variant="outline" size="sm" className="shrink-0 rounded-full">
-              <Link to={`/courrier/${detail.parentId}`}>
-                <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-                Ouvrir le courrier
-              </Link>
-            </Button>
-          )}
+          {/* Une réponse renvoie au courrier reçu ; un courrier à l'initiative
+              n'en a pas, il s'ouvre lui-même. */}
+          <Button asChild variant="outline" size="sm" className="shrink-0 rounded-full">
+            <Link to={`/courrier/${detail.parentId ?? replyId}`}>
+              <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+              {detail.parentId ? "Ouvrir le courrier reçu" : "Ouvrir le courrier"}
+            </Link>
+          </Button>
         </div>
 
         {banner && (
@@ -162,7 +176,7 @@ export function ParapheurDetail({
                   <br />
                 </>
               )}
-              {detail.senderName}
+              {detail.recipientName}
             </span>
           </div>
           <div className="font-bold">Objet : {detail.reply.subject || title}</div>

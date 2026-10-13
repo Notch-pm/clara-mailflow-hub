@@ -10,6 +10,7 @@ import {
 } from "@/services/courierReplyService";
 import { listOrgsWithConfig } from "@/services/socleOrgConfigService";
 import { activeVisaFor, listOrgViseurs, listReplyVisas } from "@/services/courierVisaService";
+import { outboundKind, outboundRecipient } from "@/lib/outbound-kind";
 import type { WorkflowState, WorkflowTransition } from "@/types/courier";
 
 export interface EluTransitionChoice {
@@ -62,7 +63,7 @@ export function useEluReply(replyId: string | undefined) {
       const { data, error } = await supabase
         .from("couriers")
         .select(
-          "id, parent_courier_id, organization_id, channel, subject, workflow_state_id, metadata, assigned_service, socle_organization_id, created_at, courier_participants(role, name, first_name, last_name, email, socle_contact_id)",
+          "id, parent_courier_id, organization_id, channel, subject, chrono, workflow_state_id, metadata, assigned_service, socle_organization_id, created_at, courier_participants(role, name, first_name, last_name, email, socle_contact_id)",
         )
         .eq("id", replyId!)
         .eq("organization_id", organizationId!)
@@ -192,6 +193,7 @@ export function useEluReply(replyId: string | undefined) {
   }, [siblings, replyId]);
 
   const parentSender = (parent?.courier_participants ?? []).find((p) => p.role === "sender");
+  const recipient = outboundRecipient(reply?.courier_participants, parent?.courier_participants);
   const senderName =
     parentSender?.name?.trim() ||
     [parentSender?.first_name, parentSender?.last_name].filter(Boolean).join(" ").trim() ||
@@ -207,10 +209,15 @@ export function useEluReply(replyId: string | undefined) {
     bodyHtml,
     readableBody,
     rank,
-    chrono: parent?.chrono ?? null,
+    // La référence du courrier reçu pour une réponse ; la sienne pour un courrier à l'initiative.
+    chrono: parent?.chrono ?? reply?.chrono ?? null,
     serviceName: service?.name ?? reply?.assigned_service ?? null,
     senderName,
     senderContactId: parentSender?.socle_contact_id ?? null,
+    /** Réponse à un courrier reçu, ou courrier à l'initiative de la collectivité. */
+    kind: outboundKind(parentId),
+    recipientName: recipient?.name ?? null,
+    recipientContactId: recipient?.contactId ?? null,
     workflow,
     currentState,
     outgoing,

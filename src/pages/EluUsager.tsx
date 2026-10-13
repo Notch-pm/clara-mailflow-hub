@@ -11,6 +11,7 @@ import { getContact } from "@/services/socleContactService";
 import { listContactCouriers } from "@/services/courierParticipantService";
 import { useContactIrisRequests } from "@/hooks/useContactIrisRequests";
 import { irisSourceLabel, irisStatusLabel } from "@/lib/iris";
+import { OUTBOUND_KIND_LABELS, outboundKind } from "@/lib/outbound-kind";
 import {
   contactAddress,
   contactInitials,
@@ -139,19 +140,17 @@ export default function EluUsager() {
         ) : (
           couriers.map((courier) => {
             const date = courier.received_at ?? courier.sent_at ?? courier.created_at;
-            // Une réponse s'ouvre là où l'élu la lit et la signe ; un courrier
-            // reçu, sur sa page courrier.
-            const to =
-              courier.direction === "outbound" && courier.parent_courier_id
-                ? `/elu/reponse/${courier.id}`
-                : `/elu/courrier/${courier.id}`;
+            // Un sortant — réponse ou initiative — s'ouvre là où l'élu le lit et
+            // le signe ; un courrier reçu, sur sa page courrier.
+            const outbound = courier.direction === "outbound";
+            const to = outbound ? `/elu/reponse/${courier.id}` : `/elu/courrier/${courier.id}`;
             return (
               <EluCard
                 key={courier.id}
                 to={to}
                 title={courier.subject ?? "Sans objet"}
                 meta={[
-                  courier.direction === "outbound" ? "Réponse" : null,
+                  outbound ? OUTBOUND_KIND_LABELS[outboundKind(courier.parent_courier_id)] : null,
                   date ? new Date(date).toLocaleDateString("fr-FR") : null,
                 ]
                   .filter(Boolean)

@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { OutboundKindBadge } from "@/components/courier/outbound/OutboundKindBadge";
 import { ParapheurDetail } from "@/components/parapheur/ParapheurDetail";
 import { useAuth } from "@/contexts/AuthContext";
 import { useParapheur, useParapheurBulk, type ParapheurRow } from "@/hooks/useParapheur";
@@ -134,8 +135,8 @@ export default function Parapheur() {
   }
 
   const footer = !isQueue
-    ? `${plural(list.length, "réponse")} traitée${list.length > 1 ? "s" : ""} ce mois-ci`
-    : `${plural(list.length, "réponse")} · les vôtres d'abord, puis les plus anciennes`;
+    ? `${plural(list.length, "courrier")} traité${list.length > 1 ? "s" : ""} ce mois-ci`
+    : `${plural(list.length, "courrier")} · les vôtres d'abord, puis les plus anciennes`;
 
   return (
     <div data-list-page="fill" className="flex h-full min-h-0 flex-col bg-card">
@@ -336,7 +337,8 @@ function ParapheurListRow({
   onToggle: () => void;
 }) {
   const late = row.waitingDays != null && row.waitingDays >= LATE_AFTER_DAYS;
-  const origin = [row.senderName, row.service].filter(Boolean).join(" · ");
+  // À qui part le courrier : c'est ce que relit celui qui vise ou signe.
+  const origin = [row.recipientName ? `À ${row.recipientName}` : null, row.service].filter(Boolean).join(" · ");
   return (
     <li
       id={`parapheur-row-${row.replyId}`}
@@ -378,6 +380,7 @@ function ParapheurListRow({
         </span>
         {origin && <span className="truncate text-[12.5px] text-muted-foreground">{origin}</span>}
         <span className="mt-0.5 flex flex-wrap items-center gap-2">
+          <OutboundKindBadge kind={row.kind} />
           {row.chrono && (
             <span className="whitespace-nowrap font-mono text-[11.5px] text-muted-foreground">{row.chrono}</span>
           )}

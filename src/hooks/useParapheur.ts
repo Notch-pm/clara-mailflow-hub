@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { useEluSignatureQueue } from "@/hooks/useEluSignatureQueue";
 import { useEluVisaQueue } from "@/hooks/useEluVisaQueue";
+import type { OutboundKind } from "@/lib/outbound-kind";
 import { inVisaScope, startOfMonthIso, type ParapheurTab, type VisaScope } from "@/lib/parapheur";
 import { listMyHandledReplies } from "@/services/parapheurService";
 import { loadApprovalContext, signAndAdvance, signatureBlocker, visaAndAdvance } from "@/services/replyApprovalService";
@@ -16,6 +17,9 @@ export interface ParapheurRow {
   chrono: string | null;
   senderName: string | null;
   service: string | null;
+  kind: OutboundKind;
+  recipientName: string | null;
+  recipientContactId: string | null;
   /** Étape attendue (« Visa du DGS », « À signer ») ou action faite (« Visée »). */
   step: string;
   /** Attente en jours (files) ; null dans « Traités ». */
@@ -55,6 +59,9 @@ export function useParapheur(scope: VisaScope) {
           chrono: item.chrono,
           senderName: item.senderName,
           service: null,
+          kind: item.kind,
+          recipientName: item.recipientName,
+          recipientContactId: item.recipientContactId,
           step: item.stateName,
           waitingDays: item.waitingDays,
           handledAt: null,
@@ -72,6 +79,9 @@ export function useParapheur(scope: VisaScope) {
         chrono: item.chrono,
         senderName: item.senderName,
         service: item.service,
+        kind: item.kind,
+        recipientName: item.recipientName,
+        recipientContactId: item.recipientContactId,
         step: "À signer",
         waitingDays: item.waitingDays,
         handledAt: null,
@@ -89,6 +99,9 @@ export function useParapheur(scope: VisaScope) {
         chrono: item.chrono,
         senderName: item.senderName,
         service: null,
+        kind: item.kind,
+        recipientName: item.recipientName,
+        recipientContactId: item.recipientContactId,
         step: item.action === "signature" ? "Signée" : item.stateName ? `Visée — ${item.stateName}` : "Visée",
         waitingDays: null,
         handledAt: item.at,

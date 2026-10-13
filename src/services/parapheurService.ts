@@ -1,4 +1,11 @@
 import { supabase } from "@/integrations/supabase/client";
+import {
+  outboundKind,
+  outboundRecipient,
+  participantName,
+  type OutboundKind,
+  type ParticipantLike,
+} from "@/lib/outbound-kind";
 
 /** Une réponse que j'ai visée ou signée. */
 export interface HandledReply {
@@ -7,15 +14,14 @@ export interface HandledReply {
   title: string;
   chrono: string | null;
   senderName: string | null;
+  kind: OutboundKind;
+  recipientName: string | null;
+  recipientContactId: string | null;
   /** Ma dernière action sur cette réponse. */
   action: "visa" | "signature";
   /** Étape visée, pour un visa. */
   stateName: string | null;
   at: string;
-}
-
-function participantName(p: { name: string | null; first_name: string | null; last_name: string | null }): string | null {
-  return p.name?.trim() || [p.first_name, p.last_name].filter(Boolean).join(" ").trim() || null;
 }
 
 /**
@@ -67,7 +73,7 @@ export async function listMyHandledReplies(
 
   const { data: replies, error: rErr } = await supabase
     .from("couriers")
-    .select("id, parent_courier_id, subject, chrono")
+    .select("id, parent_courier_id, subject, chrono, courier_participants(role, name, first_name, last_name, socle_contact_id)")
     .eq("organization_id", organizationId)
     .is("deleted_at", null)
     .in("id", [...latest.keys()]);
@@ -77,17 +83,18 @@ export async function listMyHandledReplies(
     parent_courier_id: string | null;
     subject: string | null;
     chrono: string | null;
+    courier_participants: ParticipantLike[] | null;
   }[];
 
   const parentIds = [...new Set(replyRows.map((r) => r.parent_courier_id).filter(Boolean))] as string[];
   const parentById: Record<
     string,
-    { subject: string | null; chrono: string | null; courier_participants: { role: string; name: string | null; first_name: string | null; last_name: string | null }[] }
+    { subject: string | null; chrono: string | null; courier_participants: ParticipantLike[] }
   > = {};
   if (parentIds.length > 0) {
     const { data: parents, error: pErr } = await supabase
       .from("couriers")
-      .select("id, subject, chrono, courier_participants(role, name, first_name, last_name)")
+      .select("id, subject, chrono, courier_participants(role, name, first_name, last_name, socle_contact_id)")
       .eq("organization_id", organizationId)
       .in("id", parentIds);
     if (pErr) throw pErr;
@@ -99,12 +106,16 @@ export async function listMyHandledReplies(
       const parent = r.parent_courier_id ? parentById[r.parent_courier_id] : undefined;
       const sender = parent?.courier_participants?.find((p) => p.role === "sender");
       const entry = latest.get(r.id)!;
+      const to = outboundRecipient(r.courier_participants, parent?.courier_participants);
       return {
         replyId: r.id,
         parentCourierId: r.parent_courier_id,
         title: parent?.subject || r.subject || "Sans objet",
         chrono: parent?.chrono ?? r.chrono ?? null,
         senderName: sender ? participantName(sender) : null,
+        kind: outboundKind(r.parent_courier_id),
+        recipientName: to?.name ?? null,
+        recipientContactId: to?.contactId ?? null,
         ...entry,
       };
     })

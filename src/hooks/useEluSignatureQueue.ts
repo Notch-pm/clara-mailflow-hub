@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { waitingDays } from "@/lib/elu-delay";
 import { eventAnchor } from "@/lib/courier-events";
+import { outboundKind, outboundRecipient, participantName, type OutboundKind } from "@/lib/outbound-kind";
 
 /** Une réponse qui attend la signature de l'utilisateur courant. */
 export interface EluSignatureItem {
@@ -19,19 +20,16 @@ export interface EluSignatureItem {
   /** Date de réception du courrier auquel cette réponse répond. */
   receivedAt: string | null;
   service: string | null;
+  /** Réponse à un courrier reçu, ou courrier à l'initiative de la collectivité. */
+  kind: OutboundKind;
+  /** À qui part le courrier, et sa fiche du Socle quand elle est connue. */
+  recipientName: string | null;
+  recipientContactId: string | null;
   waitingSince: string;
   waitingDays: number;
 }
 
 const FIVE_MINUTES = 5 * 60 * 1000;
-
-function participantName(p: {
-  name: string | null;
-  first_name: string | null;
-  last_name: string | null;
-}): string | null {
-  return p.name?.trim() || [p.first_name, p.last_name].filter(Boolean).join(" ").trim() || null;
-}
 
 /**
  * La file des réponses en attente de MA signature, avec depuis quand.
@@ -89,7 +87,7 @@ export function useEluSignatureQueue() {
       const { data, error } = await supabase
         .from("couriers")
         .select(
-          "id, subject, chrono, created_at, parent_courier_id, assigned_service, courier_participants(role, name, first_name, last_name)",
+          "id, subject, chrono, created_at, parent_courier_id, assigned_service, courier_participants(role, name, first_name, last_name, socle_contact_id)",
         )
         .eq("organization_id", organizationId!)
         .eq("direction", "outbound")
@@ -183,6 +181,7 @@ export function useEluSignatureQueue() {
         // directement dans l'état signature n'a pas d'événement, et
         // `logEvent` avale ses erreurs — le cas se produit.
         const since = waitingSince?.[reply.id] ?? (reply.created_at as string);
+        const to = outboundRecipient(reply.courier_participants, parentRow?.courier_participants);
         return {
           replyId: reply.id,
           parentCourierId: reply.parent_courier_id,
@@ -194,6 +193,9 @@ export function useEluSignatureQueue() {
           senderContactId: parentSender?.socle_contact_id ?? null,
           receivedAt: parentRow?.received_at ?? null,
           service: reply.assigned_service ?? null,
+          kind: outboundKind(reply.parent_courier_id),
+          recipientName: to?.name ?? null,
+          recipientContactId: to?.contactId ?? null,
           waitingSince: since,
           waitingDays: waitingDays(since, now),
         };
