@@ -30,6 +30,7 @@ export const COURIER_EVENT_LABELS: Record<string, string> = {
   reply_email_sent: "Courriel envoyé",
   reply_email_failed: "Échec de l'envoi du courriel",
   outbound_created: "Courrier créé",
+  outbound_ai_drafted: "Texte proposé par l'assistant",
   outbound_recipient_changed: "Destinataire modifié",
   outbound_channel_changed: "Mode d'envoi modifié",
   outbound_org_changed: "Organisation émettrice modifiée",

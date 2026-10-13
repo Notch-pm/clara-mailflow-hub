@@ -22,6 +22,7 @@ import {
   stripHtml,
 } from "./logic.ts";
 import { normalizeAckDetails } from "./acknowledgment.ts";
+import { draftInitiative, type InitiativeRequest } from "./initiative.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -161,7 +162,11 @@ Deno.serve(async (req) => {
     const user = await verifyAuth(req);
     const admin = getAdminClient();
 
-    const { courierId, orgId, responseType, additionalInstructions, currentSubject, acknowledgment } = await req.json() as {
+    const payload = await req.json() as Record<string, unknown>;
+    // Courrier à l'initiative de la collectivité : rédigé sur consigne, sans
+    // courrier reçu (`initiative.ts`). Même contrôle d'accès que la réponse.
+    const isInitiative = payload.mode === "initiative";
+    const { courierId, orgId, responseType, additionalInstructions, currentSubject, acknowledgment } = payload as {
       courierId: string;
       orgId: string;
       responseType: string;
@@ -172,7 +177,7 @@ Deno.serve(async (req) => {
       acknowledgment?: unknown;
     };
 
-    if (!courierId || !orgId || !responseType) {
+    if (!orgId || (!isInitiative && (!courierId || !responseType))) {
       return jsonResponse({ error: "Paramètres manquants" }, 400);
     }
 
@@ -204,6 +209,15 @@ Deno.serve(async (req) => {
         { error: "Organisation non rattachée au Socle (socle_org_id manquant) — la consommation IA ne serait imputable à personne." },
         503,
       );
+    }
+
+    if (isInitiative) {
+      const result = await draftInitiative(admin, payload as unknown as InitiativeRequest, {
+        userId: user.id,
+        socleOrgId,
+        civilityOf: (contactId) => socleCivility(contactId, socleOrgId),
+      });
+      return jsonResponse(result.body, result.status);
     }
 
     // Fetch courier + participants + service en charge
@@ -320,8 +334,8 @@ Deno.serve(async (req) => {
         //
         // ⚠️ NI `is_draft` NI `sent_at` NE DISENT LA VÉRITÉ ICI. `is_draft`
         // reste à `true` après l'envoi (personne ne le retourne), et `sent_at`
-        // est renseigné DÈS LA CRÉATION pour satisfaire la contrainte
-        // `check_dates` des courriers sortants. Seuls `sent_email_at` (posé par
+        // des réponses créées avant le 2026-10-13 a été posé DÈS LA CRÉATION
+        // (ancienne contrainte `check_dates`). Seuls `sent_email_at` (posé par
         // `send-courier-reply`) et `signed_at` racontent quelque chose. Une
         // réponse papier signée puis postée n'a aucun marqueur d'expédition :
         // on dit donc « signée le… » sans rien affirmer de son départ.

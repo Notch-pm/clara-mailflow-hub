@@ -14,6 +14,8 @@
 > courrier à l'initiative jusqu'au lot 3 (« Améliorer » reste disponible).
 > **Lot 2 livré le 2026-10-13** : envoi par courriel (réservation atomique, PJ, échecs tracés), clôture
 > d'un courriel non parti refusée. Les PJ restent réservées aux courriers à l'initiative.
+> **Lot 3 livré le 2026-10-13** : assistant sur consigne (mode `initiative` de `draft-reply`), lit le
+> brouillon de l'éditeur et les courriers liés, jamais les notes internes.
 > Écart au plan : pas de hook `useOutboundComposer` séparé — l'éditeur porte son état ; à
 > extraire au lot 1 seulement si `InitiativeComposer` en a besoin.
 

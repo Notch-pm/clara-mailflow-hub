@@ -54,3 +54,27 @@ export async function improveReply(params: {
     subject: typeof data?.subject === "string" && data.subject.trim() ? data.subject.trim() : null,
   };
 }
+
+/**
+ * Courrier à l'initiative de la collectivité : rédigé sur la consigne de
+ * l'agent (edge `draft-reply`, mode « initiative »), sans courrier reçu.
+ * Le brouillon en cours part tel qu'il est dans l'éditeur : l'assistant
+ * l'améliore plutôt que de repartir de zéro. Rien n'est écrit en base.
+ */
+export async function draftOutbound(params: {
+  outboundId: string;
+  orgId: string;
+  prompt: string;
+  currentSubject?: string | null;
+  currentHtml?: string | null;
+}): Promise<DraftReplyResult> {
+  const { data, error } = await supabase.functions.invoke("draft-reply", {
+    body: { mode: "initiative", ...params },
+  });
+  if (error) throw await edgeError(error, "Rédaction impossible");
+  if (data?.error) throw new Error(data.error);
+  return {
+    html: data?.html ?? "",
+    subject: typeof data?.subject === "string" && data.subject.trim() ? data.subject.trim() : null,
+  };
+}

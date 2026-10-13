@@ -54,7 +54,17 @@ import { appendSignature, buildSignatureBlock } from "@/lib/reply-signature";
 import { useAuth } from "@/contexts/AuthContext";
 import { printReply, buildContactBlock } from "@/utils/printReply";
 import { getOrgHtmlTemplate } from "@/services/templateService";
-import { draftReply, improveReply } from "@/services/courierDraftService";
+import { draftOutbound, draftReply, improveReply } from "@/services/courierDraftService";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { visibleText } from "../../../../supabase/functions/_shared/improveMessage";
 import { Textarea } from "@/components/ui/textarea";
 import type { CourierChannel, CourierParticipant } from "@/types/courier";
@@ -287,6 +297,10 @@ export function OutboundEditor({
   const [aiInstructions, setAiInstructions] = useState<string>("");
   const [ackDetails, setAckDetails] = useState<AckDetails>({});
   const [isDrafting, setIsDrafting] = useState(false);
+  // Courrier à l'initiative : la consigne libre, et de quoi revenir en arrière.
+  const [initiativePrompt, setInitiativePrompt] = useState("");
+  const [confirmOverwrite, setConfirmOverwrite] = useState(false);
+  const [beforeDraft, setBeforeDraft] = useState<{ html: string; subject: string; drafted: string } | null>(null);
   const [isImproving, setIsImproving] = useState(false);
   /** Le texte d'avant « Améliorer » — annulable tant que l'agent n'a rien retouché depuis. */
   const [beforeImprove, setBeforeImprove] = useState<{
@@ -627,6 +641,45 @@ export function OutboundEditor({
     serviceName: currentService.name,
     serviceCompleteHtml: buildContactBlock(currentService.name, currentService),
   };
+
+  /** La consigne part avec le brouillon en cours : l'assistant l'améliore. */
+  async function runInitiativeDraft() {
+    if (!reply) return;
+    setConfirmOverwrite(false);
+    setIsDrafting(true);
+    try {
+      const draft = await draftOutbound({
+        outboundId: reply.id,
+        orgId: organizationId,
+        prompt: initiativePrompt.trim(),
+        currentSubject: subject.trim() || null,
+        currentHtml: body,
+      });
+      setBeforeDraft({ html: body, subject, drafted: draft.html });
+      setBody(draft.html);
+      if (draft.subject) setSubject(draft.subject);
+      setDirty(true);
+      setBeforeImprove(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Rédaction impossible");
+    } finally {
+      setIsDrafting(false);
+    }
+  }
+
+  function handleInitiativeDraft() {
+    // Un texte déjà écrit ne se remplace pas sans le dire.
+    if (visibleText(body) !== "") setConfirmOverwrite(true);
+    else void runInitiativeDraft();
+  }
+
+  function undoInitiativeDraft() {
+    if (!beforeDraft) return;
+    setBody(beforeDraft.html);
+    setSubject(beforeDraft.subject);
+    setDirty(true);
+    setBeforeDraft(null);
+  }
 
   async function handleDraft() {
     if (!aiResponseType) { toast.error("Sélectionnez un type de réponse."); return; }
@@ -1064,6 +1117,61 @@ export function OutboundEditor({
           </p>
         )
       )}
+
+      {/* Assistant sur consigne — courrier à l'initiative */}
+      {kind === "initiative" && !editorDisabled && reply && (
+        <div className="shrink-0 space-y-2 rounded-md border border-violet-200 bg-violet-50/60 p-3">
+          <label htmlFor="initiative-prompt" className="flex items-center gap-2 text-sm font-medium text-violet-700">
+            <Sparkles className="h-4 w-4 shrink-0" aria-hidden="true" />
+            Que doit dire ce courrier ?
+          </label>
+          <Textarea
+            id="initiative-prompt"
+            value={initiativePrompt}
+            onChange={(e) => setInitiativePrompt(e.target.value)}
+            placeholder="Ex. : Convoquer M. Martin à la réunion de quartier du 12 novembre à 18 h, salle B. Ton cordial."
+            maxLength={2000}
+            className="min-h-[72px] resize-none bg-background text-sm"
+            disabled={isDrafting}
+          />
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs text-muted-foreground">{initiativePrompt.length} / 2000</span>
+            <div className="flex items-center gap-2">
+              {beforeDraft && beforeDraft.drafted === body && (
+                <Button variant="ghost" size="sm" className="gap-1.5" onClick={undoInitiativeDraft} disabled={isBusy}>
+                  <Undo2 className="h-3.5 w-3.5" />
+                  Annuler la rédaction
+                </Button>
+              )}
+              <Button
+                size="sm"
+                onClick={handleInitiativeDraft}
+                disabled={isDrafting || isBusy || !initiativePrompt.trim()}
+                className="gap-1.5 bg-violet-600 text-white hover:bg-violet-700"
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                {isDrafting ? "Rédaction en cours…" : "Rédiger avec l'assistant"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <AlertDialog open={confirmOverwrite} onOpenChange={setConfirmOverwrite}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remplacer le texte en cours ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              L'assistant part de votre brouillon et de votre consigne, et propose un nouveau texte. Vous pourrez revenir
+              au vôtre avec « Annuler la rédaction » tant que vous ne l'avez pas retouché.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Garder mon texte</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void runInitiativeDraft()}>Remplacer</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Assistant IA */}
       {!body && !editorDisabled && canDraft && (

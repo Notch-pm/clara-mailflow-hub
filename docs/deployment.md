@@ -112,6 +112,13 @@ bunx supabase functions deploy <nom> --project-ref aullweizxcjbvtdspjli
 bun run build && npx wrangler deploy --dry-run
 ```
 
+### Lot « courriers sortants à l'initiative, lot 3 : assistant sur consigne » (2026-10-13) — déployé le 2026-10-13
+
+| # | Étape | État |
+|---|---|---|
+| 1 | `draft-reply` : mode `initiative` (`initiative.ts`, `initiativeLogic.ts`), aiguillé après le contrôle d'accès commun ; chemin « réponse » inchangé. Appel par `socleCompletion` (guichet du Socle), événement `outbound_ai_drafted` sans la consigne | **Déployé**. Vérifié sur [TEST] Alpha : consigne vide → 400 ; consigne réelle → objet + corps en ~3 s ; formule de clôture resserrée après un premier essai qui finissait sur « Madame, Monsieur, » seul |
+| 2 | Frontend : panneau « Que doit dire ce courrier ? » (2 000 caractères), confirmation avant de remplacer un texte, « Annuler la rédaction » | **Fait** |
+
 ### Lot « courriers sortants à l'initiative, lot 2 : envoi par courriel » (2026-10-13) — appliqué le 2026-10-13
 
 | # | Étape | Pourquoi cet ordre | État |
