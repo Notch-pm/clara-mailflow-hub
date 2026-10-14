@@ -23,7 +23,8 @@
 - toute nouvelle policy utilise `is_member_of` ou `is_admin_of` — jamais un `EXISTS` inline sur `organization_users`, jamais `x-org-id` en dur ;
 - jamais `auth.uid()` / `auth.role()` / `current_setting()` nus dans une policy : toujours wrappés `(select auth.uid())` (advisor `auth_rls_initplan`) — inutile pour les helpers, qui les encapsulent déjà ;
 - une seule policy permissive par (table, rôle, action) (advisor `multiple_permissive_policies`) : `is_member_of`/`is_admin_of` incluent le superadmin, ne pas empiler de policy superadmin en plus ;
-- les policies `service_role_full` sont déclarées `TO service_role` (jamais sans `TO`, sinon elles s'évaluent aussi pour `authenticated`).
+- les policies `service_role_full` sont déclarées `TO service_role` (jamais sans `TO`, sinon elles s'évaluent aussi pour `authenticated`) ;
+- **sur une table volumineuse, pas de `is_member_of(organization_id)`** : appelée avec une colonne, cette fonction `SECURITY DEFINER` n'est pas intégrable par le planificateur et s'exécute **à chaque ligne** (~0,15 ms × 4 550 courriers ACCM = 700 ms pour un comptage). Écrire à la place `((SELECT public.is_superadmin((SELECT auth.uid()))) OR organization_id IN (SELECT public.current_user_orgs()))` — même règle, évaluée une fois (InitPlan + sous-plan haché). Appliqué à `couriers.auth_select` le 2026-10-14 (`20261014170000`) ; `is_member_of(p_org_id)` sur un **paramètre** reste correct (évalué une fois).
 
 ### Trigger anti-escalade
 `users_prevent_superadmin_escalation` — bloque tout `UPDATE SET is_superadmin` si `auth.uid()` n'est pas superadmin. En contexte migration (`auth.uid() = NULL`), il faut désactiver/réactiver le trigger autour de l'UPDATE :
@@ -59,6 +60,7 @@ Pour les tables en écriture admin seulement, `auth_insert/update/delete` utilis
 `courier_sequences`, `roles`, `service_signatories`, `action_tickets`
 
 → Toutes : `is_member_of(organization_id)` sur les 4 ops + `service_role_full`.
+Exception de lecture : `couriers.auth_select` s'écrit avec `current_user_orgs()` (même règle, évaluée une fois — voir les règles d'or) et exclut les supprimés et les confidentiels non lisibles ; les tables filles ajoutent `can_read_courier(courier_id)`.
 
 ### Tables admin-only
 

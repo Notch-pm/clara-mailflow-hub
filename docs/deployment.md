@@ -112,6 +112,16 @@ bunx supabase functions deploy <nom> --project-ref aullweizxcjbvtdspjli
 bun run build && npx wrangler deploy --dry-run
 ```
 
+### Performance RLS et statistiques (2026-10-14)
+
+Aucun changement de frontend ni d'edge function.
+
+| # | Étape | État |
+|---|---|---|
+| 1 | `20261014170000_perf_rls_couriers_index.sql` (`couriers.auth_select` via `current_user_orgs()`, 3 `service_role_full` `TO service_role`, index en double retiré, 21 index de FK) | **Appliqué via `execute_sql` en deux blocs** (`apply_migration` répondait « Invalid or expired requestState ») ; **ligne de registre posée à la main**. Ensembles visibles identiques avant/après pour les 26 membres et l'anonyme ; `test:integration` 128/128 |
+| 2 | `20261014173703_perf_stats_processing_times.sql` (fonction en `SECURITY DEFINER`, `EXECUTE` retiré à `anon`/`PUBLIC`) | **Appliqué** via `apply_migration` — registre `20261014173703` (fichier renommé pour coller). Résultats identiques en transaction annulée, 12,5 s → ~10 ms |
+| — | `VACUUM FULL` de `net._http_response` et `notifications`, `pg_stat_statements_reset()` à 17:01 UTC | Fait (maintenance, hors migration) |
+
 ### Courriers confidentiels (2026-10-13)
 
 | # | Étape | État |
