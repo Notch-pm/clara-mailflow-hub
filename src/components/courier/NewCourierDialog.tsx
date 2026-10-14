@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
-import { Check, ChevronLeft, ChevronRight, FileText, FileUp, Loader2, Lock, Mic, Plus, Sparkles, Upload, X } from "lucide-react";
+import { FileUp, Loader2, Lock, Mic, Sparkles, Upload } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -23,47 +23,32 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { readableTextColor } from "@/lib/tag-color";
 import { useAuth } from "@/contexts/AuthContext";
 import { canEditCouriers, canSetConfidential, hasConfidentialAccess } from "@/lib/permissions";
-import { setCourierConfidential } from "@/services/courierService";
-import { findSuggestedOrg } from "@/lib/service-suggestion";
-import { supabase } from "@/integrations/supabase/client";
-import { createCourier } from "@/services/courierService";
+import { prefillFromExtraction, type ServiceHint } from "@/lib/new-courier-prefill";
 import { COURIER_LIST_QUERY_PREFIXES } from "@/services/courierListService";
-import { addParticipant } from "@/services/courierParticipantService";
 import { assignableOrgs, listOrgsWithConfig } from "@/services/socleOrgConfigService";
-import { listTags, TAG_GROUPS, type TagGroup } from "@/services/courierTagService";
-import { splitAppliedTags } from "@/lib/courier-tags";
+import { listTags } from "@/services/courierTagService";
 import { storage } from "@/services/storageService";
 import {
   extractCourierInfo,
-  recordPreCreationAnalysis,
   type ExtractCourierInfoResult,
   type SuggestedSender,
 } from "@/services/courierAnalysisService";
-import { enqueueCourierAnalysis } from "@/services/courierAnalysisJobService";
+import { createInboundCourier } from "@/services/inboundCourierCreationService";
 import ContactPicker from "@/components/courier/ContactPicker";
 import { ContactCategoryBadges } from "@/components/contacts/ContactCategoryBadge";
 import { CONTACT_CATEGORIES } from "@/lib/contact-categories";
 import SenderMatchNotice from "@/components/courier/SenderMatchNotice";
 import DictationRecorder from "@/components/courier/DictationRecorder";
+import { PendingFilesPreview } from "@/components/courier/new-courier/PendingFilesPreview";
+import { TagGroupPicker } from "@/components/courier/new-courier/TagGroupPicker";
+import { ExtractedSenderCard } from "@/components/courier/new-courier/ExtractedSenderCard";
 import { useDictationEnabled } from "@/hooks/useDictationEnabled";
 import type { SenderMatch } from "../../../supabase/functions/_shared/senderMatchLogic";
 import {
-  createSenderContact,
   matchSender,
   SOCLE_CONTACT_TYPE_LABELS,
   type SocleContact,
@@ -89,17 +74,13 @@ const schema = z.object({
 /** Valeur du choix « à affecter plus tard » (un SelectItem ne peut valoir ""). */
 const NO_SERVICE = "__none__";
 
+const FORM_INVALID = "Veuillez corriger les erreurs du formulaire.";
+
 interface Props {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   organizationId: string;
   onCreated?: (courierId: string) => void;
-}
-
-function formatBytes(b: number): string {
-  if (b < 1024) return `${b} o`;
-  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} Ko`;
-  return `${(b / (1024 * 1024)).toFixed(1)} Mo`;
 }
 
 export default function NewCourierDialog({ open, onOpenChange, organizationId, onCreated }: Props) {
@@ -127,17 +108,15 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
   const [recipientContact, setRecipientContact] = useState<SocleContact | null>(null);
   const [serviceId, setServiceId] = useState<string>("");
   // Ce que l'analyse a dit de l'organisation gestionnaire : sa proposition et
-  // pourquoi, ou pourquoi elle n'en fait pas. Se taire laissait croire à une panne.
-  const [serviceHint, setServiceHint] = useState<{ orgId: string | null; text: string } | null>(null);
+  // pourquoi, ou pourquoi elle n'en fait pas.
+  const [serviceHint, setServiceHint] = useState<ServiceHint | null>(null);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [confidential, setConfidential] = useState(false);
-  const [tagPopoverGroup, setTagPopoverGroup] = useState<TagGroup | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [bodyText, setBodyText] = useState("");
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [previewIndex, setPreviewIndex] = useState(0);
-  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   // Expéditeur lu par l'analyse : sert à créer sa fiche quand le référentiel
   // ne le connaît pas (ou quand l'agent écarte le contact reconnu).
   const [extractedSender, setExtractedSender] = useState<SuggestedSender | null>(null);
@@ -181,13 +160,6 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
     }
   }, [pendingFiles.length]);
 
-  // Create and revoke object URLs for local file preview
-  useEffect(() => {
-    const urls = pendingFiles.map((f) => URL.createObjectURL(f));
-    setPreviewUrls(urls);
-    return () => urls.forEach((u) => URL.revokeObjectURL(u));
-  }, [pendingFiles]);
-
   const { data: services } = useQuery({
     queryKey: ["socle-orgs-config", organizationId],
     queryFn: () => listOrgsWithConfig(organizationId),
@@ -209,11 +181,6 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
     enabled: !!organizationId && open,
     staleTime: 5 * 60 * 1000,
   });
-
-  const tagsByGroup = useMemo(
-    () => splitAppliedTags(selectedTags, orgTags ?? []),
-    [selectedTags, orgTags],
-  );
 
   const addFiles = useCallback(
     (files: FileList | File[]) => {
@@ -262,7 +229,7 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
       }
       if (Object.keys(fe).length > 0) {
         setErrors(fe);
-        throw new Error("Veuillez corriger les erreurs du formulaire.");
+        throw new Error(FORM_INVALID);
       }
       setErrors({});
 
@@ -271,146 +238,31 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
       const service = serviceId ? services?.find((s) => s.id === serviceId) : null;
       if (serviceId && !service) throw new Error("Organisation introuvable");
 
-      let initialState: { id: string } | null = null;
-      if (service?.workflow_id) {
-        const { data, error: stateErr } = await supabase
-          .from("workflow_states")
-          .select("id")
-          .eq("workflow_id", service.workflow_id)
-          .eq("is_initial", true)
-          .maybeSingle();
-        if (stateErr) throw stateErr;
-        initialState = data;
-      }
-
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      // Fiche créée AVANT le courrier : si le référentiel la refuse, rien n'est
-      // créé et l'agent corrige, plutôt qu'un courrier sans expéditeur.
-      const sender =
-        senderContact ??
-        (senderToCreate && extractedCivility
-          ? await createSenderContact(organizationId, extractedCivility, senderToCreate)
-          : null);
-
-      // Build received_at: if the chosen date is today, use the current time
-      // so manually created couriers are sorted alongside other recent items.
-      // Otherwise, anchor to noon local time to avoid timezone-induced day shifts.
-      const today = new Date().toISOString().slice(0, 10);
-      const receivedAtIso =
-        receivedAt === today
-          ? new Date().toISOString()
-          : new Date(`${receivedAt}T12:00:00`).toISOString();
-
-      const { data: courier, error: cErr } = await createCourier({
-        organization_id: organizationId,
-        direction: "inbound",
+      const created = await createInboundCourier({
+        organizationId,
+        subject,
         channel,
-        subject: subject.trim(),
-        received_at: receivedAtIso,
-        assigned_service: service?.name ?? null,
-        socle_organization_id: service?.id ?? null,
-        workflow_state_id: initialState?.id ?? null,
-        metadata: {
-          tags: selectedTags,
-          socle_organization_id: service?.id ?? null,
-          ...(bodyText.trim() ? { body_text: bodyText.trim() } : {}),
-        } as any,
-        created_by: user?.id ?? null,
+        receivedOn: receivedAt,
+        bodyText,
+        tags: selectedTags,
+        service: service ?? null,
+        senderContact,
+        senderToCreate: senderToCreate && extractedCivility ? { sender: senderToCreate, civility: extractedCivility } : null,
+        recipientContact,
+        recipientName,
+        files: pendingFiles,
+        preAnalysis: preCreationAnalysisRef.current,
+        confidential,
       });
-      if (cErr) throw cErr;
-      if (!courier) throw new Error("Création échouée");
-
-      if (sender) {
-        await addParticipant({
-          courier_id: courier.id,
-          organization_id: organizationId,
-          role: "sender",
-          name: sender.display_name,
-          first_name: sender.first_name,
-          last_name: sender.last_name ?? sender.legal_name,
-          email: sender.email,
-          phone: sender.mobile_phone ?? sender.landline_phone,
-          socle_contact_id: sender.id,
-        });
-      }
-      if (recipientContact) {
-        await addParticipant({
-          courier_id: courier.id,
-          organization_id: organizationId,
-          role: "recipient",
-          name: recipientContact.display_name,
-          first_name: recipientContact.first_name,
-          last_name: recipientContact.last_name ?? recipientContact.legal_name,
-          email: recipientContact.email,
-          socle_contact_id: recipientContact.id,
-        });
-      } else if (recipientName.trim()) {
-        await addParticipant({
-          courier_id: courier.id,
-          organization_id: organizationId,
-          role: "recipient",
-          name: recipientName.trim(),
-          last_name: recipientName.trim(),
-        });
-      }
-
-      // Upload pending files (best-effort: report partial errors)
-      let uploadFailures = 0;
-      for (const file of pendingFiles) {
-        try {
-          await storage.upload(organizationId, courier.id, file, "attachment");
-        } catch (err) {
-          uploadFailures++;
-          const msg = err instanceof Error ? err.message : "Erreur upload";
-          toast.error(`${file.name} : ${msg}`);
-        }
-      }
-      const uploaded = pendingFiles.length - uploadFailures;
-
-      // Analysé dans cet écran : cette analyse — résumé, classement, actions
-      // suggérées, organisation proposée — devient celle du courrier, sans en
-      // relancer une seconde (OCR et IA payés deux fois jusqu'au 2026-10-14).
-      // Écrite AVANT de rendre la main : la fiche ouverte par `onCreated` la
-      // trouve, et « Courrier entrant » range aussitôt le courrier.
-      // Sans analyse dans cet écran, ou si l'écriture échoue : analyse en file.
-      let analysisRecorded = false;
-      const pre = preCreationAnalysisRef.current;
-      const preAnalysis =
-        pre &&
-        pre.files.length === pendingFiles.length &&
-        pre.files.every((f, i) => f === pendingFiles[i])
-          ? pre.result
-          : null;
-      if (preAnalysis) {
-        try {
-          await recordPreCreationAnalysis(organizationId, courier.id, preAnalysis);
-          analysisRecorded = true;
-        } catch (e) {
-          console.error("Analyse de saisie non enregistrée, analyse complète en file :", e);
-        }
-      }
-      if (pre && !analysisRecorded && uploaded > 0) {
-        await enqueueCourierAnalysis(courier.id).catch((e) => {
-          console.error("Enfilement de l'analyse post-création impossible:", e);
-        });
-      }
-
-      // Le drapeau en DERNIER : posé à l'insertion, il cacherait aussitôt le
-      // courrier au service courrier non habilité, et les écritures qui suivent
-      // (participants, pièces) échoueraient.
-      if (confidential) await setCourierConfidential(courier.id, true);
-
-      return { courierId: courier.id, uploaded, total: pendingFiles.length, confidential };
+      created.uploadFailures.forEach((f) => toast.error(`${f.name} : ${f.message}`));
+      return { ...created, confidential };
     },
     onSuccess: (res) => {
       // Toutes les listes, « Courrier entrant » comprise : n'invalider que la
       // boîte laissait l'écran du service courrier sur un instantané périmé.
       COURIER_LIST_QUERY_PREFIXES.forEach((prefix) => qc.invalidateQueries({ queryKey: [prefix] }));
       qc.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
-      if (res && res.total > 0) {
+      if (res.total > 0) {
         toast.success(`Courrier créé — ${res.uploaded}/${res.total} fichier(s) ajouté(s)`);
       } else {
         toast.success("Courrier créé");
@@ -420,9 +272,7 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
       if (onCreated && !(res.confidential && !hasConfidentialAccess(membership))) onCreated(res.courierId);
     },
     onError: (err: Error) => {
-      if (err.message !== "Veuillez corriger les erreurs du formulaire.") {
-        toast.error(err.message);
-      }
+      if (err.message !== FORM_INVALID) toast.error(err.message);
     },
   });
 
@@ -449,78 +299,21 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
     onSuccess: (result) => {
       // Gardée telle quelle : elle deviendra l'analyse du courrier à sa création.
       preCreationAnalysisRef.current = { result, files: [...pendingFiles] };
-      const filled: string[] = [];
-
-      // Pre-fill subject
-      if (result.suggested_subject?.trim() && !subject.trim()) {
-        setSubject(result.suggested_subject.trim());
-        filled.push("titre");
-      }
-
-      // Pre-fill body text from OCR / texte collé
-      if (result.extracted_text?.trim() && !bodyText.trim()) {
-        setBodyText(result.extracted_text.trim());
-        filled.push("contenu");
-      }
-
-      // Expéditeur : reconnu dans le référentiel (email, téléphone ou
-      // nom+prénom identiques) → sélectionné ; sinon il sera créé. L'identité
-      // extraite est gardée dans les deux cas, pour pouvoir créer une fiche si
-      // l'agent écarte le contact reconnu.
-      const s = result.sender;
-      const senderFound = !!(s.first_name || s.last_name || s.email || s.phone);
-      const match = result.sender_match ?? null;
-      setSenderMatch(match);
-      setExtractedSender(senderFound ? s : null);
-      if (s.civility) setExtractedCivility(s.civility);
-      if (match?.status === "matched" && match.contact) {
-        setSenderContact(match.contact);
-        filled.push("expéditeur reconnu");
-      } else if (senderFound) {
-        setSenderContact(null);
-        filled.push("expéditeur extrait");
-      }
-
-      // Pre-fill recipient
-      if (result.recipient_name && !recipientName.trim()) {
-        setRecipientName(result.recipient_name);
-        filled.push("destinataire");
-      }
-
-      // Organisation gestionnaire : la proposition est pré-sélectionnée (sans
-      // écraser un choix de l'agent) et toujours expliquée, y compris son absence.
-      const suggestedOrg = findSuggestedOrg(result, services ?? []);
-      if (suggestedOrg) {
-        if (!serviceId) {
-          setServiceId(suggestedOrg.id);
-          filled.push("organisation gestionnaire");
-        }
-        const confidence = result.suggested_service_confidence;
-        setServiceHint({
-          orgId: suggestedOrg.id,
-          text: [
-            `Proposée par l'IA${confidence != null ? ` (confiance ${confidence} %)` : ""}.`,
-            result.suggested_service_reason ?? "",
-          ].filter(Boolean).join(" "),
-        });
-      } else {
-        setServiceHint({
-          orgId: null,
-          text: `L'IA ne propose pas d'organisation. ${
-            result.service_suggestion_note ?? "Le contenu ne relève clairement d'aucune organisation."
-          }`,
-        });
-      }
-
-      // Pre-fill tags (compute toAdd outside the state updater to track filled)
-      if (result.suggested_tag_names.length) {
-        const existing = new Set(selectedTags.map((t) => t.toLowerCase()));
-        const toAdd = result.suggested_tag_names.filter((t) => !existing.has(t.toLowerCase()));
-        if (toAdd.length) {
-          setSelectedTags((curr) => [...curr, ...toAdd]);
-          filled.push(`${toAdd.length} tag(s)`);
-        }
-      }
+      const patch = prefillFromExtraction(
+        result,
+        { subject, bodyText, recipientName, serviceId, selectedTags },
+        services ?? [],
+      );
+      if (patch.subject !== undefined) setSubject(patch.subject);
+      if (patch.bodyText !== undefined) setBodyText(patch.bodyText);
+      if (patch.recipientName !== undefined) setRecipientName(patch.recipientName);
+      if (patch.serviceId !== undefined) setServiceId(patch.serviceId);
+      setServiceHint(patch.serviceHint);
+      setSenderMatch(patch.senderMatch);
+      setExtractedSender(patch.extractedSender);
+      if (patch.civility) setExtractedCivility(patch.civility);
+      if (patch.senderContact !== undefined) setSenderContact(patch.senderContact);
+      if (patch.addTags.length) setSelectedTags((curr) => [...curr, ...patch.addTags]);
 
       // Échec partiel : le lot est passé, mais pas toutes les pièces. Le taire
       // laisserait croire que tout a été lu.
@@ -528,8 +321,8 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
         toast.warning("Pièces non lues", { description: result.ocr_failures.join(" ; ") });
       }
 
-      if (filled.length) {
-        toast.success(`Analyse : ${filled.join(", ")} pré-rempli(s)`);
+      if (patch.filled.length) {
+        toast.success(`Analyse : ${patch.filled.join(", ")} pré-rempli(s)`);
       } else {
         toast.info("Analyse terminée — aucune information extraite");
       }
@@ -620,81 +413,12 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
                   />
                 </div>
 
-                {pendingFiles.length > 0 && (
-                  <div className="rounded-lg border overflow-hidden">
-                    <div className="relative bg-muted/30 h-[260px] flex items-center justify-center">
-                      {(() => {
-                        const file = pendingFiles[previewIndex];
-                        const url = previewUrls[previewIndex];
-                        if (!file || !url) return null;
-                        if (file.type.startsWith("image/")) {
-                          return <img src={url} alt={file.name} className="max-h-full max-w-full object-contain p-2" />;
-                        }
-                        if (file.type === "application/pdf") {
-                          return <iframe src={url} className="w-full h-full border-0" title={file.name} />;
-                        }
-                        return (
-                          <div className="text-center text-muted-foreground px-4">
-                            <FileText className="h-10 w-10 mx-auto mb-2 opacity-40" />
-                            <p className="text-sm font-medium truncate">{file.name}</p>
-                            <p className="text-xs mt-1">Aperçu non disponible</p>
-                          </div>
-                        );
-                      })()}
-
-                      {pendingFiles.length > 1 && (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => setPreviewIndex((i) => Math.max(0, i - 1))}
-                            disabled={previewIndex === 0}
-                            className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-background/90 p-1.5 shadow hover:bg-background disabled:opacity-30 transition-opacity"
-                          >
-                            <ChevronLeft className="h-4 w-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setPreviewIndex((i) => Math.min(pendingFiles.length - 1, i + 1))}
-                            disabled={previewIndex === pendingFiles.length - 1}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-background/90 p-1.5 shadow hover:bg-background disabled:opacity-30 transition-opacity"
-                          >
-                            <ChevronRight className="h-4 w-4" />
-                          </button>
-                        </>
-                      )}
-
-                      {pendingFiles.length > 1 && (
-                        <span className="absolute bottom-2 right-3 text-[10px] text-muted-foreground bg-background/80 rounded px-1.5 py-0.5">
-                          {previewIndex + 1} / {pendingFiles.length}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="border-t divide-y max-h-[160px] overflow-y-auto">
-                      {pendingFiles.map((f, i) => (
-                        <div
-                          key={`${f.name}-${i}`}
-                          onClick={() => setPreviewIndex(i)}
-                          className={cn(
-                            "flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer transition-colors",
-                            i === previewIndex ? "bg-muted font-medium" : "hover:bg-muted/50",
-                          )}
-                        >
-                          <span className="flex-1 truncate" title={f.name}>{f.name}</span>
-                          <span className="text-xs text-muted-foreground shrink-0">{formatBytes(f.size)}</span>
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); removePendingFile(i); }}
-                            className="p-0.5 rounded hover:text-destructive transition-colors ml-1"
-                            aria-label={`Retirer ${f.name}`}
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                <PendingFilesPreview
+                  files={pendingFiles}
+                  index={previewIndex}
+                  onIndexChange={setPreviewIndex}
+                  onRemove={removePendingFile}
+                />
               </TabsContent>
 
               <TabsContent value="paste" className="mt-3">
@@ -785,72 +509,13 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
                 {pendingFiles.length > 0 && (
                   <div className="space-y-2">
                     <Label>Documents importés</Label>
-                    <div className="rounded-lg border overflow-hidden">
-                      <div className="relative bg-muted/30 h-[160px] flex items-center justify-center">
-                        {(() => {
-                          const file = pendingFiles[previewIndex];
-                          const url = previewUrls[previewIndex];
-                          if (!file || !url) return null;
-                          if (file.type.startsWith("image/")) {
-                            return <img src={url} alt={file.name} className="max-h-full max-w-full object-contain p-2" />;
-                          }
-                          if (file.type === "application/pdf") {
-                            return <iframe src={url} className="w-full h-full border-0" title={file.name} />;
-                          }
-                          return (
-                            <div className="text-center text-muted-foreground px-4">
-                              <FileText className="h-8 w-8 mx-auto mb-1 opacity-40" />
-                              <p className="text-xs font-medium truncate">{file.name}</p>
-                            </div>
-                          );
-                        })()}
-                        {pendingFiles.length > 1 && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => setPreviewIndex((i) => Math.max(0, i - 1))}
-                              disabled={previewIndex === 0}
-                              className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-background/90 p-1 shadow hover:bg-background disabled:opacity-30 transition-opacity"
-                            >
-                              <ChevronLeft className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setPreviewIndex((i) => Math.min(pendingFiles.length - 1, i + 1))}
-                              disabled={previewIndex === pendingFiles.length - 1}
-                              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-background/90 p-1 shadow hover:bg-background disabled:opacity-30 transition-opacity"
-                            >
-                              <ChevronRight className="h-3.5 w-3.5" />
-                            </button>
-                            <span className="absolute bottom-1.5 right-2 text-[10px] text-muted-foreground bg-background/80 rounded px-1.5 py-0.5">
-                              {previewIndex + 1} / {pendingFiles.length}
-                            </span>
-                          </>
-                        )}
-                      </div>
-                      <div className="border-t divide-y max-h-[90px] overflow-y-auto">
-                        {pendingFiles.map((f, i) => (
-                          <div
-                            key={`${f.name}-${i}`}
-                            onClick={() => setPreviewIndex(i)}
-                            className={cn(
-                              "flex items-center gap-2 px-3 py-1 text-xs cursor-pointer transition-colors",
-                              i === previewIndex ? "bg-muted font-medium" : "hover:bg-muted/50",
-                            )}
-                          >
-                            <span className="flex-1 truncate" title={f.name}>{f.name}</span>
-                            <button
-                              type="button"
-                              onClick={(e) => { e.stopPropagation(); removePendingFile(i); }}
-                              className="p-0.5 rounded hover:text-destructive transition-colors ml-1"
-                              aria-label={`Retirer ${f.name}`}
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                    <PendingFilesPreview
+                      files={pendingFiles}
+                      index={previewIndex}
+                      onIndexChange={setPreviewIndex}
+                      onRemove={removePendingFile}
+                      compact
+                    />
                   </div>
                 )}
 
@@ -869,78 +534,17 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
 
               {/* Colonne droite — Expéditeur, Destinataire, Tags */}
               <div className="space-y-4">
-                {/* Expéditeur extrait, sans contact du référentiel retenu : il y sera créé. */}
                 {extractedSender && !senderContact && (
-                  <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
-                    <p className="text-xs font-medium text-primary">Expéditeur extrait par l'analyse</p>
-                    <div className="text-xs text-muted-foreground space-y-0.5">
-                      {(extractedSender.first_name || extractedSender.last_name) && (
-                        <div>{[extractedSender.first_name, extractedSender.last_name].filter(Boolean).join(" ")}</div>
-                      )}
-                      {extractedSender.email && <div>{extractedSender.email}</div>}
-                      {extractedSender.phone && <div>{extractedSender.phone}</div>}
-                    </div>
-                    {senderMatch && (
-                      <SenderMatchNotice
-                        match={senderMatch}
-                        selected={false}
-                        onUse={() => senderMatch.contact && setSenderContact(senderMatch.contact)}
-                      />
-                    )}
-                    <p className="text-xs text-muted-foreground">
-                      Le contact sera créé dans le référentiel à l'enregistrement du courrier.
-                    </p>
-                    {/* Le Socle exige la civilité pour créer une personne. */}
-                    <Select
-                      value={extractedCivility || undefined}
-                      onValueChange={(v) => setExtractedCivility(v as SocleContactCivility)}
-                    >
-                      <SelectTrigger
-                        className={cn("h-7 text-xs", errors.sender_civility && "border-destructive")}
-                        aria-invalid={!!errors.sender_civility}
-                      >
-                        <SelectValue placeholder="Civilité (requise pour créer)" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="madame">Madame</SelectItem>
-                        <SelectItem value="monsieur">Monsieur</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    {errors.sender_civility && (
-                      <p className="text-xs text-destructive">{errors.sender_civility}</p>
-                    )}
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="w-full h-7 text-xs"
-                      disabled={!extractedCivility}
-                      onClick={async () => {
-                        if (!extractedCivility) return;
-                        try {
-                          const created = await createSenderContact(
-                            organizationId,
-                            extractedCivility,
-                            extractedSender,
-                          );
-                          setSenderContact(created);
-                          setExtractedSender(null);
-                          toast.success("Contact créé dans le référentiel et sélectionné");
-                        } catch (e) {
-                          toast.error((e as Error).message);
-                        }
-                      }}
-                    >
-                      Créer ce contact dans le référentiel
-                    </Button>
-                    <button
-                      type="button"
-                      className="text-xs text-muted-foreground hover:text-foreground transition-colors w-full text-center"
-                      onClick={() => setExtractedSender(null)}
-                    >
-                      Ne pas renseigner d'expéditeur
-                    </button>
-                  </div>
+                  <ExtractedSenderCard
+                    organizationId={organizationId}
+                    sender={extractedSender}
+                    match={senderMatch}
+                    civility={extractedCivility}
+                    onCivilityChange={setExtractedCivility}
+                    civilityError={errors.sender_civility}
+                    onContactChosen={setSenderContact}
+                    onDismiss={() => setExtractedSender(null)}
+                  />
                 )}
 
                 <div className="space-y-2">
@@ -989,81 +593,7 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
                   )}
                 </div>
 
-                {/* Un bloc par groupe : le thème dit de quoi parle le
-                    courrier, le sentiment sur quel ton. Mélangés dans une même
-                    rangée, les tags proposés par l'analyse ne se lisaient plus. */}
-                <div className="space-y-2">
-                  <Label>Tags</Label>
-                  {TAG_GROUPS.map((group) => {
-                    const applied = tagsByGroup[group.value];
-                    const available = (orgTags ?? []).filter((t) => t.tag_group === group.value);
-                    return (
-                      <div key={group.value} className="space-y-1">
-                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70">
-                          {group.label}
-                        </p>
-                        <div className="flex flex-wrap items-center gap-1.5 min-h-[28px]">
-                          {applied.map(({ name, tag }) => {
-                            const fg = tag?.color ? readableTextColor(tag.color) : undefined;
-                            return (
-                              <Badge
-                                key={name} variant="secondary"
-                                className={cn("gap-1.5 pl-2 pr-1 border-transparent", !tag && "italic opacity-60")}
-                                style={tag?.color ? { backgroundColor: tag.color, color: fg } : undefined}
-                              >
-                                {name}
-                                <button
-                                  type="button" onClick={() => toggleTag(name)}
-                                  className="ml-0.5 rounded-full p-0.5 hover:bg-black/20 transition-colors"
-                                  aria-label={`Retirer ${name}`} style={fg ? { color: fg } : undefined}
-                                >
-                                  <X className="h-3 w-3" />
-                                </button>
-                              </Badge>
-                            );
-                          })}
-                          <Popover
-                            open={tagPopoverGroup === group.value}
-                            onOpenChange={(o) => setTagPopoverGroup(o ? group.value : null)}
-                          >
-                            <PopoverTrigger asChild>
-                              <button
-                                type="button"
-                                className="inline-flex h-[26px] items-center gap-1.5 rounded-full border border-dashed px-2.5 text-xs font-semibold text-muted-foreground transition-colors hover:border-primary hover:text-primary"
-                                aria-label={`Ajouter un tag — ${group.label}`}
-                              >
-                                <Plus className="h-3 w-3" />
-                                Ajouter
-                              </button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-64 p-0" align="start">
-                              <Command>
-                                <CommandInput placeholder={`Rechercher — ${group.label.toLowerCase()}…`} />
-                                <CommandList>
-                                  <CommandEmpty>
-                                    Aucun tag dans ce groupe. Allez dans Paramètres → Classification.
-                                  </CommandEmpty>
-                                  <CommandGroup>
-                                    {available.map((tag) => {
-                                      const checked = selectedTags.some((t) => t.toLowerCase() === tag.name.toLowerCase());
-                                      return (
-                                        <CommandItem key={tag.id} value={tag.name} onSelect={() => toggleTag(tag.name)} className="gap-2">
-                                          <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: tag.color ?? "hsl(var(--muted-foreground))" }} />
-                                          <span className="flex-1">{tag.name}</span>
-                                          <Check className={cn("h-4 w-4", checked ? "opacity-100" : "opacity-0")} />
-                                        </CommandItem>
-                                      );
-                                    })}
-                                  </CommandGroup>
-                                </CommandList>
-                              </Command>
-                            </PopoverContent>
-                          </Popover>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                <TagGroupPicker selected={selectedTags} orgTags={orgTags ?? []} onToggle={toggleTag} />
 
                 {canSetConfidential(profile, membership) && (
                   <label className="flex cursor-pointer items-start gap-2.5 rounded-md border p-3 text-sm">
