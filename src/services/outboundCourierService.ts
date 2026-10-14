@@ -110,7 +110,7 @@ async function logLinkEvents(
  * des courriers reçus qui lui sont liés : c'est là que l'agent qui instruit
  * le dossier regarde.
  */
-export async function mirrorOnLinkedInbound(
+async function mirrorOnLinkedInbound(
   organizationId: string,
   outboundId: string,
   eventType: string,
@@ -155,7 +155,7 @@ export function recipientSnapshot(contact: SocleContact) {
  * au nom de qui le courrier part. Identité seule : l'adresse d'expédition reste
  * celle de l'organisation émettrice.
  */
-export function senderSnapshot(contact: SocleContact) {
+function senderSnapshot(contact: SocleContact) {
   return {
     socle_contact_id: contact.id,
     name: contact.display_name?.trim() || contact.email || null,
@@ -235,21 +235,6 @@ export async function setOutboundRecipient(
     reply_id: outboundId,
     recipient_name: snap.name,
   });
-}
-
-/** Courriel ou courrier postal — refusé par la base après visa, signature ou envoi. */
-export async function changeOutboundChannel(
-  organizationId: string,
-  outboundId: string,
-  channel: OutboundChannel,
-): Promise<void> {
-  const { error } = await supabase
-    .from("couriers")
-    .update({ channel } as never)
-    .eq("id", outboundId)
-    .eq("organization_id", organizationId);
-  if (error) throw error;
-  await logEvent(organizationId, outboundId, "outbound_channel_changed", { reply_id: outboundId, channel });
 }
 
 /**

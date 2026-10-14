@@ -50,7 +50,7 @@ export const TONE_DOT: Record<Tone, string> = {
   foreground: "bg-foreground",
 };
 
-export function isTaken(item: MailroomItem): boolean {
+function isTaken(item: MailroomItem): boolean {
   return !!item.row.taken_at || (!!item.row.workflow_state_id && !item.row.state_is_initial);
 }
 

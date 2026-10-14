@@ -223,7 +223,7 @@ export interface SocleContactListFilters {
 }
 
 /** Erreur applicative renvoyée par le Socle ou le proxy (enveloppe { error: { code, message } }). */
-export class SocleContactApiError extends Error {
+class SocleContactApiError extends Error {
   constructor(
     message: string,
     public code: string,

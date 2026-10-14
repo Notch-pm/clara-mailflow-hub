@@ -37,7 +37,7 @@ export const SEARCH_DEBOUNCE_MS = 300;
 export const RESULTS_PER_KIND = 6;
 
 /** Teinte de l'état selon sa catégorie : à traiter, traité, archivé. */
-export const CATEGORY_TONE: Record<WorkflowCategory, StatusTone> = {
+const CATEGORY_TONE: Record<WorkflowCategory, StatusTone> = {
   pending: "warning",
   processing: "warning",
   processed: "primary",
@@ -130,7 +130,7 @@ const MATCH_IN_LABELS: Record<string, string> = {
 };
 
 /** « 12/08/2026 » — date telle qu'elle se lit dans les listes. */
-export function frDate(iso: string | null | undefined): string {
+function frDate(iso: string | null | undefined): string {
   if (!iso) return "";
   const date = new Date(iso);
   return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString("fr-FR");

@@ -21,7 +21,7 @@ const CATEGORY_ICON: Record<ContactCategory, typeof Building2> = {
 };
 
 /** Pastille « Interne » ou « Élu ». */
-export function ContactCategoryBadge({
+function ContactCategoryBadge({
   category,
   className,
 }: {

@@ -9,8 +9,6 @@ export type SocleOrgTreeNode<T extends SocleOrgMirror> = T & {
   depth: number;
 };
 
-export type SocleOrgNode = SocleOrgTreeNode<SocleOrgMirror>;
-
 /**
  * Construit une forêt depuis la liste plate du miroir. Une org dont le parent
  * n'est pas dans l'ensemble (typiquement la racine du sous-arbre mappé) devient

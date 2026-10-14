@@ -40,12 +40,6 @@ export interface CourierRelationWithCourier extends CourierRelation {
   direction: "outgoing" | "incoming";
 }
 
-export interface AiLinkSuggestion {
-  courier_id: string;
-  score: number;
-  reasons: string[];
-}
-
 const RELATED_SELECT =
   "id, subject, chrono, received_at, sent_at, direction, assigned_service, metadata, courier_participants(id, role, name, email, socle_contact_id)";
 

@@ -82,7 +82,7 @@ export function canAccessMailroom(
  * administrateur ne la voit plus — « Courrier entrant » la remplace pour lui.
  * Les services la gardent (leurs courriers routés, pas encore pris en charge).
  */
-export function showsMailbox(
+function showsMailbox(
   profile: Profile,
   membership: (Membership & { is_service_courrier?: boolean | null }) | null | undefined,
 ): boolean {

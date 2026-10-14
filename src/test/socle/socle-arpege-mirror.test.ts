@@ -1,3 +1,6 @@
+/// <reference types="node" />
+// Lit les migrations sur disque : seul test à dépendre des types Node, que
+// `tsconfig.app.json` ne charge pas globalement.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";

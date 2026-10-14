@@ -57,7 +57,7 @@ function valueIncludes(fieldValue: unknown, target: string): boolean {
   return false;
 }
 
-export function evaluateRule(rule: ConditionRule, values: FormValues): boolean {
+function evaluateRule(rule: ConditionRule, values: FormValues): boolean {
   const fieldValue = values[rule.fieldId];
   switch (rule.operator) {
     case "isEmpty":
@@ -159,7 +159,7 @@ export type SocleField =
 
 // ── Valeur d'un lieu d'intervention (contrat `LocationValue`) ───────────────
 
-export const LOCATION_PRECISIONS = ["adresse", "voie", "lieu_dit", "commune"] as const;
+const LOCATION_PRECISIONS = ["adresse", "voie", "lieu_dit", "commune"] as const;
 export type LocationPrecision = (typeof LOCATION_PRECISIONS)[number];
 
 export interface LocationValue {

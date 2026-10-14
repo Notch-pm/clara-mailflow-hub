@@ -5,7 +5,7 @@
  */
 
 /** Séparateur de champs recommandé pour une ouverture correcte dans Excel FR. */
-export const CSV_DELIMITER = ";";
+const CSV_DELIMITER = ";";
 
 /** Échappe une valeur pour insertion dans une cellule CSV (RFC 4180). */
 export function escapeCsvValue(value: unknown, delimiter: string = CSV_DELIMITER): string {

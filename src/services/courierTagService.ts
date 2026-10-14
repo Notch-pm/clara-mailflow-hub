@@ -21,10 +21,6 @@ export const TAG_GROUPS: { value: TagGroup; label: string; description: string }
   },
 ];
 
-export function tagGroupLabel(group: TagGroup): string {
-  return TAG_GROUPS.find((g) => g.value === group)?.label ?? group;
-}
-
 export interface CourierTag {
   id: string;
   organization_id: string;

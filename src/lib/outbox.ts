@@ -30,7 +30,7 @@ export interface OutboxItem {
   sentOn: string | null;
 }
 
-export function isSent(row: OutboxRow): boolean {
+function isSent(row: OutboxRow): boolean {
   return !!row.sent_email_at || !!row.posted_at || row.state_is_final;
 }
 

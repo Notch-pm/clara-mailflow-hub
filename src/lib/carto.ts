@@ -28,10 +28,10 @@ export interface CartoConfig {
   geocodeUrl: string;
 }
 
-export const DEFAULT_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
-export const DEFAULT_GEOCODE_URL = "https://data.geopf.fr/geocodage/search/";
+const DEFAULT_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+const DEFAULT_GEOCODE_URL = "https://data.geopf.fr/geocodage/search/";
 
-export function readCartoConfig(env: Record<string, unknown>): CartoConfig {
+function readCartoConfig(env: Record<string, unknown>): CartoConfig {
   const tileUrl = env.VITE_MAP_TILE_URL;
   const geocodeUrl = env.VITE_GEOCODE_URL;
   return {
@@ -52,7 +52,7 @@ export const CARTO: CartoConfig = readCartoConfig(
 export const TILE_SIZE = 256;
 export const MIN_ZOOM = 4;
 export const MAX_ZOOM = 19;
-export const DEFAULT_ZOOM = 17;
+const DEFAULT_ZOOM = 17;
 
 /** Latitude au-delà de laquelle la projection Mercator diverge. */
 const MERCATOR_LIMIT = 85.05112878;

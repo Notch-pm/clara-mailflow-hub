@@ -24,7 +24,7 @@ export async function isDictationEnabled(organizationId: string): Promise<boolea
 }
 
 /** Une transcription qui n'a rien entendu — pas une panne. */
-export class NothingHeardError extends Error {
+class NothingHeardError extends Error {
   constructor() {
     super("Je n'ai rien entendu. Vérifiez le micro et recommencez.");
   }

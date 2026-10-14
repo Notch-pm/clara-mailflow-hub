@@ -6,7 +6,7 @@
  * la première ligne non vide de la requête, coupée à un mot entier. Le service
  * courrier le corrige au besoin (l'analyse en propose un, applicable d'un clic).
  */
-export const RELAY_SUBJECT_MAX = 90;
+const RELAY_SUBJECT_MAX = 90;
 
 export function relaySubject(request: string, max: number = RELAY_SUBJECT_MAX): string {
   const firstLine =

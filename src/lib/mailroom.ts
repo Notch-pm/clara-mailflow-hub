@@ -44,7 +44,7 @@ export type QualifyReason =
   | "uncertain";
 
 /** En dessous, la proposition de l'IA ne suffit pas : le courrier est « à qualifier ». */
-export const CONFIDENCE_VALIDATE_MIN = 70;
+const CONFIDENCE_VALIDATE_MIN = 70;
 /** À partir de là, la proposition peut être validée en lot. */
 export const CONFIDENCE_BATCH_MIN = 90;
 
@@ -98,7 +98,7 @@ export function needsRouting(row: MailroomRow): boolean {
 }
 
 /** Pourquoi la proposition de l'IA ne suffit pas — `null` si elle est exploitable. */
-export function qualifyReason(row: MailroomRow, assignableIds: ReadonlySet<string>): QualifyReason | null {
+function qualifyReason(row: MailroomRow, assignableIds: ReadonlySet<string>): QualifyReason | null {
   if (!row.has_analysis) return row.analysis_status === "failed" ? "analysis_failed" : "not_analysed";
   const suggested = row.suggested_socle_organization_id;
   if (!suggested) return "no_suggestion";

@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 // entièrement en français. On compose sur PaginationLink plutôt que de modifier
 // un fichier vendoré de ui/, qu'une régénération écraserait.
 
-export const PAGE_SIZE_OPTIONS = [25, 50, 100, 200] as const;
+const PAGE_SIZE_OPTIONS = [25, 50, 100, 200] as const;
 
 export interface DataTablePaginationProps {
   /** Index de page, base 0. */

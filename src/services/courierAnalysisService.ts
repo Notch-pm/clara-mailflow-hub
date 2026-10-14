@@ -244,7 +244,7 @@ function legacyAnalysisRow(result: ExtractCourierInfoResult): Record<string, unk
 }
 
 /** Base64-encode files for the `extract-courier-info` edge function. */
-export async function encodeFilesToBase64(files: File[]): Promise<FilePayload[]> {
+async function encodeFilesToBase64(files: File[]): Promise<FilePayload[]> {
   return Promise.all(
     files.map(async (file) => {
       const buf = await file.arrayBuffer();

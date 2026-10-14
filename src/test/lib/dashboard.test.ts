@@ -12,12 +12,9 @@ import {
   mailroomList,
   monthName,
   parapheurList,
-  parapheurTodo,
   scopeLabel,
-  sortTodo,
   sparklinePaths,
   trendCharts,
-  waitingSub,
   type ParapheurEntry,
   type TrendRow,
 } from "@/lib/dashboard";
@@ -138,16 +135,6 @@ describe("instructionTodo", () => {
   });
 });
 
-describe("sortTodo", () => {
-  it("met le rouge d'abord, retire les cartes vides", () => {
-    const cards = sortTodo([
-      ...parapheurTodo([], null),
-      ...instructionTodo([item({ ...inVoirie, received_at: "2026-08-20T08:00:00Z" })], voirieScope, 3, true),
-    ]);
-    expect(cards.map((c) => c.key)).toEqual(["instruction-late", "instruction-drafts"]);
-  });
-});
-
 const entry = (overrides: Partial<ParapheurEntry> = {}): ParapheurEntry => ({
   kind: "visa",
   replyId: "r1",
@@ -161,12 +148,6 @@ const entry = (overrides: Partial<ParapheurEntry> = {}): ParapheurEntry => ({
 });
 
 describe("parapheur", () => {
-  it("signale ce qui attend depuis longtemps", () => {
-    expect(waitingSub([entry({ waitingDays: 6 }), entry()])).toBe("dont 1 depuis 6 j");
-    expect(waitingSub([entry({ waitingDays: 6 }), entry({ waitingDays: 8 })])).toBe("dont 2 depuis 5 j ou plus");
-    expect(waitingSub([entry()])).toBe("réponse en attente");
-  });
-
   it("classe la liste par attente, lien vers la réponse", () => {
     const list = parapheurList([entry({ replyId: "a", waitingDays: 2 }), entry({ replyId: "b", kind: "signature", step: "À signer", waitingDays: 6 })]);
     expect(list.rows.map((r) => [r.id, r.end, r.tone])).toEqual([
@@ -174,10 +155,6 @@ describe("parapheur", () => {
       ["a", "2 j", "neutral"],
     ]);
     expect(list.rows[0].href).toBe("/courrier/c1?tab=response&replyId=b&edit=1");
-  });
-
-  it("ajoute les retards de l'organisation quand on les lui confie", () => {
-    expect(parapheurTodo([], 6).map((c) => c.key)).toContain("parapheur-org-late");
   });
 });
 

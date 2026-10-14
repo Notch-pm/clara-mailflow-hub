@@ -17,7 +17,7 @@ import { CARTO, precisionOf, type GeoPrecision } from "./carto";
 /** En deçà, la BAN rend du bruit : on ne l'interroge pas. */
 export const MIN_QUERY_LENGTH = 3;
 /** Au-delà, la liste ne se lit plus d'un coup d'œil. */
-export const SUGGESTION_LIMIT = 5;
+const SUGGESTION_LIMIT = 5;
 /**
  * Une collectivité sort par UNE adresse IP : sans ce délai, dix agents qui
  * tapent ensemble saturent le quota partagé du service.

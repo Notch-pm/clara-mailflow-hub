@@ -1,63 +1,7 @@
-// Manual types for users/organization_users/roles tables
-// (not in auto-generated types.ts since tables were added outside Lovable)
-
-export interface AppUser {
-  id: string;
-  email: string;
-  password_hash: string | null;
-  first_name: string | null;
-  last_name: string | null;
-  is_active: boolean | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface AppUserInsert {
-  id?: string;
-  email: string;
-  password_hash?: string | null;
-  first_name?: string | null;
-  last_name?: string | null;
-  is_active?: boolean | null;
-}
+// Rôle d'organisation et vue « membre » (users + organization_users) des écrans
+// d'administration. Les lignes brutes viennent du type généré `Database`.
 
 export type OrgUserRole = "administrateur" | "gestionnaire" | "consultant" | "elu" | "superviseur";
-
-export interface OrganizationUser {
-  id: string;
-  organization_id: string;
-  user_id: string;
-  role: string;
-  is_active: boolean | null;
-  is_signataire: boolean;
-  signataire_title: string | null;
-  is_service_courrier: boolean;
-  /** Droit de viser une réponse (étape de visa), indépendant du rôle. */
-  is_viseur: boolean;
-  /** Lit les courriers confidentiels, indépendant du rôle. */
-  can_read_confidential: boolean;
-  created_at: string;
-}
-
-export interface OrganizationUserInsert {
-  id?: string;
-  organization_id: string;
-  user_id: string;
-  role: string;
-  is_active?: boolean | null;
-  is_signataire?: boolean;
-  signataire_title?: string | null;
-  is_service_courrier?: boolean;
-  is_viseur?: boolean;
-  can_read_confidential?: boolean;
-}
-
-export interface OrgRole {
-  id: string;
-  organization_id: string;
-  name: string;
-  description: string | null;
-}
 
 /** Flattened user + org membership for list views */
 export interface OrgMember {

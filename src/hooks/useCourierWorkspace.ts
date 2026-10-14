@@ -818,5 +818,3 @@ export function useCourierWorkspace({
     linkSenderContact,
   };
 }
-
-export type CourierWorkspace = ReturnType<typeof useCourierWorkspace>;

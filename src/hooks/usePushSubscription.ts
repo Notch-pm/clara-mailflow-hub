@@ -38,7 +38,7 @@ const SW_URL = "/sw.js";
  *  secret — sa place est bien dans le bundle (cf. `.env.example`). */
 const PUBLIC_KEY: string = (import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined) ?? "";
 
-export const pushKeys = {
+const pushKeys = {
   device: (userId: string) => ["push-subscription", userId] as const,
 };
 
@@ -149,7 +149,7 @@ interface WorkerMessage {
  * ré-émet une session à chaque retour d'onglet, ce qui détruirait et recréerait
  * l'écouteur en boucle (même piège que le canal realtime de la cloche).
  */
-export function usePushBootstrap(): void {
+function usePushBootstrap(): void {
   const { user } = useAuth();
   const userId = user?.id ?? "";
   const navigate = useNavigate();

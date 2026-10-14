@@ -60,17 +60,19 @@
 
 ## P2 — Code mort (knip, faux positifs exclus)
 
-**Vrais orphelins à supprimer :**
-- `src/pages/CourriersEntrants.tsx` — **page sans route** (la BAL l'a remplacée) ; sa logique colonne/export est dupliquée ailleurs.
-- `src/pages/Index.tsx`, `src/App.css`. (`BulkStep3Analyze.tsx` supprimé le 2026-07-18.)
-- `src/services/courierLinkService.ts` (plus consommé). ✅ **Le chrono n'est plus une fonctionnalité fantôme** : tranché et implémenté le 2026-09-13 (migration `20260913090832_courier_chrono.sql`, trigger `assign_courier_chrono()`, 11 scénarios éprouvés en base en transaction annulée). `courierSequenceService.ts` — son unique lecteur, sans appelant, et qui lisait le compteur sans l'incrémenter — a été supprimé avec. **Restent deux arbitrages produit** : (a) les **5 080 courriers antérieurs** gardent `chrono` à NULL et s'affichent « sans référence » — reprise à décider (le trigger laisse ouvert le passage NULL → valeur) ; (b) une réponse consomme son numéro dès le **premier enregistrement de brouillon**, donc un brouillon enregistré puis supprimé laisse un trou dans la suite `S`.
-- `src/services/orgServiceService.ts` — legacy services gelé : ne garder que ce que `fetch-inbound-emails`/`portal-form` lisent côté SQL (rien côté client). Supprimer avec `listServiceSignatoryIds`/`setServiceSignatories` (signatoryService).
-- **16 dépendances npm inutilisées** (recharts, react-day-picker, vaul, input-otp, react-resizable-panels, @radix-ui/* des composants ui non utilisés…) — retirer avec les composants shadcn associés (calendar, chart, carousel, drawer…) si on assume de les réinstaller au besoin.
-- ~68 exports morts (voir `bun run audit`) — nettoyage mécanique.
+✅ **Soldé le 2026-10-14** — `bun run audit` (knip) ne signale plus rien :
+- fichiers : `CourriersEntrants.tsx` (page sans route), `Index.tsx`, `App.css`, `courierLinkService.ts`, `orgServiceService.ts` (+ `listServiceSignatoryIds`/`setServiceSignatories`) ;
+- 15 composants shadcn jamais importés (accordion, aspect-ratio, breadcrumb, calendar, carousel, chart, context-menu, drawer, hover-card, input-otp, menubar, navigation-menu, resizable, slider, `ui/use-toast`) et **18 dépendances npm** (les leurs, plus `leaflet`/`react-leaflet` et leurs types, jamais importés, et `pizzip`) — à réinstaller avec `shadcn add` au besoin ;
+- 58 exports morts : 42 n'avaient pas à être exportés, 16 n'étaient appelés nulle part — dont tout le convertisseur de modèle Word → HTML de `templateService` (le modèle se gère en HTML), `trashCourier` (doublon de `courierService`), `changeOutboundChannel`, les cartes « à faire » du parapheur et du courrier entrant de `dashboard.ts` (`parapheurTodo`, `mailroomTodo`, `sortTodo` — remplacées par la refonte du tableau de bord, seuls leurs tests les appelaient) ; 15 types morts (dont `AppUser` et son `password_hash`, héritage Lovable).
+- config knip : `ignoreExportsUsedInFile` pour les types et interfaces (un type exporté utilisé dans son fichier n'est pas une dette) ; `public/sw.js` (service worker du push) et `types.ts` (généré) ignorés.
+- ⚠️ piège rencontré : un test (`socle-arpege-mirror.test.ts`) lisait `node:fs` sans référence aux types Node — ils arrivaient par une dépendance retirée. Référence `/// <reference types="node" />` posée.
+
+**Chrono** (tranché le 2026-09-13) — ✅ **Le chrono n'est plus une fonctionnalité fantôme** : tranché et implémenté le 2026-09-13 (migration `20260913090832_courier_chrono.sql`, trigger `assign_courier_chrono()`, 11 scénarios éprouvés en base en transaction annulée). `courierSequenceService.ts` — son unique lecteur, sans appelant, et qui lisait le compteur sans l'incrémenter — a été supprimé avec. **Restent deux arbitrages produit** : (a) les **5 080 courriers antérieurs** gardent `chrono` à NULL et s'affichent « sans référence » — reprise à décider (le trigger laisse ouvert le passage NULL → valeur) ; (b) une réponse consomme son numéro dès le **premier enregistrement de brouillon**, donc un brouillon enregistré puis supprimé laisse un trou dans la suite `S`.
 
 **Legacy Socle (attendre quelques semaines de recul avant suppression) :**
 - Tables `services`, `service_members`, `service_signatories` (gelées, migrées le 2026-07-11).
 - `portal_forms.service_id`, `couriers.metadata.service_id` (remplacés par `socle_organization_id`).
+- `organizations.reply_template_data` (modèle Word de l'ancien import .docx) : plus aucun lecteur ni écrivain depuis le 2026-10-14 — colonne à supprimer.
 - ~~Edge functions Arpège en attente de sort~~ ✅ tranché le 2026-07-23 (refonte Partenaires, cf. P1.9) : `sync-arpege-appointments` **supprimée** (repo + plateforme) ; `create-arpege-demande`, `check-arpege-ticket-status`, `sync-arpege-services`, `test-arpege-connection` **conservées et consolidées** (Hawk mutualisé `_shared/arpege.ts`) — elles portent l'intégration partenaire relancée.
 
 ## P2 — Architecture

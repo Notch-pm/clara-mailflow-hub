@@ -1,5 +1,4 @@
 import type { ColumnDef } from "@tanstack/react-table";
-import { FileText, Globe, Headset, Mail, Landmark, MoreHorizontal, Store } from "lucide-react";
 import { DataTableColumnHeader } from "@/components/data-table/data-table-column-header";
 import { ListCellDate, ListCellText, ListCellTitle, StatusDot, type StatusTone } from "@/components/list/ListCells";
 import { readableTextColor } from "@/lib/tag-color";
@@ -39,16 +38,6 @@ export const CHANNEL_LABELS: Record<CourierChannel, string> = {
   relaye_agent: "Relayé agent",
   guichet: "Guichet",
   autre: "Autre",
-};
-
-const CHANNEL_ICONS: Record<CourierChannel, typeof Mail> = {
-  paper: FileText,
-  email: Mail,
-  portal: Globe,
-  relaye_elu: Landmark,
-  relaye_agent: Headset,
-  guichet: Store,
-  autre: MoreHorizontal,
 };
 
 export function courierSenderName(c: CourierListRow): string {
@@ -103,20 +92,6 @@ export function subjectColumn(correspondent: "sender" | "recipient"): CourierCol
   };
 }
 
-export function chronoColumn(): CourierColumn {
-  return {
-    accessorKey: "chrono",
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Chrono" />,
-    cell: ({ row }) => (
-      <span className="block truncate font-mono text-xs tabular-nums text-muted-foreground">
-        {row.original.chrono ?? "—"}
-      </span>
-    ),
-    enableGrouping: false,
-    meta: { exportLabel: "Chrono", width: 112 },
-  };
-}
-
 /**
  * État dans le workflow. Toutes les lignes d'une liste partagent la même
  * catégorie : la teinte de la pastille dit donc la liste (en cours, traité,
@@ -153,27 +128,6 @@ export function recipientColumn(): CourierColumn {
     header: "Destinataire",
     cell: ({ row }) => <ListCellText>{row.original.recipient_name ?? "—"}</ListCellText>,
     meta: { exportLabel: "Destinataire", width: 140 },
-  };
-}
-
-export function channelColumn(): CourierColumn {
-  return {
-    id: "channel",
-    accessorFn: (c) => (c.channel ? CHANNEL_LABELS[c.channel] ?? c.channel : ""),
-    enableSorting: false,
-    header: "Canal",
-    cell: ({ row }) => {
-      const channel = row.original.channel;
-      if (!channel) return null;
-      const Icon = CHANNEL_ICONS[channel] ?? Mail;
-      return (
-        <span className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-muted px-2.5 py-0.5 text-[11.5px] font-semibold text-muted-foreground">
-          <Icon aria-hidden="true" className="h-3 w-3 shrink-0" />
-          <span className="truncate">{CHANNEL_LABELS[channel] ?? channel}</span>
-        </span>
-      );
-    },
-    meta: { exportLabel: "Canal", width: 120 },
   };
 }
 

@@ -5,7 +5,7 @@
 // agents. On ne dérive donc jamais un affichage d'une chaîne inconnue : un
 // statut hors liste s'affiche tel quel plutôt que d'être traduit à tort.
 
-export const IRIS_STATUS_LABELS: Record<string, string> = {
+const IRIS_STATUS_LABELS: Record<string, string> = {
   a_traiter: "À traiter",
   en_instruction: "En instruction",
   en_attente: "En attente",

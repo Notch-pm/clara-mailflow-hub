@@ -23,12 +23,8 @@ import {
 
 export {
   CONSENTS,
-  DEFAULT_ORGANISM,
-  consentDef,
   consentStatement,
   consentsSatisfied,
-  defaultConsentAnswers,
-  isConsentKind,
   parseConsentRecords,
   type ConsentDef,
   type ConsentKind,

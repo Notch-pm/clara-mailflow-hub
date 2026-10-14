@@ -41,7 +41,7 @@ export function describeIrisEvent(event: Pick<IrisTimelineEvent, "type" | "detai
   }
 }
 
-export const INTERVENTION_STATUS_LABELS: Record<string, string> = {
+const INTERVENTION_STATUS_LABELS: Record<string, string> = {
   demandee: "Demandée",
   realisee: "Réalisée",
 };

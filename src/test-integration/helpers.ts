@@ -49,12 +49,12 @@ function readDotEnv(name: string): string | undefined {
   return m?.[1];
 }
 
-export const SUPABASE_URL =
+const SUPABASE_URL =
   process.env.SUPABASE_URL ?? readDotEnv("VITE_SUPABASE_URL") ?? "";
-export const ANON_KEY =
+const ANON_KEY =
   process.env.SUPABASE_ANON_KEY ?? readDotEnv("VITE_SUPABASE_PUBLISHABLE_KEY") ?? "";
 /** Clé service_role (jamais dans .env — fournie inline pour le seed / la CI). */
-export const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
 export function loadFixtures(): Fixtures {
   const p = join(process.cwd(), "src", "test-integration", "fixtures.json");

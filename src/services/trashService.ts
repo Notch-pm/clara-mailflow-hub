@@ -34,15 +34,6 @@ export async function fetchTrashedCouriers(organizationId: string): Promise<Tras
   return (data ?? []) as unknown as TrashRow[];
 }
 
-/** Met un courrier (et ses réponses) à la corbeille. */
-export async function trashCourier(organizationId: string, courierId: string) {
-  const { error } = await supabase.rpc("trash_courier", {
-    p_organization_id: organizationId,
-    p_courier_id: courierId,
-  });
-  if (error) throw error;
-}
-
 export async function restoreCourier(organizationId: string, courierId: string) {
   const { error } = await supabase.rpc("restore_courier", {
     p_organization_id: organizationId,

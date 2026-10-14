@@ -92,7 +92,7 @@ export interface FlatField {
 }
 
 /** Tous les champs du schéma, à plat, sans perdre leur section. */
-export function flattenSocleFields(schema: SocleFormSchema): FlatField[] {
+function flattenSocleFields(schema: SocleFormSchema): FlatField[] {
   const out: FlatField[] = [];
   for (const node of schema.content) {
     if (isSection(node)) {

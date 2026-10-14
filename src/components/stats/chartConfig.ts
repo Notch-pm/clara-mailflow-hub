@@ -15,7 +15,7 @@ export const CHART_COLORS = [
   "#fb923c",
 ];
 
-export const baseChart: ApexOptions["chart"] = {
+const baseChart: ApexOptions["chart"] = {
   fontFamily: "'Nunito Sans', sans-serif",
   toolbar: {
     show: true,

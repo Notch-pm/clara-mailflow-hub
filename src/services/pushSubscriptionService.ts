@@ -41,7 +41,7 @@ export async function isMyPushSubscription(endpoint: string): Promise<boolean> {
 }
 
 /** Retrait de l'abonnement de cet appareil (déconnexion, interrupteur coupé). */
-export async function deletePushSubscription(endpoint: string): Promise<void> {
+async function deletePushSubscription(endpoint: string): Promise<void> {
   await supabase.from("push_subscriptions").delete().eq("endpoint", endpoint);
 }
 

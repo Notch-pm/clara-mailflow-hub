@@ -25,14 +25,7 @@ import { LATE_AFTER_DAYS, shortWaitLabel } from "@/lib/parapheur";
 export type DashboardRole = "instruction" | "mailroom" | "parapheur";
 
 /** Ordre d'affichage des onglets, et d'arbitrage à urgence égale. */
-export const DASHBOARD_ROLES: DashboardRole[] = ["mailroom", "instruction", "parapheur"];
-
-/** Pastille de provenance d'une carte, quand plusieurs casquettes se cumulent. */
-export const ROLE_SOURCE_LABELS: Record<DashboardRole, string> = {
-  instruction: "Mon service",
-  mailroom: "Courrier entrant",
-  parapheur: "Parapheur",
-};
+const DASHBOARD_ROLES: DashboardRole[] = ["mailroom", "instruction", "parapheur"];
 
 /**
  * Les casquettes de l'utilisateur. Sans aucune (administrateur hors service,
@@ -57,8 +50,6 @@ export function dashboardRoles(args: {
 /** Urgence d'une carte ou d'une pastille : rouge, jaune, neutre — ou vert (fiabilité). */
 export type Tone = "urgent" | "attention" | "neutral" | "good";
 
-const TONE_RANK: Record<Tone, number> = { urgent: 0, attention: 1, neutral: 2, good: 3 };
-
 export interface TodoCard {
   key: string;
   role: DashboardRole;
@@ -68,13 +59,6 @@ export interface TodoCard {
   sub: string;
   cta: string;
   href: string;
-}
-
-/** Plus urgentes d'abord, puis les plus fournies. Les cartes vides sont retirées. */
-export function sortTodo(cards: TodoCard[]): TodoCard[] {
-  return cards
-    .filter((c) => c.count > 0)
-    .sort((a, b) => TONE_RANK[a.tone] - TONE_RANK[b.tone] || b.count - a.count);
 }
 
 function isOpen(item: MailroomItem): boolean {
@@ -90,7 +74,7 @@ function isOverdue(item: MailroomItem): boolean {
  * courrier sans organisation n'est à personne ici — c'est au service courrier
  * de le router, pas à un service de le revendiquer.
  */
-export function inScope(item: MailroomItem, scope: ReadonlySet<string> | null): boolean {
+function inScope(item: MailroomItem, scope: ReadonlySet<string> | null): boolean {
   if (!scope) return true;
   return !!item.row.socle_organization_id && scope.has(item.row.socle_organization_id);
 }
@@ -157,51 +141,8 @@ export function instructionTodo(
 }
 
 /** `lateOnly` : l'onglet réduit à ses retards (`?retard=1`) — il n'y a plus d'onglet « En retard ». */
-export function mailroomHref(view: MailroomView, lateOnly = false): string {
+function mailroomHref(view: MailroomView, lateOnly = false): string {
   return `/courrier-entrant?vue=${view}${lateOnly ? "&retard=1" : ""}`;
-}
-
-export function mailroomTodo(items: MailroomItem[]): TodoCard[] {
-  const count = (stage: MailroomItem["stage"]) => items.filter((i) => i.stage === stage).length;
-  const card = (c: Omit<TodoCard, "role">): TodoCard => ({ ...c, role: "mailroom" });
-  return [
-    card({
-      key: "mailroom-validate",
-      tone: "attention",
-      label: "À valider",
-      count: count("to_validate"),
-      sub: "proposition de Clara",
-      cta: "Valider",
-      href: mailroomHref("av"),
-    }),
-    card({
-      key: "mailroom-qualify",
-      tone: "attention",
-      label: "À qualifier",
-      count: count("to_qualify"),
-      sub: "proposition incertaine",
-      cta: "Qualifier",
-      href: mailroomHref("aq"),
-    }),
-    card({
-      key: "mailroom-reorient",
-      tone: "urgent",
-      label: "À réorienter",
-      count: count("to_reorient"),
-      sub: "renvoyés par un service",
-      cta: "Réorienter",
-      href: mailroomHref("retour"),
-    }),
-    card({
-      key: "mailroom-late",
-      tone: "urgent",
-      label: "En retard",
-      count: count("late"),
-      sub: "routés, échéance dépassée",
-      cta: "Relancer",
-      href: mailroomHref("cours", true),
-    }),
-  ];
 }
 
 /** Une réponse en attente dans le parapheur, visa ou signature. */
@@ -215,60 +156,6 @@ export interface ParapheurEntry {
   /** Étape de visa (« Visa du DGS ») ; « À signer » pour une signature. */
   step: string;
   waitingDays: number;
-}
-
-/** « dont 1 depuis 6 j » : ce qui traîne, sinon simplement ce qui attend. */
-export function waitingSub(entries: ParapheurEntry[]): string {
-  const late = entries.filter((e) => e.waitingDays >= LATE_AFTER_DAYS);
-  if (late.length === 1) return `dont 1 depuis ${late[0].waitingDays} j`;
-  if (late.length > 1) return `dont ${late.length} depuis ${LATE_AFTER_DAYS} j ou plus`;
-  return entries.length > 1 ? "réponses en attente" : "réponse en attente";
-}
-
-export function parapheurTodo(entries: ParapheurEntry[], orgLateCount: number | null): TodoCard[] {
-  const visa = entries.filter((e) => e.kind === "visa");
-  const signature = entries.filter((e) => e.kind === "signature");
-  const card = (c: Omit<TodoCard, "role">): TodoCard => ({ ...c, role: "parapheur" });
-  const cards = [
-    card({
-      key: "parapheur-visa",
-      tone: "attention",
-      label: "À viser",
-      count: visa.length,
-      sub: waitingSub(visa),
-      cta: "Ouvrir le parapheur",
-      href: "/parapheur?onglet=visa",
-    }),
-    card({
-      key: "parapheur-signature",
-      tone: "attention",
-      label: "À signer",
-      count: signature.length,
-      sub: waitingSub(signature),
-      cta: "Ouvrir le parapheur",
-      href: "/parapheur?onglet=signature",
-    }),
-  ];
-  // Un viseur administrateur (DGS) suit aussi les retards de toute l'organisation.
-  if (orgLateCount !== null) {
-    cards.push(
-      card({
-        key: "parapheur-org-late",
-        tone: "urgent",
-        label: "En retard dans l'organisation",
-        count: orgLateCount,
-        sub: "tous services",
-        cta: "Voir",
-        href: "/courriers-en-instruction",
-      }),
-    );
-  }
-  return cards;
-}
-
-/** Courriers ouverts en retard, tous services confondus. */
-export function orgLateCount(items: MailroomItem[]): number {
-  return items.filter((i) => isOpen(i) && isOverdue(i)).length;
 }
 
 // ─── Action principale ──────────────────────────────────────────────────────
@@ -337,12 +224,12 @@ export interface DashboardList {
   urgentCount: number;
 }
 
-export const LIST_SIZE = 5;
+const LIST_SIZE = 5;
 
 const SHORT_MONTH = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short", timeZone: "UTC" });
 
 /** « 3 oct. » */
-export function shortDay(day: DayKey): string {
+function shortDay(day: DayKey): string {
   return SHORT_MONTH.format(new Date(`${day}T12:00:00Z`));
 }
 
@@ -428,7 +315,7 @@ export function mailroomList(items: MailroomItem[], orgName: (id: string | null)
 }
 
 /** Lien vers la réponse dans l'espace de travail du courrier reçu. */
-export function replyHref(entry: Pick<ParapheurEntry, "replyId" | "parentCourierId">): string {
+function replyHref(entry: Pick<ParapheurEntry, "replyId" | "parentCourierId">): string {
   return entry.parentCourierId
     ? `/courrier/${entry.parentCourierId}?tab=response&replyId=${entry.replyId}&edit=1`
     : `/courrier/${entry.replyId}`;

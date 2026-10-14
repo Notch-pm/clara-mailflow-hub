@@ -139,7 +139,7 @@ export const COURIER_LIST_QUERY_PREFIXES = [
 /** Taille de page utilisée pour rapatrier l'intégralité d'un filtre (export CSV). */
 export const EXPORT_PAGE_SIZE = 500;
 /** Garde-fou : au-delà, l'export est tronqué et l'appelant en avertit l'utilisateur. */
-export const EXPORT_MAX_ROWS = 20_000;
+const EXPORT_MAX_ROWS = 20_000;
 
 /**
  * `types.ts` est généré et ne connaît pas encore la nouvelle signature du RPC :
