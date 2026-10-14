@@ -33,7 +33,7 @@ bun run dev   # en arrière-plan ; port 8080, bascule sur 8081 si occupé — li
 
 Playwright MCP :
 1. `http://localhost:<port>/` → redirection `/connexion` ; remplir le formulaire (email + mot de passe ci-dessus).
-2. Détail courrier : `/courrier/<id>` (ids dans fixtures.json). Onglets : Détail, Contenu et intentions, Actions liées, Réponse.
+2. Détail courrier : `/courrier/<id>` (ids dans fixtures.json). Onglets : Courrier, Actions liées, Réponse, Activité (+ colonne de contexte : délais, personnes, classement, liens, informations).
 
 ## Pièges
 

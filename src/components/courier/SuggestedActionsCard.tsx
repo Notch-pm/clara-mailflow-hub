@@ -39,7 +39,7 @@ export default function SuggestedActionsCard({
       </h4>
       {!analysis ? (
         <p className="text-xs text-muted-foreground italic">
-          Lancez d'abord l'analyse depuis l'onglet « Contenu et intentions ».
+          Lancez d'abord l'analyse depuis l'onglet « Courrier » (« Ce que demande l'usager »).
         </p>
       ) : analysis.suggested_actions.length === 0 ? (
         <p className="text-xs text-muted-foreground italic">Aucune action suggérée</p>

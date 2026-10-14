@@ -13,6 +13,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { ConfidentialBadge } from "@/components/courier/ConfidentialBadge";
 import { useAuth } from "@/contexts/AuthContext";
 import { canClearConfidential, canSetConfidential, hasConfidentialAccess } from "@/lib/permissions";
@@ -41,11 +42,14 @@ export function ConfidentialToggle({
   inherited = false,
   size = "sm",
   emptyLabel = null,
+  variant = "button",
 }: {
   courierId: string;
   isConfidential: boolean;
   inherited?: boolean;
   size?: "sm" | "default";
+  /** `switch` : interrupteur seul, le libellé est porté par l'appelant. */
+  variant?: "button" | "switch";
   /** Ce qu'on affiche quand le courrier n'est pas confidentiel et que je ne peux pas le marquer. */
   emptyLabel?: React.ReactNode;
 }) {
@@ -62,6 +66,48 @@ export function ConfidentialToggle({
     },
     onError: (err: Error) => toast.error(err.message),
   });
+
+  const confirmDialog = (
+    <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Marquer ce courrier confidentiel ?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Seuls les membres habilités, et les viseurs et signataires désignés sur ses réponses,
+            pourront le lire. Vous n'aurez plus accès à son contenu — vous pourrez toujours le router.
+            Seul un membre habilité pourra lever la confidentialité.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Annuler</AlertDialogCancel>
+          <AlertDialogAction onClick={() => mutation.mutate(true)}>Marquer confidentiel</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+
+  if (variant === "switch") {
+    // Le même geste, présenté en interrupteur : grisé dans le sens où il
+    // n'est pas permis (lever sans habilitation, ou drapeau hérité).
+    const allowed = isConfidential
+      ? !inherited && canClearConfidential(membership)
+      : !inherited && canSetConfidential(profile, membership);
+    return (
+      <>
+        <Switch
+          checked={isConfidential}
+          disabled={!allowed || mutation.isPending}
+          aria-label="Courrier confidentiel"
+          onCheckedChange={(on) => {
+            if (!on) mutation.mutate(false);
+            else if (habilite) mutation.mutate(true);
+            else setConfirmOpen(true);
+          }}
+        />
+        {confirmDialog}
+      </>
+    );
+  }
 
   if (isConfidential) {
     return (
@@ -97,22 +143,7 @@ export function ConfidentialToggle({
         {mutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Lock className="h-3.5 w-3.5" />}
         Marquer confidentiel
       </Button>
-      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Marquer ce courrier confidentiel ?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Seuls les membres habilités, et les viseurs et signataires désignés sur ses réponses,
-              pourront le lire. Vous n'aurez plus accès à son contenu — vous pourrez toujours le router.
-              Seul un membre habilité pourra lever la confidentialité.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction onClick={() => mutation.mutate(true)}>Marquer confidentiel</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {confirmDialog}
     </>
   );
 }

@@ -39,6 +39,17 @@ import type { CourierChannel, CourierParticipant, WorkflowTransition, WorkflowSt
 /** Champs d'un participant modifiables depuis les écrans courrier. */
 type ParticipantFields = Parameters<typeof updateParticipant>[1];
 
+/**
+ * Onglets de la fiche retirés le 2026-10-14 (quatre onglets au lieu de sept) :
+ * un lien `?tab=` d'avant atterrit là où son contenu est désormais rangé.
+ */
+const LEGACY_TABS: Record<string, string> = {
+  content: "detail",
+  participants: "detail",
+  links: "detail",
+  history: "activity",
+};
+
 export const channelLabels: Record<CourierChannel, string> = {
   paper: "Papier",
   email: "Email",
@@ -121,7 +132,9 @@ export function useCourierWorkspace({
   const initialTabParam = searchParams.get("tab");
   const initialReplyIdParam = searchParams.get("replyId");
   const initialEditParam = searchParams.get("edit") === "1";
-  const [activeTab, setActiveTab] = useState<string>(initialTabParam || "detail");
+  const [activeTab, setActiveTab] = useState<string>(
+    (initialTabParam && LEGACY_TABS[initialTabParam]) || initialTabParam || "detail",
+  );
   // Analyse enfilée (saisie manuelle, import, relais d'élu) : la fiche se met à jour seule à la fin.
   const { inProgress: analysisInProgress } = useCourierAnalysisJob(organizationId, courier?.id);
 

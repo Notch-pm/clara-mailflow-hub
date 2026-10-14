@@ -7,6 +7,7 @@ import {
   Check,
   ChevronDown,
   ExternalLink,
+  Lock,
   Tag as TagIcon,
   X,
   Undo2,
@@ -24,6 +25,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,6 +36,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -56,7 +59,7 @@ import { assignableOrgs } from "@/services/socleOrgConfigService";
 import { getWorkflowStateChain } from "@/services/workflowService";
 import { getCourierSlaFacts } from "@/services/courierService";
 import { useCourierSla } from "@/hooks/useCourierSla";
-import { CourierSlaDetails } from "./SlaStatus";
+import { CourierSlaDetails, SlaHeadline, slaHeadline } from "./SlaStatus";
 import { cn } from "@/lib/utils";
 import { readableTextColor } from "@/lib/tag-color";
 import { categoryTone } from "@/lib/workflow-category";
@@ -65,14 +68,16 @@ import AdvanceBlockedButton from "./AdvanceBlockedButton";
 import { advanceBlockedReason } from "./advance-blocked-reason";
 import ContactPicker from "./ContactPicker";
 import ContentIntentsTab from "./ContentIntentsTab";
+import CourierRequestSummary from "./CourierRequestSummary";
 import ServiceSuggestion from "./ServiceSuggestion";
-import CourierHistoryTab from "./CourierHistoryTab";
-import CourierLinksTab from "./CourierLinksTab";
+import CourierActivityTab from "./CourierActivityTab";
+import FloatingNotesPanel from "./FloatingNotesPanel";
+import CourierLinksCard from "./CourierLinksCard";
 import DocumentManager from "./DocumentManager";
 import DocumentViewer from "./DocumentViewer";
-import FloatingNotesPanel from "./FloatingNotesPanel";
 import InlineEditField from "./InlineEditField";
 import RecipientField from "./RecipientField";
+import { WorkflowTrail } from "./WorkflowTrail";
 import { CONTACT_CATEGORIES } from "@/lib/contact-categories";
 import { isOutboundSettled } from "@/lib/outbound-kind";
 import { ContactCategoryBadges } from "@/components/contacts/ContactCategoryBadge";
@@ -126,33 +131,10 @@ function formatLongDate(value: string | null | undefined) {
   });
 }
 
-/** Carte de contenu : titre à gauche, actions à droite, corps en dessous. */
-function Section({
-  title,
-  description,
-  action,
-  children,
-  className,
-}: {
-  title: string;
-  description?: React.ReactNode;
-  action?: React.ReactNode;
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <Card className={cn("p-6 shadow-airbnb-sm", className)}>
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <div className="min-w-0">
-          <h2 className="text-lg font-semibold leading-tight">{title}</h2>
-          {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
-        </div>
-        <div className="flex-1" />
-        {action}
-      </div>
-      {children}
-    </Card>
-  );
+function initialsOf(name: string | null | undefined) {
+  const words = (name ?? "").trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return "?";
+  return `${words[0].charAt(0)}${words.length > 1 ? words[words.length - 1].charAt(0) : ""}`.toUpperCase();
 }
 
 /** Carte de la colonne latérale : plus compacte, titre seul. */
@@ -167,7 +149,7 @@ function RailCard({
 }) {
   return (
     <Card className="p-5 shadow-airbnb-sm">
-      <div className="mb-3.5 flex items-center gap-2">
+      <div className="mb-3 flex items-center gap-2">
         <h3 className="text-base font-semibold leading-tight">{title}</h3>
         <div className="flex-1" />
         {action}
@@ -177,12 +159,22 @@ function RailCard({
   );
 }
 
-/** Champ en lecture/écriture de la grille « Informations du courrier ». */
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+/** Une rubrique de carte latérale : libellé discret, valeur dessous. */
+function RailField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="min-w-0 border-b border-border pb-2.5">
-      <div className="mb-1 text-xs font-semibold text-muted-foreground">{label}</div>
-      <div className="text-base font-semibold [overflow-wrap:anywhere]">{children}</div>
+    <div className="flex min-w-0 flex-col gap-1">
+      <div className="text-xs font-semibold text-muted-foreground">{label}</div>
+      <div className="min-w-0 [overflow-wrap:anywhere]">{children}</div>
+    </div>
+  );
+}
+
+/** Ligne de la carte « Informations » : libellé à gauche, valeur à droite. */
+function InfoRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3 text-sm">
+      <dt className="shrink-0 text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 text-right font-semibold [overflow-wrap:anywhere]">{children}</dd>
     </div>
   );
 }
@@ -190,15 +182,19 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 const EMPTY = <span className="font-normal italic text-muted-foreground">—</span>;
 
 /**
- * Écran d'instruction d'un courrier (`/courrier/:id`) : en-tête d'identité,
- * onglets de travail et colonne latérale de contexte. Le tri amont, lui, se
- * fait dans le panneau de la boîte aux lettres.
+ * Écran d'instruction d'un courrier (`/courrier/:id`). L'en-tête dit l'identité
+ * et l'urgence (titre, échéance, expéditeur) ; la barre du fil d'Ariane porte
+ * la frise du workflow. Quatre onglets de travail — Courrier, Actions liées,
+ * Réponse, Activité — et une colonne de contexte : délais, personnes,
+ * classement, courriers liés, informations secondaires repliées. Le tri amont,
+ * lui, se fait dans le panneau de la boîte aux lettres.
  */
 export default function CourierWorkspacePage({ courier, organizationId, onClose }: Props) {
   const [tagPopoverGroup, setTagPopoverGroup] = useState<TagGroup | null>(null);
   const [servicePopoverOpen, setServicePopoverOpen] = useState(false);
   const [returnOpen, setReturnOpen] = useState(false);
-  const [rail, setRail] = useState<"courrier" | "workflow">("courrier");
+  const [participantsOpen, setParticipantsOpen] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
 
   const ws = useCourierWorkspace({
     courier,
@@ -224,7 +220,6 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
     notesList,
     replyList,
     ticketsList,
-    relationsList,
     replyState,
     setReplyState,
     activeTab,
@@ -265,7 +260,6 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
     selectedDocId,
     setSelectedDocId,
     persistCourierUpdate,
-    upsertParticipant,
     linkSenderContact,
     recipientContact,
     linkInternalContact,
@@ -277,6 +271,11 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
   // de son organisation émettrice — pas par les boutons d'en-tête, qui suivent
   // le workflow des courriers reçus.
   const isInitiative = isOutbound && !courier.parent_courier_id;
+  // Notes internes : sur un courrier reçu et sur un courrier à l'initiative,
+  // qui vit sa propre instruction. Une réponse, elle, se commente sur le
+  // courrier reçu auquel elle répond.
+  const hasNotes = !isOutbound || isInitiative;
+  const notesReadOnly = effectiveReadOnly || isFinalState;
 
   // Ni action ni réponse tant que le courrier n'est pas orienté et sorti de la
   // boîte aux lettres ; la base tient la même règle (trigger de création).
@@ -286,9 +285,9 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
     stateIsInitial: localWorkflowStateId ? currentStateInfo?.is_initial : true,
   });
 
-  // Le défilement vit désormais DANS la colonne de travail : sans ce recalage,
-  // l'onglet ouvert hériterait de la hauteur où l'on avait laissé le précédent
-  // et s'afficherait en plein milieu de son contenu.
+  // Le défilement vit DANS la colonne de travail : sans ce recalage, l'onglet
+  // ouvert hériterait de la hauteur où l'on avait laissé le précédent et
+  // s'afficherait en plein milieu de son contenu.
   const panelRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (panelRef.current) panelRef.current.scrollTop = 0;
@@ -298,7 +297,7 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
   const { data: stateChain = [] } = useQuery({
     queryKey: ["workflow-state-chain", currentService?.workflow_id],
     queryFn: () => getWorkflowStateChain(currentService!.workflow_id!),
-    enabled: !!currentService?.workflow_id,
+    enabled: !!currentService?.workflow_id && !isInitiative,
   });
 
   // Délais de traitement : relus à chaque transition du courrier ou de ses
@@ -313,74 +312,52 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
   const sla = slaFacts ? slaOf({ ...slaFacts, socle_organization_id: localSocleOrgId ?? null }) : null;
   const hasSlaTarget = !!sla && (sla.ack.kind !== "none" || sla.resolution.kind !== "none");
 
+  const replyStateBadge = useMemo(
+    () =>
+      replyState ? (
+        <span
+          className={cn(
+            "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold leading-none",
+            categoryTone(replyState.category).pill,
+          )}
+        >
+          {replyState.name}
+        </span>
+      ) : null,
+    [replyState],
+  );
+
+  // Quatre onglets : le travail (actions, réponse) et la trace (activité)
+  // autour du courrier lui-même. Participants et liens sont passés dans la
+  // colonne de contexte, l'historique et les notes fusionnés dans « Activité ».
   const tabItems: ResponsiveTabItem[] = useMemo(() => {
-    const items: ResponsiveTabItem[] = [{ value: "detail", label: "Détail du courrier" }];
-    if (isInitiative) {
-      items.push({
-        value: "redaction",
-        label: "Rédaction",
-        badge: replyState ? (
-          <span
-            className={cn(
-              "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold leading-none",
-              categoryTone(replyState.category).pill,
-            )}
-          >
-            {replyState.name}
-          </span>
-        ) : null,
-      });
-    }
+    const items: ResponsiveTabItem[] = [{ value: "detail", label: "Courrier" }];
+    if (isInitiative) items.push({ value: "redaction", label: "Rédaction", badge: replyStateBadge });
     if (!isOutbound) {
-      items.push({ value: "content", label: "Contenu et intentions" });
       items.push({ value: "actions", label: "Actions liées", count: ticketsList.length });
       items.push({
         value: "response",
         label: replyList.length > 1 ? "Réponses" : "Réponse",
-        count: replyList.length,
-        badge: replyState ? (
-          <span
-            className={cn(
-              "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold leading-none",
-              categoryTone(replyState.category).pill,
-            )}
-          >
-            {replyState.name}
-          </span>
-        ) : null,
+        count: replyList.length > 1 ? replyList.length : null,
+        badge: replyStateBadge,
       });
     }
-    items.push({ value: "participants", label: "Participants", count: participants.length });
-    if (!isOutbound || isInitiative) {
-      items.push({ value: "links", label: "Liens", count: relationsList.length });
-    }
-    items.push({ value: "history", label: "Historique" });
+    items.push({ value: "activity", label: "Activité", count: hasNotes ? notesList.length : null });
     return items;
-  }, [isOutbound, isInitiative, ticketsList.length, replyList.length, replyState, participants.length, relationsList.length]);
+  }, [isOutbound, isInitiative, hasNotes, ticketsList.length, replyList.length, replyStateBadge, notesList.length]);
 
   const origin = originList(currentStateInfo?.category, isOutbound);
   const tone = categoryTone(currentStateInfo?.category);
   // Un sortant est « de » son organisation émettrice : celle du courrier reçu
   // pour une réponse, la sienne pour un courrier à l'initiative.
   const issuerName = isInitiative ? localAssignedService : parentCourier?.assigned_service ?? null;
-  const senderLabel = isOutbound
-    ? issuerName
-    : sender?.name ?? null;
+  const senderLabel = isOutbound ? issuerName : sender?.name ?? null;
   const dateLabel = isOutbound
     ? formatLongDate(courier.sent_at as string | null)
     : formatLongDate(courier.received_at);
-
-  // Sous-titre d'en-tête : qui, comment, pour qui — la phrase d'identité du courrier.
-  const subtitle = [
-    senderLabel,
-    dateLabel
-      ? `${isOutbound ? "envoyé" : inboundChannelPhrase(courier.channel)} le ${dateLabel}`
-      : null,
-    // Un courrier à l'initiative est déjà « de » son organisation émettrice.
-    localAssignedService && !isInitiative ? `organisation gestionnaire ${localAssignedService}` : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const datePhrase = dateLabel
+    ? `${isOutbound ? "envoyé" : inboundChannelPhrase(courier.channel)} le ${dateLabel}`
+    : null;
 
   const nextTransition = transitions?.find((t) => (t as any).kind === "next");
   const prevTransition = transitions?.find((t) => (t as any).kind === "previous");
@@ -393,75 +370,83 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
   const hasOtherActions = otherTransitions.length > 0 || canRemindService || canReassign;
 
   function openReassign() {
-    setRail("courrier");
     // Après la fermeture du menu : sinon il rend le focus à son déclencheur,
     // et le popover, aussitôt ouvert, se referme sur cette interaction.
     setTimeout(() => setServicePopoverOpen(true), 0);
   }
 
-  // Position dans la frise. -1 : l'état courant a été atteint par une transition
-  // secondaire, il ne figure pas dans la chaîne nominale.
-  const chainIndex = stateChain.findIndex((s) => s.id === localWorkflowStateId);
+  const inlineDocs = displayDocuments
+    .filter((d: { id: string }) => d.id.startsWith("inline:"))
+    .map((d: { id: string; file_name: string | null }) => ({ id: d.id, file_name: d.file_name }));
 
-  const segmentClass = (on: boolean) =>
-    cn(
-      "flex-1 rounded-full px-3 py-1.5 text-sm font-bold transition-colors",
-      on ? "bg-card text-foreground shadow-airbnb-sm" : "text-muted-foreground hover:text-foreground",
-    );
+  const isConfidential = !!courier.is_confidential;
 
   // La hauteur vient du conteneur, pas de `100dvh` : l'en-tête et les onglets
   // restent en place, et seules les deux colonnes défilent, chacune pour son
   // compte.
   return (
     <div className="flex w-full flex-col lg:h-full">
-      <nav
-        aria-label="Fil d'Ariane"
-        className="mb-2.5 flex flex-wrap items-center gap-2 text-sm text-muted-foreground lg:shrink-0"
-      >
-        <Button
-          size="icon"
-          variant="ghost"
-          className="-ml-2 h-7 w-7 shrink-0"
-          onClick={onClose}
-          title="Retour à la liste"
-          aria-label="Retour à la liste"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <span>Courriers</span>
-        <span aria-hidden>/</span>
-        <Link to={origin.href} className="font-semibold text-primary hover:underline">
-          {origin.label}
-        </Link>
-        <span aria-hidden>/</span>
-        <span className="font-mono text-xs text-foreground">{courier.chrono ?? "sans référence"}</span>
-      </nav>
+      {/* Barre du fil d'Ariane, pleine largeur : le fil dit où l'on est dans
+          l'application, la frise à droite où en est le courrier. */}
+      <div className="-mx-4 -mt-4 mb-5 flex min-h-14 flex-wrap items-center gap-x-4 gap-y-2 border-b border-border px-4 py-2.5 md:-mx-6 md:-mt-6 md:px-6 lg:shrink-0">
+        <nav aria-label="Fil d'Ariane" className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
+          <Button
+            size="icon"
+            variant="ghost"
+            className="-ml-2 h-7 w-7 shrink-0"
+            onClick={onClose}
+            title="Retour à la liste"
+            aria-label="Retour à la liste"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <span>Courriers</span>
+          <span aria-hidden>/</span>
+          <Link to={origin.href} className="font-semibold text-primary hover:underline">
+            {origin.label}
+          </Link>
+          <span aria-hidden>/</span>
+          <span className="font-mono text-xs text-foreground">{courier.chrono ?? "sans référence"}</span>
+        </nav>
+        <div className="flex-1" />
+        {!isInitiative && (
+          <WorkflowTrail
+            chain={stateChain}
+            currentStateId={localWorkflowStateId}
+            current={currentStateInfo}
+            className="hidden md:flex"
+          />
+        )}
+      </div>
 
       <div className="mb-4 flex flex-wrap items-start gap-4 lg:shrink-0">
-        <div className="min-w-0 flex-1 basis-[420px]">
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="min-w-0 max-w-full">
-              <InlineEditField
-                label=""
-                value={courier.subject ?? ""}
-                placeholder="Titre du courrier"
-                emptyDisplay="Sans titre"
-                maxLength={255}
-                // Le champ est calibré pour une colonne étroite : `line-clamp` et
-                // `max-w-full` amputent la largeur intrinsèque du titre, qui passe
-                // alors à la ligne alors qu'il reste de la place. Le rétrécissement
-                // flex suffit à contenir un titre long.
-                displayClassName="max-w-none text-2xl font-bold leading-tight tracking-tight [&>span]:line-clamp-none [&>span]:whitespace-normal"
-                editClassName="text-2xl font-bold leading-tight"
-                readOnly={effectiveReadOnly}
-                multiline
-                onSave={(v) => persistCourierUpdate({ subject: v.trim() || null }, "Titre modifié")}
-              />
-            </h1>
-            {currentStateInfo?.name && (
+        <div className="flex min-w-0 flex-1 basis-[420px] flex-col gap-1.5">
+          <h1 className="min-w-0 max-w-full">
+            <InlineEditField
+              label=""
+              value={courier.subject ?? ""}
+              placeholder="Titre du courrier"
+              emptyDisplay="Sans titre"
+              maxLength={255}
+              // Le champ est calibré pour une colonne étroite : `line-clamp` et
+              // `max-w-full` amputent la largeur intrinsèque du titre, qui passe
+              // alors à la ligne alors qu'il reste de la place. Le rétrécissement
+              // flex suffit à contenir un titre long.
+              displayClassName="max-w-none text-2xl font-bold leading-tight tracking-tight [&>span]:line-clamp-none [&>span]:whitespace-normal"
+              editClassName="text-2xl font-bold leading-tight"
+              readOnly={effectiveReadOnly}
+              multiline
+              onSave={(v) => persistCourierUpdate({ subject: v.trim() || null }, "Titre modifié")}
+            />
+          </h1>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+            {isConfidential && <ConfidentialBadge />}
+            {/* La frise vit dans la barre du fil d'Ariane, masquée sur petit
+                écran : l'état y reste lisible ici. */}
+            {currentStateInfo?.name && !isInitiative && (
               <span
                 className={cn(
-                  "inline-flex shrink-0 items-center gap-2 rounded-full border px-3 py-1 text-sm font-semibold",
+                  "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-bold md:hidden",
                   tone.pill,
                 )}
               >
@@ -469,8 +454,20 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
                 {currentStateInfo.name}
               </span>
             )}
+            {sla && <SlaHeadline sla={sla} />}
+            {sla && slaHeadline(sla) && (senderLabel || datePhrase) && <span aria-hidden>·</span>}
+            {(senderLabel || datePhrase) && (
+              <span>
+                {senderLabel && (
+                  <>
+                    De <span className="font-semibold text-foreground">{senderLabel}</span>
+                    {datePhrase && ", "}
+                  </>
+                )}
+                {datePhrase && (senderLabel ? datePhrase : datePhrase.charAt(0).toUpperCase() + datePhrase.slice(1))}
+              </span>
+            )}
           </div>
-          {subtitle && <p className="mt-1.5 text-sm text-muted-foreground">{subtitle}</p>}
         </div>
 
         {/* Sous sm les actions s'empilent sur toute la largeur. `shrink-0` sur
@@ -478,245 +475,186 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
             libelle de transition long — « Transmettre au service instructeur »
             — irreductible : la page entiere s'elargissait derriere lui. */}
         {!isInitiative && (
-        <div className="flex w-full shrink-0 flex-col gap-2.5 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
-          {!effectiveReadOnly && prevTransition && (
-            <Button
-              variant="outline"
-              onClick={() => transitionMutation.mutate(prevTransition.to_state.id)}
-              disabled={transitionMutation.isPending}
-              className="h-10 w-full min-w-0 gap-2 sm:w-auto"
-            >
-              <ArrowLeft className="h-4 w-4 shrink-0" />
-              <span className="truncate">
-                {prevTransition.name ?? prevTransition.to_state?.name ?? "Précédent"}
-              </span>
-            </Button>
-          )}
-          {!effectiveReadOnly && nextTransition && (
-            <Button
-              onClick={() => transitionMutation.mutate(nextTransition.to_state.id)}
-              disabled={transitionMutation.isPending}
-              className="h-10 w-full min-w-0 gap-2 font-bold shadow-airbnb sm:w-auto"
-            >
-              <span
-                className={cn(
-                  "h-2 w-2 shrink-0 rounded-full",
-                  categoryTone(nextTransition.to_state?.category).dot,
-                )}
-              />
-              <span className="truncate">
-                {nextTransition.name ?? nextTransition.to_state?.name ?? "Suivant"}
-              </span>
-            </Button>
-          )}
-          {/* Sans transition nominale, cet écran n'affichait RIEN : l'agent
-              n'avait aucun moyen de savoir s'il manquait un droit, un état, ou
-              une transition dans le workflow. Un bouton grisé qui dit pourquoi
-              vaut mieux qu'un silence — c'est aussi ce que fait la boîte aux
-              lettres, les deux écrans ne doivent pas raconter deux histoires. */}
-          {!effectiveReadOnly && !nextTransition && (
-            <AdvanceBlockedButton
-              reason={advanceBlockedReason({
-                hasOrganization: !!currentService,
-                hasWorkflow: !!currentService?.workflow_id,
-                hasState: !!localWorkflowStateId,
-                isFinalState,
-                transitionCount: transitions?.length ?? 0,
-                stateName: currentStateInfo?.name ?? null,
-              })}
-              wrapperClassName="w-full min-w-0 sm:w-auto"
-              className="h-10 w-full min-w-0 gap-2 font-bold sm:w-auto"
-            >
-              <span className="h-2 w-2 shrink-0 rounded-full bg-muted-foreground" />
-              <span className="truncate">Suivant</span>
-            </AdvanceBlockedButton>
-          )}
-          {!effectiveReadOnly && hasOtherActions && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  className="h-10 w-full gap-1.5 sm:w-auto"
-                  disabled={transitionMutation.isPending}
-                >
-                  Autres actions
-                  <ChevronDown className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {otherTransitions.map((t) => (
-                  <DropdownMenuItem key={t.id} onClick={() => transitionMutation.mutate(t.to_state.id)}>
-                    <span className="flex items-center gap-2">
-                      <span className={cn("h-2 w-2 rounded-full", categoryTone(t.to_state?.category).dot)} />
-                      {t.name ?? t.to_state?.name ?? "Transition"}
-                    </span>
-                  </DropdownMenuItem>
-                ))}
-                {otherTransitions.length > 0 && (canRemindService || canReassign) && <DropdownMenuSeparator />}
-                {canRemindService && (
-                  <DropdownMenuItem disabled={remindMutation.isPending} onClick={() => remindMutation.mutate()}>
-                    <span className="flex items-center gap-2">
-                      <BellRing className="h-4 w-4 text-muted-foreground" />
-                      Relancer le service
-                    </span>
-                  </DropdownMenuItem>
-                )}
-                {canReassign && (
-                  <DropdownMenuItem onSelect={openReassign}>
-                    <span className="flex items-center gap-2">
-                      <ArrowRightLeft className="h-4 w-4 text-muted-foreground" />
-                      Réaffecter…
-                    </span>
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-        </div>
+          <div className="flex w-full shrink-0 flex-col gap-2.5 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
+            {!effectiveReadOnly && prevTransition && (
+              <Button
+                variant="outline"
+                onClick={() => transitionMutation.mutate(prevTransition.to_state.id)}
+                disabled={transitionMutation.isPending}
+                className="h-10 w-full min-w-0 gap-2 sm:w-auto"
+              >
+                <ArrowLeft className="h-4 w-4 shrink-0" />
+                <span className="truncate">
+                  {prevTransition.name ?? prevTransition.to_state?.name ?? "Précédent"}
+                </span>
+              </Button>
+            )}
+            {!effectiveReadOnly && hasOtherActions && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="h-10 w-full gap-1.5 sm:w-auto"
+                    disabled={transitionMutation.isPending}
+                  >
+                    Autres actions
+                    <ChevronDown className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {otherTransitions.map((t) => (
+                    <DropdownMenuItem key={t.id} onClick={() => transitionMutation.mutate(t.to_state.id)}>
+                      <span className="flex items-center gap-2">
+                        <span className={cn("h-2 w-2 rounded-full", categoryTone(t.to_state?.category).dot)} />
+                        {t.name ?? t.to_state?.name ?? "Transition"}
+                      </span>
+                    </DropdownMenuItem>
+                  ))}
+                  {otherTransitions.length > 0 && (canRemindService || canReassign) && <DropdownMenuSeparator />}
+                  {canRemindService && (
+                    <DropdownMenuItem disabled={remindMutation.isPending} onClick={() => remindMutation.mutate()}>
+                      <span className="flex items-center gap-2">
+                        <BellRing className="h-4 w-4 text-muted-foreground" />
+                        Relancer le service
+                      </span>
+                    </DropdownMenuItem>
+                  )}
+                  {canReassign && (
+                    <DropdownMenuItem onSelect={openReassign}>
+                      <span className="flex items-center gap-2">
+                        <ArrowRightLeft className="h-4 w-4 text-muted-foreground" />
+                        Réaffecter…
+                      </span>
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+            {!effectiveReadOnly && nextTransition && (
+              <Button
+                onClick={() => transitionMutation.mutate(nextTransition.to_state.id)}
+                disabled={transitionMutation.isPending}
+                className="h-10 w-full min-w-0 gap-2 font-bold shadow-airbnb sm:w-auto"
+              >
+                <span
+                  className={cn(
+                    "h-2 w-2 shrink-0 rounded-full",
+                    categoryTone(nextTransition.to_state?.category).dot,
+                  )}
+                />
+                <span className="truncate">
+                  {nextTransition.name ?? nextTransition.to_state?.name ?? "Suivant"}
+                </span>
+              </Button>
+            )}
+            {/* Sans transition nominale, cet écran n'affichait RIEN : l'agent
+                n'avait aucun moyen de savoir s'il manquait un droit, un état, ou
+                une transition dans le workflow. Un bouton grisé qui dit pourquoi
+                vaut mieux qu'un silence — c'est aussi ce que fait la boîte aux
+                lettres, les deux écrans ne doivent pas raconter deux histoires. */}
+            {!effectiveReadOnly && !nextTransition && (
+              <AdvanceBlockedButton
+                reason={advanceBlockedReason({
+                  hasOrganization: !!currentService,
+                  hasWorkflow: !!currentService?.workflow_id,
+                  hasState: !!localWorkflowStateId,
+                  isFinalState,
+                  transitionCount: transitions?.length ?? 0,
+                  stateName: currentStateInfo?.name ?? null,
+                })}
+                wrapperClassName="w-full min-w-0 sm:w-auto"
+                className="h-10 w-full min-w-0 gap-2 font-bold sm:w-auto"
+              >
+                <span className="h-2 w-2 shrink-0 rounded-full bg-muted-foreground" />
+                <span className="truncate">Suivant</span>
+              </AdvanceBlockedButton>
+            )}
+          </div>
         )}
       </div>
 
-      <div className="flex flex-wrap items-start gap-5 lg:min-h-0 lg:flex-1 lg:flex-nowrap lg:items-stretch">
-        {/* Les onglets ne coiffent que la colonne de travail : la colonne de
-            contexte, à droite, leur est étrangère et défile pour son compte. */}
-        <Tabs
-          value={activeTab}
-          onValueChange={setActiveTab}
-          className="flex min-w-0 flex-1 basis-[560px] flex-col lg:min-h-0"
-        >
-          <ResponsiveTabsList
-            activeValue={activeTab}
-            onValueChange={setActiveTab}
-            tabs={tabItems}
-            className="mb-5 shrink-0"
-          />
+      {/* Les onglets coiffent toute la largeur, comme un en-tête de section ;
+          la colonne de contexte, dessous, ne change pas d'un onglet à l'autre. */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col lg:min-h-0 lg:flex-1">
+        <ResponsiveTabsList activeValue={activeTab} onValueChange={setActiveTab} tabs={tabItems} className="shrink-0" />
 
-          <div ref={panelRef} className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pb-2">
+        <div className="grid grid-cols-1 gap-5 pt-5 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <div ref={panelRef} className="min-w-0 lg:min-h-0 lg:overflow-y-auto lg:pb-2">
             <TabsContent value="detail" className="mt-0 flex flex-col gap-5 focus-visible:outline-none">
-              {!isOutbound && isInitialState && (
+              {!isOutbound && (
                 <LinkedCouriersSection
                   courierId={courier.id}
                   organizationId={organizationId}
                   disabled={effectiveReadOnly}
-                  // Les liens déjà posés ont leur onglet « Liens » : ici on ne
-                  // sert que les suggestions restées à trancher.
+                  // Les liens déjà posés sont dans la colonne de contexte : ici
+                  // on ne sert que les suggestions restées à trancher.
                   showRelations={false}
                 />
               )}
 
-              <Section
-                title="Informations du courrier"
-                action={
-                  <span className="rounded-md border px-2.5 py-1 font-mono text-xs text-muted-foreground">
-                    {isOutbound ? "sortant" : channelLabels[courier.channel].toLowerCase()}
-                  </span>
-                }
-              >
-                <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-x-6 gap-y-5">
-                  <Field label="Référence">
-                    <span className="font-mono text-sm">{courier.chrono ?? EMPTY}</span>
-                  </Field>
-                  {/* Poser : habilité ou service courrier ; lever : habilité (la base tranche).
-                      Une réponse suit son courrier reçu : la base refuse de la lever seule. */}
-                  <Field label="Confidentialité">
-                    {effectiveReadOnly ? (
-                      courier.is_confidential ? <ConfidentialBadge /> : <span className="text-sm">{EMPTY}</span>
-                    ) : (
-                      <ConfidentialToggle
-                        courierId={courier.id}
-                        isConfidential={!!courier.is_confidential}
-                        emptyLabel={<span className="text-sm">Non</span>}
-                      />
-                    )}
-                  </Field>
-                  <Field label={isOutbound ? "Date d'envoi" : "Date de réception"}>
-                    <InlineEditField
-                      label=""
-                      type="date"
-                      value={
-                        isOutbound
-                          ? (courier.sent_at as string | null)?.slice(0, 10) ?? ""
-                          : courier.received_at?.slice(0, 10) ?? ""
+              {!isOutbound && (
+                <CourierRequestSummary
+                  courierId={courier.id}
+                  organizationId={organizationId}
+                  onCreateAction={
+                    creationBlockedReason || effectiveReadOnly || isFinalState
+                      ? undefined
+                      : () => setActiveTab("actions")
+                  }
+                  analysisDetail={
+                    <ContentIntentsTab
+                      courierId={courier.id}
+                      organizationId={organizationId}
+                      readOnly={effectiveReadOnly || isFinalState}
+                      isInitialState={isInitialState}
+                      serviceSuggestion={
+                        <ServiceSuggestion
+                          courierId={courier.id}
+                          currentOrgId={currentService?.id ?? null}
+                          isInitialState={isInitialState}
+                          readOnly={effectiveReadOnly || isFinalState}
+                          orgs={services ?? []}
+                          assignableIds={availableServices.map((o) => o.id)}
+                          transferableIds={assignableOrgs(services ?? [])
+                            .filter((o) => o.id !== currentService?.id)
+                            .map((o) => o.id)}
+                          onAssign={(id) => serviceMutation.mutate(id)}
+                          onTransfer={(id) => {
+                            setTransferTargetServiceId(id);
+                            setTransferConfirmOpen(true);
+                          }}
+                          busy={serviceMutation.isPending || transferMutation.isPending}
+                        />
                       }
-                      // La date d'envoi d'un courrier à l'initiative est posée par
-                      // l'envoi lui-même : elle ne se saisit pas.
-                      readOnly={effectiveReadOnly || isInitiative}
-                      displayClassName="text-base font-semibold"
-                      onSave={(v) =>
-                        persistCourierUpdate(
-                          isOutbound
-                            ? { sent_at: v ? new Date(v).toISOString() : null }
-                            : { received_at: v ? new Date(v).toISOString() : null },
-                          "Date modifiée",
-                        )
-                      }
-                      renderDisplay={(v) => formatLongDate(v)}
                     />
-                  </Field>
-                  {!isOutbound && (
-                    <Field label="Canal">
-                      {effectiveReadOnly ? (
-                        channelLabels[courier.channel]
-                      ) : (
-                        <Select
-                          value={courier.channel}
-                          onValueChange={(v) => persistCourierUpdate({ channel: v }, "Canal modifié")}
-                        >
-                          <SelectTrigger className="-ml-2 h-8 w-auto gap-1.5 border-0 bg-transparent px-2 text-base font-semibold shadow-none hover:bg-muted">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent align="start">
-                            {(Object.keys(channelLabels) as CourierChannel[]).map((c) => (
-                              <SelectItem key={c} value={c}>
-                                {channelLabels[c]}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-                    </Field>
-                  )}
-                  <Field label="Destinataire">
-                    {isOutbound ? (
-                      (isInitiative ? recipient?.name : parentSender?.name) ?? EMPTY
-                    ) : (
-                      <RecipientField
-                        key={recipient?.id ?? "none"}
-                        organizationId={organizationId}
-                        recipientName={recipient?.name}
-                        linked={!!recipient?.socle_contact_id}
-                        contact={recipientContact}
-                        onLink={(c) => linkInternalContact("recipient", c)}
-                        onSetName={(name) => setRecipientName(name ?? "")}
-                        readOnly={effectiveReadOnly}
-                        triggerClassName="h-9 w-full max-w-sm justify-between px-2.5 [&>span]:font-semibold"
-                      />
-                    )}
-                  </Field>
-                  {courier.socle_organization?.name && (
-                    <Field label="Organisation d'origine">{courier.socle_organization.name}</Field>
-                  )}
-                  {isOutbound && courier.parent_courier_id && (
-                    <Field label="Courrier lié">
-                      <Link
-                        to={`/courrier/${courier.parent_courier_id}`}
-                        className="inline-flex items-center gap-1.5 text-primary hover:underline"
-                      >
-                        <ExternalLink className="h-3.5 w-3.5" />
-                        Voir le courrier entrant
-                      </Link>
-                    </Field>
-                  )}
-                </div>
-                {isOutbound && (
-                  <div className="mt-4">
-                    <ReplyVisaSection organizationId={organizationId} replyId={courier.id} stateId={courier.workflow_state_id} />
-                  </div>
-                )}
-              </Section>
+                  }
+                />
+              )}
 
-              <Section title="Aperçu du document">
-                <div className="h-[60vh] min-h-[400px]">
+              {isOutbound && (
+                // `empty:hidden` : sans visa, la section ne rend rien — pas de carte vide.
+                <Card className="p-6 shadow-airbnb-sm empty:hidden">
+                  <ReplyVisaSection organizationId={organizationId} replyId={courier.id} stateId={courier.workflow_state_id} />
+                </Card>
+              )}
+
+              {/* La liste des pièces pilote l'aperçu voisin. */}
+              <Card className="grid overflow-hidden shadow-airbnb-sm md:h-[70vh] md:min-h-[480px] md:grid-cols-[220px_minmax(0,1fr)]">
+                <div className="overflow-y-auto border-b border-border px-3 py-5 md:border-b-0 md:border-r">
+                  <DocumentManager
+                    layout="list"
+                    courierId={courier.id}
+                    organizationId={organizationId}
+                    selectedDocId={selectedDocId}
+                    onSelectDoc={setSelectedDocId}
+                    readOnly={effectiveReadOnly}
+                    leadingItems={inlineDocs}
+                    ignoredAttachments={
+                      (courier.metadata?.ignored_attachments as { name: string; size: number }[] | undefined) ?? []
+                    }
+                  />
+                </div>
+                <div className="flex min-h-[420px] min-w-0 flex-col bg-muted p-3">
                   <DocumentViewer
                     documents={displayDocuments as any}
                     currentId={selectedDocId}
@@ -724,51 +662,8 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
                     organizationId={organizationId}
                   />
                 </div>
-              </Section>
-
-              <Section title="Documents">
-                <DocumentManager
-                  courierId={courier.id}
-                  organizationId={organizationId}
-                  selectedDocId={selectedDocId}
-                  onSelectDoc={setSelectedDocId}
-                  readOnly={effectiveReadOnly}
-                  ignoredAttachments={
-                    (courier.metadata?.ignored_attachments as { name: string; size: number }[] | undefined) ?? []
-                  }
-                />
-              </Section>
+              </Card>
             </TabsContent>
-
-            {!isOutbound && (
-              <TabsContent value="content" className="mt-0 focus-visible:outline-none">
-                <ContentIntentsTab
-                  courierId={courier.id}
-                  organizationId={organizationId}
-                  readOnly={effectiveReadOnly || isFinalState}
-                  isInitialState={isInitialState}
-                  serviceSuggestion={
-                    <ServiceSuggestion
-                      courierId={courier.id}
-                      currentOrgId={currentService?.id ?? null}
-                      isInitialState={isInitialState}
-                      readOnly={effectiveReadOnly || isFinalState}
-                      orgs={services ?? []}
-                      assignableIds={availableServices.map((o) => o.id)}
-                      transferableIds={assignableOrgs(services ?? [])
-                        .filter((o) => o.id !== currentService?.id)
-                        .map((o) => o.id)}
-                      onAssign={(id) => serviceMutation.mutate(id)}
-                      onTransfer={(id) => {
-                        setTransferTargetServiceId(id);
-                        setTransferConfirmOpen(true);
-                      }}
-                      busy={serviceMutation.isPending || transferMutation.isPending}
-                    />
-                  }
-                />
-              </TabsContent>
-            )}
 
             {!isOutbound && (
               <TabsContent value="actions" className="mt-0 focus-visible:outline-none">
@@ -823,433 +718,484 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
               </TabsContent>
             )}
 
-            <TabsContent value="participants" className="mt-0 focus-visible:outline-none">
+            <TabsContent value="activity" className="mt-0 focus-visible:outline-none">
               <Card className="p-6 shadow-airbnb-sm">
-                <ParticipantManager
+                <CourierActivityTab
                   courierId={courier.id}
                   organizationId={organizationId}
-                  readOnly={effectiveReadOnly}
+                  notes={notesList}
+                  notesEnabled={hasNotes}
+                  readOnly={notesReadOnly}
                 />
               </Card>
             </TabsContent>
+          </div>
 
-            {(!isOutbound || isInitiative) && (
-              <TabsContent value="links" className="mt-0 focus-visible:outline-none">
-                <Card className="p-6 shadow-airbnb-sm">
-                  <CourierLinksTab
-                    courierId={courier.id}
-                    organizationId={organizationId}
-                    readOnly={effectiveReadOnly}
-                    initiative={isInitiative ? { chrono: courier.chrono ?? null, subject: courier.subject ?? null } : null}
-                  />
-                </Card>
-              </TabsContent>
+          {/* La borne de hauteur vient du conteneur, pas de `100dvh` : ce gabarit
+              retranchait l'en-tête mais pas le pied de page, et le bas de la
+              colonne tombait hors d'atteinte du défilement. */}
+          <aside
+            className="flex min-w-0 flex-col gap-4 lg:min-h-0 lg:overflow-y-auto lg:pb-2"
+            aria-label="Contexte du courrier"
+          >
+            {!isOutbound && hasSlaTarget && sla && (
+              <RailCard title="Délais de traitement">
+                <CourierSlaDetails sla={sla} />
+              </RailCard>
             )}
 
-            <TabsContent value="history" className="mt-0 focus-visible:outline-none">
-              <Card className="p-6 shadow-airbnb-sm">
-                <CourierHistoryTab courierId={courier.id} organizationId={organizationId} />
-              </Card>
-            </TabsContent>
-          </div>
-        </Tabs>
-
-        {/* La borne de hauteur vient du conteneur, pas de `100dvh` : ce gabarit
-            retranchait l'en-tête mais pas le pied de page, et le bas de la
-            colonne tombait hors d'atteinte du défilement. */}
-        <aside
-          className="flex w-full min-w-0 flex-1 basis-[340px] flex-col gap-4 lg:min-h-0 lg:max-w-[400px] lg:overflow-y-auto lg:pb-2"
-          aria-label="Contexte du courrier"
-        >
-          <div className="flex rounded-full bg-muted p-1" role="tablist" aria-label="Contexte affiché">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={rail === "courrier"}
-              className={segmentClass(rail === "courrier")}
-              onClick={() => setRail("courrier")}
-            >
-              Courrier
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={rail === "workflow"}
-              className={segmentClass(rail === "workflow")}
-              onClick={() => setRail("workflow")}
-            >
-              Workflow
-            </button>
-          </div>
-
-          {rail === "courrier" ? (
-            <>
-              <RailCard
-                title="Expéditeur"
-                action={
-                  sender?.socle_contact_id ? (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Link
-                          to={`/contacts/${sender.socle_contact_id}`}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-md border text-muted-foreground transition-colors hover:bg-muted hover:text-primary"
-                          aria-label="Voir la fiche contact et ses courriers"
-                        >
-                          <ExternalLink className="h-3.5 w-3.5" />
-                        </Link>
-                      </TooltipTrigger>
-                      <TooltipContent>Voir la fiche contact et ses courriers</TooltipContent>
-                    </Tooltip>
-                  ) : null
-                }
-              >
-                {isOutbound ? (
-                  <div className="space-y-1.5">
-                    <div className="text-sm font-semibold">
-                      {issuerName ?? EMPTY}
+            <RailCard title="Personnes">
+              <div className="flex flex-col gap-3.5">
+                <RailField label={isOutbound ? "Émetteur" : "Expéditeur"}>
+                  {isOutbound ? (
+                    <div className="space-y-1.5">
+                      <div className="text-base font-semibold">{issuerName ?? EMPTY}</div>
+                      {/* Facultatif : l'agent ou l'élu au nom de qui le courrier
+                          part. Figé, comme le destinataire, une fois signé,
+                          envoyé ou posté. */}
+                      <ContactPicker
+                        organizationId={organizationId}
+                        value={senderContact ?? null}
+                        onChange={(c) => void linkInternalContact("sender", c)}
+                        roles={[...CONTACT_CATEGORIES]}
+                        disabled={effectiveReadOnly || isOutboundSettled(courier.metadata as Record<string, unknown> | null)}
+                        fallbackLabel={sender?.name ?? undefined}
+                        placeholder="Au nom de… (interne ou élu, facultatif)"
+                        triggerClassName="h-9 w-full justify-between px-2.5"
+                      />
                     </div>
-                    {/* Facultatif : l'agent ou l'élu au nom de qui le courrier
-                        part. Figé, comme le destinataire, une fois signé,
-                        envoyé ou posté. */}
-                    <ContactPicker
+                  ) : (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        {/* L'identité vient du référentiel : on choisit une fiche,
+                            on ne saisit plus le nom à la main. */}
+                        <div className="min-w-0 flex-1">
+                          <ContactPicker
+                            organizationId={organizationId}
+                            value={senderContact ?? null}
+                            onChange={linkSenderContact}
+                            disabled={effectiveReadOnly}
+                            fallbackLabel={sender?.name ?? undefined}
+                            triggerClassName="h-9 w-full justify-between px-2.5 [&>span]:font-semibold"
+                          />
+                        </div>
+                        {sender?.socle_contact_id && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Link
+                                to={`/contacts/${sender.socle_contact_id}`}
+                                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border text-muted-foreground transition-colors hover:bg-muted hover:text-primary"
+                                aria-label="Voir la fiche contact et ses courriers"
+                              >
+                                <ExternalLink className="h-3.5 w-3.5" />
+                              </Link>
+                            </TooltipTrigger>
+                            <TooltipContent>Voir la fiche contact et ses courriers</TooltipContent>
+                          </Tooltip>
+                        )}
+                      </div>
+                      <ContactCategoryBadges contact={senderContact} />
+                      {senderRelationLines.map((line) => (
+                        <div key={line.key} className="truncate text-xs text-muted-foreground">
+                          {line.text}
+                        </div>
+                      ))}
+                      {senderContact?.quartier && (
+                        <div className="pt-0.5">
+                          <QuartierBadge quartier={senderContact.quartier} />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </RailField>
+
+                <RailField label="Destinataire">
+                  {isOutbound ? (
+                    <span className="text-base font-semibold">
+                      {(isInitiative ? recipient?.name : parentSender?.name) ?? EMPTY}
+                    </span>
+                  ) : (
+                    <RecipientField
+                      key={recipient?.id ?? "none"}
                       organizationId={organizationId}
-                      value={senderContact ?? null}
-                      onChange={(c) => void linkInternalContact("sender", c)}
-                      roles={[...CONTACT_CATEGORIES]}
-                      disabled={effectiveReadOnly || isOutboundSettled(courier.metadata as Record<string, unknown> | null)}
-                      fallbackLabel={sender?.name ?? undefined}
-                      placeholder="Au nom de… (interne ou élu, facultatif)"
-                      triggerClassName="h-9 w-full justify-between px-2.5"
-                    />
-                  </div>
-                ) : (
-                  <div className="space-y-1.5">
-                    {/* L'identité vient du référentiel : on choisit une fiche,
-                        on ne saisit plus le nom à la main. */}
-                    <ContactPicker
-                      organizationId={organizationId}
-                      value={senderContact ?? null}
-                      onChange={linkSenderContact}
-                      disabled={effectiveReadOnly}
-                      fallbackLabel={sender?.name ?? undefined}
+                      recipientName={recipient?.name}
+                      linked={!!recipient?.socle_contact_id}
+                      contact={recipientContact}
+                      onLink={(c) => linkInternalContact("recipient", c)}
+                      onSetName={(name) => setRecipientName(name ?? "")}
+                      readOnly={effectiveReadOnly}
                       triggerClassName="h-9 w-full justify-between px-2.5 [&>span]:font-semibold"
                     />
-                    <ContactCategoryBadges contact={senderContact} />
-                    {senderRelationLines.map((line) => (
-                      <div key={line.key} className="truncate text-xs text-muted-foreground">
-                        {line.text}
-                      </div>
-                    ))}
-                    {senderContact?.quartier && (
-                      <div className="pt-0.5">
-                        <QuartierBadge quartier={senderContact.quartier} />
-                      </div>
-                    )}
-                  </div>
-                )}
+                  )}
+                </RailField>
 
-                {/* L'organisation gestionnaire a sa propre carte juste dessous,
-                    d'où on la change : la répéter ici en lecture seule ferait
-                    deux fois la même ligne. */}
-                <dl className="mt-3.5 space-y-2 border-t pt-3">
-                  <div className="flex items-baseline justify-between gap-3 text-sm">
-                    <dt className="text-muted-foreground">Participants</dt>
-                    <dd className="font-semibold">{participants.length}</dd>
-                  </div>
-                </dl>
-              </RailCard>
-
-              <RailCard title="Organisation gestionnaire">
-                {effectiveReadOnly ? (
-                  <div className="text-sm font-semibold">{localAssignedService ?? EMPTY}</div>
-                ) : (
-                  <Popover open={servicePopoverOpen} onOpenChange={setServicePopoverOpen}>
-                    <PopoverTrigger asChild>
-                      <button
-                        type="button"
-                        className="flex h-11 w-full items-center justify-between gap-2 rounded-md border px-3 text-left text-sm font-semibold transition-shadow hover:shadow-airbnb-sm"
-                        title={
-                          isInitialState
-                            ? "Affecter à une organisation"
-                            : "Transférer à une autre organisation"
-                        }
-                      >
-                        <span className="min-w-0 truncate">
-                          {localAssignedService ?? (
-                            <span className="font-normal italic text-muted-foreground">Non assigné</span>
-                          )}
-                        </span>
-                        <ArrowRightLeft className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                      </button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-72 space-y-2 p-3" align="start">
-                      {isInitialState ? (
-                        <>
-                          <p className="text-xs text-muted-foreground">Affecter à une organisation</p>
-                          <Select
-                            value={currentService?.id ?? ""}
-                            onValueChange={(v) => {
-                              serviceMutation.mutate(v);
+                <RailField label={isInitiative ? "Organisation émettrice" : "Organisation gestionnaire"}>
+                  {effectiveReadOnly ? (
+                    <div className="text-sm font-semibold">{localAssignedService ?? EMPTY}</div>
+                  ) : (
+                    <Popover open={servicePopoverOpen} onOpenChange={setServicePopoverOpen}>
+                      <PopoverTrigger asChild>
+                        <button
+                          type="button"
+                          className="flex h-11 w-full items-center justify-between gap-2 rounded-md border px-3 text-left text-sm font-semibold transition-shadow hover:shadow-airbnb-sm"
+                          title={
+                            isInitialState
+                              ? "Affecter à une organisation"
+                              : "Transférer à une autre organisation"
+                          }
+                        >
+                          <span className="min-w-0 truncate">
+                            {localAssignedService ?? (
+                              <span className="font-normal italic text-muted-foreground">Non assigné</span>
+                            )}
+                          </span>
+                          <ArrowRightLeft className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-72 space-y-2 p-3" align="start">
+                        {isInitialState ? (
+                          <>
+                            <p className="text-xs text-muted-foreground">Affecter à une organisation</p>
+                            <Select
+                              value={currentService?.id ?? ""}
+                              onValueChange={(v) => {
+                                serviceMutation.mutate(v);
+                                setServicePopoverOpen(false);
+                              }}
+                              disabled={serviceMutation.isPending}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Sélectionner une organisation" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {availableServices.map((s) => (
+                                  <SelectItem key={s.id} value={s.id}>
+                                    {s.name}
+                                    {s.workflow?.name && (
+                                      <span className="ml-2 text-xs text-muted-foreground">
+                                        — {s.workflow.name}
+                                      </span>
+                                    )}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            {localAssignedService && !currentService && (
+                              <p className="text-xs italic text-muted-foreground">
+                                Organisation actuelle « {localAssignedService} » introuvable.
+                              </p>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-xs text-muted-foreground">
+                              Transférer à une autre organisation. Le courrier sera remis à l'état initial.
+                            </p>
+                            <Select
+                              value=""
+                              onValueChange={(serviceId) => {
+                                setTransferTargetServiceId(serviceId);
+                                setTransferConfirmOpen(true);
+                                setServicePopoverOpen(false);
+                              }}
+                              disabled={transferMutation.isPending}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Choisir une organisation…" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {assignableOrgs(services ?? [])
+                                  .filter((o) => o.id !== currentService?.id)
+                                  .map((o) => (
+                                    <SelectItem key={o.id} value={o.id}>
+                                      {o.name}
+                                    </SelectItem>
+                                  ))}
+                              </SelectContent>
+                            </Select>
+                          </>
+                        )}
+                        {canReturnToMailroom && (
+                          <button
+                            type="button"
+                            className="flex w-full items-center gap-1.5 border-t pt-2 text-left text-xs font-semibold text-primary hover:underline"
+                            onClick={() => {
                               setServicePopoverOpen(false);
+                              setReturnOpen(true);
                             }}
-                            disabled={serviceMutation.isPending}
                           >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Sélectionner une organisation" />
+                            <Undo2 className="h-3.5 w-3.5 shrink-0" />
+                            Je ne sais pas — renvoyer au service courrier
+                          </button>
+                        )}
+                      </PopoverContent>
+                    </Popover>
+                  )}
+                </RailField>
+
+                <div className="flex items-center gap-2 border-t border-border pt-3">
+                  {participants.length > 0 && (
+                    <span className="flex" aria-hidden>
+                      {participants.slice(0, 3).map((p, i) => (
+                        <span
+                          key={p.id}
+                          className={cn(
+                            "grid h-7 w-7 place-items-center rounded-full border-2 border-card bg-primary/10 text-[11px] font-bold text-primary",
+                            i > 0 && "-ml-2",
+                          )}
+                        >
+                          {initialsOf(p.name)}
+                        </span>
+                      ))}
+                    </span>
+                  )}
+                  <span className="flex-1 text-sm text-muted-foreground">
+                    {participants.length} participant{participants.length > 1 ? "s" : ""}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setParticipantsOpen(true)}
+                    className="text-sm font-semibold text-primary hover:underline"
+                  >
+                    {effectiveReadOnly ? "Voir" : "Gérer"}
+                  </button>
+                </div>
+
+                <div
+                  className={cn(
+                    "flex items-start gap-2.5 rounded-lg p-3",
+                    isConfidential ? "bg-foreground/5" : "bg-muted/60",
+                  )}
+                >
+                  <Lock className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-semibold">Courrier confidentiel</div>
+                    <div className="text-xs leading-snug text-muted-foreground">
+                      {isConfidential
+                        ? "Lisible des seuls membres habilités, et des viseurs et signataires de ses réponses."
+                        : "Restreindre la lecture aux membres habilités."}
+                    </div>
+                  </div>
+                  {/* Poser : habilité ou service courrier ; lever : habilité (la base tranche).
+                      Une réponse suit son courrier reçu : la base refuse de la lever seule. */}
+                  {!effectiveReadOnly && (
+                    <ConfidentialToggle courierId={courier.id} isConfidential={isConfidential} variant="switch" />
+                  )}
+                </div>
+              </div>
+            </RailCard>
+
+            <RailCard title="Classement">
+              <div className="space-y-3">
+                {TAG_GROUPS.map((group) => {
+                  const applied = appliedByGroup[group.value];
+                  const available = (orgTags ?? []).filter((t) => t.tag_group === group.value);
+                  return (
+                    <div key={group.value} className="space-y-1.5">
+                      <span className="text-xs font-semibold text-muted-foreground">{group.label}</span>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {applied.length === 0 && (
+                          <span className="text-xs italic text-muted-foreground">Aucun</span>
+                        )}
+                        {applied.map(({ name: tagName, tag }) => {
+                          // Orphelin : appliqué sur le courrier, retiré du référentiel depuis.
+                          const orphan = !tag;
+                          const fg = tag?.color ? readableTextColor(tag.color) : undefined;
+                          return (
+                            <Badge
+                              key={tagName}
+                              variant="secondary"
+                              className={cn(
+                                "gap-1 border-transparent pl-2 pr-1 text-xs",
+                                orphan && "italic opacity-60",
+                                effectiveReadOnly && "pr-2",
+                              )}
+                              style={tag?.color ? { backgroundColor: tag.color, color: fg } : undefined}
+                            >
+                              {tagName}
+                              {!effectiveReadOnly && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    removeTag(tagName);
+                                  }}
+                                  className="ml-0.5 rounded-full p-0.5 transition-colors hover:bg-black/20"
+                                  aria-label={`Retirer ${tagName}`}
+                                  style={fg ? { color: fg } : undefined}
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              )}
+                            </Badge>
+                          );
+                        })}
+                        {!effectiveReadOnly && (
+                          <Popover
+                            open={tagPopoverGroup === group.value}
+                            onOpenChange={(o) => setTagPopoverGroup(o ? group.value : null)}
+                          >
+                            <PopoverTrigger asChild>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-6 w-6 shrink-0"
+                                aria-label={`Gérer les tags — ${group.label}`}
+                              >
+                                <TagIcon className="h-3.5 w-3.5" />
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-64 p-0" align="start">
+                              <Command>
+                                <CommandInput placeholder={`Rechercher — ${group.label.toLowerCase()}…`} />
+                                <CommandList>
+                                  <CommandEmpty>
+                                    Aucun tag dans ce groupe. Allez dans Paramètres → Classification.
+                                  </CommandEmpty>
+                                  <CommandGroup>
+                                    {available.map((tag) => {
+                                      const checked = selectedTags.some(
+                                        (t) => t.toLowerCase() === tag.name.toLowerCase(),
+                                      );
+                                      return (
+                                        <CommandItem
+                                          key={tag.id}
+                                          value={tag.name}
+                                          onSelect={() => toggleTag(tag.name)}
+                                          className="gap-2"
+                                        >
+                                          <span
+                                            className="h-2.5 w-2.5 shrink-0 rounded-full"
+                                            style={{
+                                              backgroundColor: tag.color ?? "hsl(var(--muted-foreground))",
+                                            }}
+                                          />
+                                          <span className="flex-1">{tag.name}</span>
+                                          {checked && <Check className="h-4 w-4" />}
+                                        </CommandItem>
+                                      );
+                                    })}
+                                  </CommandGroup>
+                                </CommandList>
+                              </Command>
+                            </PopoverContent>
+                          </Popover>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </RailCard>
+
+            {(!isOutbound || isInitiative) && (
+              <CourierLinksCard
+                courierId={courier.id}
+                organizationId={organizationId}
+                readOnly={effectiveReadOnly}
+                initiative={isInitiative ? { chrono: courier.chrono ?? null, subject: courier.subject ?? null } : null}
+              />
+            )}
+
+            {/* Métadonnées secondaires, repliées : la confidentialité n'apparaît
+                en en-tête que lorsqu'elle est active. */}
+            <Collapsible open={infoOpen} onOpenChange={setInfoOpen} asChild>
+              <Card className="p-5 shadow-airbnb-sm">
+                <CollapsibleTrigger className="flex w-full items-center gap-2 text-left">
+                  <h3 className="flex-1 text-base font-semibold leading-tight">Informations</h3>
+                  {!infoOpen && (
+                    <span className="text-xs text-muted-foreground">
+                      {isOutbound ? "Référence, date…" : "Référence, canal…"}
+                    </span>
+                  )}
+                  <ChevronDown
+                    className={cn("h-4 w-4 text-muted-foreground transition-transform", infoOpen && "rotate-180")}
+                  />
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <dl className="mt-3 flex flex-col gap-2.5">
+                    <InfoRow label="Référence">
+                      <span className="font-mono text-xs font-normal">{courier.chrono ?? EMPTY}</span>
+                    </InfoRow>
+                    <InfoRow label={isOutbound ? "Date d'envoi" : "Date de réception"}>
+                      <InlineEditField
+                        label=""
+                        type="date"
+                        value={
+                          isOutbound
+                            ? (courier.sent_at as string | null)?.slice(0, 10) ?? ""
+                            : courier.received_at?.slice(0, 10) ?? ""
+                        }
+                        // La date d'envoi d'un courrier à l'initiative est posée par
+                        // l'envoi lui-même : elle ne se saisit pas.
+                        readOnly={effectiveReadOnly || isInitiative}
+                        displayClassName="text-sm font-semibold"
+                        onSave={(v) =>
+                          persistCourierUpdate(
+                            isOutbound
+                              ? { sent_at: v ? new Date(v).toISOString() : null }
+                              : { received_at: v ? new Date(v).toISOString() : null },
+                            "Date modifiée",
+                          )
+                        }
+                        renderDisplay={(v) => formatLongDate(v)}
+                      />
+                    </InfoRow>
+                    {!isOutbound && (
+                      <InfoRow label="Canal">
+                        {effectiveReadOnly ? (
+                          channelLabels[courier.channel]
+                        ) : (
+                          <Select
+                            value={courier.channel}
+                            onValueChange={(v) => persistCourierUpdate({ channel: v }, "Canal modifié")}
+                          >
+                            <SelectTrigger className="-mr-2 h-8 w-auto gap-1.5 border-0 bg-transparent px-2 text-sm font-semibold shadow-none hover:bg-muted">
+                              <SelectValue />
                             </SelectTrigger>
-                            <SelectContent>
-                              {availableServices.map((s) => (
-                                <SelectItem key={s.id} value={s.id}>
-                                  {s.name}
-                                  {s.workflow?.name && (
-                                    <span className="ml-2 text-xs text-muted-foreground">
-                                      — {s.workflow.name}
-                                    </span>
-                                  )}
+                            <SelectContent align="end">
+                              {(Object.keys(channelLabels) as CourierChannel[]).map((c) => (
+                                <SelectItem key={c} value={c}>
+                                  {channelLabels[c]}
                                 </SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
-                          {localAssignedService && !currentService && (
-                            <p className="text-xs italic text-muted-foreground">
-                              Organisation actuelle « {localAssignedService} » introuvable.
-                            </p>
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          <p className="text-xs text-muted-foreground">
-                            Transférer à une autre organisation. Le courrier sera remis à l'état initial.
-                          </p>
-                          <Select
-                            value=""
-                            onValueChange={(serviceId) => {
-                              setTransferTargetServiceId(serviceId);
-                              setTransferConfirmOpen(true);
-                              setServicePopoverOpen(false);
-                            }}
-                            disabled={transferMutation.isPending}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Choisir une organisation…" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {assignableOrgs(services ?? [])
-                                .filter((o) => o.id !== currentService?.id)
-                                .map((o) => (
-                                  <SelectItem key={o.id} value={o.id}>
-                                    {o.name}
-                                  </SelectItem>
-                                ))}
-                            </SelectContent>
-                          </Select>
-                        </>
-                      )}
-                      {canReturnToMailroom && (
-                        <button
-                          type="button"
-                          className="flex w-full items-center gap-1.5 border-t pt-2 text-left text-xs font-semibold text-primary hover:underline"
-                          onClick={() => {
-                            setServicePopoverOpen(false);
-                            setReturnOpen(true);
-                          }}
-                        >
-                          <Undo2 className="h-3.5 w-3.5 shrink-0" />
-                          Je ne sais pas — renvoyer au service courrier
-                        </button>
-                      )}
-                    </PopoverContent>
-                  </Popover>
-                )}
-              </RailCard>
-
-              {!isOutbound && hasSlaTarget && sla && (
-                <RailCard title="Délais de traitement">
-                  <CourierSlaDetails sla={sla} />
-                </RailCard>
-              )}
-
-              <RailCard title="Classement">
-                <div className="space-y-3">
-                  {TAG_GROUPS.map((group) => {
-                    const applied = appliedByGroup[group.value];
-                    const available = (orgTags ?? []).filter((t) => t.tag_group === group.value);
-                    return (
-                      <div key={group.value} className="space-y-1.5">
-                        <span className="text-xs font-semibold text-muted-foreground">{group.label}</span>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          {applied.length === 0 && (
-                            <span className="text-xs italic text-muted-foreground">Aucun</span>
-                          )}
-                          {applied.map(({ name: tagName, tag }) => {
-                            // Orphelin : appliqué sur le courrier, retiré du référentiel depuis.
-                            const orphan = !tag;
-                            const fg = tag?.color ? readableTextColor(tag.color) : undefined;
-                            return (
-                              <Badge
-                                key={tagName}
-                                variant="secondary"
-                                className={cn(
-                                  "gap-1 border-transparent pl-2 pr-1 text-xs",
-                                  orphan && "italic opacity-60",
-                                  effectiveReadOnly && "pr-2",
-                                )}
-                                style={tag?.color ? { backgroundColor: tag.color, color: fg } : undefined}
-                              >
-                                {tagName}
-                                {!effectiveReadOnly && (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      removeTag(tagName);
-                                    }}
-                                    className="ml-0.5 rounded-full p-0.5 transition-colors hover:bg-black/20"
-                                    aria-label={`Retirer ${tagName}`}
-                                    style={fg ? { color: fg } : undefined}
-                                  >
-                                    <X className="h-3 w-3" />
-                                  </button>
-                                )}
-                              </Badge>
-                            );
-                          })}
-                          {!effectiveReadOnly && (
-                            <Popover
-                              open={tagPopoverGroup === group.value}
-                              onOpenChange={(o) => setTagPopoverGroup(o ? group.value : null)}
-                            >
-                              <PopoverTrigger asChild>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-6 w-6 shrink-0"
-                                  aria-label={`Gérer les tags — ${group.label}`}
-                                >
-                                  <TagIcon className="h-3.5 w-3.5" />
-                                </Button>
-                              </PopoverTrigger>
-                              <PopoverContent className="w-64 p-0" align="start">
-                                <Command>
-                                  <CommandInput placeholder={`Rechercher — ${group.label.toLowerCase()}…`} />
-                                  <CommandList>
-                                    <CommandEmpty>
-                                      Aucun tag dans ce groupe. Allez dans Paramètres → Classification.
-                                    </CommandEmpty>
-                                    <CommandGroup>
-                                      {available.map((tag) => {
-                                        const checked = selectedTags.some(
-                                          (t) => t.toLowerCase() === tag.name.toLowerCase(),
-                                        );
-                                        return (
-                                          <CommandItem
-                                            key={tag.id}
-                                            value={tag.name}
-                                            onSelect={() => toggleTag(tag.name)}
-                                            className="gap-2"
-                                          >
-                                            <span
-                                              className="h-2.5 w-2.5 shrink-0 rounded-full"
-                                              style={{
-                                                backgroundColor: tag.color ?? "hsl(var(--muted-foreground))",
-                                              }}
-                                            />
-                                            <span className="flex-1">{tag.name}</span>
-                                            {checked && <Check className="h-4 w-4" />}
-                                          </CommandItem>
-                                        );
-                                      })}
-                                    </CommandGroup>
-                                  </CommandList>
-                                </Command>
-                              </PopoverContent>
-                            </Popover>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </RailCard>
-            </>
-          ) : (
-            <>
-              <RailCard
-                title="Avancement"
-                action={
-                  <span className="font-mono text-xs text-muted-foreground">
-                    {courier.chrono ?? ""}
-                  </span>
-                }
-              >
-                {stateChain.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    Aucun workflow n'est rattaché à l'organisation gestionnaire.
-                  </p>
-                ) : (
-                  <ol className="flex flex-col">
-                    {chainIndex === -1 && currentStateInfo?.name && (
-                      <li className="mb-3 rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
-                        État courant «&nbsp;{currentStateInfo.name}&nbsp;» : atteint par une transition
-                        secondaire, hors de la suite nominale ci-dessous.
-                      </li>
+                        )}
+                      </InfoRow>
                     )}
-                    {stateChain.map((state, i) => {
-                      const done = chainIndex >= 0 && i < chainIndex;
-                      const current = i === chainIndex;
-                      const reached = done || current;
-                      return (
-                        <li key={state.id} className="flex gap-3">
-                          <div className="flex flex-[0_0_14px] flex-col items-center">
-                            <span
-                              className={cn(
-                                "rounded-full",
-                                current ? "mt-[3px] h-3.5 w-3.5 ring-4 ring-primary/15" : "mt-[5px] h-2.5 w-2.5",
-                                reached ? "bg-primary" : "bg-border",
-                              )}
-                            />
-                            {i < stateChain.length - 1 && (
-                              <span
-                                className={cn(
-                                  "my-1 w-0.5 flex-1",
-                                  done ? "bg-primary/35" : "bg-border",
-                                )}
-                              />
-                            )}
-                          </div>
-                          <div className="min-w-0 pb-3.5">
-                            <div
-                              className={cn(
-                                "text-sm",
-                                current ? "font-bold" : "font-semibold",
-                                reached ? "text-foreground" : "text-muted-foreground",
-                              )}
-                            >
-                              {state.name}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              {state.is_initial
-                                ? "état initial"
-                                : state.is_final
-                                ? "état final"
-                                : current
-                                ? "étape en cours"
-                                : done
-                                ? "étape franchie"
-                                : "à venir"}
-                            </div>
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ol>
-                )}
-              </RailCard>
-            </>
-          )}
-        </aside>
-      </div>
+                    <InfoRow label="Confidentialité">{isConfidential ? "Oui" : "Non"}</InfoRow>
+                    {courier.socle_organization?.name && (
+                      <InfoRow label="Organisation d'origine">{courier.socle_organization.name}</InfoRow>
+                    )}
+                    {isOutbound && courier.parent_courier_id && (
+                      <InfoRow label="Courrier lié">
+                        <Link
+                          to={`/courrier/${courier.parent_courier_id}`}
+                          className="inline-flex items-center gap-1.5 text-primary hover:underline"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" />
+                          Courrier entrant
+                        </Link>
+                      </InfoRow>
+                    )}
+                  </dl>
+                </CollapsibleContent>
+              </Card>
+            </Collapsible>
+          </aside>
+        </div>
+      </Tabs>
+
+      <Dialog open={participantsOpen} onOpenChange={setParticipantsOpen}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Participants</DialogTitle>
+          </DialogHeader>
+          <ParticipantManager courierId={courier.id} organizationId={organizationId} readOnly={effectiveReadOnly} />
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog
         open={transferConfirmOpen}
@@ -1299,12 +1245,14 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
         sourceTitle={courier.subject ?? courier.chrono ?? "ce courrier"}
       />
 
-      {!isOutbound && (
+      {/* Languette des notes, accessible depuis tous les onglets ; « Activité »
+          les reprend dans la frise, avec l'historique. */}
+      {hasNotes && (
         <FloatingNotesPanel
           courierId={courier.id}
           organizationId={organizationId}
           notes={notesList}
-          readOnly={effectiveReadOnly || isFinalState}
+          readOnly={notesReadOnly}
         />
       )}
     </div>

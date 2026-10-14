@@ -1,7 +1,14 @@
 import { useState, useCallback, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { FileUp, FileText, Trash2, Paperclip, FileOutput, Download, Upload, X, Loader2, AlertTriangle } from "lucide-react";
+import { FileUp, FileText, Trash2, Paperclip, FileOutput, Download, Upload, Loader2, AlertTriangle, Image as ImageIcon, Mail, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -61,6 +68,13 @@ interface DocumentManagerProps {
   /** When true, disable upload + delete; only allow viewing/downloading. */
   readOnly?: boolean;
   ignoredAttachments?: IgnoredAttachment[];
+  /**
+   * `list` : colonne étroite qui pilote un aperçu voisin (fiche courrier) ;
+   * `table` : zone de dépôt et tableau complet (boîte aux lettres).
+   */
+  layout?: "table" | "list";
+  /** Documents affichables sans fichier stocké (corps d'un email), en tête de liste. */
+  leadingItems?: { id: string; file_name: string | null }[];
 }
 
 export default function DocumentManager({
@@ -70,6 +84,8 @@ export default function DocumentManager({
   onSelectDoc,
   readOnly = false,
   ignoredAttachments = [],
+  layout = "table",
+  leadingItems = [],
 }: DocumentManagerProps) {
   const queryClient = useQueryClient();
   const queryKey = ["courier-documents", courierId];
@@ -193,6 +209,189 @@ export default function DocumentManager({
 
   // ── Render ──────────────────────────────────────────────────────────
 
+  const fileInput = (
+    <input
+      ref={fileInputRef}
+      type="file"
+      multiple
+      className="hidden"
+      onChange={(e) => {
+        if (e.target.files?.length) handleUpload(e.target.files);
+        e.target.value = "";
+      }}
+    />
+  );
+
+  if (layout === "list") {
+    const count = leadingItems.length + documents.length;
+    const itemClass = (selected: boolean) =>
+      cn(
+        "group flex w-full items-center gap-2.5 rounded-lg p-2 text-left transition-colors",
+        selected ? "bg-primary/10" : "hover:bg-muted",
+      );
+    const iconClass = (selected: boolean) =>
+      cn("h-4 w-4 shrink-0", selected ? "text-primary" : "text-muted-foreground");
+    return (
+      <div
+        onDragOver={readOnly ? undefined : onDragOver}
+        onDragLeave={readOnly ? undefined : onDragLeave}
+        onDrop={readOnly ? undefined : onDrop}
+        className={cn(
+          "flex flex-col gap-1 rounded-lg transition-colors",
+          dragOver && "bg-primary/5 outline-dashed outline-2 outline-primary",
+        )}
+      >
+        <div className="flex items-center px-2 pb-2">
+          <h3 className="flex-1 text-base font-semibold">Documents</h3>
+          <span className="text-xs text-muted-foreground">{count}</span>
+        </div>
+
+        {ignoredAttachments.map((att, i) => (
+          <div
+            key={i}
+            className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-800"
+          >
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
+            <span>
+              Ignorée, trop volumineuse : <span className="font-semibold">{att.name}</span> ({formatFileSize(att.size)})
+            </span>
+          </div>
+        ))}
+
+        {leadingItems.map((item) => {
+          const selected = selectedDocId === item.id;
+          return (
+            <button key={item.id} type="button" className={itemClass(selected)} onClick={() => onSelectDoc?.(item.id)}>
+              <Mail className={iconClass(selected)} />
+              <span className={cn("min-w-0 truncate text-sm", selected && "font-semibold")}>
+                {item.file_name ?? "Document"}
+              </span>
+            </button>
+          );
+        })}
+
+        {isLoading ? (
+          <p className="px-2 py-2 text-sm text-muted-foreground">Chargement…</p>
+        ) : (
+          documents.map((d) => {
+            const selected = selectedDocId === d.id;
+            const Icon = d.mime_type?.startsWith("image/") ? ImageIcon : FileText;
+            return (
+              <div key={d.id} className={itemClass(selected)}>
+                <button
+                  type="button"
+                  className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+                  onClick={() => onSelectDoc?.(d.id)}
+                >
+                  <Icon className={iconClass(selected)} />
+                  <span className="min-w-0">
+                    <span className={cn("block truncate text-sm", selected && "font-semibold")}>
+                      {d.file_name ?? "—"}
+                    </span>
+                    <span className="block text-xs text-muted-foreground">
+                      {[d.document_type !== "original" ? docTypeLabel[d.document_type] : null, formatFileSize(d.file_size)]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </span>
+                  </span>
+                </button>
+                <div className="flex shrink-0 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    aria-label={`Télécharger ${d.file_name ?? "le document"}`}
+                    onClick={() => handleDownload(d)}
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                  </Button>
+                  {!readOnly && (
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-destructive hover:text-destructive"
+                          aria-label={`Supprimer ${d.file_name ?? "le document"}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Supprimer ce document ?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Le fichier « {d.file_name ?? d.storage_key} » sera supprimé du stockage et de la base
+                            de données. Cette action est irréversible.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Annuler</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => deleteMutation.mutate(d)}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          >
+                            Supprimer
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  )}
+                </div>
+              </div>
+            );
+          })
+        )}
+
+        {count === 0 && !isLoading && (
+          <p className="px-2 py-1 text-sm italic text-muted-foreground">Aucun document.</p>
+        )}
+
+        {!readOnly &&
+          (uploading ? (
+            <div className="space-y-1.5 p-2">
+              <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin text-primary" /> Envoi en cours…
+              </p>
+              <Progress value={uploadProgress} />
+            </div>
+          ) : (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="flex items-center gap-2 rounded-lg p-2 text-left text-sm font-semibold text-primary hover:bg-muted"
+                >
+                  <Plus className="h-4 w-4" />
+                  Ajouter un document
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                {DOC_TYPES.map((t) => (
+                  <DropdownMenuItem
+                    key={t.value}
+                    onSelect={() => {
+                      setSelectedType(t.value);
+                      // Après la fermeture du menu, sinon le sélecteur de
+                      // fichiers s'ouvre avant que le type ne soit retenu.
+                      setTimeout(() => fileInputRef.current?.click(), 0);
+                    }}
+                  >
+                    {docTypeIcon[t.value]}
+                    {t.label}
+                  </DropdownMenuItem>
+                ))}
+                <p className="px-2 pb-1 pt-1.5 text-xs text-muted-foreground">
+                  Ou glissez-déposez · max {(maxFileSize / (1024 * 1024)).toFixed(0)} Mo
+                </p>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ))}
+        {fileInput}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       {/* Upload zone */}
@@ -245,16 +444,7 @@ export default function DocumentManager({
               </p>
             </>
           )}
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            className="hidden"
-            onChange={(e) => {
-              if (e.target.files?.length) handleUpload(e.target.files);
-              e.target.value = "";
-            }}
-          />
+          {fileInput}
         </div>
       )}
 
