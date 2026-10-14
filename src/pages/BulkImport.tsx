@@ -622,7 +622,10 @@ export default function BulkImport() {
         onClose={() => setPreviewFileId(null)}
       />
 
+      {/* `key` : un état neuf à chaque ouverture — sinon les vignettes de la
+          précédente, déjà libérées, s'affichaient le temps d'un rendu. */}
       <BulkPdfSplitDialog
+        key={splitFileId ?? "none"}
         file={files.find((f) => f.id === splitFileId) ?? null}
         maxFileSize={maxFileSize}
         onClose={() => setSplitFileId(null)}
