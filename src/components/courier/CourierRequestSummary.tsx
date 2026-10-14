@@ -7,6 +7,8 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { getAnalysis } from "@/services/courierAnalysisService";
 import { getLatestAnalysisJob, isAnalysisJobInProgress } from "@/services/courierAnalysisJobService";
 import { courierAnalysisJobQueryKey } from "@/hooks/useCourierAnalysisJob";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { pendingAnalysisItems, type PendingAnalysisArgs } from "@/lib/analysis-pending";
 
 interface Props {
   courierId: string;
@@ -15,6 +17,12 @@ interface Props {
   onCreateAction?: () => void;
   /** Détail de l'analyse (extraits, champs suggérés, tags), ouvert en volet. */
   analysisDetail: ReactNode;
+  /**
+   * De quoi compter les propositions non appliquées (pastille du bouton
+   * « Détail de l'analyse »). Absent, ou courrier en lecture seule : pas de
+   * pastille — l'agent n'aurait aucun geste à faire.
+   */
+  pendingContext?: Omit<PendingAnalysisArgs, "analysis"> | null;
 }
 
 function formatDate(iso: string) {
@@ -27,7 +35,13 @@ function formatDate(iso: string) {
  * l'agent. Le détail (extraits, titre et organisation suggérés, tags) reste
  * à un clic, dans un volet latéral.
  */
-export default function CourierRequestSummary({ courierId, organizationId, onCreateAction, analysisDetail }: Props) {
+export default function CourierRequestSummary({
+  courierId,
+  organizationId,
+  onCreateAction,
+  analysisDetail,
+  pendingContext = null,
+}: Props) {
   const [detailOpen, setDetailOpen] = useState(false);
 
   const { data: analysis, isLoading } = useQuery({
@@ -42,6 +56,7 @@ export default function CourierRequestSummary({ courierId, organizationId, onCre
   });
   const queued = isAnalysisJobInProgress(analysisJob);
   const actions = analysis?.suggested_actions ?? [];
+  const pending = pendingContext ? pendingAnalysisItems({ ...pendingContext, analysis: analysis ?? null }) : [];
 
   return (
     <Card className="flex flex-col gap-3.5 p-6 shadow-airbnb-sm">
@@ -61,13 +76,44 @@ export default function CourierRequestSummary({ courierId, organizationId, onCre
                 : "Aucune analyse pour ce courrier"}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setDetailOpen(true)}
-          className="text-sm font-semibold text-primary hover:underline"
-        >
-          {analysis ? "Détail de l'analyse" : "Analyser"}
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setDetailOpen(true)}
+            className="text-sm font-semibold text-primary hover:underline"
+            aria-label={
+              pending.length > 0
+                ? `Détail de l'analyse — ${pending.length} proposition${pending.length > 1 ? "s" : ""} à examiner`
+                : undefined
+            }
+          >
+            {analysis ? "Détail de l'analyse" : "Analyser"}
+          </button>
+          {/* Propositions non appliquées (titre, tags, organisation) : elles
+              sont dans le volet, la pastille dit qu'une décision attend. */}
+          {pending.length > 0 && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  aria-hidden
+                  className="grid h-5 min-w-5 cursor-default place-items-center rounded-full bg-primary px-1.5 text-[11px] font-bold leading-none text-primary-foreground"
+                >
+                  {pending.length}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent align="end" className="max-w-64">
+                <p className="mb-1 font-semibold">
+                  {pending.length} proposition{pending.length > 1 ? "s" : ""} non appliquée{pending.length > 1 ? "s" : ""}
+                </p>
+                <ul className="space-y-0.5">
+                  {pending.map((item, i) => (
+                    <li key={i}>{item.label}</li>
+                  ))}
+                </ul>
+              </TooltipContent>
+            </Tooltip>
+          )}
+        </div>
       </div>
 
       {isLoading ? (

@@ -601,6 +601,22 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
                       ? undefined
                       : () => setActiveTab("actions")
                   }
+                  pendingContext={
+                    effectiveReadOnly || isFinalState
+                      ? null
+                      : {
+                          subject: courier.subject ?? null,
+                          appliedTags: selectedTags,
+                          service: {
+                            currentId: currentService?.id ?? null,
+                            isInitialState,
+                            assignableIds: availableServices.map((o) => o.id),
+                            transferableIds: assignableOrgs(services ?? [])
+                              .filter((o) => o.id !== currentService?.id)
+                              .map((o) => o.id),
+                          },
+                        }
+                  }
                   analysisDetail={
                     <ContentIntentsTab
                       courierId={courier.id}

@@ -32,7 +32,7 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { readableTextColor } from "@/lib/tag-color";
-import { Check, FileText, Loader2, MoveRight, Plus, Trash2, UserPlus, X } from "lucide-react";
+import { AlertTriangle, Check, Clock, FileText, Loader2, MoveRight, Plus, Trash2, UserPlus, X } from "lucide-react";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { matchSender } from "@/services/socleContactService";
 import SenderMatchNotice from "@/components/courier/SenderMatchNotice";
@@ -45,6 +45,7 @@ import {
   linkedSenderContact,
   refreshFlags,
   senderNeedsCreation,
+  withoutAnalysis,
   type BulkFile,
   type DraftCourier,
 } from "./types";
@@ -267,6 +268,59 @@ function OrphanFileChip({
   );
 }
 
+/** État de l'analyse d'un courrier : le lot se lit d'un coup d'œil, ligne à ligne. */
+function AnalysisCell({ draft }: { draft: DraftCourier }) {
+  const line = "inline-flex items-center gap-1 whitespace-nowrap text-[11px] font-semibold";
+  if (draft.analysisStatus === "running") {
+    return (
+      <span className={cn(line, "text-primary")}>
+        <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+        En cours
+      </span>
+    );
+  }
+  if (draft.analysisStatus === "queued") {
+    return (
+      <span className={cn(line, "text-muted-foreground")}>
+        <Clock className="h-3 w-3" aria-hidden />
+        En attente
+      </span>
+    );
+  }
+  if (draft.analysisStatus === "failed") {
+    return (
+      <span className={cn(line, "text-destructive")} title={draft.analysisError}>
+        <AlertTriangle className="h-3 w-3" aria-hidden />
+        Échec
+      </span>
+    );
+  }
+  if (draft.analysis) {
+    // Part des champs clés trouvés (titre, expéditeur, organisation, tags).
+    const pct = Math.round(draft.confidence * 100);
+    return (
+      <span
+        className={cn(
+          line,
+          draft.confidence >= 0.8
+            ? "text-green-600"
+            : draft.confidence >= 0.5
+            ? "text-yellow-600"
+            : "text-orange-600",
+        )}
+        title={`Analysé — ${pct} % des champs clés trouvés`}
+      >
+        <Check className="h-3 w-3" aria-hidden />
+        {pct}%
+      </span>
+    );
+  }
+  if (draft.fileIds.length === 0) {
+    return <span className="text-[10px] text-muted-foreground">—</span>;
+  }
+  return <span className="whitespace-nowrap text-[11px] italic text-muted-foreground">Non analysé</span>;
+}
+
 export default function BulkStep4Verify({
   drafts,
   files,
@@ -328,10 +382,10 @@ export default function BulkStep4Verify({
     onChange(
       drafts.map((d) => {
         if (d.fileIds.includes(fileId)) {
-          return { ...d, fileIds: d.fileIds.filter((id) => id !== fileId) };
+          return withoutAnalysis({ ...d, fileIds: d.fileIds.filter((id) => id !== fileId) });
         }
         if (d.id === targetDraftId) {
-          return { ...d, fileIds: [...d.fileIds, fileId] };
+          return withoutAnalysis({ ...d, fileIds: [...d.fileIds, fileId] });
         }
         return d;
       })
@@ -546,22 +600,7 @@ export default function BulkStep4Verify({
                     </div>
                   </TableCell>
                   <TableCell className="text-center pt-3">
-                    {draft.confidence > 0 ? (
-                      <span
-                        className={cn(
-                          "text-xs font-medium",
-                          draft.confidence >= 0.8
-                            ? "text-green-600"
-                            : draft.confidence >= 0.5
-                            ? "text-yellow-600"
-                            : "text-orange-600"
-                        )}
-                      >
-                        {Math.round(draft.confidence * 100)}%
-                      </span>
-                    ) : (
-                      <span className="text-[10px] text-muted-foreground">—</span>
-                    )}
+                    <AnalysisCell draft={draft} />
                   </TableCell>
                   <TableCell className="pt-2">
                     <Button

@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { Check, Loader2, Sparkles, Lock } from "lucide-react";
 import { toast } from "sonner";
@@ -29,6 +30,7 @@ import {
   hasSender,
   nextGroupId,
   refreshFlags,
+  withoutAnalysis,
   type BulkFile,
   type DraftCourier,
 } from "@/components/courier/bulk/types";
@@ -115,6 +117,8 @@ export default function BulkImport() {
   const [files, setFiles] = useState<BulkFile[]>([]);
   const [drafts, setDrafts] = useState<DraftCourier[]>([]);
   const [analyzing, setAnalyzing] = useState(false);
+  /** Avancement du passage d'analyse en cours (courriers traités / à traiter). */
+  const [analysisProgress, setAnalysisProgress] = useState<{ done: number; total: number } | null>(null);
   const [previewFileId, setPreviewFileId] = useState<string | null>(null);
   const [splitFileId, setSplitFileId] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -149,7 +153,11 @@ export default function BulkImport() {
 
   function rejectFile(fileId: string) {
     setFiles((prev) => prev.map((f) => f.id === fileId ? { ...f, rejected: true } : f));
-    setDrafts((prev) => prev.map((d) => ({ ...d, fileIds: d.fileIds.filter((id) => id !== fileId) })));
+    setDrafts((prev) =>
+      prev.map((d) =>
+        d.fileIds.includes(fileId) ? withoutAnalysis({ ...d, fileIds: d.fileIds.filter((id) => id !== fileId) }) : d,
+      ),
+    );
   }
 
   function handleSplitConfirm({ originalId, segments, rest }: PdfSplitResult) {
@@ -194,13 +202,33 @@ export default function BulkImport() {
     return result;
   }
 
+  /** Statut d'analyse d'un courrier du lot (voir `DraftCourier.analysisStatus`). */
+  function setAnalysisStatus(id: string, patch: Pick<DraftCourier, "analysisStatus" | "analysisError">) {
+    setDrafts((prev) => prev.map((d) => (d.id === id ? { ...d, ...patch } : d)));
+  }
+
   async function analyzeExistingDrafts() {
     if (!organizationId || drafts.length === 0) return;
-    setAnalyzing(true);
+    // Seulement les courriers pas encore analysés : relancer le lot entier
+    // repayait l'analyse de ceux qui l'avaient déjà. Tout est analysé : le
+    // bouton devient « Relancer l'analyse » et reprend tout le lot.
+    const withFiles = drafts.filter((d) => d.fileIds.length > 0);
+    const pending = withFiles.filter((d) => !d.analysis);
+    const targets = pending.length > 0 ? pending : withFiles;
+    if (targets.length === 0) return;
+    const targetIds = new Set(targets.map((d) => d.id));
 
-    for (const draft of [...drafts]) {
+    setAnalyzing(true);
+    setAnalysisProgress({ done: 0, total: targets.length });
+    setDrafts((prev) =>
+      prev.map((d) =>
+        targetIds.has(d.id) ? { ...d, analysisStatus: "queued" as const, analysisError: undefined } : d,
+      ),
+    );
+
+    for (const draft of targets) {
       const draftFiles = files.filter((f) => draft.fileIds.includes(f.id));
-      if (draftFiles.length === 0) continue;
+      setAnalysisStatus(draft.id, { analysisStatus: "running", analysisError: undefined });
 
       try {
         const result = await extractCourierInfo({ files: draftFiles.map((bf) => bf.file) });
@@ -281,22 +309,28 @@ export default function BulkImport() {
               bodyText: result.extracted_text || d.bodyText,
               confidence,
               analysis: result,
+              analysisStatus: undefined,
+              analysisError: undefined,
             };
           }))
         );
       } catch (err) {
         const status = (err as Error & { status?: number }).status;
         const label = `Courrier "${draft.title || "sans titre"}"`;
-        if (status === 429) {
-          toast.error(`${label} : quota IA atteint pour ce mois, contactez votre administrateur`);
-        } else {
-          const msg = err instanceof Error ? err.message : "Erreur inconnue";
-          toast.error(`${label} : ${msg}`);
-        }
+        const msg =
+          status === 429
+            ? "quota IA atteint pour ce mois, contactez votre administrateur"
+            : err instanceof Error
+              ? err.message
+              : "Erreur inconnue";
+        toast.error(`${label} : ${msg}`);
+        setAnalysisStatus(draft.id, { analysisStatus: "failed", analysisError: msg });
       }
+      setAnalysisProgress((p) => (p ? { ...p, done: p.done + 1 } : p));
     }
 
     setAnalyzing(false);
+    setAnalysisProgress(null);
   }
 
   async function handleConfirm() {
@@ -437,6 +471,21 @@ export default function BulkImport() {
   }
 
   const hasMissingCivility = drafts.some((d) => d.flags.includes("missing-civility"));
+  // Bilan de l'analyse du lot, hors passage en cours.
+  const analysableCount = drafts.filter((d) => d.fileIds.length > 0).length;
+  const analysedCount = drafts.filter((d) => d.analysis).length;
+  const failedCount = drafts.filter((d) => d.analysisStatus === "failed").length;
+  const notAnalysedCount = analysableCount - analysedCount;
+  const analysisSummary =
+    analysableCount === 0 || analysedCount + failedCount === 0
+      ? null
+      : [
+          `${analysedCount} courrier${analysedCount > 1 ? "s" : ""} analysé${analysedCount > 1 ? "s" : ""} sur ${analysableCount}`,
+          failedCount > 0 ? `${failedCount} en échec` : null,
+          notAnalysedCount - failedCount > 0 ? `${notAnalysedCount - failedCount} non analysé${notAnalysedCount - failedCount > 1 ? "s" : ""}` : null,
+        ]
+          .filter(Boolean)
+          .join(" · ");
   const canConfirm = drafts.length > 0 && !hasMissingCivility && !confirming;
 
   // Un consultant (lecteur seul) ne peut pas créer de courrier : la page ne
@@ -519,11 +568,22 @@ export default function BulkImport() {
           <>
             <div className="flex items-center justify-between mb-4">
               <div className="flex-1">
-                {analyzing && (
-                  <div className="flex items-center gap-2 text-sm text-primary">
-                    <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-                    <span>Analyse OCR en cours…</span>
+                {analyzing && analysisProgress ? (
+                  <div className="flex max-w-md flex-col gap-1.5">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-primary">
+                      <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                      <span>
+                        Analyse en cours : courrier {Math.min(analysisProgress.done + 1, analysisProgress.total)} sur{" "}
+                        {analysisProgress.total}
+                      </span>
+                    </div>
+                    <Progress value={(analysisProgress.done / analysisProgress.total) * 100} className="h-1.5 bg-muted" />
+                    <p className="text-xs text-muted-foreground">
+                      Lecture des pièces et analyse, un courrier après l'autre — environ 30 secondes chacun.
+                    </p>
                   </div>
+                ) : (
+                  analysisSummary && <p className="text-sm text-muted-foreground">{analysisSummary}</p>
                 )}
                 {hasMissingCivility && !analyzing && (
                   <p className="text-sm text-destructive">
@@ -540,7 +600,13 @@ export default function BulkImport() {
                   className="gap-1.5 shrink-0"
                 >
                   <Sparkles className="h-3.5 w-3.5" />
-                  {analyzing ? "Analyse en cours…" : "Analyser avec l'IA"}
+                  {analyzing
+                    ? "Analyse en cours…"
+                    : notAnalysedCount > 0
+                      ? notAnalysedCount === analysableCount
+                        ? "Analyser avec l'IA"
+                        : `Analyser les ${notAnalysedCount} restant${notAnalysedCount > 1 ? "s" : ""}`
+                      : "Relancer l'analyse"}
                 </Button>
               )}
             </div>

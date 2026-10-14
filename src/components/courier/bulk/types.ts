@@ -58,6 +58,23 @@ export interface DraftCourier {
    * Absent si l'agent n'a pas lancé l'analyse.
    */
   analysis?: ExtractCourierInfoResult;
+  /**
+   * Où en est l'analyse de CE courrier pendant un passage : en file (`queued`,
+   * les courriers sont analysés l'un après l'autre), en cours, ou en échec.
+   * Absent : analysé (`analysis` présent) ou jamais lancé.
+   */
+  analysisStatus?: "queued" | "running" | "failed";
+  /** Motif de l'échec, montré à l'agent. */
+  analysisError?: string;
+}
+
+/**
+ * Ses pièces ont changé : l'analyse ne décrit plus le courrier. Elle est
+ * effacée — le courrier repasse « non analysé » plutôt que de garder des
+ * propositions sur un contenu qui n'est plus le sien.
+ */
+export function withoutAnalysis(d: DraftCourier): DraftCourier {
+  return { ...d, analysis: undefined, analysisStatus: undefined, analysisError: undefined, confidence: 0 };
 }
 
 export function emptyDraft(fileIds: string[] = []): DraftCourier {
