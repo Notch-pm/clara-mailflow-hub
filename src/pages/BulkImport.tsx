@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -202,6 +202,23 @@ export default function BulkImport() {
     return result;
   }
 
+  // Quitter l'écran abandonne l'import : l'analyse s'arrête (sinon la boucle
+  // continuait seule, courrier après courrier, et chaque analyse était payée
+  // pour des brouillons que plus personne ne verrait) et les fichiers gardés
+  // dans le navigateur sont libérés. Rien n'est créé côté serveur avant la
+  // confirmation ; les copies temporaires qu'`extract-courier-info` dépose
+  // pour l'OCR sont supprimées par la fonction elle-même.
+  const analysisAbortRef = useRef<AbortController | null>(null);
+  const filesRef = useRef(files);
+  filesRef.current = files;
+  useEffect(
+    () => () => {
+      analysisAbortRef.current?.abort();
+      filesRef.current.forEach((f) => URL.revokeObjectURL(f.previewUrl));
+    },
+    [],
+  );
+
   /** Statut d'analyse d'un courrier du lot (voir `DraftCourier.analysisStatus`). */
   function setAnalysisStatus(id: string, patch: Pick<DraftCourier, "analysisStatus" | "analysisError">) {
     setDrafts((prev) => prev.map((d) => (d.id === id ? { ...d, ...patch } : d)));
@@ -218,6 +235,8 @@ export default function BulkImport() {
     if (targets.length === 0) return;
     const targetIds = new Set(targets.map((d) => d.id));
 
+    const controller = new AbortController();
+    analysisAbortRef.current = controller;
     setAnalyzing(true);
     setAnalysisProgress({ done: 0, total: targets.length });
     setDrafts((prev) =>
@@ -227,11 +246,17 @@ export default function BulkImport() {
     );
 
     for (const draft of targets) {
+      // Écran quitté : on n'en lance pas d'autre.
+      if (controller.signal.aborted) return;
       const draftFiles = files.filter((f) => draft.fileIds.includes(f.id));
       setAnalysisStatus(draft.id, { analysisStatus: "running", analysisError: undefined });
 
       try {
-        const result = await extractCourierInfo({ files: draftFiles.map((bf) => bf.file) });
+        const result = await extractCourierInfo({
+          files: draftFiles.map((bf) => bf.file),
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) return;
 
         if (result.quota_exceeded) {
           toast.error(
@@ -315,6 +340,7 @@ export default function BulkImport() {
           }))
         );
       } catch (err) {
+        if (controller.signal.aborted) return;
         const status = (err as Error & { status?: number }).status;
         const label = `Courrier "${draft.title || "sans titre"}"`;
         const msg =
@@ -329,6 +355,7 @@ export default function BulkImport() {
       setAnalysisProgress((p) => (p ? { ...p, done: p.done + 1 } : p));
     }
 
+    analysisAbortRef.current = null;
     setAnalyzing(false);
     setAnalysisProgress(null);
   }

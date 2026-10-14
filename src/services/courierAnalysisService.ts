@@ -268,6 +268,8 @@ export async function extractCourierInfo(args: {
   /** `dictation` : `pastedText` est la transcription d'une dictée vocale — le
    *  locuteur rapporte la demande d'un usager, qui est l'expéditeur. */
   source?: "dictation";
+  /** Interrompt l'appel (écran quitté) : rien n'est attendu ni appliqué ensuite. */
+  signal?: AbortSignal;
 }): Promise<ExtractCourierInfoResult> {
   const filePayloads = args.files?.length
     ? await encodeFilesToBase64(args.files.slice(0, 5))
@@ -280,6 +282,7 @@ export async function extractCourierInfo(args: {
       ...(pastedText ? { pasted_text: pastedText } : {}),
       ...(args.source ? { source: args.source } : {}),
     },
+    ...(args.signal ? { signal: args.signal } : {}),
   });
   if (error) throw await edgeError(error, "Analyse impossible");
   if (data?.error) throw new Error(data.error);
