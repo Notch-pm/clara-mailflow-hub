@@ -11,6 +11,7 @@ import { AppLayout } from "@/components/AppLayout";
 import { lazyRoute } from "@/lib/lazy-route";
 import { SuperAdminLayout } from "@/components/SuperAdminLayout";
 import { EluModeGate } from "@/components/elu/EluModeGate";
+import { VisaPermalink } from "@/components/elu/VisaPermalink";
 import { EluLayout } from "@/components/elu/EluLayout";
 const EluAccueil = lazyRoute(() => import("@/pages/EluAccueil"));
 const EluASigner = lazyRoute(() => import("@/pages/EluASigner"));
@@ -235,6 +236,9 @@ const App = () => (
                     <Route path="/import-en-masse" element={<BulkImport />} />
                     <Route path="/statistiques" element={<Suspense fallback={<LoadingScreen />}><StatistiquesPage /></Suspense>} />
                   </Route>
+
+                  {/* Permalien de la notification « à viser » : l'appareil choisit l'écran. */}
+                  <Route path="/viser/:replyId" element={<VisaPermalink />} />
 
                   {/* Espace élu : servi au rôle `elu` et aux viseurs sur téléphone. `EluModeGate`
                       y renvoie depuis `/`, et en ramène dès que l'une des trois

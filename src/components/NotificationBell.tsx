@@ -39,6 +39,11 @@ export function NotificationBell() {
       navigate(`/courrier/${resourceId}`);
       return;
     }
+    if (type === "visa_requested") {
+      // Même permalien que le push : parapheur, ou espace élu sur téléphone.
+      navigate(`/viser/${resourceId}`);
+      return;
+    }
     navigate(`/a-instruire?open=${resourceId}`);
   }
 
@@ -139,6 +144,11 @@ export function NotificationBell() {
                               {notif.type === "task_reminded" ? "relance tâche" : "tâche"}
                             </span>
                           )}
+                          {notif.type === "visa_requested" && (
+                            <span className="inline-flex items-center rounded px-1 py-0 text-[10px] font-medium bg-primary/15 text-primary border border-primary/30">
+                              à viser
+                            </span>
+                          )}
                           {notif.type === "task_completed" && (
                             <span className="inline-flex items-center rounded px-1 py-0 text-[10px] font-medium bg-success/15 text-success border border-success/30">
                               tâche terminée
@@ -168,6 +178,8 @@ export function NotificationBell() {
                             ? ((notif.title ?? "").replace(/^Relance : /, "") || "Relance d'une tâche")
                             : notif.type === "task_completed"
                             ? ((notif.title ?? "").replace(/^Tâche terminée : /, "") || "Tâche terminée")
+                            : notif.type === "visa_requested"
+                            ? ((notif.title ?? "").replace(/^À viser : /, "") || "Réponse à viser")
                             : notif.type === "action_unassigned"
                             ? ((notif.title ?? "").replace(/^Affectation retirée : /, "") || "Affectation retirée")
                             : (notif.title ?? "Nouveau courrier")}

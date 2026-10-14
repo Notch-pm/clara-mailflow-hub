@@ -155,6 +155,10 @@ describe("notificationPath", () => {
     expect(notificationPath("action_unassigned", "c-1")).toBe("/courrier/c-1?tab=actions");
   });
 
+  it("une réponse à viser ouvre le permalien /viser, résolu par l'appareil", () => {
+    expect(notificationPath("visa_requested", "r-1")).toBe("/viser/r-1");
+  });
+
   it("tout le reste ouvre le courrier dans « À instruire »", () => {
     expect(notificationPath("new_courier", "c-1")).toBe("/a-instruire?open=c-1");
     expect(notificationPath("courier_transferred", "c-1")).toBe("/a-instruire?open=c-1");
@@ -172,6 +176,7 @@ describe("strippedTitle et truncate", () => {
     // Un objet de courrier qui commencerait par « Transféré : » reste intact
     // sur un autre type : on ne devine pas, on connaît le producteur.
     expect(strippedTitle("new_courier", "Transféré : Objet")).toBe("Transféré : Objet");
+    expect(strippedTitle("visa_requested", "À viser : Courrier confidentiel")).toBe("Courrier confidentiel");
   });
 
   it("un titre nul ou non textuel ⇒ chaîne vide, jamais « null »", () => {
@@ -192,7 +197,7 @@ describe("strippedTitle et truncate", () => {
 });
 
 describe("PUSH_TITLES", () => {
-  it("couvre les neuf types que Clara produit aujourd'hui", () => {
+  it("couvre les dix types que Clara produit aujourd'hui", () => {
     expect(Object.keys(PUSH_TITLES).sort()).toEqual([
       "action_assigned",
       "action_unassigned",
@@ -203,6 +208,7 @@ describe("PUSH_TITLES", () => {
       "task_assigned",
       "task_completed",
       "task_reminded",
+      "visa_requested",
     ]);
   });
 });

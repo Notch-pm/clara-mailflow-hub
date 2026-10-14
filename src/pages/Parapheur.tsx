@@ -58,7 +58,8 @@ export default function Parapheur() {
   const { membership } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [scope, setScope] = useState<VisaScope>("mine");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // `?reponse=` : la réponse d'une notification « à viser » (`/viser/:id`).
+  const [selectedId, setSelectedId] = useState<string | null>(() => searchParams.get("reponse"));
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [confirmBulk, setConfirmBulk] = useState(false);
 
@@ -73,6 +74,13 @@ export default function Parapheur() {
   const ids = useMemo(() => list.map((r) => r.replyId), [list]);
   const currentId = selectedId && ids.includes(selectedId) ? selectedId : (ids[0] ?? null);
   const checkedIds = useMemo(() => ids.filter((id) => checked.has(id)), [ids, checked]);
+
+  // Réponse présélectionnée par le permalien : visible une fois la file chargée.
+  const linkedId = searchParams.get("reponse");
+  const linkedLoaded = !!linkedId && ids.includes(linkedId);
+  useEffect(() => {
+    if (linkedLoaded) document.getElementById(`parapheur-row-${linkedId}`)?.scrollIntoView({ block: "nearest" });
+  }, [linkedId, linkedLoaded]);
 
   function switchTab(next: ParapheurTab) {
     setSearchParams(next === tabs[0] ? {} : { onglet: next }, { replace: true });

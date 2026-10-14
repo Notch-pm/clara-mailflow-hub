@@ -112,6 +112,14 @@ bunx supabase functions deploy <nom> --project-ref aullweizxcjbvtdspjli
 bun run build && npx wrangler deploy --dry-run
 ```
 
+### Notification du viseur (2026-10-14)
+
+| # | Étape | État |
+|---|---|---|
+| 1 | `20261014182236_notification_visa.sql` (trigger `trg_notify_visa_requested`, type `visa_requested`) | **Appliqué** via `apply_migration` — registre `20261014182236` (fichier renommé pour coller). Quatre scénarios en transaction annulée (auteur non notifié, tiers notifié, pas de doublon à la désignation, lue en sortie d'étape) ; vérifié sur [TEST] Alpha avec `viseur.alpha` : cloche → parapheur présélectionné → Viser → notification lue |
+| 2 | Edge function `notifications-push` (`_shared/push/message.ts` : titre, corps, permalien `/viser/:id`) | ⏳ **À déployer** : `bunx supabase functions deploy notifications-push --project-ref aullweizxcjbvtdspjli`. D'ici là, le push « à viser » part avec le titre générique et le lien « À instruire » |
+| 3 | Frontend : cloche, route `/viser/:replyId`, `?reponse=` du parapheur | Au push |
+
 ### Performance RLS et statistiques (2026-10-14)
 
 Aucun changement de frontend ni d'edge function.

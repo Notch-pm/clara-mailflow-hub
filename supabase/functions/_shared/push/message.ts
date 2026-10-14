@@ -47,6 +47,7 @@ export const PUSH_TITLES: Record<string, string> = {
   task_assigned: "Tâche affectée",
   task_reminded: "Relance d'une tâche",
   task_completed: "Tâche terminée",
+  visa_requested: "Réponse à viser",
 };
 
 /** Repli pour un type inconnu — une version ultérieure ne doit pas casser la carte. */
@@ -66,6 +67,7 @@ const TITLE_PREFIXES: Record<string, RegExp> = {
   task_assigned: /^Tâche affectée\s*:\s*/,
   task_reminded: /^Relance\s*:\s*/,
   task_completed: /^Tâche terminée\s*:\s*/,
+  visa_requested: /^À viser\s*:\s*/,
 };
 
 /** Corps par défaut quand la ligne n'a pas de `title` exploitable. */
@@ -79,6 +81,7 @@ const EMPTY_BODY: Record<string, string> = {
   task_assigned: "Une tâche vous a été confiée.",
   task_reminded: "Une tâche qui vous est confiée attend d'être réalisée.",
   task_completed: "Une tâche que vous avez créée est terminée.",
+  visa_requested: "Une réponse attend votre visa.",
 };
 
 /** Longueur maximale du corps : au-delà, les systèmes tronquent eux-mêmes, mal. */
@@ -108,7 +111,9 @@ export function strippedTitle(type: string, title: string | null): string {
 /**
  * Permalien identique à celui de la cloche (`handleNotificationClick`) et des
  * e-mails d'affectation : une action ouvre l'onglet « Actions liées » de la
- * fiche, tout le reste ouvre le courrier dans la boîte aux lettres.
+ * fiche, une réponse à viser le permalien `/viser/:id` (parapheur, ou espace
+ * élu sur téléphone — l'appareil seul le sait), tout le reste ouvre le
+ * courrier dans la boîte aux lettres.
  */
 export function notificationPath(type: string, resourceId: string | null): string {
   const id = text(resourceId);
@@ -116,6 +121,7 @@ export function notificationPath(type: string, resourceId: string | null): strin
   if (type === "action_assigned" || type === "action_unassigned" || type.startsWith("task_")) {
     return `/courrier/${id}?tab=actions`;
   }
+  if (type === "visa_requested") return `/viser/${id}`;
   return `/a-instruire?open=${id}`;
 }
 
