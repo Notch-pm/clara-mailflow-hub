@@ -2,6 +2,7 @@
 // chaque étape du wizard — centralisés ici, source de vérité unique.
 
 import type { SocleContact } from "@/services/socleContactService";
+import type { ExtractCourierInfoResult } from "@/services/courierAnalysisService";
 import type {
   SenderCivility,
   SenderIdentity,
@@ -51,6 +52,12 @@ export interface DraftCourier {
   fileIds: string[];
   confidence: number;
   flags: DraftFlag[];
+  /**
+   * Résultat brut de l'analyse lancée dans l'écran d'import. Enregistré tel
+   * quel comme analyse du courrier à la validation : pas de seconde analyse.
+   * Absent si l'agent n'a pas lancé l'analyse.
+   */
+  analysis?: ExtractCourierInfoResult;
 }
 
 export function emptyDraft(fileIds: string[] = []): DraftCourier {

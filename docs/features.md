@@ -116,8 +116,15 @@ L'analyse propose l'**organisation gestionnaire** ; l'agent l'applique ou l'éca
   **« Affecter à X »** (affectation directe) ; courrier en cours → **« Transférer à X… »**, qui
   ouvre la confirmation de transfert existante. Rien ne s'applique sans le geste de l'agent. Une
   organisation que l'agent ne peut pas choisir (droits, boîte IMAP) est montrée sans bouton.
-- `extract-courier-info` (pré-saisie de `NewCourierDialog` / `BulkImport`) utilise le même
-  catalogue, et renvoie toujours un nom à l'écran.
+- `extract-courier-info` (pré-saisie de `NewCourierDialog` / `BulkImport`) fait la **même
+  analyse complète** que `analyze-courier` depuis le 2026-10-14 — un seul cœur,
+  `supabase/functions/_shared/courierAnalysisCore.ts` : résumé, classement (thèmes + sentiment),
+  actions suggérées avec préremplissage des démarches, titre, expéditeur, organisation proposée
+  et sa confiance. Elle rend aussi la ligne `courier_analyses` prête à écrire (`analysis`) :
+  l'écran l'enregistre sur le courrier qu'il crée (`recordPreCreationAnalysis`), **sans relancer
+  d'analyse** — auparavant la validation remettait le courrier en file, OCR et IA payés deux fois.
+  Le courrier arrive ainsi directement dans « À valider » ou « À qualifier ». Analyse refaite en
+  file seulement si les pièces ont changé après l'analyse (saisie unitaire) ou si l'écriture échoue.
 
 **Confiance et alternatives (2026-10-01).** Le modèle chiffre sa proposition (`confidence`, 0–100)
 et cite jusqu'à deux autres organisations plausibles (`alternative_ids`), revalidées comme la

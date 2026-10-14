@@ -101,7 +101,18 @@ export interface ExtractCourierInfoResult {
   suggested_service_confidence?: number | null;
   /** Sans proposition : pourquoi (courrier ambigu, référentiel peu décrit…). */
   service_suggestion_note?: string | null;
+  /** Classement proposé : thèmes et sentiment, tags de l'organisation. */
   suggested_tag_names: string[];
+  /** Résumé du courrier — absent d'une edge function antérieure au 2026-10-14. */
+  summary?: string | null;
+  /** Actions suggérées, préremplissage des démarches compris (idem). */
+  suggested_actions?: SuggestedAction[];
+  /**
+   * La ligne `courier_analyses` prête à écrire (hors `courier_id` /
+   * `organization_id`), forme commune avec `analyze-courier`. Absente d'une
+   * edge function antérieure au 2026-10-14.
+   */
+  analysis?: Record<string, unknown> | null;
   /** Contact Socle sélectionné d'office (= `sender_match.contact` quand `status === "matched"`). */
   matched_contact: SocleContact | null;
   /**
@@ -183,6 +194,53 @@ export async function runAnalysis(courierId: string) {
 export async function runFullAnalysis(courierId: string) {
   await runOcr(courierId);
   return runAnalysis(courierId);
+}
+
+/**
+ * Enregistre comme analyse du courrier celle faite AVANT sa création (écran
+ * de saisie ou d'import, `extract-courier-info`).
+ *
+ * Cette analyse est la même que celle d'un courrier existant — résumé,
+ * classement, actions suggérées, organisation proposée avec sa confiance — :
+ * la relancer à la validation repayait l'OCR et l'IA pour la même réponse.
+ * Ainsi enregistrée, elle range directement le courrier dans « À valider » ou
+ * « À qualifier » (`mailroom_couriers` lit cette ligne).
+ */
+export async function recordPreCreationAnalysis(
+  organizationId: string,
+  courierId: string,
+  result: ExtractCourierInfoResult,
+): Promise<void> {
+  // Edge function antérieure : pas de ligne prête, on la compose de ce qu'elle
+  // rend (ni résumé ni actions, que « Analyser » sur la fiche complétera).
+  const row = result.analysis ?? legacyAnalysisRow(result);
+  const { error } = await supabase
+    .from("courier_analyses" as never)
+    .upsert({ ...row, courier_id: courierId, organization_id: organizationId } as never, {
+      onConflict: "courier_id",
+    });
+  if (error) throw error;
+}
+
+function legacyAnalysisRow(result: ExtractCourierInfoResult): Record<string, unknown> {
+  const s = result.sender;
+  const hasSender = !!(s?.first_name || s?.last_name || s?.email || s?.phone);
+  const raw = result.suggested_service_confidence;
+  return {
+    summary: result.summary ?? null,
+    intents: result.suggested_tag_names ?? [],
+    suggested_actions: result.suggested_actions ?? [],
+    suggested_subject: result.suggested_subject ?? null,
+    suggested_service_name: result.suggested_service_name ?? null,
+    suggested_socle_organization_id: result.suggested_socle_organization_id ?? null,
+    suggested_service_reason: result.suggested_service_reason ?? null,
+    // La table borne la confiance à 0–100, en entier.
+    suggested_service_confidence:
+      typeof raw === "number" ? Math.min(100, Math.max(0, Math.round(raw))) : null,
+    suggested_recipient_name: result.recipient_name ?? null,
+    suggested_sender: hasSender ? s : null,
+    model: "socle:ai-api",
+  };
 }
 
 /** Base64-encode files for the `extract-courier-info` edge function. */

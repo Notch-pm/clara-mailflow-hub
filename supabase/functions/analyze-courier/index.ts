@@ -2,53 +2,17 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import JSZip from "https://esm.sh/jszip@3.10.1";
 import { extractText, getDocumentProxy } from "https://esm.sh/unpdf@0.12.1";
 import {
-  AGENT_EXTRACTION,
   AiQuotaExceededError,
   FEATURE_ANALYSIS,
-  FEATURE_PREFILL,
-  fitMessage,
   isAiConfigured,
   MAX_OCR_PAGES,
-  MAX_OUTPUT_TOKENS,
-  parseJsonAnswer,
   SocleAiError,
-  socleCompletion,
   socleOcr,
   socleOrgIdFor,
   type SocleAiContext,
 } from "../_shared/socleAi.ts";
-import { jsonSchemaInstruction, objectSchema } from "../_shared/jsonSchemaPrompt.ts";
-import {
-  SUGGESTED_FIELDS_PROPERTIES,
-  SUGGESTED_FIELDS_KEYS,
-  SUGGESTED_FIELDS_PROMPT_RULES,
-  nullIfEmpty,
-  cleanSenderFields,
-  hasSenderData,
-} from "../_shared/courierFieldSuggestions.ts";
-import {
-  buildServiceCatalog,
-  resolveSuggestedService,
-  selectServiceCandidates,
-  serviceSuggestionPromptRules,
-  SERVICE_SUGGESTION_PROPERTY,
-  type ServiceCandidate,
-} from "../_shared/serviceSuggestion.ts";
-import {
-  attachPrefills,
-  buildProcedureCatalog,
-  planPrefillCalls,
-  resolveSuggestedOrganization,
-  sanitizePrefillArguments,
-  selectPrefillCandidates,
-  splitPrefillCall,
-  type OrganizationRef,
-  type PrefillCall,
-  type PrefillProcedureSource,
-  type ProcedureCatalogEntry,
-  type SanitizedPrefill,
-} from "./logic.ts";
 import { assertEditor } from "../_shared/authz.ts";
+import { analysisRow, runCourierAnalysis } from "../_shared/courierAnalysisCore.ts";
 import { canReadCourier } from "../_shared/courierAccess.ts";
 
 const corsHeaders = {
@@ -353,7 +317,11 @@ async function ocrDocument(
   return row;
 }
 
-/** Run analysis using all extracts of a courier. */
+/**
+ * Analyse d'un courrier existant : relit ses extraits et son corps, confie
+ * l'analyse au cœur commun (`_shared/courierAnalysisCore.ts`, partagé avec
+ * l'écran de création), puis l'enregistre.
+ */
 async function analyzeCourier(
   admin: ReturnType<typeof getAdminClient>,
   orgId: string,
@@ -361,7 +329,6 @@ async function analyzeCourier(
   /** Imputation de la dépense. `actorId` NULL pour un appel système (cron). */
   ctx: SocleAiContext,
 ) {
-  // Get courier subject + extracts
   const { data: courier } = await admin
     .from("couriers")
     .select("id, subject, organization_id, channel, metadata, socle_organization_id")
@@ -374,91 +341,6 @@ async function analyzeCourier(
     .select("text, document_id")
     .eq("courier_id", courierId)
     .eq("organization_id", orgId);
-
-  // Tags disponibles dans l'organisation — le LLM ne peut choisir QUE parmi
-  // ceux-ci, et EN DEUX LISTES : le thème dit de quoi parle le courrier, le
-  // sentiment sur quel ton. Mêlés, le modèle en choisissait cinq du même bord.
-  const { data: orgTags } = await admin
-    .from("courier_tags")
-    .select("name, tag_group")
-    .eq("organization_id", orgId);
-  const tagRows = (orgTags ?? []) as Array<{ name: string; tag_group: string }>;
-  const namesOfGroup = (group: string) =>
-    tagRows
-      .filter((t) => (t.tag_group ?? "theme") === group)
-      .map((t) => t.name)
-      .filter((n) => typeof n === "string" && n.trim().length > 0);
-  const themeTagNames = namesOfGroup("theme");
-  const sentimentTagNames = namesOfGroup("sentiment");
-  // Ce qui est appliqué au courrier reste UNE liste de noms : le groupe est une
-  // propriété du tag, pas de son application (cf. src/lib/courier-tags.ts).
-  const availableTagNames = [...themeTagNames, ...sentimentTagNames];
-
-  // Démarches disponibles — données Socle incluses : descriptions/mots-clés
-  // pour la pertinence des recommandations, form_schema/knowledge_base pour
-  // l'appel de préremplissage ciblé.
-  const { data: orgProcedures } = await admin
-    .from("procedures")
-    .select(
-      "id, name, external_source, external_reference_id, arpege_config_fields, keywords, agent_description, description, form_schema, knowledge_base",
-    )
-    .eq("organization_id", orgId)
-    .eq("is_displayed", true)
-    .is("obsoleted_at", null) // exclut les démarches retirées du Socle (soft-delete)
-    .order("display_order", { ascending: true });
-  const procedureList = (orgProcedures ?? []) as Array<
-    ProcedureCatalogEntry & PrefillProcedureSource
-  >;
-
-  // Organisations disponibles (miroir Socle) : destinataires des démarches, et
-  // catalogue décrit pour proposer le service instructeur.
-  const { data: socleOrgRows } = await admin
-    .from("socle_organizations")
-    .select("id, name, socle_id, socle_parent_id, public_description, attributions, workflow_id")
-    .eq("organization_id", orgId)
-    .eq("status", "active")
-    .is("obsoleted_at", null);
-
-  // Qui assure quoi (miroir `procedure_organizations`) : le modèle doit choisir
-  // l'organisation DANS cette liste, sans quoi Iris refuse le dépôt.
-  const knownOrgs = new Map<string, OrganizationRef>(
-    (socleOrgRows ?? []).map((o: OrganizationRef) => [o.id, { id: o.id, name: o.name }]),
-  );
-  const { data: activationRows } = await admin
-    .from("procedure_organizations")
-    .select("procedure_id, socle_organization_id")
-    .eq("organization_id", orgId)
-    .is("obsoleted_at", null);
-  const orgsByProcedure = new Map<string, OrganizationRef[]>();
-  for (const row of (activationRows ?? []) as Array<{ procedure_id: string; socle_organization_id: string }>) {
-    const org = knownOrgs.get(row.socle_organization_id);
-    if (!org) continue; // organisation obsolète : plus proposable
-    const list = orgsByProcedure.get(row.procedure_id) ?? [];
-    list.push(org);
-    orgsByProcedure.set(row.procedure_id, list);
-  }
-  for (const proc of procedureList) {
-    proc.organizations = orgsByProcedure.get(proc.id) ?? [];
-  }
-
-  // Service instructeur : le catalogue dit ce que fait chaque organisation
-  // (descriptif du Socle + démarches qu'elle instruit). L'organisation déjà
-  // désignée y reste toujours, pour que le modèle puisse la confirmer.
-  const allServiceOrgs = (socleOrgRows ?? []) as ServiceCandidate[];
-  const currentServiceOrg = allServiceOrgs.find((o) => o.id === courier.socle_organization_id) ?? null;
-  const serviceCandidates = selectServiceCandidates(allServiceOrgs);
-  if (currentServiceOrg && !serviceCandidates.some((o) => o.id === currentServiceOrg.id)) {
-    serviceCandidates.push(currentServiceOrg);
-  }
-  const procedureNamesByOrg = new Map<string, string[]>();
-  for (const proc of procedureList) {
-    for (const o of proc.organizations ?? []) {
-      const list = procedureNamesByOrg.get(o.id) ?? [];
-      list.push(proc.name);
-      procedureNamesByOrg.set(o.id, list);
-    }
-  }
-  const serviceCatalogForPrompt = buildServiceCatalog(serviceCandidates, procedureNamesByOrg, allServiceOrgs);
 
   // Corps de l'email (si présent dans metadata)
   const meta = (courier.metadata ?? {}) as Record<string, unknown>;
@@ -480,268 +362,21 @@ async function analyzeCourier(
         .replace(/\n{3,}/g, "\n\n")
         .trim()
     : "";
-  const emailBody = (bodyText || bodyFromHtml).slice(0, 30_000);
 
   const concatenated = (extracts ?? [])
     .map((e) => e.text)
     .filter(Boolean)
-    .join("\n\n===\n\n")
-    .slice(0, 60_000); // safety cap
+    .join("\n\n===\n\n");
 
-  if (!concatenated.trim() && !emailBody.trim()) {
-    throw new Error("Aucun contenu à analyser. Lancez d'abord l'extraction OCR ou ajoutez un corps d'email.");
-  }
-
-  const listForPrompt = (names: string[], empty: string) =>
-    names.length > 0 ? names.map((n) => `- ${n}`).join("\n") : empty;
-  const themeListForPrompt = listForPrompt(themeTagNames, "(aucun thème défini — laisse intents vide)");
-  const sentimentListForPrompt = listForPrompt(
-    sentimentTagNames,
-    "(aucun sentiment défini — laisse sentiments vide)",
-  );
-
-  const procedureListForPrompt = buildProcedureCatalog(procedureList);
-
-  const systemPrompt = `Tu es un assistant expert en gestion de courrier administratif. Analyse le contenu fourni et restitue les éléments suivants :
-- summary: résumé concis (2-3 phrases) du contenu
-- intents: les THÈMES du courrier — de quoi il parle. Choisis EXCLUSIVEMENT dans la liste des thèmes disponibles ci-dessous (copie exacte du nom, sensible à la casse). N'invente AUCUN tag. Si aucun ne s'applique, renvoie une liste vide.
-- sentiments: le TON du rédacteur. Choisis EXCLUSIVEMENT dans la liste des sentiments disponibles ci-dessous (copie exacte du nom). En règle générale UN SEUL suffit, deux au maximum quand le courrier est franchement partagé. Liste vide si le ton n'est pas lisible.
-- suggested_actions: 2 à 5 actions concrètes que l'organisation devrait entreprendre. Pour chaque action :
-  • label: description courte de l'action
-  • procedure_id: si une démarche de la liste correspond réellement à l'action (vérifie la cohérence avec sa description et ses mots-clés, pas seulement son nom), indique son id exact. Sinon null. Ne force jamais une correspondance approximative.
-  • socle_organization_id: organisation à qui adresser la demande. Choisis-la EXCLUSIVEMENT parmi celles listées après « assurée par » sur la démarche retenue (copie l'id exact indiqué par « [org: … ] »), en te fondant sur le lieu ou le service concerné par le courrier. Si aucune ne s'impose, ou si l'action ne porte aucune démarche, renvoie null. N'invente jamais d'organisation.
-  • prefill: si des données personnelles sont identifiables dans le courrier (nom, prénom, email, téléphone, date de naissance, civilité), extrais-les ici pour pré-remplir le formulaire. N'invente aucune donnée absente du courrier.
-${SUGGESTED_FIELDS_PROMPT_RULES}
-${serviceSuggestionPromptRules(currentServiceOrg ? { id: currentServiceOrg.id, name: currentServiceOrg.name } : null)}
-Sois factuel, en français. Si le corps de l'email et les pièces jointes coexistent, traite-les comme un tout cohérent. Ne retourne que ce qui est clairement identifiable — ne devine rien.
-
-Thèmes disponibles pour intents :
-${themeListForPrompt}
-
-Sentiments disponibles pour sentiments :
-${sentimentListForPrompt}
-
-Procédures disponibles (utilise l'id exact pour procedure_id) :
-${procedureListForPrompt}
-
-Organisations (catalogue pour suggested_service) :
-${serviceCatalogForPrompt}`;
-
-  const sections: string[] = [`Sujet du courrier : ${courier.subject ?? "(aucun)"}`];
-  if (emailBody.trim()) {
-    sections.push(`Corps de l'email :\n${emailBody}`);
-  }
-  if (concatenated.trim()) {
-    sections.push(`Contenu extrait des pièces jointes :\n${concatenated}`);
-  }
-  const userPrompt = sections.join("\n\n");
-
-  const namesSchema = (names: string[]): Record<string, unknown> => ({
-    type: "array",
-    items: names.length > 0 ? { type: "string", enum: names } : { type: "string" },
-  });
-  const intentsSchema = namesSchema(themeTagNames);
-  const sentimentsSchema = namesSchema(sentimentTagNames);
-
-  // ⚠️ CE SCHÉMA VIVAIT DANS `tools`. Il n'a pas disparu avec la
-  // centralisation : il a changé de place. Le guichet du Socle refuse
-  // `tools`/`tool_choice` par principe et n'offre que « du JSON valide » —
-  // la conformité au schéma reste donc l'affaire de Clara, comme elle l'était
-  // déjà en pratique (un schéma d'outil n'a jamais empêché un modèle
-  // d'inventer un `procedure_id` bien formé mais inexistant). Les deux
-  // revalidations qui suivent — tags de l'organisation, démarches existantes —
-  // sont et restent la vraie défense.
-  const analysisSchema = objectSchema(
+  const analysis = await runCourierAnalysis(
+    admin,
+    orgId,
+    { subject: courier.subject ?? null, body: bodyText || bodyFromHtml, attachmentsText: concatenated },
     {
-      summary: { type: "string" },
-      intents: intentsSchema,
-      sentiments: sentimentsSchema,
-      ...SUGGESTED_FIELDS_PROPERTIES,
-      ...SERVICE_SUGGESTION_PROPERTY,
-      suggested_actions: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            label: { type: "string", description: "Action concrète à entreprendre" },
-            procedure_id: { type: ["string", "null"], description: "ID exact de la procédure correspondante, ou null" },
-            socle_organization_id: {
-              type: ["string", "null"],
-              description: "ID exact de l'organisation qui assure cette démarche, ou null",
-            },
-            prefill: {
-              type: "object",
-              description: "Données extractibles du courrier pour pré-remplir le formulaire demandeur",
-              properties: {
-                CIVILITE: { type: "string", enum: ["M", "MME", "MLLE"] },
-                NOM_USUEL: { type: "string" },
-                NOM_NAISSANCE: { type: "string" },
-                PRENOMS: { type: "string" },
-                DATE_NAISSANCE: { type: "string", description: "Format YYYY-MM-DD" },
-                EMAIL: { type: "string" },
-                TEL_FIXE: { type: "string" },
-                TEL_MOBILE: { type: "string" },
-              },
-              additionalProperties: false,
-            },
-          },
-          required: ["label"],
-          additionalProperties: false,
-        },
-      },
+      currentServiceOrgId: courier.socle_organization_id ?? null,
+      ctx: { ...ctx, reference: { kind: "courier", id: courierId } },
     },
-    ["summary", "intents", "sentiments", "suggested_actions", "suggested_service", ...SUGGESTED_FIELDS_KEYS],
   );
-
-  type ParsedAnalysis = {
-    summary: string;
-    intents: string[];
-    sentiments: string[];
-    suggested_actions: Array<{
-      label: string;
-      procedure_id?: string | null;
-      socle_organization_id?: string | null;
-      prefill?: Record<string, string>;
-    }>;
-    suggested_subject?: string;
-    suggested_service?: unknown;
-    recipient_name?: string;
-    sender_first_name?: string;
-    sender_last_name?: string;
-    sender_email?: string;
-    sender_phone?: string;
-  };
-
-  const analysisAnswer = await socleCompletion({
-    system: `${systemPrompt}
-
-${jsonSchemaInstruction(analysisSchema)}`,
-    messages: [{ role: "user", content: fitMessage(userPrompt) }],
-    agent: AGENT_EXTRACTION,
-    // ⚠️ LE PLAFOND DE SORTIE, ET NON UNE ESTIMATION SERRÉE. Règle maison pour
-    // tout appel `json: true` : une réponse JSON tronquée est une PERTE TOTALE
-    // (elle ne parse pas, tout l'appel est à rejouer), tandis qu'une
-    // réservation trop haute est rendue au règlement — le Socle solde sur la
-    // consommation réelle. Les deux risques ne sont pas du même ordre.
-    maxOutputTokens: MAX_OUTPUT_TOKENS,
-    json: true,
-    ctx: { ...ctx, feature: FEATURE_ANALYSIS, reference: { kind: "courier", id: courierId } },
-  });
-  const parsed = parseJsonAnswer<ParsedAnalysis>(analysisAnswer);
-
-  // Sécurité : ne garder que les tags qui appartiennent bien à l'organisation,
-  // ET AU BON GROUPE — un modèle à qui l'on donne deux listes range parfois un
-  // sentiment dans les thèmes. Mapping strict, insensible à la casse.
-  const keepFrom = (names: string[], proposed: unknown): string[] => {
-    const allowed = new Set(names.map((n) => n.toLowerCase()));
-    return Array.isArray(proposed)
-      ? proposed.filter((i): i is string => typeof i === "string" && allowed.has(i.toLowerCase()))
-      : [];
-  };
-  // Les deux groupes se rejoignent dans UNE liste : ce qui est appliqué au
-  // courrier est une liste de noms, le groupe se relit dans le référentiel.
-  const safeIntents = [
-    ...keepFrom(themeTagNames, parsed.intents),
-    ...keepFrom(sentimentTagNames, parsed.sentiments),
-  ];
-
-  // Sécurité : s'assurer que les procedure_id retournés par le LLM appartiennent bien à l'org
-  const validProcedureIds = new Set(procedureList.map((p) => p.id));
-  const procedureById = new Map(procedureList.map((p) => [p.id, p.name]));
-  const safeActions = Array.isArray(parsed.suggested_actions)
-    ? parsed.suggested_actions.map((a) => {
-        const validId = a.procedure_id && validProcedureIds.has(a.procedure_id) ? a.procedure_id : null;
-        // Organisation destinataire : revalidée contre le miroir d'activation,
-        // et imposée d'office quand une seule organisation assure la démarche.
-        const org = resolveSuggestedOrganization(
-          a.socle_organization_id,
-          validId ? (orgsByProcedure.get(validId) ?? []) : [],
-          knownOrgs,
-        );
-        return {
-          label: a.label ?? "",
-          procedure_id: validId,
-          procedure_name: validId ? (procedureById.get(validId) ?? null) : null,
-          socle_organization_id: org?.id ?? null,
-          socle_organization_name: org?.name ?? null,
-          prefill: a.prefill ?? {},
-        };
-      })
-    : [];
-
-  // ── Appel(s) 2 (ciblés, non bloquants) : préremplissage des démarches Socle ──
-  // Pour les démarches recommandées ayant des champs de formulaire : form_schema
-  // pour une démarche Iris, FormComponents pour une démarche Arpège (rangés en
-  // `arpege_prefill`, par DataId). Le schéma de sortie est généré depuis ces champs
-  // (labels et options portés par le schéma, pas de rappel dans le prompt) et
-  // joint au prompt système depuis la centralisation IA ; au-delà
-  // d'un seuil de taille, la planification scinde en un appel par démarche, et
-  // un appel groupé qui échoue est rejoué scindé. La sortie est revalidée avant
-  // stockage. En cas d'échec final, l'analyse est stockée sans socle_prefill.
-  let actionsToStore: Array<
-    (typeof safeActions)[number] & { socle_prefill?: unknown; arpege_prefill?: unknown }
-  > = safeActions;
-  const prefillCandidates = selectPrefillCandidates(safeActions, procedureList);
-  const prefillQueue: PrefillCall[] = planPrefillCalls(prefillCandidates);
-  if (prefillQueue.length > 1) {
-    console.warn(`report_prefill: schéma trop large — scission en ${prefillQueue.length} appels`);
-  }
-
-  const runPrefillCall = async (call: PrefillCall): Promise<unknown> => {
-    const prefillSystemPrompt = `Tu prépares le préremplissage de formulaires de démarches administratives à partir du contenu d'un courrier.
-Pour chaque démarche :
-- audience : nature du demandeur (citoyen, entreprise ou association) si elle est claire d'après le courrier, sinon chaîne vide.
-- form : pour chaque champ, la valeur extraite du courrier. N'invente RIEN : chaîne vide (ou tableau vide) pour tout champ dont la valeur n'est pas clairement présente. Champs à options : le CODE exact, jamais le libellé. Dates au format YYYY-MM-DD.
-Appuie-toi sur les connaissances fournies pour interpréter les champs, et respecte les garde-fous.
-
-${call.tool.promptBlock}
-
-${jsonSchemaInstruction(call.tool.toolParameters as Record<string, unknown>)}`;
-    const prefillUserPrompt = userPrompt.slice(0, call.contentMax);
-
-    const answer = await socleCompletion({
-      system: prefillSystemPrompt,
-      messages: [{ role: "user", content: fitMessage(prefillUserPrompt) }],
-      agent: AGENT_EXTRACTION,
-      // Le plafond, pour la même raison que l'analyse ci-dessus.
-      maxOutputTokens: MAX_OUTPUT_TOKENS,
-      json: true,
-      ctx: { ...ctx, feature: FEATURE_PREFILL, reference: { kind: "courier", id: courierId } },
-    });
-    return parseJsonAnswer<unknown>(answer);
-  };
-
-  const sanitizedAll: Record<string, SanitizedPrefill> = {};
-  while (prefillQueue.length > 0) {
-    const call = prefillQueue.shift()!;
-    try {
-      const rawPrefill = await runPrefillCall(call);
-      Object.assign(sanitizedAll, sanitizePrefillArguments(rawPrefill, call.procedures));
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (e instanceof AiQuotaExceededError) {
-        console.warn("report_prefill interrompu (quota IA atteint):", msg);
-        break;
-      }
-      const split = splitPrefillCall(call);
-      if (split.length > 0) {
-        console.warn(`report_prefill groupé échoué — repli en ${split.length} appels scindés:`, msg);
-        prefillQueue.push(...split);
-      } else {
-        console.warn("report_prefill échoué (non bloquant):", msg);
-      }
-    }
-  }
-  if (Object.keys(sanitizedAll).length > 0) {
-    actionsToStore = attachPrefills(safeActions, sanitizedAll, prefillCandidates);
-  }
-
-  // Sécurité : le service proposé doit appartenir au catalogue (id revalidé).
-  const serviceSuggestion = resolveSuggestedService(parsed.suggested_service, serviceCandidates);
-  const safeSuggestedSubject = nullIfEmpty(parsed.suggested_subject);
-  const safeSuggestedRecipient = nullIfEmpty(parsed.recipient_name);
-  const cleanSender = cleanSenderFields(parsed);
-  const safeSuggestedSender = hasSenderData(cleanSender) ? cleanSender : null;
 
   const { data: row, error: upErr } = await admin
     .from("courier_analyses")
@@ -749,33 +384,7 @@ ${jsonSchemaInstruction(call.tool.toolParameters as Record<string, unknown>)}`;
       {
         courier_id: courierId,
         organization_id: orgId,
-        summary: parsed.summary,
-        intents: safeIntents,
-        // `sentiment` (colonne de l'ancien champ figé) n'est plus écrite depuis
-        // le 2026-09-10 : le sentiment est un tag, rangé dans `intents`. La
-        // colonne subsiste pour les analyses antérieures.
-        suggested_actions: actionsToStore,
-        suggested_subject: safeSuggestedSubject,
-        // Le nom reste écrit pour l'existant ; l'identifiant et la raison
-        // portent la proposition depuis le 2026-10-01.
-        suggested_service_name: serviceSuggestion?.name ?? null,
-        suggested_socle_organization_id: serviceSuggestion?.id ?? null,
-        suggested_service_reason: serviceSuggestion?.reason ?? null,
-        // Confiance et alternatives (2026-10-01) : l'écran « Courrier entrant »
-        // en tire « À valider » / « À qualifier » et le routage en lot ≥ 90 %.
-        suggested_service_confidence: serviceSuggestion?.confidence ?? null,
-        suggested_service_alternatives: serviceSuggestion?.alternativeIds ?? [],
-        suggested_recipient_name: safeSuggestedRecipient,
-        suggested_sender: safeSuggestedSender,
-        // ⚠️ NI MODÈLE NI JETONS : Clara ne les connaît plus, et c'est
-        // voulu. Le modèle est choisi par le Socle derrière un alias, et le
-        // décompte vit dans son journal (`ai_usage_events`), avec la
-        // ventilation par application. Recopier ici un nombre approché
-        // créerait le second compteur que la centralisation a supprimé — et
-        // un chiffre faux est pire qu'un chiffre absent : on ne se méfie pas
-        // d'un tableau qui s'affiche.
-        model: "socle:ai-api",
-        tokens_used: null,
+        ...analysisRow(analysis),
       },
       { onConflict: "courier_id" },
     )

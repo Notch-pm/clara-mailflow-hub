@@ -50,6 +50,8 @@ import { splitAppliedTags } from "@/lib/courier-tags";
 import { storage } from "@/services/storageService";
 import {
   extractCourierInfo,
+  recordPreCreationAnalysis,
+  type ExtractCourierInfoResult,
   type SuggestedSender,
 } from "@/services/courierAnalysisService";
 import { enqueueCourierAnalysis } from "@/services/courierAnalysisJobService";
@@ -141,7 +143,10 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
   const [extractedSender, setExtractedSender] = useState<SuggestedSender | null>(null);
   const [senderMatch, setSenderMatch] = useState<SenderMatch<SocleContact> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const analyzedPreCreationRef = useRef(false);
+  // Analyse faite dans cet écran : enregistrée telle quelle sur le courrier créé.
+  // Les pièces analysées sont gardées avec elle : si l'agent en ajoute ou en
+  // retire ensuite, l'analyse ne couvre plus le courrier et se refait en file.
+  const preCreationAnalysisRef = useRef<{ result: ExtractCourierInfoResult; files: File[] } | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -166,7 +171,7 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
     setPreviewIndex(0);
     setExtractedSender(null);
     setSenderMatch(null);
-    analyzedPreCreationRef.current = false;
+    preCreationAnalysisRef.current = null;
   }, [open]);
 
   // Maintain previewIndex in bounds when files are removed
@@ -365,15 +370,29 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
       }
       const uploaded = pendingFiles.length - uploadFailures;
 
-      // Si l'utilisateur a lancé l'analyse OCR en pré-création, on relance une
-      // analyse complète pour persister les extraits OCR dans
-      // `courier_document_extracts` et générer l'analyse IA dès maintenant.
-      // Par la file serveur, comme l'import en masse : « Courrier entrant » et la
-      // fiche voient l'analyse en cours et se mettent à jour à la fin. Lancée en
-      // direct, personne ne le savait — le courrier restait « Non analysé », sans
-      // la proposition de l'IA, jusqu'au rafraîchissement suivant (2026-E-00068).
-      // Enfilée AVANT de rendre la main : la fiche ouverte par `onCreated` trouve le job.
-      if (analyzedPreCreationRef.current && uploaded > 0) {
+      // Analysé dans cet écran : cette analyse — résumé, classement, actions
+      // suggérées, organisation proposée — devient celle du courrier, sans en
+      // relancer une seconde (OCR et IA payés deux fois jusqu'au 2026-10-14).
+      // Écrite AVANT de rendre la main : la fiche ouverte par `onCreated` la
+      // trouve, et « Courrier entrant » range aussitôt le courrier.
+      // Sans analyse dans cet écran, ou si l'écriture échoue : analyse en file.
+      let analysisRecorded = false;
+      const pre = preCreationAnalysisRef.current;
+      const preAnalysis =
+        pre &&
+        pre.files.length === pendingFiles.length &&
+        pre.files.every((f, i) => f === pendingFiles[i])
+          ? pre.result
+          : null;
+      if (preAnalysis) {
+        try {
+          await recordPreCreationAnalysis(organizationId, courier.id, preAnalysis);
+          analysisRecorded = true;
+        } catch (e) {
+          console.error("Analyse de saisie non enregistrée, analyse complète en file :", e);
+        }
+      }
+      if (pre && !analysisRecorded && uploaded > 0) {
         await enqueueCourierAnalysis(courier.id).catch((e) => {
           console.error("Enfilement de l'analyse post-création impossible:", e);
         });
@@ -428,9 +447,8 @@ export default function NewCourierDialog({ open, onOpenChange, organizationId, o
       return result;
     },
     onSuccess: (result) => {
-      // Mémorise qu'une extraction OCR a été effectuée : permettra de relancer
-      // automatiquement l'analyse complète côté serveur après création.
-      analyzedPreCreationRef.current = true;
+      // Gardée telle quelle : elle deviendra l'analyse du courrier à sa création.
+      preCreationAnalysisRef.current = { result, files: [...pendingFiles] };
       const filled: string[] = [];
 
       // Pre-fill subject

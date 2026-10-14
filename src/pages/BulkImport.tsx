@@ -14,7 +14,7 @@ import { addParticipant } from "@/services/courierParticipantService";
 import { assignableOrgs, listOrgsWithConfig } from "@/services/socleOrgConfigService";
 import { listTags } from "@/services/courierTagService";
 import { storage } from "@/services/storageService";
-import { extractCourierInfo } from "@/services/courierAnalysisService";
+import { extractCourierInfo, recordPreCreationAnalysis } from "@/services/courierAnalysisService";
 import { enqueueCourierAnalyses } from "@/services/courierAnalysisJobService";
 import { findSuggestedOrg } from "@/lib/service-suggestion";
 import BulkStep1Channel from "@/components/courier/bulk/BulkStep1Channel";
@@ -280,6 +280,7 @@ export default function BulkImport() {
               ],
               bodyText: result.extracted_text || d.bodyText,
               confidence,
+              analysis: result,
             };
           }))
         );
@@ -399,7 +400,18 @@ export default function BulkImport() {
             toast.error(`${bf.file.name} : ${msg}`);
           }
         }
-        if (uploaded > 0) analysableCourierIds.push(courier.id);
+        // Analysé dans cet écran : cette analyse devient celle du courrier, on
+        // ne la refait pas. Sinon (ou si l'enregistrer échoue), analyse en file.
+        let analysisRecorded = false;
+        if (draft.analysis) {
+          try {
+            await recordPreCreationAnalysis(organizationId, courier.id, draft.analysis);
+            analysisRecorded = true;
+          } catch (err) {
+            console.error("Analyse d'import non enregistrée, analyse complète en file :", err);
+          }
+        }
+        if (!analysisRecorded && uploaded > 0) analysableCourierIds.push(courier.id);
 
         count++;
       } catch (err) {
@@ -412,10 +424,8 @@ export default function BulkImport() {
     setConfirming(false);
     goToStep(5);
 
-    // OCR + analyse délégués à la file serveur : l'utilisateur n'attend pas et
-    // quitter la page n'interrompt rien. Sans cela, les courriers importés en
-    // masse n'avaient ni extraits ni analyse, contrairement à ceux créés via
-    // NewCourierDialog.
+    // Courriers NON analysés dans cet écran : OCR + analyse délégués à la file
+    // serveur — l'utilisateur n'attend pas et quitter la page n'interrompt rien.
     void enqueueCourierAnalyses(analysableCourierIds);
 
     queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });

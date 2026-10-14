@@ -1,35 +1,14 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import {
-  AGENT_EXTRACTION,
   AiQuotaExceededError,
   FEATURE_EXTRACTION,
-  fitMessage,
   isAiConfigured,
-  MAX_OUTPUT_TOKENS,
-  parseJsonAnswer,
   SocleAiError,
-  socleCompletion,
   socleOcr,
   socleOrgIdFor,
   type SocleAiContext,
 } from "../_shared/socleAi.ts";
-import { jsonSchemaInstruction, objectSchema } from "../_shared/jsonSchemaPrompt.ts";
-import {
-  SUGGESTED_FIELDS_PROPERTIES,
-  SUGGESTED_FIELDS_KEYS,
-  SUGGESTED_FIELDS_PROMPT_RULES,
-  nullIfEmpty,
-  cleanSenderFields,
-} from "../_shared/courierFieldSuggestions.ts";
-import {
-  buildServiceCatalog,
-  noServiceSuggestionNote,
-  resolveSuggestedService,
-  selectServiceCandidates,
-  serviceSuggestionPromptRules,
-  SERVICE_SUGGESTION_PROPERTY,
-  type ServiceCandidate,
-} from "../_shared/serviceSuggestion.ts";
+import { analysisRow, runCourierAnalysis } from "../_shared/courierAnalysisCore.ts";
 import { contactsApiKeyForOrg, fetchContactsApi } from "../_shared/socleContactsClient.ts";
 import { assertEditor } from "../_shared/authz.ts";
 import {
@@ -55,18 +34,6 @@ interface FileInput {
   name: string;
   mime_type: string;
   content_base64: string;
-}
-
-interface ExtractedInfo {
-  suggested_subject: string | null;
-  sender_civility: string | null;
-  sender_first_name: string | null;
-  sender_last_name: string | null;
-  sender_email: string | null;
-  sender_phone: string | null;
-  recipient_name: string | null;
-  suggested_service?: unknown;
-  suggested_tag_names: string[];
 }
 
 function jsonResponse(body: unknown, status = 200) {
@@ -276,8 +243,11 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "quota_exceeded" }, 429);
     }
 
+    // Texte des pièces seules : le texte collé est passé à part à l'analyse.
+    const ocrTexts = [...texts];
+
     // Texte collé directement par l'utilisateur — ne passe ni par l'OCR ni par
-    // le quota OCR (uniquement par l'appel LLM d'extraction ci-dessous).
+    // le quota OCR (uniquement par l'appel d'analyse ci-dessous).
     if (pasted_text?.trim()) {
       texts.push(pasted_text.trim().slice(0, 50_000));
     }
@@ -295,131 +265,24 @@ Deno.serve(async (req) => {
     }
 
     const extractedText = texts.join("\n\n===\n\n");
-    const combinedText = extractedText.slice(0, 30_000);
 
-    // Contexte de l'organisation pour le modèle : catalogue décrit des
-    // organisations (descriptif du Socle + démarches instruites), et tags.
-    const [{ data: socleOrgRows }, { data: orgTags }, { data: activationRows }] = await Promise.all([
-      admin
-        .from("socle_organizations")
-        .select("id, name, socle_id, socle_parent_id, public_description, attributions, workflow_id")
-        .eq("organization_id", orgId)
-        .eq("status", "active")
-        .is("obsoleted_at", null),
-      admin.from("courier_tags").select("name, tag_group").eq("organization_id", orgId),
-      admin
-        .from("procedure_organizations")
-        .select("socle_organization_id, procedures!inner(name, is_displayed, obsoleted_at)")
-        .eq("organization_id", orgId)
-        .is("obsoleted_at", null),
-    ]);
-
-    const allServiceOrgs = (socleOrgRows ?? []) as ServiceCandidate[];
-    const serviceCandidates = selectServiceCandidates(allServiceOrgs);
-    const procedureNamesByOrg = new Map<string, string[]>();
-    for (const row of (activationRows ?? []) as unknown as Array<{
-      socle_organization_id: string;
-      procedures: { name: string; is_displayed: boolean; obsoleted_at: string | null } | null;
-    }>) {
-      const proc = row.procedures;
-      if (!proc || !proc.is_displayed || proc.obsoleted_at) continue;
-      const list = procedureNamesByOrg.get(row.socle_organization_id) ?? [];
-      list.push(proc.name);
-      procedureNamesByOrg.set(row.socle_organization_id, list);
-    }
-    const serviceCatalogForPrompt = buildServiceCatalog(serviceCandidates, procedureNamesByOrg, allServiceOrgs);
-    // Deux groupes, deux listes dans le prompt : le thème dit de quoi parle le
-    // courrier, le sentiment sur quel ton. La sortie, elle, reste UNE liste de
-    // noms — le groupe est une propriété du tag, pas de son application.
-    const tagRows = (orgTags ?? []) as Array<{ name: string; tag_group: string }>;
-    const namesOfGroup = (group: string) =>
-      tagRows.filter((t) => (t.tag_group ?? "theme") === group).map((t) => t.name);
-    const themeTagNames = namesOfGroup("theme");
-    const sentimentTagNames = namesOfGroup("sentiment");
-    const tagNames: string[] = [...themeTagNames, ...sentimentTagNames];
-
-    const listForPrompt = (names: string[], empty: string) =>
-      names.length > 0 ? names.map((n) => `- ${n}`).join("\n") : empty;
-
-    // Le schéma de sortie — celui-là même qui vivait dans `tools` avant la
-    // centralisation. Il n'a pas disparu, il a changé de place : le guichet du
-    // Socle refuse `tools`/`tool_choice`, et n'offre que la contrainte « du
-    // JSON valide ». La conformité au schéma reste donc de la responsabilité
-    // de Clara — c'est ce que fait la revalidation, quelques lignes plus bas.
-    const tagsSchema: Record<string, unknown> = tagNames.length > 0
-      ? { type: "array", items: { type: "string", enum: tagNames } }
-      : { type: "array", items: { type: "string" } };
-
-    const responseSchema = objectSchema(
-      { ...SUGGESTED_FIELDS_PROPERTIES, ...SERVICE_SUGGESTION_PROPERTY, suggested_tag_names: tagsSchema },
-      [...SUGGESTED_FIELDS_KEYS, "suggested_service", "suggested_tag_names"],
+    // L'analyse COMPLÈTE, la même que celle d'un courrier existant : résumé,
+    // classement, actions suggérées (avec préremplissage des démarches),
+    // titre, expéditeur, organisation proposée. L'écran l'enregistre telle
+    // quelle sur le courrier à sa création — plus de seconde analyse.
+    const analysis = await runCourierAnalysis(
+      admin,
+      orgId,
+      {
+        subject: null,
+        // Texte collé ou dicté : le « corps » ; pièces : leur texte extrait.
+        body: pasted_text?.trim() ? pasted_text.trim().slice(0, 50_000) : "",
+        attachmentsText: ocrTexts.join("\n\n===\n\n"),
+        fromDictation,
+      },
+      { ctx: aiContext },
     );
-
-    // ⚠️ LA DICTÉE CHANGE QUI EST L'EXPÉDITEUR. Un courrier écrit est signé par
-    // son expéditeur ; une dictée est dite par l'agent ou l'élu qui RAPPORTE la
-    // demande d'un usager (« Mme Dupont m'a appelé pour… »). Sans ce
-    // paragraphe, le modèle prendrait le locuteur — ou personne — pour
-    // l'expéditeur, et le rapprochement de contact chercherait la mauvaise fiche.
-    const dictationRules = fromDictation
-      ? `
-Ce texte est la TRANSCRIPTION d'une dictée vocale, pas un courrier écrit :
-- Il peut contenir des hésitations, des répétitions, des reprises et des fautes de transcription (noms propres approximatifs) : comprends l'intention, ignore le bruit.
-- Le locuteur est un agent ou un élu de la collectivité qui RAPPORTE la demande d'un usager. L'expéditeur (sender_*) est l'USAGER dont il parle, jamais le locuteur. Si aucun usager n'est nommé, laisse les champs sender_* à null.
-- Une adresse e-mail ou un numéro de téléphone dictés peuvent être épelés (« dupont arobase gmail point com », « zéro six douze… ») : restitue-les sous leur forme écrite.
-- suggested_subject : reformule la demande en un objet court et factuel (pas « Dictée » ni « Appel »).
-- recipient_name : null, sauf si le locuteur nomme explicitement un destinataire.`
-      : "";
-
-    const systemPrompt = `Tu es un assistant expert en gestion de courrier administratif français.
-Analyse le texte extrait d'un courrier et restitue les informations structurées.
-Règles :
-- Ne retourne QUE ce qui est clairement identifiable dans le texte. Ne devine rien.${dictationRules}
-${SUGGESTED_FIELDS_PROMPT_RULES}
-${serviceSuggestionPromptRules(null)}
-- suggested_tag_names : choisis EXCLUSIVEMENT dans les deux listes ci-dessous (copie exacte du nom, sensible à la casse). N'invente AUCUN tag. Retiens les thèmes qui qualifient le sujet, et AU PLUS UN sentiment pour le ton du rédacteur. Liste vide si rien ne correspond.
-
-Organisations (catalogue pour suggested_service) :
-${serviceCatalogForPrompt}
-
-Thèmes disponibles (sujet du courrier) :
-${listForPrompt(themeTagNames, "(aucun thème défini)")}
-
-Sentiments disponibles (ton du rédacteur) :
-${listForPrompt(sentimentTagNames, "(aucun sentiment défini)")}
-
-${jsonSchemaInstruction(responseSchema)}`;
-
-    const userPrompt = `${fromDictation ? "Transcription de la dictée" : "Texte extrait du courrier"} :
-${combinedText}`;
-
-    const answer = await socleCompletion({
-      system: systemPrompt,
-      messages: [{ role: "user", content: fitMessage(userPrompt) }],
-      agent: AGENT_EXTRACTION,
-      // ⚠️ LE PLAFOND DE SORTIE, ET NON UNE ESTIMATION SERRÉE : une réponse
-      // JSON tronquée ne parse pas et fait perdre tout l'appel, alors qu'une
-      // réservation trop haute est rendue au règlement (le Socle solde sur la
-      // consommation réelle). Les deux risques ne sont pas du même ordre.
-      maxOutputTokens: MAX_OUTPUT_TOKENS,
-      json: true,
-      ctx: aiContext,
-    });
-    const extracted = parseJsonAnswer<ExtractedInfo>(answer);
-
-    // Validate and sanitize against org data (same pattern as analyze-courier)
-    // L'écran attend toujours un NOM : on le déduit de l'identifiant revalidé.
-    const serviceSuggestion = resolveSuggestedService(extracted.suggested_service, serviceCandidates);
-    // Sans proposition, l'écran dit pourquoi plutôt que de se taire.
-    const serviceNote = serviceSuggestion
-      ? null
-      : noServiceSuggestionNote(extracted.suggested_service, serviceCandidates);
-
-    const allowed = new Set(tagNames.map((n) => n.toLowerCase()));
-    const suggestedTags = (extracted.suggested_tag_names ?? []).filter(
-      (t: string) => typeof t === "string" && allowed.has(t.toLowerCase()),
-    );
-
-    const sender = cleanSenderFields(extracted);
+    const sender = analysis.sender;
 
     // Rapprochement de l'expéditeur avec le référentiel Socle : le Socle compare
     // email, téléphone et nom+prénom (`POST /v1/contacts/match`), la règle de
@@ -451,16 +314,23 @@ ${combinedText}`;
       }
     }
 
+    const service = analysis.service;
     return jsonResponse({
-      suggested_subject: nullIfEmpty(extracted.suggested_subject),
+      suggested_subject: analysis.suggested_subject,
       sender,
-      recipient_name: nullIfEmpty(extracted.recipient_name),
-      suggested_service_name: serviceSuggestion?.name ?? null,
-      suggested_socle_organization_id: serviceSuggestion?.id ?? null,
-      suggested_service_reason: serviceSuggestion?.reason ?? null,
-      suggested_service_confidence: serviceSuggestion?.confidence ?? null,
-      service_suggestion_note: serviceNote,
-      suggested_tag_names: suggestedTags,
+      recipient_name: analysis.suggested_recipient_name,
+      suggested_service_name: service?.name ?? null,
+      suggested_socle_organization_id: service?.id ?? null,
+      suggested_service_reason: service?.reason ?? null,
+      suggested_service_confidence: service?.confidence ?? null,
+      service_suggestion_note: analysis.service_note,
+      // Classement : thèmes et sentiment, tags de l'organisation revalidés.
+      suggested_tag_names: analysis.intents,
+      summary: analysis.summary,
+      suggested_actions: analysis.suggested_actions,
+      // La ligne `courier_analyses` prête à écrire : l'écran l'enregistre sur
+      // le courrier qu'il crée, sans relancer d'analyse.
+      analysis: analysisRow(analysis),
       // Compat : rempli seulement quand le contact est sélectionné d'office.
       matched_contact: senderMatch?.status === "matched" ? senderMatch.contact : null,
       sender_match: senderMatch,
