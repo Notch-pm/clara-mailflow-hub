@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Send, Save, Lock, PenLine, X, ArrowLeft, Printer, ChevronDown, Sparkles, Undo2, WandSparkles, Stamp } from "lucide-react";
+import { Send, Save, Lock, PenLine, X, ArrowLeft, Printer, ChevronDown, Stamp } from "lucide-react";
 import { toast } from "sonner";
 import { edgeError } from "@/lib/edge-error";
-import { ACKNOWLEDGMENT_TYPE, RESPONSE_TYPES } from "../../../../supabase/functions/draft-reply/logic";
-import type { AckDetails } from "../../../../supabase/functions/draft-reply/acknowledgment";
-import { AcknowledgmentChecklist, AcknowledgmentFields } from "../AcknowledgmentMentions";
+import { ACKNOWLEDGMENT_TYPE } from "../../../../supabase/functions/draft-reply/logic";
+import { AcknowledgmentChecklist } from "../AcknowledgmentMentions";
 import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
@@ -48,32 +47,32 @@ import {
   visaPersonName,
 } from "@/services/courierVisaService";
 import { ReplyVisaTrail } from "../ReplyVisaTrail";
-import { isContentFrozenByVisa, isFreeExitFromVisa } from "@/lib/reply-visa";
+import { isContentFrozenByVisa } from "@/lib/reply-visa";
 import { Input } from "@/components/ui/input";
 import { appendSignature, buildSignatureBlock } from "@/lib/reply-signature";
 import { useAuth } from "@/contexts/AuthContext";
-import { printReply, buildContactBlock, renderLetterHtml } from "@/utils/printReply";
+import { printReply, renderLetterHtml } from "@/utils/printReply";
 import { storage } from "@/services/storageService";
 import { markOutboundPosted } from "@/services/outboundCourierService";
-import { postalBlocker, type OutboundRecipientInfo } from "@/lib/outbound-channel";
+import { postalBlocker, todayIso, type OutboundRecipientInfo } from "@/lib/outbound-channel";
 import { getOrgHtmlTemplate } from "@/services/templateService";
-import { draftOutbound, draftReply, improveReply } from "@/services/courierDraftService";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { visibleText } from "../../../../supabase/functions/_shared/improveMessage";
-import { Textarea } from "@/components/ui/textarea";
 import type { CourierChannel, CourierParticipant } from "@/types/courier";
 import { cn } from "@/lib/utils";
-import { approvalLabel } from "@/lib/approval-label";
 import { eventAnchor } from "@/lib/courier-events";
+import { useOrgCoordinates } from "@/hooks/useOrgCoordinates";
+import { buildLetterArgs } from "./letterArgs";
+import { useOutboundAssistant } from "./useOutboundAssistant";
+import {
+  ImproveBar,
+  InitiativeAssistantPanel,
+  InitiativeOverwriteDialog,
+  ReplyAssistantPanel,
+} from "./OutboundAssistantPanels";
+import { MaybeTooltip, OutboundTransitionsBar, type TransitionTarget } from "./OutboundTransitionsBar";
+import { gestureBlocker, nextGesture, NO_EMAIL_REASON } from "./nextGesture";
+import { PostDeclarationDialog } from "./PostDeclarationDialog";
+import { VisaWaitingNotice } from "./VisaWaitingNotice";
 
 type SendEmailResult = { error?: string; to?: string };
 
@@ -162,10 +161,6 @@ const WORDING = {
   },
 } as const;
 
-/** Dit aussi OÙ ajouter l'adresse manquante : le courrier ou la fiche usager. */
-const NO_EMAIL_REASON =
-  "Aucune adresse email : ni sur le courrier, ni sur la fiche de l'expéditeur dans le référentiel.";
-
 /**
  * L'éditeur d'un courrier sortant : canal, objet, corps, assistant, visa,
  * signature, transitions du workflow réponse, envoi et impression.
@@ -200,57 +195,9 @@ export function OutboundEditor({
   const senderEmail = recipientEmail?.trim() || null;
   const canEmail = !!senderEmail;
   const words = WORDING[kind];
-  // Contexte de l'assistant : le courrier reçu pour une réponse ; le sortant
-  // lui-même pour « Améliorer » (la langue, jamais le sens).
-  const aiCourierId = parentCourierId ?? reply?.id ?? null;
-  const canDraft = kind === "reply" && !!parentCourierId;
 
   // ─── Organization (for merge tags) ──────────────────────────────────
-  // Les coordonnées propres de Clara sont souvent vides : depuis la bascule vers
-  // le référentiel, l'adresse d'une collectivité y est saisie une fois pour
-  // toute la gamme (`socle_organizations.address`, en texte libre). On relit
-  // donc la ligne du référentiel correspondant au tenant et on s'en sert EN
-  // REPLI — les colonnes de Clara, si elles sont remplies, restent prioritaires.
-  // Sans ce repli, « Organisation (avec adresse) » n'imprimait que le nom pour
-  // toute collectivité n'ayant jamais ressaisi son adresse dans Clara.
-  const { data: organization } = useQuery({
-    queryKey: ["org-coordinates", organizationId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("organizations")
-        .select("name, address_street, address_complement, address_postal_code, address_city, phone, website, contact_email, socle_org_id")
-        .eq("id", organizationId)
-        .single();
-      if (error) throw error;
-      const org = data as {
-        name: string;
-        address_street: string | null;
-        address_complement: string | null;
-        address_postal_code: string | null;
-        address_city: string | null;
-        phone: string | null;
-        website: string | null;
-        contact_email: string | null;
-        socle_org_id: string | null;
-      };
-      if (!org.socle_org_id) return org;
-
-      const { data: ref } = await supabase
-        .from("socle_organizations")
-        .select("address, phone, email")
-        .eq("organization_id", organizationId)
-        .eq("socle_id", org.socle_org_id)
-        .maybeSingle();
-      const referentiel = ref as { address: string | null; phone: string | null; email: string | null } | null;
-      return {
-        ...org,
-        address: referentiel?.address ?? null,
-        phone: org.phone ?? referentiel?.phone ?? null,
-        contact_email: org.contact_email ?? referentiel?.email ?? null,
-      };
-    },
-    enabled: !!organizationId,
-  });
+  const { data: organization } = useOrgCoordinates(organizationId);
 
   // ─── Template ───────────────────────────────────────────────────────
   const { data: templateData } = useQuery({
@@ -297,24 +244,18 @@ export function OutboundEditor({
   const [signatoryId, setSignatoryId] = useState<string>("");
   const [dirty, setDirty] = useState(false);
 
-  // ─── AI assistant state ─────────────────────────────────────────────
-  const [aiPanelOpen, setAiPanelOpen] = useState(false);
-  const [aiResponseType, setAiResponseType] = useState<string>("");
-  const [aiInstructions, setAiInstructions] = useState<string>("");
-  const [ackDetails, setAckDetails] = useState<AckDetails>({});
-  const [isDrafting, setIsDrafting] = useState(false);
-  // Courrier à l'initiative : la consigne libre, et de quoi revenir en arrière.
-  const [initiativePrompt, setInitiativePrompt] = useState("");
-  const [confirmOverwrite, setConfirmOverwrite] = useState(false);
-  const [beforeDraft, setBeforeDraft] = useState<{ html: string; subject: string; drafted: string } | null>(null);
-  const [isImproving, setIsImproving] = useState(false);
-  /** Le texte d'avant « Améliorer » — annulable tant que l'agent n'a rien retouché depuis. */
-  const [beforeImprove, setBeforeImprove] = useState<{
-    original: string;
-    improved: string;
-    originalSubject: string;
-    improvedSubject: string;
-  } | null>(null);
+  // ─── Assistant de rédaction ─────────────────────────────────────────
+  const assistant = useOutboundAssistant({
+    organizationId,
+    replyId: reply?.id ?? null,
+    parentCourierId,
+    kind,
+    body,
+    subject,
+    setBody,
+    setSubject,
+    markDirty: () => setDirty(true),
+  });
 
   useEffect(() => {
     if (reply) {
@@ -329,7 +270,6 @@ export function OutboundEditor({
       setSubject(defaultSubject);
       setSignatoryId("");
     }
-    setBeforeImprove(null);
     setVisaComment("");
     setDirty(false);
   }, [reply?.id, canEmail]);
@@ -601,10 +541,6 @@ export function OutboundEditor({
     },
   });
 
-  const todayIso = () => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  };
   const [postDialog, setPostDialog] = useState<{ advance: boolean } | null>(null);
   const [postDate, setPostDate] = useState<string>(todayIso());
 
@@ -656,159 +592,20 @@ export function OutboundEditor({
 
   const isBusy = doPost.isPending || saveDraft.isPending || doUnsign.isPending ||
     doTransition.isPending || isPrintingWithTemplate ||
-    doSignAndAdvance.isPending || doSendAndAdvance.isPending || isImproving ||
+    doSignAndAdvance.isPending || doSendAndAdvance.isPending || assistant.isImproving ||
     setViseur.isPending || doVisaAndAdvance.isPending;
 
-  // ─── Helpers UI ─────────────────────────────────────────────────────
-  const renderMaybeTooltip = (node: React.ReactNode, reason: string | null, key?: string) => {
-    if (!reason) return node;
-    return (
-      <Tooltip key={key}>
-        <TooltipTrigger asChild><span tabIndex={0} className="inline-flex">{node}</span></TooltipTrigger>
-        <TooltipContent>{reason}</TooltipContent>
-      </Tooltip>
-    );
-  };
-
-  const dotColor = (cat: string | null) => cn(
-    "h-2 w-2 rounded-full shrink-0",
-    cat === "pending" && "bg-amber-500",
-    cat === "processing" && "bg-blue-500",
-    cat === "processed" && "bg-emerald-500",
-    cat === "archived" && "bg-slate-400",
-    !cat && "bg-gray-300",
-  );
-
-  const printArgs = {
+  const printArgs = buildLetterArgs({
     bodyHtml: body,
-    subject: subject.trim() || reply?.subject || defaultSubject,
-    senderName: sender
-      ? `${sender.first_name ?? ""} ${sender.last_name ?? ""}`.trim() || sender.name || null
-      : null,
-    senderFirstName: sender?.first_name ?? null,
-    senderLastName: sender?.last_name ?? null,
-    // L'usager du courrier : son adresse est en texte libre sur le participant,
-    // pas décomposée comme celle d'une organisation.
-    senderCompleteHtml: sender
-      ? buildContactBlock(
-          `${sender.first_name ?? ""} ${sender.last_name ?? ""}`.trim() || sender.name || null,
-          {
-            organization: sender.organization,
-            address: sender.address,
-            phone: sender.phone,
-            email: senderEmail,
-          },
-        )
-      : null,
-    date: reply?.created_at ?? new Date().toISOString(),
-    organizationName: organization?.name ?? null,
-    organizationCompleteHtml: organization ? buildContactBlock(organization.name, organization) : null,
-    serviceName: currentService.name,
-    serviceCompleteHtml: buildContactBlock(currentService.name, currentService),
-  };
-
-  /** La consigne part avec le brouillon en cours : l'assistant l'améliore. */
-  async function runInitiativeDraft() {
-    if (!reply) return;
-    setConfirmOverwrite(false);
-    setIsDrafting(true);
-    try {
-      const draft = await draftOutbound({
-        outboundId: reply.id,
-        orgId: organizationId,
-        prompt: initiativePrompt.trim(),
-        currentSubject: subject.trim() || null,
-        currentHtml: body,
-      });
-      setBeforeDraft({ html: body, subject, drafted: draft.html });
-      setBody(draft.html);
-      if (draft.subject) setSubject(draft.subject);
-      setDirty(true);
-      setBeforeImprove(null);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Rédaction impossible");
-    } finally {
-      setIsDrafting(false);
-    }
-  }
-
-  function handleInitiativeDraft() {
-    // Un texte déjà écrit ne se remplace pas sans le dire.
-    if (visibleText(body) !== "") setConfirmOverwrite(true);
-    else void runInitiativeDraft();
-  }
-
-  function undoInitiativeDraft() {
-    if (!beforeDraft) return;
-    setBody(beforeDraft.html);
-    setSubject(beforeDraft.subject);
-    setDirty(true);
-    setBeforeDraft(null);
-  }
-
-  async function handleDraft() {
-    if (!aiResponseType) { toast.error("Sélectionnez un type de réponse."); return; }
-    if (!canDraft || !parentCourierId) return;
-    setIsDrafting(true);
-    try {
-      const draft = await draftReply({
-        courierId: parentCourierId,
-        orgId: organizationId,
-        responseType: aiResponseType,
-        additionalInstructions: aiInstructions.trim() || undefined,
-        currentSubject: subject.trim() || null,
-        acknowledgment: aiResponseType === ACKNOWLEDGMENT_TYPE ? ackDetails : undefined,
-      });
-      setBody(draft.html);
-      // L'objet proposé (ou corrigé) remplace celui de l'éditeur ; sans
-      // proposition exploitable, on garde ce qui y était.
-      if (draft.subject) setSubject(draft.subject);
-      setDirty(true);
-      setAiPanelOpen(false);
-      setBeforeImprove(null);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Rédaction impossible");
-    } finally {
-      setIsDrafting(false);
-    }
-  }
-
-  async function handleImprove() {
-    if (!aiCourierId) return;
-    const original = body;
-    const originalSubject = subject;
-    setIsImproving(true);
-    try {
-      const result = await improveReply({
-        courierId: aiCourierId,
-        orgId: organizationId,
-        html: original,
-        subject: originalSubject.trim() || null,
-      });
-      const improved = result.html;
-      const improvedSubject = result.subject ?? originalSubject;
-      if (improved === original && improvedSubject === originalSubject) {
-        toast.info("Aucune correction à apporter.");
-        return;
-      }
-      setBody(improved);
-      setSubject(improvedSubject);
-      setDirty(true);
-      setBeforeImprove({ original, improved, originalSubject, improvedSubject });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Amélioration impossible");
-    } finally {
-      setIsImproving(false);
-    }
-  }
-
-  function undoImprove() {
-    if (!beforeImprove) return;
-    setBody(beforeImprove.original);
-    setSubject(beforeImprove.originalSubject);
-    setDirty(true);
-    setBeforeImprove(null);
-  }
+    subject,
+    savedSubject: reply?.subject,
+    defaultSubject,
+    createdAt: reply?.created_at,
+    recipient: sender,
+    recipientEmail: senderEmail,
+    organization,
+    service: currentService,
+  });
 
   async function handlePrintPdf(useTemplate: boolean) {
     if (useTemplate && hasTemplate) {
@@ -844,167 +641,52 @@ export function OutboundEditor({
         ? "Aucune modification à enregistrer."
         : null;
 
-  const renderTransitions = () => {
-    if (outgoingTransitions.length === 0) {
-      return !isFinal
-        ? <span className="text-xs text-muted-foreground italic">Aucune transition définie.</span>
-        : null;
-    }
+  // Le geste que porte la transition nominale en quittant l'étape.
+  const gesture = nextForward
+    ? nextGesture({
+        isVisaState,
+        hasActiveVisa: !!activeVisa,
+        isSignatureState,
+        isSigned,
+        isSendState,
+        isSent,
+        channel,
+        canDeclarePosted,
+      })
+    : null;
+  const nextBlocker = gestureBlocker(gesture, {
+    postBlocker,
+    isViseur: currentUserIsViseur,
+    isSignatory: currentUserIsSignatory,
+    hasSignatory: !!signatoryId,
+    canEmail,
+  });
 
-    const nextEntry = outgoingTransitions.find(({ transition }) => transition.kind === "next");
-    const prevEntry = outgoingTransitions.find(({ transition }) => transition.kind === "previous");
-    const nominalIds = new Set([nextEntry?.transition.id, prevEntry?.transition.id].filter(Boolean));
-    // Étape de visa pas encore visée : seules les sorties que la base laisse
-    // passer sans visa (retour, abandon, renvoi pour correction) — les autres
-    // finiraient sur un refus serveur.
-    const others = outgoingTransitions.filter(
-      ({ transition, target }) =>
-        !nominalIds.has(transition.id) &&
-        (!isVisaState ||
-          !!activeVisa ||
-          isFreeExitFromVisa(
-            { kind: (transition.kind ?? null) as "next" | "previous" | null, target },
-            currentState && workflow ? { visaStateId: currentState.id, transitions: workflow.transitions } : undefined,
-          )),
-    );
+  function runGesture() {
+    if (gesture === "post") {
+      setPostDate(todayIso());
+      setPostDialog({ advance: true });
+    } else if (gesture === "visa") doVisaAndAdvance.mutate();
+    else if (gesture === "sign") doSignAndAdvance.mutate();
+    else if (gesture === "send") doSendAndAdvance.mutate();
+  }
 
-    const runTransition = (target: { id: string; name: string; category: string | null; is_final?: boolean | null }) => {
-      doTransition.mutate(target);
-    };
-
-    // The "next" nominal transition implicitly performs the signature / send
-    // action when leaving a signature- or send-state.
-    const nextRequiresVisa = !!nextEntry && isVisaState && !activeVisa;
-    const nextRequiresSign = !!nextEntry && isSignatureState && !isSigned;
-    const nextRequiresSend = !!nextEntry && isSendState && !isSent && channel === "email";
-    const nextRequiresPost = !!nextEntry && isSendState && channel === "paper" && canDeclarePosted;
-    const nextDisabledReason = nextRequiresPost
-      ? postBlocker
-      : nextRequiresVisa
-      ? (!currentUserIsViseur ? "Vous n'êtes pas viseur de cette organisation." : null)
-      : nextRequiresSign
-      ? (!currentUserIsSignatory
-          ? "Vous n'êtes pas le signataire désigné."
-          : !signatoryId
-            ? "Sélectionnez un signataire."
-            : null)
-      : nextRequiresSend
-        ? (!canEmail ? NO_EMAIL_REASON : null)
-        : null;
-
-    const onClickNext = () => {
-      if (!nextEntry) return;
-      if (nextRequiresPost) {
-        setPostDate(todayIso());
-        setPostDialog({ advance: true });
-        return;
-      }
-      if (nextRequiresVisa) {
-        doVisaAndAdvance.mutate();
-        return;
-      }
-      if (nextRequiresSign) {
-        doSignAndAdvance.mutate();
-        return;
-      }
-      if (nextRequiresSend) {
-        doSendAndAdvance.mutate();
-        return;
-      }
-      runTransition({
-        id: nextEntry.target.id,
-        name: nextEntry.target.name,
-        category: nextEntry.target.category,
-        is_final: nextEntry.target.is_final,
-      });
-    };
-
-    const nextLabel = nextEntry
-      ? (nextRequiresPost
-          ? "Imprimer et marquer posté"
-          : nextRequiresVisa
-          ? approvalLabel("visa", nextEntry.transition.name || nextEntry.target.name)
-          : nextRequiresSign
-          ? approvalLabel("sign", nextEntry.transition.name || nextEntry.target.name)
-          : nextRequiresSend
-            ? (doSendAndAdvance.isPending ? "Envoi…" : approvalLabel("send", nextEntry.transition.name || nextEntry.target.name))
-            : (nextEntry.transition.name || nextEntry.target.name))
-      : "";
-
-    const nextIcon = nextRequiresPost
-      ? <Printer className="h-3.5 w-3.5" />
-      : nextRequiresVisa
-      ? <Stamp className="h-3.5 w-3.5" />
-      : nextRequiresSign
-      ? <PenLine className="h-3.5 w-3.5" />
-      : nextRequiresSend
-        ? <Send className="h-3.5 w-3.5" />
-        : <span className={dotColor(nextEntry?.target.category ?? null)} />;
-
-    return (
-      <div className="flex items-center gap-2">
-        {prevEntry && (
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 gap-1.5"
-            disabled={isBusy || !!readOnly}
-            onClick={() => runTransition({
-              id: prevEntry.target.id,
-              name: prevEntry.target.name,
-              category: prevEntry.target.category,
-              is_final: prevEntry.target.is_final,
-            })}
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            {prevEntry.transition.name || prevEntry.target.name}
-          </Button>
-        )}
-        {nextEntry && renderMaybeTooltip(
-          <Button
-            size="sm"
-            className="h-8 gap-1.5"
-            disabled={isBusy || !!readOnly || !!nextDisabledReason}
-            onClick={onClickNext}
-          >
-            {nextIcon}
-            {nextLabel}
-          </Button>,
-          nextDisabledReason,
-          "next-transition-btn",
-        )}
-        {others.length > 0 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button size="sm" variant="outline" className="h-8 gap-1.5" disabled={isBusy || !!readOnly}>
-                Autres actions
-                <ChevronDown className="h-3.5 w-3.5" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {others.map(({ transition: t, target }) => (
-                <DropdownMenuItem
-                  key={t.id}
-                  onClick={() => runTransition({
-                    id: target.id,
-                    name: target.name,
-                    category: target.category,
-                    is_final: target.is_final,
-                  })}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className={dotColor(target.category)} />
-                    <span>{t.name || target.name}</span>
-                  </div>
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-      </div>
-    );
-  };
-
+  const transitionsBar = (
+    <OutboundTransitionsBar
+      entries={outgoingTransitions}
+      isFinal={isFinal}
+      visaGate={isVisaState && !activeVisa && currentState && workflow
+        ? { visaStateId: currentState.id, transitions: workflow.transitions }
+        : null}
+      gesture={gesture}
+      nextBlocker={nextBlocker}
+      sending={doSendAndAdvance.isPending}
+      busy={isBusy}
+      readOnly={!!readOnly}
+      onRun={(target: TransitionTarget) => doTransition.mutate(target)}
+      onGesture={runGesture}
+    />
+  );
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
@@ -1058,16 +740,15 @@ export function OutboundEditor({
         {/* Boutons */}
         <div className="flex flex-wrap items-center gap-2">
           {/* Enregistrer */}
-          {renderMaybeTooltip(
+          <MaybeTooltip reason={saveDisabledReason}>
             <Button
               variant="outline" size="sm"
               onClick={() => saveDraft.mutate()}
               disabled={isBusy || editorDisabled || (!dirty && !!reply)}
             >
               <Save className="mr-1.5 h-4 w-4" />Enregistrer
-            </Button>,
-            saveDisabledReason, "save-btn",
-          )}
+            </Button>
+          </MaybeTooltip>
 
           {/* Exporter en PDF — canal courrier uniquement */}
           {channel === "paper" && (
@@ -1165,8 +846,8 @@ export function OutboundEditor({
             </Badge>
           )}
           {/* Sans étape d'envoi dans le workflow, la déclaration se fait d'ici. */}
-          {canDeclarePosted && channel === "paper" && !hasSendStep && !isFinal && !readOnly &&
-            renderMaybeTooltip(
+          {canDeclarePosted && channel === "paper" && !hasSendStep && !isFinal && !readOnly && (
+            <MaybeTooltip reason={postBlocker}>
               <Button
                 size="sm"
                 variant="outline"
@@ -1175,10 +856,9 @@ export function OutboundEditor({
                 onClick={() => { setPostDate(todayIso()); setPostDialog({ advance: false }); }}
               >
                 <Printer className="h-4 w-4" />Marquer posté
-              </Button>,
-              postBlocker,
-              "post-btn",
-            )}
+              </Button>
+            </MaybeTooltip>
+          )}
           {isPosted && (
             <Badge variant="secondary" className="gap-1 bg-emerald-100 text-emerald-700 border-emerald-200">
               Posté le {new Date(postedOn!).toLocaleDateString("fr-FR")}
@@ -1195,7 +875,7 @@ export function OutboundEditor({
             </Badge>
           )}
 
-          {renderTransitions()}
+          {transitionsBar}
         </div>
       </div>
 
@@ -1217,216 +897,44 @@ export function OutboundEditor({
 
       {/* Assistant sur consigne — courrier à l'initiative */}
       {kind === "initiative" && !editorDisabled && reply && (
-        <div className="shrink-0 space-y-2 rounded-md border border-violet-200 bg-violet-50/60 p-3">
-          <label htmlFor="initiative-prompt" className="flex items-center gap-2 text-sm font-medium text-violet-700">
-            <Sparkles className="h-4 w-4 shrink-0" aria-hidden="true" />
-            Que doit dire ce courrier ?
-          </label>
-          <Textarea
-            id="initiative-prompt"
-            value={initiativePrompt}
-            onChange={(e) => setInitiativePrompt(e.target.value)}
-            placeholder="Ex. : Convoquer M. Martin à la réunion de quartier du 12 novembre à 18 h, salle B. Ton cordial."
-            maxLength={2000}
-            className="min-h-[72px] resize-none bg-background text-sm"
-            disabled={isDrafting}
-          />
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-xs text-muted-foreground">{initiativePrompt.length} / 2000</span>
-            <div className="flex items-center gap-2">
-              {beforeDraft && beforeDraft.drafted === body && (
-                <Button variant="ghost" size="sm" className="gap-1.5" onClick={undoInitiativeDraft} disabled={isBusy}>
-                  <Undo2 className="h-3.5 w-3.5" />
-                  Annuler la rédaction
-                </Button>
-              )}
-              <Button
-                size="sm"
-                onClick={handleInitiativeDraft}
-                disabled={isDrafting || isBusy || !initiativePrompt.trim()}
-                className="gap-1.5 bg-violet-600 text-white hover:bg-violet-700"
-              >
-                <Sparkles className="h-3.5 w-3.5" />
-                {isDrafting ? "Rédaction en cours…" : "Rédiger avec l'assistant"}
-              </Button>
-            </div>
-          </div>
-        </div>
+        <InitiativeAssistantPanel assistant={assistant} busy={isBusy} />
       )}
+      <InitiativeOverwriteDialog assistant={assistant} />
 
-      <AlertDialog open={confirmOverwrite} onOpenChange={setConfirmOverwrite}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remplacer le texte en cours ?</AlertDialogTitle>
-            <AlertDialogDescription>
-              L'assistant part de votre brouillon et de votre consigne, et propose un nouveau texte. Vous pourrez revenir
-              au vôtre avec « Annuler la rédaction » tant que vous ne l'avez pas retouché.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Garder mon texte</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void runInitiativeDraft()}>Remplacer</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog open={!!postDialog} onOpenChange={(o) => !o && !doPost.isPending && setPostDialog(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Imprimer et marquer posté</AlertDialogTitle>
-            <AlertDialogDescription>
-              Imprimez la lettre, mettez-la sous pli, puis confirmez la date à laquelle elle part. Un exemplaire de la lettre
-              est conservé dans les documents du courrier ; la déclaration ne se modifie plus ensuite.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="space-y-3">
-            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => void handlePrintPdf(hasTemplate)}>
-              <Printer className="h-4 w-4" />Imprimer la lettre
-            </Button>
-            <div className="flex items-center gap-2">
-              <Label htmlFor="posted-on" className="text-sm">Posté le</Label>
-              <Input
-                id="posted-on"
-                type="date"
-                value={postDate}
-                max={todayIso()}
-                min={reply?.created_at?.slice(0, 10)}
-                onChange={(e) => setPostDate(e.target.value)}
-                className="h-9 w-[170px]"
-              />
-            </div>
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={doPost.isPending}>Annuler</AlertDialogCancel>
-            <Button
-              disabled={doPost.isPending || !postDate}
-              onClick={() => postDialog && doPost.mutate({ advance: postDialog.advance, postedOn: postDate })}
-            >
-              {doPost.isPending ? "Enregistrement…" : "Confirmer l'envoi"}
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <PostDeclarationDialog
+        open={!!postDialog}
+        onClose={() => setPostDialog(null)}
+        date={postDate}
+        onDateChange={setPostDate}
+        minDate={reply?.created_at?.slice(0, 10)}
+        onPrint={() => void handlePrintPdf(hasTemplate)}
+        onConfirm={() => postDialog && doPost.mutate({ advance: postDialog.advance, postedOn: postDate })}
+        pending={doPost.isPending}
+      />
 
       {/* Assistant IA */}
-      {!body && !editorDisabled && canDraft && (
-        <div className="border rounded-md shrink-0">
-          <button
-            type="button"
-            onClick={() => setAiPanelOpen((o) => !o)}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-violet-700 bg-violet-50 hover:bg-violet-100 transition-colors"
-          >
-            <Sparkles className="h-4 w-4 shrink-0" />
-            Assistant IA
-            <span className="ml-auto text-xs text-violet-500">{aiPanelOpen ? "▲" : "▼"}</span>
-          </button>
-
-          {aiPanelOpen && (
-            <div className="p-3 space-y-3 bg-white border-t">
-              <div>
-                <p className="text-xs font-medium text-muted-foreground mb-2">Type de réponse</p>
-                <div className="flex flex-wrap gap-2">
-                  {RESPONSE_TYPES.map((type) => (
-                    <button
-                      key={type}
-                      type="button"
-                      onClick={() => setAiResponseType(type)}
-                      className={cn(
-                        "px-3 py-1 rounded-full text-xs font-medium border transition-colors",
-                        aiResponseType === type
-                          ? "bg-violet-600 text-white border-violet-600"
-                          : "border-border text-muted-foreground hover:border-violet-400 hover:text-violet-700",
-                      )}
-                    >
-                      {type}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {aiResponseType === ACKNOWLEDGMENT_TYPE && (
-                <AcknowledgmentFields value={ackDetails} onChange={setAckDetails} receivedAt={receivedAt} />
-              )}
-
-              <div>
-                <p className="text-xs font-medium text-muted-foreground mb-1">Instructions complémentaires</p>
-                <Textarea
-                  value={aiInstructions}
-                  onChange={(e) => setAiInstructions(e.target.value)}
-                  placeholder="Ex : Mentionner le délai de traitement de 15 jours, ton formel…"
-                  className="text-sm min-h-[80px] resize-none"
-                />
-              </div>
-
-              <Button
-                size="sm"
-                onClick={handleDraft}
-                disabled={isDrafting || !aiResponseType}
-                className="gap-1.5 bg-violet-600 hover:bg-violet-700 text-white"
-              >
-                <Sparkles className="h-3.5 w-3.5" />
-                {isDrafting ? "Génération en cours…" : "Générer la réponse"}
-              </Button>
-            </div>
-          )}
-        </div>
+      {!body && !editorDisabled && assistant.canDraft && (
+        <ReplyAssistantPanel assistant={assistant} receivedAt={receivedAt} />
       )}
 
       {/* Améliorer mon message : la langue, jamais le sens. Annulable tant
           que l'agent n'a pas retouché le texte amélioré. */}
-      {!editorDisabled && aiCourierId && visibleText(body) !== "" && (
-        <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
-          {beforeImprove && beforeImprove.improved === body && beforeImprove.improvedSubject === subject && (
-            <Button variant="ghost" size="sm" className="gap-1.5" onClick={undoImprove} disabled={isBusy}>
-              <Undo2 className="h-3.5 w-3.5" />
-              Annuler l'amélioration
-            </Button>
-          )}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleImprove}
-            disabled={isBusy || isDrafting}
-            className="gap-1.5 border-violet-300 text-violet-700 hover:bg-violet-50 hover:text-violet-800"
-          >
-            <WandSparkles className="h-3.5 w-3.5" />
-            {isImproving ? "Relecture…" : "Améliorer mon message"}
-          </Button>
-        </div>
+      {!editorDisabled && assistant.courierId && visibleText(body) !== "" && (
+        <ImproveBar assistant={assistant} busy={isBusy} />
       )}
 
       {/* Visa : attente, commentaire, trace */}
       {isVisaState && !activeVisa && reply && (
-        <div className="shrink-0 space-y-2 rounded-md border border-warning/40 bg-warning/5 px-3 py-2">
-          <p className="flex items-center gap-2 text-sm">
-            <Stamp className="h-4 w-4 shrink-0 text-warning" />
-            {designatedViseur
-              ? <>En attente du visa de <span className="font-medium">{visaPersonName(designatedViseur)}</span> (ou d'un autre viseur de l'organisation).</>
-              : <>En attente du visa d'un viseur de l'organisation.</>}
-          </p>
-          {serviceViseurs.length === 0 && (
-            <p className="text-xs text-muted-foreground">
-              Aucun viseur n'est rattaché à l'organisation « {currentService.name} » : un administrateur doit en associer un.
-            </p>
-          )}
-          {currentUserIsViseur && !readOnly && (
-            <>
-              {designatedViseur && designatedViseur.id !== currentUserId && (
-                <p className="text-xs text-muted-foreground">
-                  Vous visez à la place de {visaPersonName(designatedViseur)}.
-                </p>
-              )}
-              <Input
-                value={visaComment}
-                onChange={(e) => setVisaComment(e.target.value)}
-                placeholder="Commentaire de visa (facultatif)"
-                maxLength={500}
-                className="h-8 text-sm"
-                disabled={isBusy}
-              />
-            </>
-          )}
-        </div>
+        <VisaWaitingNotice
+          designated={designatedViseur}
+          noViseur={serviceViseurs.length === 0}
+          serviceName={currentService.name}
+          canVisa={currentUserIsViseur && !readOnly}
+          currentUserId={currentUserId}
+          comment={visaComment}
+          onCommentChange={setVisaComment}
+          busy={isBusy}
+        />
       )}
       {replyVisas.length > 0 && <ReplyVisaTrail visas={replyVisas} className="shrink-0" />}
 
@@ -1449,7 +957,7 @@ export function OutboundEditor({
           onChange={(e) => { setSubject(e.target.value); setDirty(true); }}
           placeholder={defaultSubject}
           maxLength={200}
-          disabled={editorDisabled || isDrafting || isImproving}
+          disabled={editorDisabled || assistant.isDrafting || assistant.isImproving}
           className="h-9 text-sm"
         />
       </div>
@@ -1463,7 +971,7 @@ export function OutboundEditor({
             ? words.emailPlaceholder(senderEmail)
             : words.paperPlaceholder
         }
-        disabled={editorDisabled || isImproving}
+        disabled={editorDisabled || assistant.isImproving}
         minHeight={220}
         className="flex-1 min-h-[220px]"
       />
@@ -1471,7 +979,7 @@ export function OutboundEditor({
       {/* Rappel des mentions de l'art. R112-5 CRPA, que l'assistant IA reçoit aussi. */}
       {!readOnly && kind === "reply" && (
         <AcknowledgmentChecklist
-          ack={ackDetails}
+          ack={assistant.ackDetails}
           receivedAt={receivedAt}
           service={{
             name: currentService.name,
@@ -1479,7 +987,7 @@ export function OutboundEditor({
             email: currentService.email ?? null,
             phone: currentService.phone ?? null,
           }}
-          highlighted={aiResponseType === ACKNOWLEDGMENT_TYPE}
+          highlighted={assistant.responseType === ACKNOWLEDGMENT_TYPE}
           className="shrink-0"
         />
       )}

@@ -3,7 +3,6 @@ import { isOutboundSettled } from "@/lib/outbound-kind";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import ContactPicker from "@/components/courier/ContactPicker";
 import { assignableOrgs, listOrgsWithConfig } from "@/services/socleOrgConfigService";

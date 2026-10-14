@@ -51,3 +51,9 @@ function joinFr(items: string[]): string {
   if (items.length <= 1) return items[0] ?? "";
   return `${items.slice(0, -1).join(", ")} et ${items[items.length - 1]}`;
 }
+
+/** Aujourd'hui en date locale (`YYYY-MM-DD`) : date proposée et borne haute de « posté le ». */
+export function todayIso(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
