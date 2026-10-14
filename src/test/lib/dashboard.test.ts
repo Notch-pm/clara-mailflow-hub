@@ -306,5 +306,7 @@ describe("en-tête", () => {
     );
     expect(scopeLabel(["mailroom"], [], null)).toBe("Service courrier");
     expect(scopeLabel(["instruction"], [], "Mairie de Vernon")).toBe("Mairie de Vernon");
+    expect(scopeLabel(["instruction"], ["A", "B", "C"], null)).toBe("A · B · C");
+    expect(scopeLabel(["instruction", "parapheur"], ["A", "B", "C", "D"], null)).toBe("4 organisations · parapheur");
   });
 });

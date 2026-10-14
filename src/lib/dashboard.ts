@@ -639,10 +639,15 @@ export function longDate(now: Date = new Date()): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-/** « Services techniques · service courrier · parapheur » */
+/** Au-delà, la liste des organisations cède la place à leur nombre. */
+const MAX_LISTED_SERVICES = 3;
+
+/** « Services techniques · service courrier · parapheur », ou « 19 organisations · … » */
 export function scopeLabel(roles: DashboardRole[], serviceNames: string[], fallback: string | null): string {
+  const services =
+    serviceNames.length > MAX_LISTED_SERVICES ? [`${serviceNames.length} organisations`] : serviceNames;
   const parts = [
-    ...(roles.includes("instruction") ? serviceNames : []),
+    ...(roles.includes("instruction") ? services : []),
     ...(roles.includes("mailroom") ? ["service courrier"] : []),
     ...(roles.includes("parapheur") ? ["parapheur"] : []),
   ];

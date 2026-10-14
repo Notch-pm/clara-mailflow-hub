@@ -375,7 +375,10 @@ export default function Dashboard() {
           <h1 className="text-2xl font-bold tracking-tight">
             Bonjour{profile?.first_name ? ` ${profile.first_name}` : ""}
           </h1>
-          <p className="mt-0.5 text-muted-foreground">
+          <p
+            className="mt-0.5 text-muted-foreground"
+            title={roles.includes("instruction") ? dashboard.serviceNames.join(" · ") || undefined : undefined}
+          >
             {longDate()}
             {!dashboard.isLoading && ` · ${scopeLabel(roles, dashboard.serviceNames, membership?.organization_name ?? null)}`}
           </p>
