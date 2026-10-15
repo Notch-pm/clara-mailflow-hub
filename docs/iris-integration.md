@@ -131,6 +131,28 @@ jour sans déclencher d'écriture qui lui soit imputable.
 
 ## 5. Périmètre, clé, et le cas des sous-organisations
 
+> **Depuis le 2026-10-15, la connexion vient du Socle — plus rien ne se configure dans Clara.**
+> Cocher Iris et Clara dans « Applications souscrites » (fiche du client, Socle) suffit :
+>
+> - le Socle sert les abonnements de la collectivité sur chaque organisation (`applications`,
+>   public-api 1.42.0) ;
+> - **Clara** : `sync-socle-referentiel` (`iris.ts`) écrit la ligne `organization_integrations`
+>   (provider `iris`) par la RPC de service `sync_iris_integration_from_socle` — URL, **racine
+>   calculée** depuis l'arbre du Socle, active, **sans clé** ; décocher Iris la suspend
+>   (`suspend_iris_integration_from_socle`, suivi conservé) ;
+> - les appels partent avec la **clé plateforme** de Clara (secrets `IRIS_API_URL`,
+>   `IRIS_PLATFORM_API_KEY`, une par environnement) et l'en-tête
+>   `X-Socle-Root-Organization-Id` (contrat Iris 2.3.0) — `_shared/iris.ts`, `platform: true`
+>   dès que la ligne n'a pas de clé propre ;
+> - **Iris** : sa synchronisation ouvre (ou suspend) la source `clara` du tenant d'après le
+>   même champ.
+>
+> Prudence de bascule : un Socle sans le champ, ou des secrets absents, laissent la connexion
+> locale en l'état (avertissement dans `socle_sync_runs`). Une ancienne clé par collectivité
+> encore présente garde la main ; la synchronisation l'efface en ouvrant la connexion.
+> Le texte ci-dessous décrit le modèle d'avant (clé par collectivité), toujours valable pour un
+> partenaire tiers.
+
 La clé d'intégration (`irs_…`) est **liée à une source, elle-même liée à UN tenant**. Iris
 vérifie le `source_system` et le `socle_root_organization_id` déclarés **contre la clé** : un
 écart vaut `403`, jamais un dépôt dans le mauvais tenant.
@@ -240,15 +262,20 @@ le détail des événements par type — jamais d'e-mail ni d'identifiant d'agen
 - **Pas de rattrapage des demandes déposées avant le 2026-09-11** : elles sont parties sans
   aucune pièce (dont `DEM-2026-000055`, constat fondateur du brief Iris du 2026-09-19). Aucun
   écran ne les complète ; leur `iris_attachments_error` est `null` et ne prouve donc rien.
-- **Pas d'écran de configuration** : la connexion Iris se pose en SQL par le superadmin.
-  `OrgIntegrations` ne gère que les champs Arpège (Hawk) ; y ajouter une carte Iris (URL, clé,
-  racine, suspension, test) est le prolongement naturel.
+- ~~**Pas d'écran de configuration**~~ caduc le 2026-10-15 : il n'y a plus rien à configurer
+  (§5). `OrgIntegrations` montre l'état en lecture seule (`IrisIntegrationCard`).
 - **Une demande déposée ne se retire pas** : le journal d'événements d'Iris est immuable
   (`DELETE` interdit). Une demande de test se solde côté Iris, elle ne s'efface pas.
 
 ## 7. Exploitation
 
-Enregistrer une nouvelle collectivité (les deux côtés) :
+**Nouvelle collectivité** (depuis le 2026-10-15) : cocher Iris et Clara dans le Socle, puis
+lancer les synchronisations du référentiel d'Iris et de Clara (ou attendre la nuit). Rien
+d'autre. **Rotation de la clé plateforme** : un nouvel identifiant sur la source plateforme
+`clara` d'Iris, puis `supabase secrets set IRIS_PLATFORM_API_KEY=…` côté Clara, puis révoquer
+l'ancien.
+
+Modèle d'avant (clé par collectivité — partenaire tiers) :
 
 ```sql
 -- Côté Iris : la source, puis la clé (SHA-256 de la valeur brute, expiration obligatoire)

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Plug, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import IrisIntegrationCard from "@/components/IrisIntegrationCard";
 
 interface OrgIntegrationsProps {
   orgId: string;
@@ -142,6 +143,7 @@ export default function OrgIntegrations({ orgId }: OrgIntegrationsProps) {
           </CardContent>
         )}
       </Card>
+      <IrisIntegrationCard orgId={orgId} />
     </div>
   );
 }

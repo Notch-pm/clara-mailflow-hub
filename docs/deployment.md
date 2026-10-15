@@ -112,6 +112,20 @@ bunx supabase functions deploy <nom> --project-ref aullweizxcjbvtdspjli
 bun run build && npx wrangler deploy --dry-run
 ```
 
+### Iris sans configuration : la connexion vient du Socle (2026-10-15)
+
+Trois dépôts. Chaque étape est additive jusqu’à la 6 ; une ancienne clé par collectivité garde la main tant que la sync de Clara ne l’a pas remplacée.
+
+| # | Quoi | Pourquoi l’ordre | État |
+|---|---|---|---|
+| 1 | **Socle** : déployer `public-api` (1.42.0, champ `applications`) ; pousser `main` | Les deux syncs lisent ce champ ; sans lui, elles ne font rien | ⏳ |
+| 2 | **Iris** : source plateforme `clara` + identifiant (script `provision-iris-platform-key.ts`, qui pose aussi les secrets Clara `IRIS_API_URL` / `IRIS_PLATFORM_API_KEY`) | La clé doit exister avant que Clara ne s’en serve | ⏳ |
+| 3 | **Iris** : déployer `sync-socle-referentiel` ; pousser `main` ; lancer la sync | Ouvre la source `clara` des tenants abonnés ([TEST], Test 2 en plus des quatre existants) | ⏳ |
+| 4 | **Clara** : migration `20261015120000_iris_depuis_socle.sql` (RPC de service) | La sync de Clara les appelle | ⏳ |
+| 5 | **Clara** : déployer `sync-socle-referentiel`, `push-iris-request`, `sync-iris-requests`, `refresh-iris-status`, `iris-request-detail`, `iris-contact-requests` ; pousser `main` | Lecture de la clé plateforme + en-tête | ⏳ |
+| 6 | **Clara** : lancer la sync du référentiel → les lignes Iris passent sans clé (clé plateforme) ; vérifier une lecture (`refresh-iris-status`) et un dépôt | Bascule effective | ⏳ |
+| 7 | **Iris** : révoquer les quatre anciennes clés `clara` par collectivité | Après vérification seulement | ⏳ |
+
 ### Identifiants de messagerie dans Vault (2026-10-15)
 
 Ordre impératif : chaque étape suppose la précédente, et l'étape 4 coupe l'ancien code.

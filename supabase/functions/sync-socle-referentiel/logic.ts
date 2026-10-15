@@ -82,6 +82,8 @@ export interface SocleOrgApi {
   email: string | null;
   address: string | null;
   logo_url: string | null;
+  /** Applications souscrites par la collectivité (racine) — public-api 1.42.0 ; absent avant. */
+  applications?: string[];
 }
 
 // ── Types lignes Clara (sous-ensembles utiles à la sync) ──

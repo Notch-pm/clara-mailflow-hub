@@ -77,6 +77,7 @@ import {
   type ArpegeTenantRef,
   type SocleIntegrationDto,
 } from "./arpege.ts";
+import { irisPlan } from "./iris.ts";
 import {
   brandingWarning,
   planBrandingUpdate,
@@ -673,6 +674,10 @@ interface OrgSyncResult {
     arpege_synchronise: number;
     /** Interface Arpège active suspendue faute de configuration déclarée au Socle (0 ou 1). */
     arpege_suspendu: number;
+    /** Connexion Iris ouverte d'après l'abonnement Iris de la collectivité au Socle (0 ou 1). */
+    iris_ouvert: number;
+    /** Connexion Iris suspendue : Iris décoché dans le Socle (0 ou 1). */
+    iris_suspendu: number;
     /** Charte graphique (logo + couleurs) relue et appliquée (0 ou 1) — 0 = miroir laissé en l'état. */
     charte_synchronisee: number;
     /** Assistant IA (voix ouverte ou non) relu et appliqué (0 ou 1) — 0 = miroir laissé en l'état. */
@@ -835,6 +840,15 @@ async function syncOrg(
   // 1ter) Configuration Arpège : même motif, mais l'absence côté Socle
   // SUSPEND la ligne au lieu de l'effacer (suivi des demandes, voir arpege.ts).
   const arpege = await syncArpege(supabaseAdmin, org, rootId, dryRun);
+  // 1quater) Connexion Iris : déduite de l'abonnement de la collectivité au
+  // Socle (public-api 1.42.0), plus aucune saisie dans Clara (voir iris.ts).
+  const iris = await syncIris(
+    supabaseAdmin,
+    org,
+    rootId,
+    rootId ? allOrganizations.find((o) => o.id === rootId)?.applications : undefined,
+    dryRun,
+  );
 
   const categoriesCounters = await syncMirror(
     supabaseAdmin,
@@ -957,7 +971,7 @@ async function syncOrg(
     ? { created: 0, updated: 0, adopted: 0, obsoleted: 0, unchanged: 0 }
     : await syncActivations(supabaseAdmin, org, activations, muteOrgs, syncedAt);
 
-  const warnings = [...smtp.warnings, ...arpege.warnings, ...branding.warnings, ...assistant.warnings, ...descriptions.warnings, ...attributions.warnings, ...plan.warnings];
+  const warnings = [...smtp.warnings, ...arpege.warnings, ...iris.warnings, ...branding.warnings, ...assistant.warnings, ...descriptions.warnings, ...attributions.warnings, ...plan.warnings];
   if (muteOrgs.length > 0) {
     warnings.push(
       `Démarches illisibles pour ${muteOrgs.length} organisation(s) (${muteOrgs.join(", ")}) — leur miroir est inchangé.`,
@@ -975,6 +989,8 @@ async function syncOrg(
       smtp_retires: smtp.retires,
       arpege_synchronise: arpege.synchronise,
       arpege_suspendu: arpege.suspendu,
+      iris_ouvert: iris.ouvert,
+      iris_suspendu: iris.suspendu,
       charte_synchronisee: branding.synchronisee,
       assistant_synchronise: assistant.synchronise,
       descriptifs_synchronises: descriptions.synchronises,
@@ -1286,6 +1302,49 @@ async function syncArpege(
     console.error(`[sync-socle] org ${org.name}: Arpège: ${message}`);
     warnings.push(`Arpège (${org.name}) : ${message} — configuration locale inchangée.`);
     return { synchronise: 0, suspendu: 0, warnings };
+  }
+}
+
+async function syncIris(
+  supabaseAdmin: AdminClient,
+  org: ClaraOrg,
+  rootId: string | null,
+  rootApplications: unknown,
+  dryRun: boolean,
+): Promise<{ ouvert: number; suspendu: number; warnings: string[] }> {
+  const warnings: string[] = [];
+  if (!rootId) return { ouvert: 0, suspendu: 0, warnings };
+  const plan = irisPlan(org.name, rootId, rootApplications, {
+    apiUrl: Deno.env.get("IRIS_API_URL") ?? null,
+    platformKeyConfigured: !!(Deno.env.get("IRIS_PLATFORM_API_KEY") ?? "").trim(),
+  });
+  try {
+    if (plan.action === "ignorer") {
+      if (plan.warning) warnings.push(plan.warning);
+      return { ouvert: 0, suspendu: 0, warnings };
+    }
+    if (plan.action === "suspendre") {
+      if (dryRun) return { ouvert: 0, suspendu: 0, warnings };
+      const { data, error } = await supabaseAdmin.rpc("suspend_iris_integration_from_socle", { p_org_id: org.id });
+      if (error) throw new Error(error.message);
+      const suspendu = data === true ? 1 : 0;
+      if (suspendu) console.log(`[sync-socle] org ${org.name}: connexion Iris suspendue (Iris décoché dans le Socle)`);
+      return { ouvert: 0, suspendu, warnings };
+    }
+    if (!dryRun) {
+      const { error } = await supabaseAdmin.rpc("sync_iris_integration_from_socle", {
+        p_org_id: org.id,
+        p_api_base_url: plan.row.api_base_url,
+        p_socle_root_org_id: plan.row.socle_root_org_id,
+      });
+      if (error) throw new Error(error.message);
+    }
+    return { ouvert: 1, suspendu: 0, warnings };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    console.error(`[sync-socle] org ${org.name}: Iris: ${message}`);
+    warnings.push(`Iris (${org.name}) : ${message} — connexion locale inchangée.`);
+    return { ouvert: 0, suspendu: 0, warnings };
   }
 }
 

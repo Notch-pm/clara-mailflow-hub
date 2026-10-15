@@ -28,7 +28,17 @@ export interface IrisIntegration {
   api_key: string;
   socle_root_org_id: string | null;
   is_active: boolean;
+  /**
+   * Clé PLATEFORME de Clara (secret IRIS_PLATFORM_API_KEY) : chaque appel nomme
+   * la collectivité par `X-Socle-Root-Organization-Id`. C'est le cas de toute
+   * connexion écrite par la synchronisation du Socle (`api_key` NULL) ; une
+   * ancienne clé par collectivité, tant qu'elle existe, garde la main.
+   */
+  platform: boolean;
 }
+
+/** En-tête par lequel une clé plateforme désigne la collectivité (contrat Iris 2.3.0). */
+export const IRIS_TENANT_HEADER = "X-Socle-Root-Organization-Id";
 
 /** Réponse brute d'Iris : le statut porte autant de sens que le corps. */
 export interface IrisResponse<T> {
@@ -68,8 +78,12 @@ export async function resolveIrisIntegration(
   if (!data) return { integration: null, reason: "absente" };
 
   const base = (data.api_base_url ?? "").trim();
-  const key = (data.api_key ?? "").trim();
-  if (!base || !key) return { integration: null, reason: "incomplete" };
+  const ownKey = (data.api_key ?? "").trim();
+  const platformKey = (Deno.env.get("IRIS_PLATFORM_API_KEY") ?? "").trim();
+  const key = ownKey || platformKey;
+  const platform = !ownKey;
+  // Clé plateforme : la racine est indispensable, c'est elle que l'en-tête nomme.
+  if (!base || !key || (platform && !data.socle_root_org_id)) return { integration: null, reason: "incomplete" };
 
   // Une intégration SUSPENDUE est tout de même rendue : la suspension coupe le
   // nouveau trafic, pas le suivi des demandes déjà déposées (décision PO du
@@ -81,6 +95,7 @@ export async function resolveIrisIntegration(
       api_key: key,
       socle_root_org_id: data.socle_root_org_id ?? null,
       is_active: !!data.is_active,
+      platform,
     },
     reason: data.is_active ? "ok" : "suspendue",
   };
@@ -102,6 +117,9 @@ async function callIris<T>(
       headers: {
         Authorization: `Bearer ${integration.api_key}`,
         Accept: "application/json",
+        ...(integration.platform && integration.socle_root_org_id
+          ? { [IRIS_TENANT_HEADER]: integration.socle_root_org_id }
+          : {}),
         ...(init.body && !isMultipart ? { "Content-Type": "application/json" } : {}),
         ...(init.headers ?? {}),
       },
