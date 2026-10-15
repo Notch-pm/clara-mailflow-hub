@@ -124,7 +124,7 @@ Trois dépôts. Chaque étape est additive jusqu’à la 6 ; une ancienne clé p
 | 4 | **Clara** : migration `20261015081150_iris_depuis_socle.sql` (RPC de service) | La sync de Clara les appelle | **Appliqué** — registre `20261015081150` (fichier renommé) |
 | 5 | **Clara** : déployer `sync-socle-referentiel`, `push-iris-request`, `sync-iris-requests`, `refresh-iris-status`, `iris-request-detail`, `iris-contact-requests` ; pousser `main` | Lecture de la clé plateforme + en-tête | **Fait** |
 | 6 | **Clara** : lancer la sync du référentiel → les lignes Iris passent sans clé (clé plateforme) ; vérifier une lecture (`refresh-iris-status`) et un dépôt | Bascule effective | **Fait** le 2026-10-15 : ACCM, Normandie Démo, Saint Laurent, Saône-et-Loire en clé plateforme ; réconciliation 200 pour les quatre (journal `integration_api_logs` d’Iris). [TEST] Alpha : 403 tant qu’Iris n’a pas ouvert sa source |
-| 7 | **Iris** : révoquer les quatre anciennes clés `clara` par collectivité | Après vérification seulement | ⏳ |
+| 7 | **Iris** : révoquer les quatre anciennes clés `clara` par collectivité | Après vérification seulement | **Fait** le 2026-10-15 à 08:18 UTC, après un dépôt réel par la clé plateforme (Saône-et-Loire : `/v1/uploads` puis `/v1/requests`, 201) — `irs_76EIrWD5`, `irs_KHPA5xej`, `irs_Y95KwQiI`, `irs_0a1164f1` révoquées |
 
 ### Identifiants de messagerie dans Vault (2026-10-15)
 
