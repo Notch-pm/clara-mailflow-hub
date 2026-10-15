@@ -15,6 +15,9 @@ export type CourierParticipantInsert = Database["public"]["Tables"]["courier_par
 
 export type CourierDocument = Database["public"]["Tables"]["courier_documents"]["Row"];
 
+/** Pièce telle que l'aperçu la montre : le corps d'un email y figure en pièce synthétique (id `inline:…`) portant son contenu. */
+export type DisplayDocument = CourierDocument & { inline_html?: string | null; inline_text?: string | null };
+
 export type CourierEvent = Database["public"]["Tables"]["courier_events"]["Row"];
 
 export type CourierLink = Database["public"]["Tables"]["courier_links"]["Row"];

@@ -1,6 +1,8 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getDocuments } from "@/services/courierDocumentService";
+import type { DisplayDocument } from "@/types/courier";
+import { courierMetadata } from "@/lib/courier-workspace";
 
 /**
  * Pièces d'un courrier telles que les montre l'aperçu (`DocumentViewer`) : si le
@@ -8,7 +10,7 @@ import { getDocuments } from "@/services/courierDocumentService";
  * injecté en premier « document » synthétique, comme une pièce jointe.
  */
 export function useCourierDisplayDocuments(
-  courier: { id: string; metadata?: Record<string, unknown> | null } | null | undefined,
+  courier: { id: string; metadata?: unknown } | null | undefined,
   organizationId: string,
   enabled = true,
 ) {
@@ -19,13 +21,13 @@ export function useCourierDisplayDocuments(
   });
 
   const displayDocuments = useMemo(() => {
-    const meta = courier?.metadata ?? {};
+    const meta = courierMetadata(courier?.metadata);
     const html = (meta.body_html as string | undefined) ?? null;
     const text = (meta.body_text as string | undefined) ?? null;
-    if (!html && !text) return documents;
-    const inlineDoc = {
+    if (!html && !text) return documents as DisplayDocument[];
+    const inlineDoc: DisplayDocument = {
       id: `inline:email-body:${courier?.id}`,
-      courier_id: courier?.id,
+      courier_id: courier?.id ?? "",
       organization_id: organizationId,
       file_name: "Corps de l'email",
       mime_type: html ? "text/html" : "text/plain",
@@ -37,7 +39,7 @@ export function useCourierDisplayDocuments(
       inline_html: html,
       inline_text: text,
     };
-    return [inlineDoc, ...documents];
+    return [inlineDoc, ...documents] as DisplayDocument[];
   }, [documents, courier?.id, courier?.metadata, organizationId]);
 
   return { documents, displayDocuments };

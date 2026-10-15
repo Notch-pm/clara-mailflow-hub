@@ -3,10 +3,10 @@ import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, Download, FileQuestion, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { storage } from "@/services/storageService";
-import type { CourierDocument } from "@/types/courier";
+import type { DisplayDocument } from "@/types/courier";
 
 interface Props {
-  documents: CourierDocument[];
+  documents: DisplayDocument[];
   currentId: string | null;
   onChange: (id: string) => void;
   organizationId: string;
@@ -31,8 +31,8 @@ export default function DocumentViewer({ documents, currentId, onChange, organiz
   // Synthetic inline doc (e.g. email body) carries `inline_content` in storage_key field convention,
   // signaled by id starting with "inline:". We render its content directly without fetching.
   const isInline = !!current && typeof current.id === "string" && current.id.startsWith("inline:");
-  const inlineHtml = isInline ? (current as any).inline_html as string | null : null;
-  const inlineText = isInline ? (current as any).inline_text as string | null : null;
+  const inlineHtml = isInline ? current?.inline_html ?? null : null;
+  const inlineText = isInline ? current?.inline_text ?? null : null;
 
   const { data: signedUrl, isLoading } = useQuery({
     queryKey: ["doc-signed-url", current?.id],
