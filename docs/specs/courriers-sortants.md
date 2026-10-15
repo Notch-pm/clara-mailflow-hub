@@ -355,7 +355,9 @@ Pas de nouvelle edge function.
   `CourierWorkspacePage` branche `isInitiative` (onglet Rédaction, destinataire = `recipient`,
   expéditeur = organisation émettrice, date d'envoi en lecture seule, onglet Liens, coquilles en
   lecture seule avec « Affecter une organisation ») ; `ContactFormDialog` extrait de
-  `pages/Contacts.tsx` et ouvert par `ContactPicker` (`createWith="full"`) ; `printReply.ts`
+  `pages/Contacts.tsx` (fait le 2026-10-15 : `components/contacts/ContactFormDialog.tsx`) et ouvert
+  par `ContactPicker` (`createWith="full"`) — ⚠️ **ce second point n'a jamais été branché** : au
+  2026-10-15, `ContactPicker` n'ouvre pas le formulaire complet ; `printReply.ts`
   (`renderLetterHtml`) ; libellés d'historique.
 - Pas de nouvelle route : `/courrier/:id`.
 

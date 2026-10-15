@@ -164,7 +164,7 @@ compteurs dans `courier_sequences` (une suite par organisation × année × sens
 - ⚠️ **Les 5 080 courriers antérieurs au 2026-09-13 restent à `NULL`** et s'affichent
   « sans référence ». Une reprise passerait par le chemin `NULL → valeur` — décision non prise.
 - ⚠️ **Une réponse consomme son numéro dès le premier enregistrement de brouillon**
-  (`ensureReply` dans `ReplyComposer` → `createReply`, sur « Enregistrer le brouillon », la
+  (`ensureReply` dans `outbound/OutboundEditor.tsx` → `createReply`, sur « Enregistrer le brouillon », la
   signature ou l'envoi — pas à l'ouverture du composeur). Un brouillon enregistré puis supprimé
   laisse donc un trou dans la suite `S`. À arbitrer si la continuité du registre sortant compte.
 

@@ -17,7 +17,7 @@ Multi-tenant strict : toute donnée est scopée par `organization_id`. Repo (pri
 
 ## Stack (résumé)
 
-- **Frontend** : React 18 + Vite 5 + TypeScript + Tailwind + shadcn/ui + React Router + TanStack Query.
+- **Frontend** : React 18 + Vite 6 + TypeScript + Tailwind + shadcn/ui + React Router + TanStack Query.
 - **Backend** : Supabase (Postgres + RLS + Auth + Storage + Edge Functions Deno + pg_cron).
 - **IA** : **guichet du Socle** (edge function `ai-api`) depuis le 2026-08-29 — Clara n'a plus de
   clé de fournisseur et ne compte plus les jetons. Voir la règle d'or n°7.

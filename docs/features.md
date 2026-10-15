@@ -201,7 +201,7 @@ disparaît de toutes les listes, recherches, statistiques et de la file d'analys
 ### Rédaction de réponse IA
 - Edge function `draft-reply` : prend `courier_id`, `response_type`, instructions additionnelles et l'objet en cours (`currentSubject`) → renvoie `{ html, subject }` : le corps prêt à coller dans l'éditeur Tiptap et l'objet proposé (repris s'il convenait, corrigé ou remplacé sinon). Le modèle rend l'objet en tête, entre `<objet></objet>` ; `splitDraftSubject` le sépare et le nettoie. Sans objet exploitable, `subject: null` et l'écran garde le sien.
 - **Objet de la réponse** (depuis le 2026-10-01) : champ « Objet » au-dessus de l'éditeur (colonne `couriers.subject`), prérempli « Re: » + objet du courrier reçu (`defaultReplySubject`), verrouillé comme le corps. C'est l'objet du courriel envoyé et la ligne « Objet » de la lettre. L'envoi enregistre d'abord les modifications en cours : `send-courier-reply` relit la réponse en base.
-- UI : `ReplyComposer.tsx`.
+- UI : `ReplyComposer.tsx` (liste des réponses d'un courrier) rend l'éditeur commun `outbound/OutboundEditor.tsx` ; l'assistant de rédaction vit dans `outbound/useOutboundAssistant.ts` et `OutboundAssistantPanels.tsx`.
 - **Ce que le prompt contient** (assemblé par `draft-reply/logic.ts`, testé dans
   `src/test/socle/draft-reply-logic.test.ts`) : type de réponse et instructions de l'agent, nom de
   la collectivité et organisation en charge, référence au registre (`chrono`), expéditeur /
@@ -254,7 +254,7 @@ disparaît de toutes les listes, recherches, statistiques et de la file d'analys
 Relecture de la réponse en cours d'édition — **la langue, jamais le sens**. Repris d'Iris (onglet
 Échanges), adapté au HTML de l'éditeur riche.
 
-- UI : bouton au-dessus de l'éditeur de `ReplyComposer` dès que la réponse contient du texte et
+- UI : bouton au-dessus de l'éditeur (`OutboundEditor`, logique dans `useOutboundAssistant`) dès que la réponse contient du texte et
   reste modifiable (ni signée, ni finale). L'éditeur est verrouillé pendant la relecture ; le texte
   corrigé remplace celui de l'éditeur **sans être enregistré** ; « Annuler l'amélioration » rend le
   texte d'origine tant que l'agent n'a pas retouché le résultat.
@@ -468,7 +468,7 @@ information, relance…). Spécification et décisions : `docs/specs/courriers-s
 
 ## 6. Référentiels
 
-### Contacts (`Contacts.tsx`, route `/contacts`)
+### Contacts (`pages/Contacts.tsx`, route `/contacts` — logique dans `src/lib/contact-*.ts` et les hooks `useContactsList` / `useContactDetail` / `useContactRoles`, cartes et dialogue dans `src/components/contacts/`)
 - **Référentiel servi par le Socle** (source de vérité — plus aucun stockage local d'identité). Liste/recherche (nom, email exact), fiche, création/édition, archivage/restauration via l'edge function `socle-contacts` (proxy de `contacts-api`), service client unique `socleContactService.ts`.
 - La fiche affiche aussi les **courriers liés** (donnée Clara : `courier_participants.socle_contact_id`) et les **relations entre contacts** (« est Gérant de… » / « … est Gérant de ce contact »), éditables via le référentiel ; ces relations apparaissent aussi sur les participants d'un courrier et sous l'expéditeur dans le panneau courrier.
 - Rapprochement automatique de l'expéditeur par email au passage en instruction (best-effort, jamais bloquant).
@@ -494,7 +494,7 @@ et l'import en masse ne rapprochait rien — Madeleine Lefevre se voyait propose
 
 ### Détection de doublons à la saisie
 
-Toute surface qui peut créer une identité propose d'abord les fiches existantes qui ressemblent à la saisie : formulaire contact (`Contacts.tsx`), création rapide du `ContactPicker`, et ajout/édition d'un participant (`ParticipantManager`). Composant unique : `components/contacts/DuplicateContactsAlert.tsx`.
+Toute surface qui peut créer une identité propose d'abord les fiches existantes qui ressemblent à la saisie : formulaire contact (`components/contacts/ContactFormDialog.tsx`), création rapide du `ContactPicker`, et ajout/édition d'un participant (`ParticipantManager`). Composant unique : `components/contacts/DuplicateContactsAlert.tsx`.
 
 **Le rapprochement appartient au Socle** (`POST /v1/contacts/match`, action `match` du proxy `socle-contacts`) : Clara décrit l'identité saisie, le Socle renvoie les fiches ressemblantes déjà classées avec leurs motifs. Aucun moteur de comparaison côté Clara — `lib/contact-duplicates.ts` ne fait plus que construire le payload (whitelist stricte : une clé inconnue vaut un 400) et garder la saisie trop maigre hors du réseau.
 
