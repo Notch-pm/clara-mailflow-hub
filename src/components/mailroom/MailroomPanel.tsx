@@ -502,7 +502,7 @@ export default function MailroomPanel({
         </div>
         {displayDocuments.length > 0 ? (
           <DocumentViewer
-            documents={displayDocuments as never}
+            documents={displayDocuments}
             currentId={docId}
             onChange={setDocId}
             organizationId={organizationId}

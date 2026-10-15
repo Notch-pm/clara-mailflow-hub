@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { Handle, Position, type NodeProps } from "@xyflow/react";
+import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { Zap, CheckCircle2, PenLine, Send, Stamp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { WorkflowCategory } from "@/types/courier";
@@ -15,6 +15,9 @@ export interface StateNodeData {
   [key: string]: unknown;
 }
 
+/** Nœud React Flow d'un état de workflow. */
+export type StateFlowNode = Node<StateNodeData, "stateNode">;
+
 const categoryConfig: Record<WorkflowCategory, { label: string; color: string }> = {
   pending: { label: "Reçu en attente", color: "bg-yellow-100 text-yellow-800 border-yellow-300" },
   processing: { label: "En traitement", color: "bg-blue-100 text-blue-800 border-blue-300" },
@@ -22,8 +25,7 @@ const categoryConfig: Record<WorkflowCategory, { label: string; color: string }>
   archived: { label: "Archivé", color: "bg-gray-100 text-gray-600 border-gray-300" },
 };
 
-function StateNodeComponent({ data, selected }: NodeProps) {
-  const nodeData = data as unknown as StateNodeData;
+function StateNodeComponent({ data: nodeData, selected }: NodeProps<StateFlowNode>) {
   const config = categoryConfig[nodeData.category] || categoryConfig.pending;
 
   return (

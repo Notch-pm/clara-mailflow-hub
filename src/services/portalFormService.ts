@@ -1,25 +1,11 @@
 import { supabase } from "@/integrations/supabase/client";
+import type { Tables } from "@/integrations/supabase/types";
 
-// portal_forms n'est pas encore dans types.ts auto-généré — cast explicite.
-const db = supabase as any;
-
-export interface PortalForm {
-  id: string;
-  organization_id: string;
-  /** Legacy (services gelés) — remplacé par socle_organization_id. */
-  service_id: string | null;
-  /** Organisation (miroir Socle) destinataire des soumissions. */
-  socle_organization_id: string | null;
-  token: string;
-  name: string;
-  description: string | null;
-  is_active: boolean;
-  allowed_origins: string[] | null;
-  config: Record<string, unknown>;
-  created_at: string;
-  updated_at: string;
-  services?: { name: string } | null;
-}
+/**
+ * Formulaire portail citoyen. `service_id` est legacy (services gelés),
+ * remplacé par `socle_organization_id` (organisation destinataire des soumissions).
+ */
+export type PortalForm = Tables<"portal_forms">;
 
 export interface PortalFormInsert {
   organization_id: string;
@@ -29,40 +15,39 @@ export interface PortalFormInsert {
   allowed_origins?: string[] | null;
 }
 
-export async function getPortalForms(organizationId: string) {
-  return db
+export async function getPortalForms(organizationId: string): Promise<PortalForm[]> {
+  const { data, error } = await supabase
     .from("portal_forms")
     .select("*")
     .eq("organization_id", organizationId)
-    .order("created_at", { ascending: false }) as Promise<{ data: PortalForm[] | null; error: unknown }>;
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data ?? [];
 }
 
-export async function createPortalForm(data: PortalFormInsert) {
-  return db
-    .from("portal_forms")
-    .insert(data)
-    .select("*")
-    .single() as Promise<{ data: PortalForm | null; error: unknown }>;
+export async function createPortalForm(form: PortalFormInsert): Promise<PortalForm> {
+  const { data, error } = await supabase.from("portal_forms").insert(form).select("*").single();
+  if (error) throw error;
+  return data;
 }
 
 export async function updatePortalForm(
   organizationId: string,
   formId: string,
   patch: Partial<Pick<PortalForm, "name" | "description" | "is_active" | "allowed_origins" | "socle_organization_id">>,
-) {
-  return db
+): Promise<PortalForm> {
+  const { data, error } = await supabase
     .from("portal_forms")
     .update(patch)
     .eq("organization_id", organizationId)
     .eq("id", formId)
     .select("*")
-    .single() as Promise<{ data: PortalForm | null; error: unknown }>;
+    .single();
+  if (error) throw error;
+  return data;
 }
 
-export async function deletePortalForm(organizationId: string, formId: string) {
-  return db
-    .from("portal_forms")
-    .delete()
-    .eq("organization_id", organizationId)
-    .eq("id", formId) as Promise<{ error: unknown }>;
+export async function deletePortalForm(organizationId: string, formId: string): Promise<void> {
+  const { error } = await supabase.from("portal_forms").delete().eq("organization_id", organizationId).eq("id", formId);
+  if (error) throw error;
 }

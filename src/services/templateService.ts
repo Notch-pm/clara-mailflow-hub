@@ -1,10 +1,11 @@
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
 
 // ─── HTML template ───────────────────────────────────────────────────────────
 
 export async function getOrgHtmlTemplate(
   orgId: string,
-): Promise<{ html: string | null; design: object | null }> {
+): Promise<{ html: string | null; design: Json | null }> {
   const { data, error } = await supabase
     .from("organizations")
     .select("reply_template_html, reply_template_design")
@@ -12,19 +13,19 @@ export async function getOrgHtmlTemplate(
     .single();
   if (error) return { html: null, design: null };
   return {
-    html: (data as any)?.reply_template_html ?? null,
-    design: (data as any)?.reply_template_design ?? null,
+    html: data?.reply_template_html ?? null,
+    design: data?.reply_template_design ?? null,
   };
 }
 
 export async function saveOrgHtmlTemplate(
   orgId: string,
   html: string,
-  design: object,
+  design: Json,
 ): Promise<void> {
   const { error } = await supabase
     .from("organizations")
-    .update({ reply_template_html: html, reply_template_design: design } as never)
+    .update({ reply_template_html: html, reply_template_design: design })
     .eq("id", orgId);
   if (error) throw error;
 }
@@ -32,7 +33,7 @@ export async function saveOrgHtmlTemplate(
 export async function removeOrgHtmlTemplate(orgId: string): Promise<void> {
   const { error } = await supabase
     .from("organizations")
-    .update({ reply_template_html: null, reply_template_design: null } as never)
+    .update({ reply_template_html: null, reply_template_design: null })
     .eq("id", orgId);
   if (error) throw error;
 }

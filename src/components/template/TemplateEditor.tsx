@@ -2,10 +2,14 @@ import { useRef, useEffect, useState } from "react";
 import EmailEditor, { EditorRef } from "react-email-editor";
 import { Button } from "@/components/ui/button";
 import { Loader2, Save, X } from "lucide-react";
+import type { Json } from "@/integrations/supabase/types";
+
+/** Gabarit Unlayer tel que l’attend `loadDesign` (react-email-editor). */
+type UnlayerDesign = Parameters<NonNullable<EditorRef["editor"]>["loadDesign"]>[0];
 
 interface Props {
-  initialDesign?: object | null;
-  onSave: (html: string, design: object) => void;
+  initialDesign?: Json | null;
+  onSave: (html: string, design: Json) => void;
   onClose: () => void;
   isSaving?: boolean;
 }
@@ -66,13 +70,14 @@ export default function TemplateEditor({ initialDesign, onSave, onClose, isSavin
 
   function handleReady() {
     if (initialDesign) {
-      editorRef.current?.editor?.loadDesign(initialDesign as any);
+      // Gabarit stocké en base : JSON opaque produit par ce même éditeur.
+      editorRef.current?.editor?.loadDesign(initialDesign as unknown as UnlayerDesign);
     }
   }
 
   function handleSave() {
     editorRef.current?.editor?.exportHtml(({ html, design }) => {
-      onSave(html, design as unknown as object);
+      onSave(html, design as unknown as Json);
     });
   }
 

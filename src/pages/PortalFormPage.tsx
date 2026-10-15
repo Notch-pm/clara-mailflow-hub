@@ -178,8 +178,8 @@ export default function PortalFormPage() {
         return;
       }
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setErrors({ general: (data as any)?.error ?? "Une erreur est survenue." });
+        const data: { error?: string } | null = await res.json().catch(() => ({}));
+        setErrors({ general: data?.error ?? "Une erreur est survenue." });
         setStatus("ready");
         return;
       }

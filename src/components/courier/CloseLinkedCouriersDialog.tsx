@@ -17,6 +17,12 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { updateCourier } from "@/services/courierService";
 import { logEvent } from "@/services/courierEventService";
+import type { Tables } from "@/integrations/supabase/types";
+
+type StateLite = Pick<Tables<"workflow_states">, "id" | "name" | "is_final" | "category" | "workflow_id">;
+type OrgWorkflow = Pick<Tables<"socle_organizations">, "id" | "workflow_id">;
+const NO_STATES: StateLite[] = [];
+const NO_ORGS: OrgWorkflow[] = [];
 
 interface Props {
   open: boolean;
@@ -67,8 +73,8 @@ export default function CloseLinkedCouriersDialog({
             .from("workflow_states")
             .select("id, name, is_final, category, workflow_id")
             .in("id", stateIds)
-        : { data: [] as any[] };
-      const stateById = new Map<string, any>((states ?? []).map((s) => [s.id, s]));
+        : { data: NO_STATES };
+      const stateById = new Map<string, StateLite>((states ?? []).map((s) => [s.id, s]));
 
       // Résolution du workflow via l'organisation gestionnaire (UUID)
       const orgIds = Array.from(
@@ -79,15 +85,15 @@ export default function CloseLinkedCouriersDialog({
             .from("socle_organizations")
             .select("id, workflow_id")
             .in("id", orgIds)
-        : { data: [] as any[] };
+        : { data: NO_ORGS };
       const workflowByOrgId = new Map<string, string | null>(
-        (servicesRows ?? []).map((s: any) => [s.id, s.workflow_id]),
+        (servicesRows ?? []).map((s) => [s.id, s.workflow_id]),
       );
 
       const workflowIds = Array.from(
         new Set([
-          ...((states ?? []).map((s: any) => s.workflow_id).filter(Boolean) as string[]),
-          ...((servicesRows ?? []).map((s: any) => s.workflow_id).filter(Boolean) as string[]),
+          ...((states ?? []).map((s) => s.workflow_id).filter(Boolean) as string[]),
+          ...((servicesRows ?? []).map((s) => s.workflow_id).filter(Boolean) as string[]),
         ]),
       );
       const { data: allStates } = workflowIds.length
@@ -95,9 +101,9 @@ export default function CloseLinkedCouriersDialog({
             .from("workflow_states")
             .select("id, name, is_final, category, workflow_id")
             .in("workflow_id", workflowIds)
-        : { data: [] as any[] };
-      const finalByWorkflow = new Map<string, any>();
-      for (const s of (allStates ?? []) as any[]) {
+        : { data: NO_STATES };
+      const finalByWorkflow = new Map<string, StateLite>();
+      for (const s of allStates ?? []) {
         if (!s.is_final) continue;
         const current = finalByWorkflow.get(s.workflow_id);
         // Prefer "processed" category over others.
@@ -170,8 +176,8 @@ export default function CloseLinkedCouriersDialog({
             via: "linked_close",
           });
           results.push({ id: r.id, ok: true });
-        } catch (e: any) {
-          results.push({ id: r.id, ok: false, error: e?.message ?? "Erreur" });
+        } catch (e) {
+          results.push({ id: r.id, ok: false, error: e instanceof Error ? e.message : "Erreur" });
         }
       }
       return results;

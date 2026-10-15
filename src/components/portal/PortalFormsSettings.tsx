@@ -131,7 +131,7 @@ export default function PortalFormsSettings() {
     toast.success("URL copiée dans le presse-papier");
   }
 
-  const formList = (forms as any)?.data as PortalForm[] | null;
+  const formList = forms ?? null;
 
   return (
     <div className="space-y-6">

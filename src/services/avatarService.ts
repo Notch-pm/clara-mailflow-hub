@@ -27,7 +27,7 @@ export async function uploadUserAvatar(userId: string, file: File): Promise<stri
   // Persist on users table
   const { error: updateError } = await supabase
     .from("users")
-    .update({ avatar_url: url } as any)
+    .update({ avatar_url: url })
     .eq("id", userId);
   if (updateError) throw updateError;
 
@@ -44,7 +44,7 @@ export async function removeUserAvatar(userId: string): Promise<void> {
 
   const { error } = await supabase
     .from("users")
-    .update({ avatar_url: null } as any)
+    .update({ avatar_url: null })
     .eq("id", userId);
   if (error) throw error;
 }

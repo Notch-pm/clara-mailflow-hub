@@ -136,7 +136,7 @@ export default function DocumentManager({
           await logEvent(organizationId, courierId, "document_added", {
             file_name: file.name,
             document_type: selectedType,
-            document_id: (doc as any)?.id,
+            document_id: doc?.id,
           });
           uploaded++;
           setUploadProgress(Math.round((uploaded / fileArray.length) * 100));

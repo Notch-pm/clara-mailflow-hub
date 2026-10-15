@@ -1,6 +1,10 @@
 import { supabase } from "@/integrations/supabase/client";
 import { updateCourier } from "@/services/courierService";
-import { logEvent } from "@/services/courierEventService";
+import { logEvent, type EventPayload } from "@/services/courierEventService";
+import type { Json } from "@/integrations/supabase/types";
+
+/** `couriers.metadata` : objet JSON libre. */
+type JsonObject = { [key: string]: Json | undefined };
 import { assignOrganization, type SocleOrgWithConfig } from "@/services/socleOrgConfigService";
 import { fetchMailroomMemberIds } from "@/services/mailroomService";
 
@@ -75,7 +79,7 @@ async function insertRoutingEvent(
   organizationId: string,
   courierId: string,
   eventType: string,
-  payload: Record<string, unknown>,
+  payload: EventPayload,
 ): Promise<void> {
   const {
     data: { user },
@@ -84,9 +88,9 @@ async function insertRoutingEvent(
     organization_id: organizationId,
     courier_id: courierId,
     event_type: eventType,
-    payload: payload as never,
+    payload,
     created_by: user?.id ?? null,
-  } as never);
+  });
   if (error) throw error;
 }
 
@@ -163,7 +167,7 @@ export async function transferCourier(
     initial = data;
   }
 
-  const currentMeta = (courier.metadata as Record<string, unknown> | null) ?? {};
+  const currentMeta = (courier.metadata as JsonObject | null) ?? {};
   const { error: updateErr } = await updateCourier(organizationId, courier.id, {
     assigned_service: targetOrg.name,
     socle_organization_id: targetOrg.id,
@@ -199,13 +203,13 @@ export async function returnToMailroom(
   if (!todo) throw new Error("Indiquez ce qui reste à faire.");
   const done = note.done.trim();
 
-  const currentMeta = { ...((courier.metadata as Record<string, unknown> | null) ?? {}) };
+  const currentMeta = { ...((courier.metadata as JsonObject | null) ?? {}) };
   delete currentMeta.socle_organization_id;
   const { error } = await updateCourier(organizationId, courier.id, {
     assigned_service: null,
     socle_organization_id: null,
     workflow_state_id: null,
-    metadata: currentMeta as never,
+    metadata: currentMeta,
   });
   if (error) throw error;
 

@@ -1,4 +1,8 @@
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
+
+/** Charge utile d'un événement (`courier_events.payload`). */
+export type EventPayload = { [key: string]: Json | undefined };
 
 /**
  * Fire-and-forget event logger used by UI mutations.
@@ -8,7 +12,7 @@ export async function logEvent(
   organizationId: string,
   courierId: string,
   eventType: string,
-  payload?: Record<string, unknown>,
+  payload?: EventPayload,
 ): Promise<void> {
   try {
     const {
@@ -18,9 +22,9 @@ export async function logEvent(
       organization_id: organizationId,
       courier_id: courierId,
       event_type: eventType,
-      payload: (payload ?? null) as never,
+      payload: payload ?? null,
       created_by: user?.id ?? null,
-    } as never);
+    });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.warn(`[logEvent:${eventType}] failed`, err);

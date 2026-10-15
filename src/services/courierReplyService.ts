@@ -1,6 +1,10 @@
 import { supabase } from "@/integrations/supabase/client";
+import type { Json, TablesUpdate } from "@/integrations/supabase/types";
 import { logEvent } from "./courierEventService";
 import type { CourierChannel, WorkflowState, WorkflowTransition } from "@/types/courier";
+
+/** `couriers.metadata` : objet JSON libre. */
+type JsonObject = { [key: string]: Json | undefined };
 
 export interface ReplyRecord {
   id: string;
@@ -109,7 +113,7 @@ export async function createReply(args: CreateReplyArgs): Promise<ReplyRecord> {
       // (`send-courier-reply`) ou au passage dans un état « traité »
       // (`transitionReplyState`) — plus la date de création du brouillon.
       metadata: { body_html: args.bodyHtml, body_text: stripHtml(args.bodyHtml), is_draft: true },
-    } as never)
+    })
     .select("id, parent_courier_id, organization_id, channel, subject, workflow_state_id, metadata, assigned_service")
     .single();
   if (error) throw error;
@@ -126,7 +130,7 @@ export async function createReply(args: CreateReplyArgs): Promise<ReplyRecord> {
       first_name: args.recipient.first_name ?? null,
       last_name: args.recipient.last_name ?? null,
       email: args.recipient.email ?? null,
-    } as never);
+    });
   }
 
   await logEvent(args.organizationId, args.parentCourierId, "reply_created", {
@@ -160,13 +164,13 @@ export async function updateReplyContent(
     .eq("id", replyId)
     .single();
   if (fErr) throw fErr;
-  const currentMeta = ((existing as { metadata: Record<string, unknown> | null } | null)?.metadata) ?? {};
+  const currentMeta = ((existing as { metadata: JsonObject | null } | null)?.metadata) ?? {};
 
-  const update: Record<string, unknown> = {};
+  const update: TablesUpdate<"couriers"> = {};
   if (patch.channel) update.channel = patch.channel;
   if (typeof patch.subject === "string" && patch.subject.trim()) update.subject = patch.subject.trim();
 
-  const nextMeta: Record<string, unknown> = { ...currentMeta };
+  const nextMeta: JsonObject = { ...currentMeta };
   let metaChanged = false;
   if (typeof patch.bodyHtml === "string") {
     nextMeta.body_html = patch.bodyHtml;
@@ -202,7 +206,7 @@ export async function updateReplyContent(
 
   const { error } = await supabase
     .from("couriers")
-    .update(update as never)
+    .update(update)
     .eq("id", replyId)
     .eq("organization_id", organizationId);
   if (error) throw error;
@@ -221,7 +225,7 @@ export async function transitionReplyState(
 ): Promise<void> {
   const { error } = await supabase
     .from("couriers")
-    .update({ workflow_state_id: toStateId } as never)
+    .update({ workflow_state_id: toStateId })
     .eq("id", replyId)
     .eq("organization_id", organizationId);
   if (error) throw error;
@@ -241,7 +245,7 @@ export async function transitionReplyState(
     if (!(replyRow as { sent_at: string | null } | null)?.sent_at) {
       await supabase
         .from("couriers")
-        .update({ sent_at: new Date().toISOString() } as never)
+        .update({ sent_at: new Date().toISOString() })
         .eq("id", replyId);
     }
     await logEvent(organizationId, eventCourierId, "reply_sent", { reply_id: replyId });

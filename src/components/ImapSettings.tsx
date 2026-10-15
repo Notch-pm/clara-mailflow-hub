@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import type { Tables } from "@/integrations/supabase/types";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -79,13 +80,7 @@ function parseAllowedSenders(raw: string): string[] | null {
   return list.length ? list : null;
 }
 
-interface ImapSettingsRow extends ImapForm {
-  id: string;
-  organization_id: string;
-  last_fetch_at: string | null;
-  last_error: string | null;
-  updated_at?: string;
-}
+type ImapSettingsRow = Tables<"imap_settings">;
 
 interface InvokeErrorWithContext extends Error {
   context?: { json?: () => Promise<{ error?: string } | null> };
@@ -106,12 +101,12 @@ export default function ImapSettings({ orgId }: { orgId: string }) {
     queryKey: ["imap-settings", orgId],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("imap_settings" as never)
+        .from("imap_settings")
         .select("*")
         .eq("organization_id", orgId)
         .order("created_at", { ascending: true });
       if (error) throw error;
-      return (data ?? []) as ImapSettingsRow[];
+      return data ?? [];
     },
     enabled: !!orgId,
   });
@@ -120,12 +115,12 @@ export default function ImapSettings({ orgId }: { orgId: string }) {
     queryKey: ["org-general", orgId],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("organizations" as never)
+        .from("organizations")
         .select("multiple_imap")
         .eq("id", orgId)
         .single();
       if (error) throw error;
-      return data as unknown as { multiple_imap: boolean };
+      return data;
     },
     enabled: !!orgId,
   });
@@ -183,13 +178,13 @@ export default function ImapSettings({ orgId }: { orgId: string }) {
       if (editingRow) {
         const { error } = await supabase
           .from("imap_settings")
-          .update({ ...form, updated_at: new Date().toISOString() } as never)
+          .update({ ...form, updated_at: new Date().toISOString() })
           .eq("id", editingRow.id);
         if (error) throw error;
       } else {
         const { error } = await supabase
           .from("imap_settings")
-          .insert({ ...form, organization_id: orgId } as never);
+          .insert({ ...form, organization_id: orgId });
         if (error) throw error;
       }
     },
@@ -203,7 +198,7 @@ export default function ImapSettings({ orgId }: { orgId: string }) {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("imap_settings" as never).delete().eq("id", id);
+      const { error } = await supabase.from("imap_settings").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {

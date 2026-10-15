@@ -11,7 +11,6 @@ import {
   useEdgesState,
   type Connection,
   type Edge,
-  type Node,
   MarkerType,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -20,7 +19,7 @@ import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useOrganization } from "@/contexts/OrganizationContext";
-import { StateNode, type StateNodeData } from "@/components/workflow/StateNode";
+import { StateNode, type StateFlowNode, type StateNodeData } from "@/components/workflow/StateNode";
 import { StateEditPanel } from "@/components/workflow/StateEditPanel";
 import { EdgeEditPanel } from "@/components/workflow/EdgeEditPanel";
 import { WorkflowToolbar } from "@/components/workflow/WorkflowToolbar";
@@ -53,10 +52,18 @@ import {
 
 const nodeTypes = { stateNode: StateNode };
 
+type TransitionEdgeData = { kind: TransitionKind; name: string };
+type TransitionEdge = Edge<TransitionEdgeData>;
+
+/** `workflow_transitions.kind` est un texte libre en base : seules deux valeurs ont un sens. */
+function toTransitionKind(kind: string | null | undefined): TransitionKind {
+  return kind === "next" || kind === "previous" ? kind : null;
+}
+
 const NODE_WIDTH = 180;
 const NODE_HEIGHT = 80;
 
-function layoutNodes(states: WorkflowState[], transitions: WorkflowTransition[]): Node[] {
+function layoutNodes(states: WorkflowState[], transitions: WorkflowTransition[]): StateFlowNode[] {
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
   g.setGraph({ rankdir: "TB", nodesep: 60, ranksep: 80 });
@@ -81,9 +88,9 @@ function layoutNodes(states: WorkflowState[], transitions: WorkflowTransition[])
         category: s.category,
         is_initial: s.is_initial ?? false,
         is_final: s.is_final ?? false,
-        requires_signature: (s as any).requires_signature ?? false,
+        requires_signature: s.requires_signature ?? false,
         requires_visa: s.requires_visa ?? false,
-        is_send: (s as any).is_send ?? false,
+        is_send: s.is_send ?? false,
       } satisfies StateNodeData,
     };
   });
@@ -102,9 +109,9 @@ function edgeLabel(name: string | null | undefined, kind: TransitionKind): strin
   return result.length > 0 ? result : undefined;
 }
 
-function toEdges(transitions: WorkflowTransition[]): Edge[] {
+function toEdges(transitions: WorkflowTransition[]): TransitionEdge[] {
   return transitions.map((t) => {
-    const kind = ((t as any).kind ?? null) as TransitionKind;
+    const kind = toTransitionKind(t.kind);
     const style = EDGE_STYLES[kind ?? "none"];
     return {
       id: t.id,
@@ -147,8 +154,8 @@ export default function WorkflowDetail() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<StateFlowNode>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<TransitionEdge>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -188,9 +195,7 @@ export default function WorkflowDetail() {
       const targetNode = nodes.find((n) => n.id === connection.target);
       if (!sourceNode || !targetNode) return;
 
-      const srcData = sourceNode.data as unknown as StateNodeData;
-      const tgtData = targetNode.data as unknown as StateNodeData;
-      const check = isTransitionAllowed(srcData.category, tgtData.category);
+      const check = isTransitionAllowed(sourceNode.data.category, targetNode.data.category);
       if (!check.allowed) {
         toast({ title: "Transition invalide", description: check.reason, variant: "destructive" });
         return;
@@ -217,7 +222,7 @@ export default function WorkflowDetail() {
   const handleAddState = useCallback(
     async (category: WorkflowCategory) => {
       if (!organizationId || !workflowId) return;
-      const isReply = (workflow as any)?.type === "reply";
+      const isReply = workflow?.type === "reply";
       const name = isReply
         ? (category === "pending" ? "Non répondu"
           : category === "processing" ? "En cours"
@@ -235,7 +240,7 @@ export default function WorkflowDetail() {
       }
       if (!data) return;
 
-      const newNode: Node = {
+      const newNode: StateFlowNode = {
         id: data.id,
         type: "stateNode",
         position: { x: Math.random() * 300 + 50, y: Math.random() * 300 + 50 },
@@ -244,9 +249,9 @@ export default function WorkflowDetail() {
           category: data.category,
           is_initial: data.is_initial ?? false,
           is_final: data.is_final ?? false,
-          requires_signature: (data as any).requires_signature ?? false,
+          requires_signature: data.requires_signature ?? false,
           requires_visa: data.requires_visa ?? false,
-          is_send: (data as any).is_send ?? false,
+          is_send: data.is_send ?? false,
         } satisfies StateNodeData,
       };
       setNodes((nds) => [...nds, newNode]);
@@ -294,7 +299,7 @@ export default function WorkflowDetail() {
       setNodes((nds) =>
         nds.map((n) => {
           if (n.id !== selectedNodeId) return n;
-          const current = n.data as unknown as StateNodeData;
+          const current = n.data;
           return {
             ...n,
             data: {
@@ -331,7 +336,7 @@ export default function WorkflowDetail() {
     async (stateId: string) => {
       // Find the workflow's initial state to reassign affected couriers to it.
       const initialNode = nodes.find(
-        (n) => n.id !== stateId && (n.data as unknown as StateNodeData).is_initial,
+        (n) => n.id !== stateId && n.data.is_initial,
       );
       const fallbackStateId = initialNode?.id ?? null;
       const { error } = await deleteState(stateId, fallbackStateId);
@@ -352,7 +357,7 @@ export default function WorkflowDetail() {
     if (!organizationId || !workflowId) return;
 
     // Validate: at least one initial state
-    const hasInitial = nodes.some((n) => (n.data as unknown as StateNodeData).is_initial);
+    const hasInitial = nodes.some((n) => n.data.is_initial);
     if (!hasInitial) {
       toast({ title: "Validation", description: "Il faut au moins un état initial.", variant: "destructive" });
       return;
@@ -378,9 +383,9 @@ export default function WorkflowDetail() {
         if (e.id.startsWith("temp-")) continue;
         const ex = existingById.get(e.id);
         if (!ex) continue;
-        const newName = (e.data as any)?.name ?? null;
-        const newKind = ((e.data as any)?.kind ?? null) as TransitionKind;
-        const oldKind = ((ex as any).kind ?? null) as TransitionKind;
+        const newName = e.data?.name ?? null;
+        const newKind = e.data?.kind ?? null;
+        const oldKind = toTransitionKind(ex.kind);
         if ((ex.name ?? null) !== (newName || null) || oldKind !== newKind) {
           await updateTransition(e.id, { name: newName || null, kind: newKind });
         }
@@ -389,14 +394,13 @@ export default function WorkflowDetail() {
       // Create new transitions (temp IDs)
       for (const e of edges) {
         if (e.id.startsWith("temp-")) {
-          const data_ = (e.data as any) ?? {};
           const { data, error } = await createTransition(
             organizationId,
             workflowId,
             e.source,
             e.target,
-            data_.name || undefined,
-            (data_.kind ?? null) as TransitionKind,
+            e.data?.name || undefined,
+            e.data?.kind ?? null,
           );
           if (error) throw error;
           // Update edge ID with real ID
@@ -409,19 +413,19 @@ export default function WorkflowDetail() {
 
       toast({ title: "Sauvegardé", description: "Le workflow a été mis à jour." });
       queryClient.invalidateQueries({ queryKey: ["workflow", workflowId] });
-    } catch (err: any) {
-      toast({ title: "Erreur", description: err.message, variant: "destructive" });
+    } catch (err) {
+      toast({ title: "Erreur", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
     } finally {
       setSaving(false);
     }
   }, [organizationId, workflowId, nodes, edges, toast, queryClient, setEdges]);
 
-  const onNodeClick = useCallback((_: any, node: Node) => {
+  const onNodeClick = useCallback((_: React.MouseEvent, node: StateFlowNode) => {
     setSelectedNodeId(node.id);
     setSelectedEdgeId(null);
   }, []);
 
-  const onEdgeClick = useCallback((_: any, edge: Edge) => {
+  const onEdgeClick = useCallback((_: React.MouseEvent, edge: TransitionEdge) => {
     setSelectedEdgeId(edge.id);
     setSelectedNodeId(null);
   }, []);
@@ -432,7 +436,7 @@ export default function WorkflowDetail() {
   }, []);
 
   const onEdgeDoubleClick = useCallback(
-    async (_: any, edge: Edge) => {
+    async (_: React.MouseEvent, edge: TransitionEdge) => {
       if (edge.id.startsWith("temp-")) {
         setEdges((eds) => eds.filter((e) => e.id !== edge.id));
       } else {
@@ -459,8 +463,8 @@ export default function WorkflowDetail() {
         eds.map((e) => {
           if (e.id !== selectedEdgeId) {
             // Enforce single 'next'/'previous' per source state locally
-            if (data.kind && currentSource && e.source === currentSource && (e.data as any)?.kind === data.kind) {
-              const newData = { ...(e.data as any), kind: null };
+            if (data.kind && currentSource && e.source === currentSource && e.data?.kind === data.kind) {
+              const newData: TransitionEdgeData = { name: "", ...e.data, kind: null };
               const style = EDGE_STYLES.none;
               return {
                 ...e,
@@ -472,8 +476,8 @@ export default function WorkflowDetail() {
             }
             return e;
           }
-          const next = { ...(e.data as any), ...data };
-          const kind = (next.kind ?? null) as TransitionKind;
+          const next: TransitionEdgeData = { name: "", kind: null, ...e.data, ...data };
+          const kind = next.kind ?? null;
           const style = EDGE_STYLES[kind ?? "none"];
           return {
             ...e,
@@ -502,7 +506,7 @@ export default function WorkflowDetail() {
     return <div className="flex items-center justify-center h-64 text-muted-foreground">Chargement…</div>;
   }
 
-  const selectedData = selectedNode?.data as unknown as StateNodeData | undefined;
+  const selectedData = selectedNode?.data;
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)]">
@@ -514,7 +518,7 @@ export default function WorkflowDetail() {
       </div>
 
       <div className="flex flex-1 overflow-hidden">
-        <WorkflowToolbar onAddState={handleAddState} onSave={handleSave} saving={saving} workflowType={(workflow as any)?.type ?? null} />
+        <WorkflowToolbar onAddState={handleAddState} onSave={handleSave} saving={saving} workflowType={workflow?.type ?? null} />
 
         <div className="flex-1">
           <ReactFlow
@@ -548,7 +552,7 @@ export default function WorkflowDetail() {
             requiresSignature={selectedData.requires_signature ?? false}
             requiresVisa={selectedData.requires_visa ?? false}
             isSend={selectedData.is_send ?? false}
-            workflowType={(workflow as any)?.type ?? null}
+            workflowType={workflow?.type ?? null}
             onUpdate={handleUpdateNode}
             onDelete={handleDeleteNode}
             onClose={() => setSelectedNodeId(null)}
@@ -558,10 +562,10 @@ export default function WorkflowDetail() {
         {selectedEdge && selectedEdgeId && (
           <EdgeEditPanel
             edgeId={selectedEdgeId}
-            name={((selectedEdge.data as any)?.name as string) ?? ""}
-            kind={((selectedEdge.data as any)?.kind ?? null) as TransitionKind}
-            sourceLabel={(nodes.find((n) => n.id === selectedEdge.source)?.data as unknown as StateNodeData | undefined)?.label}
-            targetLabel={(nodes.find((n) => n.id === selectedEdge.target)?.data as unknown as StateNodeData | undefined)?.label}
+            name={selectedEdge.data?.name ?? ""}
+            kind={selectedEdge.data?.kind ?? null}
+            sourceLabel={nodes.find((n) => n.id === selectedEdge.source)?.data.label}
+            targetLabel={nodes.find((n) => n.id === selectedEdge.target)?.data.label}
             onUpdate={handleUpdateEdge}
             onDelete={handleDeleteEdge}
             onClose={() => setSelectedEdgeId(null)}

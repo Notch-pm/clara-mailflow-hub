@@ -60,7 +60,7 @@ export default function SocleIntegrationSettings({ orgId }: { orgId: string }) {
     mutationFn: async (socleOrgId: string | null) => {
       const { error } = await supabase
         .from("organizations")
-        .update({ socle_org_id: socleOrgId } as never)
+        .update({ socle_org_id: socleOrgId })
         .eq("id", orgId);
       if (error) throw error;
     },

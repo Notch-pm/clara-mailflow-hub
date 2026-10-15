@@ -113,7 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(profileData);
 
     if (membershipData) {
-      const org = membershipData.organizations as any;
+      const org = membershipData.organizations;
       const mem: OrgMembership = {
         organization_id: membershipData.organization_id,
         role: membershipData.role,

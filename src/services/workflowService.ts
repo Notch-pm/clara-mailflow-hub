@@ -121,13 +121,13 @@ export async function deleteState(stateId: string, reassignToStateId?: string | 
   if (reassignToStateId) {
     await supabase
       .from("couriers")
-      .update({ workflow_state_id: reassignToStateId } as never)
+      .update({ workflow_state_id: reassignToStateId })
       .eq("workflow_state_id", stateId);
   } else {
     // Detach to avoid FK violations if no fallback was provided.
     await supabase
       .from("couriers")
-      .update({ workflow_state_id: null } as never)
+      .update({ workflow_state_id: null })
       .eq("workflow_state_id", stateId);
   }
   await supabase.from("workflow_transitions").delete().or(`from_state_id.eq.${stateId},to_state_id.eq.${stateId}`);
@@ -148,7 +148,7 @@ export async function createTransition(
   if (kind) {
     await supabase
       .from("workflow_transitions")
-      .update({ kind: null } as never)
+      .update({ kind: null })
       .eq("from_state_id", fromStateId)
       .eq("kind", kind);
   }
@@ -161,7 +161,7 @@ export async function createTransition(
       to_state_id: toStateId,
       name: name ?? null,
       kind: kind ?? null,
-    } as never)
+    })
     .select()
     .single();
 }
@@ -180,7 +180,7 @@ export async function updateTransition(
     if (current?.from_state_id) {
       await supabase
         .from("workflow_transitions")
-        .update({ kind: null } as never)
+        .update({ kind: null })
         .eq("from_state_id", current.from_state_id)
         .eq("kind", data.kind)
         .neq("id", transitionId);
@@ -188,7 +188,7 @@ export async function updateTransition(
   }
   return supabase
     .from("workflow_transitions")
-    .update(data as never)
+    .update(data)
     .eq("id", transitionId)
     .select()
     .single();
@@ -220,7 +220,7 @@ export async function clearInitialFlag(workflowId: string, exceptStateId: string
 export async function clearSignatureFlag(workflowId: string, exceptStateId: string) {
   return supabase
     .from("workflow_states")
-    .update({ requires_signature: false } as never)
+    .update({ requires_signature: false })
     .eq("workflow_id", workflowId)
     .neq("id", exceptStateId);
 }
@@ -229,7 +229,7 @@ export async function clearSignatureFlag(workflowId: string, exceptStateId: stri
 export async function clearSendFlag(workflowId: string, exceptStateId: string) {
   return supabase
     .from("workflow_states")
-    .update({ is_send: false } as never)
+    .update({ is_send: false })
     .eq("workflow_id", workflowId)
     .neq("id", exceptStateId);
 }

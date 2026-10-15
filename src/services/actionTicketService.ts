@@ -9,6 +9,7 @@
 //    la marque terminée sans connexion (`action-task-public`, page /tache/:token).
 import { edgeError } from "@/lib/edge-error";
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
 
 export async function createArpegeTicket(payload: {
   organizationId: string;
@@ -114,7 +115,7 @@ export async function listTicketsForCourier(
   courierId: string,
 ): Promise<ActionTicketWithProcedure[]> {
   const { data, error } = await supabase
-    .from("action_tickets" as any)
+    .from("action_tickets")
     .select(
       "*, procedure:procedures!action_tickets_procedure_id_fkey(id, name, color, icon), assignee:users!action_tickets_assignee_id_fkey(id, first_name, last_name, email, avatar_url), completer:users!action_tickets_completed_by_fkey(id, first_name, last_name, email, avatar_url)",
     )
@@ -141,15 +142,16 @@ export async function createTicket(payload: {
     data: { user },
   } = await supabase.auth.getUser();
   const { data, error } = await supabase
-    .from("action_tickets" as any)
+    .from("action_tickets")
     .insert({
       organization_id: payload.organizationId,
       courier_id: payload.courierId,
       procedure_id: payload.procedureId,
-      socle_data: payload.socleData ?? null,
+      // Valeurs de formulaire (socle-form.ts) : objet JSON sérialisable.
+      socle_data: (payload.socleData ?? null) as Json,
       socle_organization_id: payload.socleOrganizationId ?? null,
       created_by: user?.id ?? null,
-    } as any)
+    })
     .select("*")
     .single();
   if (error) throw error;
@@ -238,6 +240,6 @@ export async function sendTaskMail(
 }
 
 export async function deleteTicket(id: string): Promise<void> {
-  const { error } = await supabase.from("action_tickets" as any).delete().eq("id", id);
+  const { error } = await supabase.from("action_tickets").delete().eq("id", id);
   if (error) throw error;
 }

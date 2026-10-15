@@ -34,7 +34,8 @@ import { listNotes, type CourierNote } from "@/services/courierNoteService";
 import { listRepliesForCourier } from "@/services/courierReplyService";
 import { listRelationsForCourier } from "@/services/courierRelationService";
 import { listTicketsForCourier } from "@/services/actionTicketService";
-import type { CourierChannel, CourierParticipant, WorkflowTransition, WorkflowState } from "@/types/courier";
+import type { CourierChannel, CourierParticipant, CourierWithRelations, WorkflowTransition, WorkflowState } from "@/types/courier";
+import { courierMetadata } from "@/lib/courier-workspace";
 
 /** Champs d'un participant modifiables depuis les écrans courrier. */
 type ParticipantFields = Parameters<typeof updateParticipant>[1];
@@ -80,18 +81,7 @@ export function inboundChannelPhrase(channel: CourierChannel): string {
 }
 
 /** Le courrier tel que le manipulent les écrans : la ligne DB + ses relations chargées. */
-export interface WorkspaceCourier {
-  id: string;
-  subject: string | null;
-  channel: CourierChannel;
-  received_at: string | null;
-  metadata: any;
-  workflow_state_id: string | null;
-  organization_id: string;
-  assigned_service: string | null;
-  courier_participants?: CourierParticipant[];
-  [key: string]: any;
-}
+export type WorkspaceCourier = CourierWithRelations;
 
 interface Options {
   courier: WorkspaceCourier | null;
@@ -222,10 +212,10 @@ export function useCourierWorkspace({
   // Local copy of tags so the UI reflects mutations immediately
   // (the parent's `courier` prop is a snapshot and doesn't refetch on tag change).
   const [selectedTags, setSelectedTags] = useState<string[]>(
-    (courier?.metadata?.tags as string[] | undefined) ?? [],
+    (courierMetadata(courier?.metadata).tags as string[] | undefined) ?? [],
   );
   useEffect(() => {
-    setSelectedTags((courier?.metadata?.tags as string[] | undefined) ?? []);
+    setSelectedTags((courierMetadata(courier?.metadata).tags as string[] | undefined) ?? []);
   }, [courier?.id, courier?.metadata]);
 
   // Available tags for the org
@@ -273,7 +263,7 @@ export function useCourierWorkspace({
   const userServiceFilter = useUserServiceFilter();
 
   // Si le courrier vient d'une config IMAP précise, restreindre les organisations proposées.
-  const imapSettingsId = (courier?.metadata?.imap_settings_id as string | null) ?? null;
+  const imapSettingsId = (courierMetadata(courier?.metadata).imap_settings_id as string | null) ?? null;
   const availableServices = useMemo(() => {
     if (!services) return [];
     let list = assignableOrgs(services);
@@ -469,7 +459,7 @@ export function useCourierWorkspace({
 
       // Look up current and target state metadata for the event payload.
       const fromState = transitions?.find(
-        (t) => (t.to_state as any)?.id === toStateId,
+        (t) => t.to_state?.id === toStateId,
       );
       const { data: toStateRow } = await supabase
         .from("workflow_states")
@@ -566,7 +556,7 @@ export function useCourierWorkspace({
   const tagMutation = useMutation({
     mutationFn: async (updatedTags: string[]) => {
       if (!courier) return;
-      const currentMeta = courier.metadata ?? {};
+      const currentMeta = courierMetadata(courier.metadata);
       const { error } = await updateCourier(organizationId, courier.id, {
         metadata: { ...currentMeta, tags: updatedTags },
       });

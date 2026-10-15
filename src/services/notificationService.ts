@@ -42,7 +42,7 @@ export async function getNotifications(userId: string): Promise<Notification[]> 
 export async function markNotificationRead(id: string): Promise<void> {
   const { error } = await supabase
     .from("notifications")
-    .update({ read: true } as never)
+    .update({ read: true })
     .eq("id", id);
   if (error) throw error;
 }
@@ -50,7 +50,7 @@ export async function markNotificationRead(id: string): Promise<void> {
 export async function markAllNotificationsRead(userId: string): Promise<void> {
   const { error } = await supabase
     .from("notifications")
-    .update({ read: true } as never)
+    .update({ read: true })
     .eq("user_id", userId)
     .eq("read", false);
   if (error) throw error;

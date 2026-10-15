@@ -57,7 +57,7 @@ export async function createNote(
       content: content.trim(),
       created_by: user?.id ?? null,
       mentioned_user_ids: uniqueMentions,
-    } as never)
+    })
     .select()
     .single();
   if (error) throw error;
@@ -83,7 +83,7 @@ export async function updateNote(
 
   const { data, error } = await supabase
     .from("courier_notes")
-    .update({ content: content.trim(), mentioned_user_ids: uniqueMentions } as never)
+    .update({ content: content.trim(), mentioned_user_ids: uniqueMentions })
     .eq("id", id)
     .select()
     .single();

@@ -4,6 +4,7 @@ import { useOrganization } from "@/contexts/OrganizationContext";
 import { getCourierAccess, getCourierById, type CourierAccess } from "@/services/courierService";
 import { ConfidentialAccessDenied } from "@/components/courier/ConfidentialAccessDenied";
 import CourierWorkspacePage from "@/components/courier/CourierWorkspacePage";
+import type { WorkspaceCourier } from "@/hooks/useCourierWorkspace";
 
 export default function CourierDetail() {
   const { id } = useParams<{ id: string }>();
@@ -16,7 +17,7 @@ export default function CourierDetail() {
     // tient `["courier", id, organizationId]` avec une autre forme. Le préfixe
     // `["courier", id]` reste, pour les invalidations des onglets.
     queryKey: ["courier", id, organizationId, "page"],
-    queryFn: async (): Promise<{ courier: unknown; access: CourierAccess }> => {
+    queryFn: async (): Promise<{ courier: WorkspaceCourier | null; access: CourierAccess }> => {
       if (!organizationId || !id) return { courier: null, access: "missing" };
       const { data, error } = await getCourierById(organizationId, id);
       if (data) return { courier: data, access: "ok" };
@@ -43,7 +44,7 @@ export default function CourierDetail() {
 
   return (
     <CourierWorkspacePage
-      courier={courier as any}
+      courier={courier}
       organizationId={organizationId}
       onClose={() => {
         // navigate(-1) fails (blank page) when there is no prior history entry,

@@ -38,7 +38,7 @@ export default function MonProfil() {
       .select("avatar_url")
       .eq("id", user.id)
       .maybeSingle()
-      .then(({ data }) => setAvatarUrl((data as any)?.avatar_url ?? null));
+      .then(({ data }) => setAvatarUrl(data?.avatar_url ?? null));
   }, [user]);
 
   const form = useForm<ProfileForm>({

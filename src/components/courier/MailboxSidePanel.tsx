@@ -76,6 +76,7 @@ import {
 import type { CourierChannel } from "@/types/courier";
 import { advanceBlockedReason } from "./advance-blocked-reason";
 import AdvanceBlockedButton from "./AdvanceBlockedButton";
+import { courierMetadata } from "@/lib/courier-workspace";
 
 interface Props {
   courier: WorkspaceCourier | null;
@@ -233,7 +234,7 @@ export default function MailboxSidePanel({
   }
 
   const tone = categoryTone(currentStateInfo?.category);
-  const nextTransition = transitions?.find((t) => (t as any).kind === "next");
+  const nextTransition = transitions?.find((t) => t.kind === "next");
   const otherTransitions = (transitions ?? []).filter((t) => t.id !== nextTransition?.id);
   const receivedAt = courier.received_at
     ? new Date(courier.received_at).toLocaleDateString("fr-FR")
@@ -742,7 +743,7 @@ export default function MailboxSidePanel({
           ) : (
             <div className="h-[320px]">
               <DocumentViewer
-                documents={displayDocuments as any}
+                documents={displayDocuments}
                 currentId={selectedDocId}
                 onChange={setSelectedDocId}
                 organizationId={organizationId}
@@ -759,7 +760,7 @@ export default function MailboxSidePanel({
             onSelectDoc={setSelectedDocId}
             readOnly={effectiveReadOnly}
             ignoredAttachments={
-              (courier.metadata?.ignored_attachments as { name: string; size: number }[] | undefined) ??
+              (courierMetadata(courier.metadata).ignored_attachments as unknown as { name: string; size: number }[] | undefined) ??
               []
             }
           />

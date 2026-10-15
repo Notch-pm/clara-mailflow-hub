@@ -403,7 +403,7 @@ export default function BulkImport() {
             tags: draft.tags,
             socle_organization_id: service?.id ?? null,
             ...(draft.bodyText.trim() ? { body_text: draft.bodyText.trim() } : {}),
-          } as any,
+          },
           created_by: user?.id ?? null,
         });
 

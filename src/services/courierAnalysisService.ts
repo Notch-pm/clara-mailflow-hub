@@ -1,6 +1,10 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { SocleContact } from "@/services/socleContactService";
 import { edgeError } from "@/lib/edge-error";
+import type { Json, TablesInsert } from "@/integrations/supabase/types";
+
+/** Ligne `courier_analyses` prête à écrire, hors `courier_id` / `organization_id`. */
+export type AnalysisRowDraft = Omit<TablesInsert<"courier_analyses">, "courier_id" | "organization_id">;
 import type {
   SenderCivility,
   SenderMatch,
@@ -112,7 +116,7 @@ export interface ExtractCourierInfoResult {
    * `organization_id`), forme commune avec `analyze-courier`. Absente d'une
    * edge function antérieure au 2026-10-14.
    */
-  analysis?: Record<string, unknown> | null;
+  analysis?: AnalysisRowDraft | null;
   /** Contact Socle sélectionné d'office (= `sender_match.contact` quand `status === "matched"`). */
   matched_contact: SocleContact | null;
   /**
@@ -140,7 +144,7 @@ function normalizeSuggestedActions(raw: unknown): SuggestedAction[] {
 /** Read cached extracts for the courier's documents. */
 export async function getExtracts(courierId: string): Promise<CourierDocumentExtract[]> {
   const { data, error } = await supabase
-    .from("courier_document_extracts" as never)
+    .from("courier_document_extracts")
     .select("*")
     .eq("courier_id", courierId)
     .order("created_at", { ascending: true });
@@ -151,7 +155,7 @@ export async function getExtracts(courierId: string): Promise<CourierDocumentExt
 /** Read cached analysis for a courier (or null). */
 export async function getAnalysis(courierId: string): Promise<CourierAnalysis | null> {
   const { data, error } = await supabase
-    .from("courier_analyses" as never)
+    .from("courier_analyses")
     .select("*")
     .eq("courier_id", courierId)
     .maybeSingle();
@@ -215,21 +219,22 @@ export async function recordPreCreationAnalysis(
   // rend (ni résumé ni actions, que « Analyser » sur la fiche complétera).
   const row = result.analysis ?? legacyAnalysisRow(result);
   const { error } = await supabase
-    .from("courier_analyses" as never)
-    .upsert({ ...row, courier_id: courierId, organization_id: organizationId } as never, {
+    .from("courier_analyses")
+    .upsert({ ...row, courier_id: courierId, organization_id: organizationId }, {
       onConflict: "courier_id",
     });
   if (error) throw error;
 }
 
-function legacyAnalysisRow(result: ExtractCourierInfoResult): Record<string, unknown> {
+function legacyAnalysisRow(result: ExtractCourierInfoResult): AnalysisRowDraft {
   const s = result.sender;
   const hasSender = !!(s?.first_name || s?.last_name || s?.email || s?.phone);
   const raw = result.suggested_service_confidence;
   return {
     summary: result.summary ?? null,
     intents: result.suggested_tag_names ?? [],
-    suggested_actions: result.suggested_actions ?? [],
+    // Interfaces sans signature d'index : TS ne les voit pas comme du `Json`.
+    suggested_actions: (result.suggested_actions ?? []) as unknown as Json,
     suggested_subject: result.suggested_subject ?? null,
     suggested_service_name: result.suggested_service_name ?? null,
     suggested_socle_organization_id: result.suggested_socle_organization_id ?? null,
@@ -238,7 +243,7 @@ function legacyAnalysisRow(result: ExtractCourierInfoResult): Record<string, unk
     suggested_service_confidence:
       typeof raw === "number" ? Math.min(100, Math.max(0, Math.round(raw))) : null,
     suggested_recipient_name: result.recipient_name ?? null,
-    suggested_sender: hasSender ? s : null,
+    suggested_sender: hasSender ? (s as unknown as Json) : null,
     model: "socle:ai-api",
   };
 }

@@ -17,6 +17,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { getOrgHtmlTemplate, saveOrgHtmlTemplate, removeOrgHtmlTemplate } from "@/services/templateService";
 import TemplateEditor from "@/components/template/TemplateEditor";
+import type { Json } from "@/integrations/supabase/types";
 
 interface Props {
   orgId: string;
@@ -40,7 +41,7 @@ export default function ModeleSettings({ orgId }: Props) {
   };
 
   const save = useMutation({
-    mutationFn: ({ html, design }: { html: string; design: object }) =>
+    mutationFn: ({ html, design }: { html: string; design: Json }) =>
       saveOrgHtmlTemplate(orgId, html, design),
     onSuccess: () => {
       invalidate();

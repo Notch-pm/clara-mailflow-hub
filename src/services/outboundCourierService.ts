@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
 import { logEvent } from "./courierEventService";
 import { createRelation, deleteRelation } from "./courierRelationService";
 import { addressLines, type OutboundChannel } from "@/lib/outbound-channel";
@@ -33,7 +34,7 @@ export async function markOutboundPosted(args: {
     .from("couriers")
     .update({
       metadata: { ...meta, posted_at: args.postedOn, posted_by: args.postedBy, posted_document_id: args.documentId },
-    } as never)
+    })
     .eq("id", args.outboundId)
     .eq("organization_id", args.organizationId);
   if (error) throw error;
@@ -226,10 +227,10 @@ export async function setOutboundRecipient(
   if (fErr) throw fErr;
   const current = (existing ?? [])[0] as { id: string } | undefined;
   const { error } = current
-    ? await supabase.from("courier_participants").update(row as never).eq("id", current.id)
+    ? await supabase.from("courier_participants").update(row).eq("id", current.id)
     : await supabase
         .from("courier_participants")
-        .insert({ ...row, organization_id: organizationId, courier_id: outboundId, role: "recipient" } as never);
+        .insert({ ...row, organization_id: organizationId, courier_id: outboundId, role: "recipient" });
   if (error) throw error;
   await logEvent(organizationId, outboundId, "outbound_recipient_changed", {
     reply_id: outboundId,
@@ -249,7 +250,8 @@ export async function changeOutboundOrganization(args: {
   initialStateId: string;
   metadata: Record<string, unknown> | null;
 }): Promise<void> {
-  const nextMeta = { ...(args.metadata ?? {}) };
+  // `metadata` a été lu en base (colonne JSON) : ses valeurs sont du JSON.
+  const nextMeta = { ...(args.metadata ?? {}) } as { [key: string]: Json | undefined };
   delete nextMeta.signatory_id;
   delete nextMeta.visa_viseurs;
   const { error } = await supabase
@@ -259,7 +261,7 @@ export async function changeOutboundOrganization(args: {
       assigned_service: args.socleOrganization.name,
       workflow_state_id: args.initialStateId,
       metadata: nextMeta,
-    } as never)
+    })
     .eq("id", args.outboundId)
     .eq("organization_id", args.organizationId);
   if (error) throw error;
@@ -286,7 +288,7 @@ export async function assignShellOrganization(args: {
       socle_organization_id: args.socleOrganization.id,
       assigned_service: args.socleOrganization.name,
       workflow_state_id: args.initialStateId,
-    } as never)
+    })
     .eq("id", args.outboundId)
     .eq("organization_id", args.organizationId);
   if (error) throw error;
