@@ -87,8 +87,25 @@ describe.skipIf(!svc)("purge_expired_data — logique temporelle par rétention"
     const { data, error } = await svc!.rpc("purge_expired_data");
     expect(error).toBeNull();
 
-    const report = data as { deleted_couriers?: number } | null;
+    const report = data as {
+      ran_at: string;
+      deleted_couriers?: number;
+      by_organization?: Record<string, number>;
+    } | null;
     expect(report?.deleted_couriers ?? 0).toBeGreaterThanOrEqual(1);
+    expect(report?.by_organization?.[fx.alpha.orgId] ?? 0).toBeGreaterThanOrEqual(1);
+    expect(report?.by_organization?.[fx.beta.orgId]).toBeUndefined();
+
+    // Le compte rendu est journalisé dans purge_runs (dette P1.7).
+    const { data: run, error: runError } = await svc!
+      .from("purge_runs")
+      .select("status, report, error")
+      .eq("started_at", report!.ran_at)
+      .single();
+    expect(runError).toBeNull();
+    expect(run!.status).toBe("succeeded");
+    expect(run!.error).toBeNull();
+    expect(run!.report).toEqual(report);
 
     // Cutoff 30 j : inactif depuis 40 j → supprimé
     expect(await exists(svc!, vieuxAlpha)).toBe(false);
