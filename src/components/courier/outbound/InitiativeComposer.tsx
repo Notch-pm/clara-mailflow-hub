@@ -213,6 +213,7 @@ export function InitiativeComposer({ organizationId, courier, readOnly, onStateC
             fallbackLabel={recipient?.name ?? undefined}
             triggerClassName="h-9"
             withAddress
+            createWith="full"
           />
           {recipient?.address && <p className="text-xs text-muted-foreground">{recipient.address}</p>}
         </div>

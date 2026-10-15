@@ -168,6 +168,7 @@ export function NewOutboundDialog({ open, onOpenChange, organizationId, services
               value={recipient}
               onChange={pickRecipient}
               withAddress
+              createWith="full"
             />
             {traitementRefused && (
               <p className="flex items-start gap-1.5 text-xs text-warning">

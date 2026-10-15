@@ -356,8 +356,10 @@ Pas de nouvelle edge function.
   expéditeur = organisation émettrice, date d'envoi en lecture seule, onglet Liens, coquilles en
   lecture seule avec « Affecter une organisation ») ; `ContactFormDialog` extrait de
   `pages/Contacts.tsx` (fait le 2026-10-15 : `components/contacts/ContactFormDialog.tsx`) et ouvert
-  par `ContactPicker` (`createWith="full"`) — ⚠️ **ce second point n'a jamais été branché** : au
-  2026-10-15, `ContactPicker` n'ouvre pas le formulaire complet ; `printReply.ts`
+  par `ContactPicker` (`createWith="full"`) — **branché le 2026-10-15** (resté en souffrance
+  depuis le lot 0) : sur le destinataire de `NewOutboundDialog` et d'`InitiativeComposer`, « Créer
+  un nouveau contact » ouvre la fiche complète (civilité, adresse, rôles, doublons) et sélectionne
+  la fiche créée ; ignoré quand la recherche est restreinte (`types`, `roles`, `requireEmail`) ; `printReply.ts`
   (`renderLetterHtml`) ; libellés d'historique.
 - Pas de nouvelle route : `/courrier/:id`.
 

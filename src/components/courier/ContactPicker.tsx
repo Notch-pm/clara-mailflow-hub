@@ -25,6 +25,7 @@ import {
 } from "@/lib/contact-categories";
 import { ContactCategoryBadges } from "@/components/contacts/ContactCategoryBadge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import ContactFormDialog from "@/components/contacts/ContactFormDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -76,6 +77,14 @@ interface Props {
   requireEmail?: boolean;
   /** Texte du déclencheur quand rien n'est choisi (défaut : « Sélectionner un contact… »). */
   placeholder?: string;
+  /**
+   * `full` : « Créer un nouveau contact » ouvre la fiche COMPLÈTE du
+   * référentiel (civilité, adresse, coordonnées, rôles, doublons) au lieu de la
+   * création rapide — pour le destinataire d'un courrier sortant, dont la lettre
+   * a besoin de tout. Ignoré quand la recherche est restreinte (`types`,
+   * `roles`, `requireEmail`) : la création rapide porte ces contraintes.
+   */
+  createWith?: "quick" | "full";
 }
 
 /**
@@ -96,6 +105,7 @@ export default function ContactPicker({
   roles,
   requireEmail = false,
   placeholder = "Sélectionner un contact…",
+  createWith = "quick",
 }: Props) {
   const categoryMode = !!roles && roles.length > 0;
   // Une catégorie (Interne, Élu) ne se porte que par une personne.
@@ -105,6 +115,8 @@ export default function ContactPicker({
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, 300);
   const [createOpen, setCreateOpen] = useState(false);
+  const [fullFormOpen, setFullFormOpen] = useState(false);
+  const fullForm = createWith === "full" && !typesProp && !categoryMode && !requireEmail;
 
   const defaultType: SocleContactType = types?.[0] ?? "personne";
   const typeOptions = (Object.keys(SOCLE_CONTACT_TYPE_LABELS) as SocleContactType[]).filter(
@@ -349,7 +361,11 @@ export default function ContactPicker({
               <CommandGroup>
                 <CommandItem
                   value="__create"
-                  onSelect={() => { setOpen(false); setCreateOpen(true); }}
+                  onSelect={() => {
+                    setOpen(false);
+                    if (fullForm) setFullFormOpen(true);
+                    else setCreateOpen(true);
+                  }}
                 >
                   <Plus className="h-4 w-4 mr-2" />
                   Créer un nouveau contact
@@ -360,6 +376,22 @@ export default function ContactPicker({
         </PopoverContent>
       </Popover>
 
+      {fullForm && (
+        <ContactFormDialog
+          organizationId={organizationId}
+          contact={null}
+          open={fullFormOpen}
+          onOpenChange={setFullFormOpen}
+          onSaved={(saved) => {
+            qc.invalidateQueries({ queryKey: ["socle-contacts"] });
+            onChange(saved);
+          }}
+          onSelectExisting={(existing) => {
+            setFullFormOpen(false);
+            void selectExisting(existing);
+          }}
+        />
+      )}
       <Dialog open={createOpen} onOpenChange={(o) => { setCreateOpen(o); if (!o) resetCreate(); }}>
         <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Nouveau contact (référentiel)</DialogTitle></DialogHeader>
