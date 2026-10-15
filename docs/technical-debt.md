@@ -26,7 +26,7 @@
    - **Auto-suggestion du découpage (reste à faire, ROI incertain).** `docs/product-user-flows.md:90` : « à terme, proposer un découpage ». Aujourd'hui 100 % manuel. Piste : détection de page blanche **côté navigateur** (analyse canvas via `pdfjs`) pour pré-remplir les groupes que l'agent valide — mais **heuristique fragile** (recto-verso = faux séparateurs) ; **impossible côté Deno** (`unpdf` ne rend que du texte). La découpe manuelle couvrant déjà le besoin, non prioritaire.
    - **Capture mobile.** Ne pas poser `capture="environment"` sur l'input `multiple` existant : cela force l'appareil photo et supprime le sélecteur de fichiers sur plusieurs navigateurs. Prévoir un second bouton dédié. Le vrai gain est la **recompression client** (canvas, 2000 px, JPEG q0.8 : 4-8 Mo → ~500 Ko), qui réduit upload, stockage **et coût OCR**.
    - **Appliquer l'expéditeur suggéré.** Seul le titre est applicable en un clic (`ContentIntentsTab`) ; l'expéditeur et le service restent indicatifs, faute d'un rapprochement conçu avec le référentiel du Socle.
-6. **Bump Vite** — 3 alertes Dependabot (au 2026-07-13) : `vite` high (bypass `server.fs.deny` via chemins alternatifs Windows) + `vite` medium (variante path traversal) + `launch-editor` medium (fuite hash NTLMv2 via UNC, Windows). N'affecte que le dev server (`bun run dev`), pas le build prod — mais le dev se fait sous Windows. Petit item : bump + `bun run test`/`build`. Alertes : <https://github.com/Notch-pm/clara-mailflow-hub/security/dependabot>.
+6. ~~**Bump Vite**~~ ✅ (constaté le 2026-10-15 : Vite 6.4.3, aucune alerte Dependabot ouverte) — 3 alertes Dependabot (au 2026-07-13) : `vite` high (bypass `server.fs.deny` via chemins alternatifs Windows) + `vite` medium (variante path traversal) + `launch-editor` medium (fuite hash NTLMv2 via UNC, Windows). N'affecte que le dev server (`bun run dev`), pas le build prod — mais le dev se fait sous Windows. Petit item : bump + `bun run test`/`build`. Alertes : <https://github.com/Notch-pm/clara-mailflow-hub/security/dependabot>.
 7. **Purge RGPD — nettoyages restants** (audit du 2026-07-22 de `purge_expired_data()`, cron `purge-expired-data-nightly`).
    - ✅ **FK cascade `courier_analyses` / `courier_document_extracts`** (résumé/intentions IA + **texte OCR des pièces jointes**) rattachées à `couriers` en `ON DELETE CASCADE` — `20260722205016_purge_rgpd_fk_cascade.sql`. Ces deux tables n'avaient AUCUNE FK vers `couriers` : leurs données personnelles survivaient orphelines à toute suppression de courrier. Test : `src/test-integration/purge-rgpd-cascade.itest.ts`.
    - ✅ **Blobs Storage non purgés** — soldé le 2026-09-23 : outbox `storage_deletions` alimentée par un trigger AFTER DELETE sur `courier_documents` (tout chemin : écran, cascade, purge), drainée chaque nuit à 04:30 par l'edge `storage-maintenance` via l'API Storage (`20260923160000` → `20260923160200`). Les 18 orphelins accumulés depuis avril (6,4 Mo, dont des pièces d'identité) ont été enfilés.
@@ -96,9 +96,11 @@
 
 ## Ordre recommandé
 
-1. Actions utilisateur P0 (2 clics + 1 secret GitHub).
-2. ~~P1.2 + P1.3 (consolidation RLS)~~ ✅ 2026-07-12.
-3. P2 code mort (une PR knip).
-4. P2.1 factorisation des listes (une PR, validée par E2E).
-5. P1.1 chiffrement IMAP/SMTP (chantier dédié).
-6. P2.2 découpage des composants géants (PRs successives).
+Soldés : RLS (2026-07-12), code mort, listes, index FK et RLS de `couriers` (2026-10-14), composants géants, casts et `any` du frontend, chiffrement IMAP/SMTP (2026-10-15). Ordre proposé pour la suite (2026-10-15) :
+
+1. P0 — leaked password protection (action utilisateur, Dashboard).
+2. P1.11 — re-mesurer pg_net vers le 2026-10-21.
+3. P1.7 — journal des exécutions de la purge RGPD (`purge_runs`).
+4. P1.8 — `organization_users.is_active NOT NULL DEFAULT true` (ferme la divergence RLS / edge).
+5. P2 legacy Socle — suppression des tables `services*`, `portal_forms.service_id`, `organizations.reply_template_data`.
+6. Le reste au fil de l'eau (`any` des edge functions, `couriers.metadata`, Arpège L3/L5/L7, Iris, numérisation).
