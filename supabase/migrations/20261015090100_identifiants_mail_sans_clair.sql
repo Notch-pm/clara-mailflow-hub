@@ -2,7 +2,7 @@
 -- Mots de passe IMAP / SMTP chiffrés dans Supabase Vault — étape C.
 --
 -- PRÉREQUIS (sinon l'envoi et la relève tombent) :
---   - 20261015090000_identifiants_mail_vault appliquée ;
+--   - 20261015070257_identifiants_mail_vault appliquée ;
 --   - edge functions redéployées (lecture par get_smtp_password /
 --     get_imap_password : action-task-mail, auth-email-hook, invite-user,
 --     send-assignment-notification, send-courier-reply,

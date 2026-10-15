@@ -3,7 +3,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 // Non-régression : les mots de passe IMAP / SMTP vivent dans Vault
-// (migration 20261015090000). Toute lecture passe par
+// (migration 20261015070257). Toute lecture passe par
 // `_shared/mailCredentials.ts` ; personne ne relit le serveur d'envoi à la main
 // (un `select("*")` de `smtp_settings` n'apporterait plus de mot de passe et
 // ferait échouer l'envoi en silence).

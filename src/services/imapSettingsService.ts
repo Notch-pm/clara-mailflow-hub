@@ -3,7 +3,7 @@ import type { Tables, TablesInsert } from "@/integrations/supabase/types";
 
 /**
  * Boîtes de réception IMAP d'une organisation. Le mot de passe est un secret
- * Vault (migration 20261015090000) : l'écran peut le REMPLACER, jamais le relire.
+ * Vault (migration 20261015070257) : l'écran peut le REMPLACER, jamais le relire.
  */
 export type ImapSettingsRow = Omit<Tables<"imap_settings">, "password">;
 

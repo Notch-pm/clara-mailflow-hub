@@ -1,6 +1,6 @@
 // Identifiants de messagerie (SMTP, IMAP) : les mots de passe vivent dans
 // Supabase Vault, jamais en clair dans une table (migration
-// 20261015090000_identifiants_mail_vault). Seul le service les relit, par deux
+// 20261015070257_identifiants_mail_vault). Seul le service les relit, par deux
 // RPC réservées à `service_role` — le client passé ici DOIT être un client
 // service_role.
 //
