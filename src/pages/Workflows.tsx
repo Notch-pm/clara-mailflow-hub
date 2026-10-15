@@ -74,7 +74,7 @@ export default function Workflows() {
       setNewType("");
       toast({ title: "Workflow créé" });
     },
-    onError: (err: any) => toast({ title: "Erreur", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Erreur", description: err.message, variant: "destructive" }),
   });
 
   const deleteMutation = useMutation({
@@ -87,7 +87,7 @@ export default function Workflows() {
       setDeleteId(null);
       toast({ title: "Workflow supprimé" });
     },
-    onError: (err: any) => toast({ title: "Erreur", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Erreur", description: err.message, variant: "destructive" }),
   });
 
   const renameMutation = useMutation({
@@ -113,7 +113,7 @@ export default function Workflows() {
       queryClient.invalidateQueries({ queryKey: ["workflows"] });
       toast({ title: "Type mis à jour" });
     },
-    onError: (err: any) => toast({ title: "Erreur", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Erreur", description: err.message, variant: "destructive" }),
   });
   return (
     <div className="space-y-6">
@@ -141,7 +141,7 @@ export default function Workflows() {
         </Card>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {workflows.map((wf: any) => {
+          {workflows.map((wf) => {
             const states = (wf.workflow_states ?? []) as WorkflowState[];
             return (
               <Card

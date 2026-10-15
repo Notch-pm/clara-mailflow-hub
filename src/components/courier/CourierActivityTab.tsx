@@ -220,7 +220,7 @@ export default function CourierActivityTab({
         title: COURIER_EVENT_LABELS.courier_created,
       });
     }
-    events.forEach((e: any) => {
+    events.forEach((e) => {
       const { title, detail } = describeCourierEvent(e.event_type, e.payload, e.courier_id);
       out.push({ id: e.id, type: e.event_type, at: e.created_at, by: e.created_by ?? null, title, detail });
     });

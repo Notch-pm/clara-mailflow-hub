@@ -39,6 +39,17 @@ describe("describeCourierEvent", () => {
     expect(describeCourierEvent("reply_sent", null)).toEqual({ title: "Réponse envoyée", detail: null });
   });
 
+  it("payload JSON libre : un non-objet ne donne aucun détail, les pièces se comptent", () => {
+    expect(describeCourierEvent("state_changed", "texte")).toEqual({ title: "Changement d'état", detail: null });
+    expect(describeCourierEvent("state_changed", [1, 2])).toEqual({ title: "Changement d'état", detail: null });
+    expect(describeCourierEvent("reply_email_sent", { to: "a@b.fr", attachments: 2 }).detail).toBe(
+      "à a@b.fr · 2 pièces jointes",
+    );
+    expect(describeCourierEvent("reply_email_sent", { to: "a@b.fr", attachments: "1" }).detail).toBe(
+      "à a@b.fr · 1 pièce jointe",
+    );
+  });
+
   it("lu sur le courrier reçu, l'événement d'une réponse parle de réponse", () => {
     expect(describeCourierEvent("reply_signed", { reply_id: "r1" }, "p1").title).toBe("Réponse signée");
   });

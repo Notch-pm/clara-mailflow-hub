@@ -7,16 +7,34 @@
 // Le mot de passe ne fait que traverser ce module vers nodemailer / IMAP : il
 // n'apparaît dans aucun journal ni message d'erreur.
 
+// Client service_role, typé au minimum : les fonctions n'importent pas toutes
+// la même version de supabase-js, et leurs types ne sont pas compatibles entre eux.
 // deno-lint-ignore no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- cf. ci-dessus
 type ServiceClient = { from: (table: string) => any; rpc: (fn: string, args: Record<string, unknown>) => any };
+
+/** Miroir du serveur d'envoi (`smtp_settings`), mot de passe déchiffré en plus. */
+export interface SmtpSettings {
+  organization_id: string;
+  host: string;
+  port: number | null;
+  username: string;
+  password: string;
+  from_email: string;
+  from_name: string;
+  use_tls: boolean;
+  [column: string]: unknown;
+}
 
 /**
  * Miroir du serveur d'envoi d'un tenant, mot de passe déchiffré compris.
  * Même forme que `.maybeSingle()` : `{ data: null, error: null }` quand le
  * tenant n'a pas de relais.
  */
-// deno-lint-ignore no-explicit-any
-export async function loadSmtpSettings(admin: ServiceClient, organizationId: string): Promise<{ data: any; error: any }> {
+export async function loadSmtpSettings(
+  admin: ServiceClient,
+  organizationId: string,
+): Promise<{ data: SmtpSettings | null; error: unknown }> {
   const { data, error } = await admin
     .from("smtp_settings")
     .select("*")

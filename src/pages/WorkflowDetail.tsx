@@ -55,7 +55,11 @@ const nodeTypes = { stateNode: StateNode };
 type TransitionEdgeData = { kind: TransitionKind; name: string };
 type TransitionEdge = Edge<TransitionEdgeData>;
 
-/** `workflow_transitions.kind` est un texte libre en base : seules deux valeurs ont un sens. */
+/**
+ * `workflow_transitions.kind` : la base n'admet que NULL, `next` ou `previous`
+ * (CHECK `workflow_transitions_kind_check`), mais la colonne est un `text` et
+ * les types générés disent `string` — ce garde ne fait que resserrer le type.
+ */
 function toTransitionKind(kind: string | null | undefined): TransitionKind {
   return kind === "next" || kind === "previous" ? kind : null;
 }

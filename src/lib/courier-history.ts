@@ -59,8 +59,16 @@ const SELF_OUTBOUND_LABELS: Record<string, string> = {
   outbound_unlinked: "Lien avec un courrier reçu retiré",
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- payload libre de courier_events
-type Payload = Record<string, any> | null | undefined;
+/**
+ * Payload libre de `courier_events` (JSON) lu comme des champs texte : tout
+ * ce qui n'est pas un objet vaut « aucun champ ». Les nombres éventuels
+ * s'interpolent tels quels ; seul `attachments` est compté (cf. plus bas).
+ */
+function payloadFields(payload: unknown): Record<string, string | undefined> {
+  return payload && typeof payload === "object" && !Array.isArray(payload)
+    ? (payload as Record<string, string | undefined>)
+    : {};
+}
 
 /**
  * @param courierId le courrier dont on lit l'historique : quand l'événement
@@ -68,10 +76,10 @@ type Payload = Record<string, any> | null | undefined;
  */
 export function describeCourierEvent(
   type: string,
-  payload: Payload,
+  payload: unknown,
   courierId?: string | null,
 ): { title: string; detail: string | null } {
-  const p = payload ?? {};
+  const p = payloadFields(payload);
   const selfAnchored = !!courierId && p.reply_id === courierId;
   let detail: string | null = null;
   switch (type) {
@@ -125,11 +133,13 @@ export function describeCourierEvent(
     case "reply_state_changed":
       detail = p.to_state_name ? `→ ${p.to_state_name}` : null;
       break;
-    case "reply_email_sent":
-      detail = [p.to ? `à ${p.to}` : null, p.attachments ? `${p.attachments} pièce${p.attachments > 1 ? "s" : ""} jointe${p.attachments > 1 ? "s" : ""}` : null]
+    case "reply_email_sent": {
+      const attachments = Number(p.attachments) || 0;
+      detail = [p.to ? `à ${p.to}` : null, attachments ? `${attachments} pièce${attachments > 1 ? "s" : ""} jointe${attachments > 1 ? "s" : ""}` : null]
         .filter(Boolean)
         .join(" · ") || null;
       break;
+    }
     case "reply_email_failed":
       detail = p.reason ?? null;
       break;
