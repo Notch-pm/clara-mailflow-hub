@@ -35,7 +35,6 @@ interface PortalConsent {
 interface FormConfig {
   name: string;
   description: string | null;
-  service_name: string | null;
   /** Absent tant que la fonction n'est pas redéployée : repli sur le catalogue (sans nom). */
   consents?: PortalConsent[];
 }

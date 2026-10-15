@@ -68,13 +68,13 @@ async function initialStateOf(admin: Admin, workflowId: string | null | undefine
 
 /**
  * Organisation gestionnaire et état initial d'un dépôt :
- * workflow de l'organisation (miroir Socle) → workflow du service legacy →
- * workflow par défaut du tenant → aucun état.
+ * workflow de l'organisation (miroir Socle) → workflow par défaut du tenant
+ * → aucun état.
  */
 export async function resolvePortalRouting(
   admin: Admin,
   organizationId: string,
-  target: { socleOrganizationId?: string | null; serviceId?: string | null },
+  target: { socleOrganizationId?: string | null },
 ): Promise<{ serviceName: string | null; socleOrganizationId: string | null; initialStateId: string | null }> {
   let serviceName: string | null = null;
   let socleOrganizationId: string | null = null;
@@ -91,17 +91,6 @@ export async function resolvePortalRouting(
       serviceName = socleOrg.name ?? null;
       socleOrganizationId = socleOrg.id ?? null;
       initialStateId = await initialStateOf(admin, socleOrg.workflow_id);
-    }
-  } else if (target.serviceId) {
-    // Legacy : formulaire encore rattaché à un service (tables gelées)
-    const { data: svc } = await admin
-      .from("services")
-      .select("name, workflow_id")
-      .eq("id", target.serviceId)
-      .maybeSingle();
-    if (svc) {
-      serviceName = svc.name ?? null;
-      initialStateId = await initialStateOf(admin, svc.workflow_id);
     }
   }
 

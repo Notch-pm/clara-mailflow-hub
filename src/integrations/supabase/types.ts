@@ -1287,7 +1287,7 @@ export type Database = {
           can_read_confidential: boolean
           created_at: string
           id: string
-          is_active: boolean | null
+          is_active: boolean
           is_service_courrier: boolean
           is_signataire: boolean
           is_viseur: boolean
@@ -1300,7 +1300,7 @@ export type Database = {
           can_read_confidential?: boolean
           created_at?: string
           id?: string
-          is_active?: boolean | null
+          is_active?: boolean
           is_service_courrier?: boolean
           is_signataire?: boolean
           is_viseur?: boolean
@@ -1313,7 +1313,7 @@ export type Database = {
           can_read_confidential?: boolean
           created_at?: string
           id?: string
-          is_active?: boolean | null
+          is_active?: boolean
           is_service_courrier?: boolean
           is_signataire?: boolean
           is_viseur?: boolean
@@ -1356,7 +1356,6 @@ export type Database = {
           name: string
           phone: string | null
           primary_color: string | null
-          reply_template_data: string | null
           reply_template_design: Json | null
           reply_template_html: string | null
           reply_template_storage_key: string | null
@@ -1383,7 +1382,6 @@ export type Database = {
           name: string
           phone?: string | null
           primary_color?: string | null
-          reply_template_data?: string | null
           reply_template_design?: Json | null
           reply_template_html?: string | null
           reply_template_storage_key?: string | null
@@ -1410,7 +1408,6 @@ export type Database = {
           name?: string
           phone?: string | null
           primary_color?: string | null
-          reply_template_data?: string | null
           reply_template_design?: Json | null
           reply_template_html?: string | null
           reply_template_storage_key?: string | null
@@ -1462,7 +1459,6 @@ export type Database = {
           is_active: boolean
           name: string
           organization_id: string
-          service_id: string | null
           socle_organization_id: string | null
           token: string
           updated_at: string
@@ -1476,7 +1472,6 @@ export type Database = {
           is_active?: boolean
           name: string
           organization_id: string
-          service_id?: string | null
           socle_organization_id?: string | null
           token?: string
           updated_at?: string
@@ -1490,7 +1485,6 @@ export type Database = {
           is_active?: boolean
           name?: string
           organization_id?: string
-          service_id?: string | null
           socle_organization_id?: string | null
           token?: string
           updated_at?: string
@@ -1501,13 +1495,6 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "portal_forms_service_id_fkey"
-            columns: ["service_id"]
-            isOneToOne: false
-            referencedRelation: "services"
             referencedColumns: ["id"]
           },
           {
@@ -1666,6 +1653,33 @@ export type Database = {
           },
         ]
       }
+      purge_runs: {
+        Row: {
+          error: string | null
+          finished_at: string
+          id: string
+          report: Json
+          started_at: string
+          status: string
+        }
+        Insert: {
+          error?: string | null
+          finished_at?: string
+          id?: string
+          report?: Json
+          started_at: string
+          status: string
+        }
+        Update: {
+          error?: string | null
+          finished_at?: string
+          id?: string
+          report?: Json
+          started_at?: string
+          status?: string
+        }
+        Relationships: []
+      }
       push_subscriptions: {
         Row: {
           auth: string
@@ -1738,166 +1752,6 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      service_members: {
-        Row: {
-          created_at: string
-          id: string
-          organization_id: string
-          service_id: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          organization_id: string
-          service_id: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          organization_id?: string
-          service_id?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "service_members_service_id_fkey"
-            columns: ["service_id"]
-            isOneToOne: false
-            referencedRelation: "services"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "service_members_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      service_signatories: {
-        Row: {
-          created_at: string
-          id: string
-          organization_id: string
-          service_id: string
-          signatory_id: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          organization_id: string
-          service_id: string
-          signatory_id: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          organization_id?: string
-          service_id?: string
-          signatory_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "service_signatories_service_id_fkey"
-            columns: ["service_id"]
-            isOneToOne: false
-            referencedRelation: "services"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "service_signatories_signatory_id_fkey"
-            columns: ["signatory_id"]
-            isOneToOne: false
-            referencedRelation: "signatories"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      services: {
-        Row: {
-          address_city: string | null
-          address_complement: string | null
-          address_postal_code: string | null
-          address_street: string | null
-          contact_email: string | null
-          created_at: string
-          created_by: string | null
-          email: string | null
-          id: string
-          imap_settings_id: string | null
-          name: string
-          organization_id: string
-          phone: string | null
-          reply_workflow_id: string | null
-          updated_at: string
-          website: string | null
-          workflow_id: string
-        }
-        Insert: {
-          address_city?: string | null
-          address_complement?: string | null
-          address_postal_code?: string | null
-          address_street?: string | null
-          contact_email?: string | null
-          created_at?: string
-          created_by?: string | null
-          email?: string | null
-          id?: string
-          imap_settings_id?: string | null
-          name: string
-          organization_id: string
-          phone?: string | null
-          reply_workflow_id?: string | null
-          updated_at?: string
-          website?: string | null
-          workflow_id: string
-        }
-        Update: {
-          address_city?: string | null
-          address_complement?: string | null
-          address_postal_code?: string | null
-          address_street?: string | null
-          contact_email?: string | null
-          created_at?: string
-          created_by?: string | null
-          email?: string | null
-          id?: string
-          imap_settings_id?: string | null
-          name?: string
-          organization_id?: string
-          phone?: string | null
-          reply_workflow_id?: string | null
-          updated_at?: string
-          website?: string | null
-          workflow_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "services_imap_settings_id_fkey"
-            columns: ["imap_settings_id"]
-            isOneToOne: false
-            referencedRelation: "imap_settings"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "services_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "services_workflow_id_fkey"
-            columns: ["workflow_id"]
-            isOneToOne: false
-            referencedRelation: "workflows"
             referencedColumns: ["id"]
           },
         ]
@@ -3014,6 +2868,10 @@ export type Database = {
         Args: { p_org_id: string }
         Returns: boolean
       }
+      suspend_iris_integration_from_socle: {
+        Args: { p_org_id: string }
+        Returns: boolean
+      }
       sync_arpege_integration_from_socle: {
         Args: {
           p_access_token: string
@@ -3025,6 +2883,14 @@ export type Database = {
           p_org_id: string
           p_socle_org_id: string
           p_socle_updated_at: string
+        }
+        Returns: undefined
+      }
+      sync_iris_integration_from_socle: {
+        Args: {
+          p_api_base_url: string
+          p_org_id: string
+          p_socle_root_org_id: string
         }
         Returns: undefined
       }

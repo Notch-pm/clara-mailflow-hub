@@ -57,7 +57,7 @@ Pour les tables en écriture admin seulement, `auth_insert/update/delete` utilis
 ### Tables métier courrier (pattern member standard)
 `couriers`, `courier_analyses`, `courier_document_extracts`, `courier_documents`,
 `courier_events`, `courier_links`, `courier_notes`, `courier_participants`,
-`courier_sequences`, `roles`, `service_signatories`, `action_tickets`
+`courier_sequences`, `roles`, `action_tickets`
 
 → Toutes : `is_member_of(organization_id)` sur les 4 ops + `service_role_full`.
 Exception de lecture : `couriers.auth_select` s'écrit avec `current_user_orgs()` (même règle, évaluée une fois — voir les règles d'or) et exclut les supprimés et les confidentiels non lisibles ; les tables filles ajoutent `can_read_courier(courier_id)`.
@@ -68,7 +68,6 @@ Exception de lecture : `couriers.auth_select` s'écrit avec `current_user_orgs()
 |---|---|---|
 | `courier_tags` | `is_member_of` | `is_admin_of` |
 | `procedures` | `is_member_of` | `is_admin_of` |
-| `services` | `is_member_of` | `is_admin_of` |
 | `workflows` | `is_member_of` | `is_admin_of` |
 | `workflow_states` | `is_member_of` | `is_admin_of` |
 | `workflow_transitions` | `is_member_of` | `is_admin_of` |
@@ -105,13 +104,6 @@ Exception de lecture : `couriers.auth_select` s'écrit avec `current_user_orgs()
 |---|---|---|
 | `smtp_admin` | ALL | `is_admin_of(organization_id)` |
 | `service_role_full_smtp` | ALL | `true` (`TO service_role`) |
-
-#### `service_members` (table gelée, legacy Socle)
-| Policy | CMD | Condition |
-|---|---|---|
-| `service_members_select` | SELECT | `is_member_of(organization_id)` |
-| `service_members_insert` | INSERT | `is_admin_of(organization_id)` |
-| `service_members_delete` | DELETE | `is_admin_of(organization_id)` |
 
 #### `notifications`
 | Policy | CMD | Condition |

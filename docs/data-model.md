@@ -56,7 +56,7 @@ Tenants racine. RLS sur `id` (pas sur `organization_id`).
 | `logo_url` / `primary_color` / `secondary_color` | text | **Charte graphique — MIROIR du Socle depuis le 2026-09-13, aucune saisie dans Clara.** Couleurs en `#rrggbb` minuscule (CHECK `organizations_branding_colors_hex`). Voir ci-dessous. |
 | `multiple_imap` | boolean | multi-boîtes IMAP |
 | `ai_voice_enabled` | boolean | **Miroir** de `assistant.voice_enabled` du Socle (2026-10-09) : ouvre la dictée vocale d'un courrier. Écrit par `sync-socle-referentiel` seule — **aucun grant UPDATE client** (les droits d'écriture sur `organizations` sont colonne par colonne). Défaut `false`. |
-| `reply_template_html` / `_design` / `_data` / `_storage_key` | text/jsonb | template courrier Unlayer |
+| `reply_template_html` / `_design` / `_storage_key` | text/jsonb | template courrier Unlayer |
 | `address_*` / `phone` / `website` / `contact_email` | text | coordonnées org |
 | `socle_org_id` | uuid | mapping vers l'org Socle (renseigné par le superadmin) ; NULL = pas de sync Socle |
 
@@ -361,24 +361,6 @@ référence n'était jamais attribuée.
 
 ### Référentiels d'organisation
 
-#### `services`
-Services internes (ex. "Urbanisme", "État civil").
-
-| Colonne | Type | Notes |
-|---|---|---|
-| `name` | varchar | aussi stocké comme TEXT dans `couriers.assigned_service` |
-| `email` | varchar | |
-| `workflow_id` | uuid FK → workflows | workflow principal |
-| `reply_workflow_id` | uuid FK → workflows | workflow réponse |
-| `imap_settings_id` | uuid FK → imap_settings | boîte IMAP dédiée |
-| `address_*` / `phone` / `website` / `contact_email` | text | |
-
-#### `service_members`
-Membres d'un service (`organization_id`, `service_id`, `user_id`).
-
-#### `service_signatories`
-Signataires assignés à un service (`service_id` → `signatories.id`).
-
 #### `signatories`
 Personnes autorisées à signer. Image de signature dans le bucket `signatures`.
 
@@ -466,11 +448,14 @@ La boîte IMAP d'une org est rattachée via `imap_settings.socle_organization_id
 #### `socle_organization_members` / `socle_organization_signatories`
 Membres et signataires d'une organisation (remplacent `service_members`/`service_signatories`). `UNIQUE (socle_organization_id, user_id|signatory_id)`, RLS select `is_member_of` / écriture `is_admin_of`. Les membres pilotent le filtrage des courriers (`useUserServiceFilter` — liste d'**UUIDs** d'orgs) ; les signataires alimentent le composer de réponse.
 
-#### `services` / `service_members` / `service_signatories` — **GELÉES**
-Remplacées par les organisations Socle (données migrées le 2026-07-11, conservées pour historique/rollback). Plus aucun flux d'écriture ; `fetch-inbound-emails` et `portal-form` gardent un fallback legacy en lecture.
+#### `services` / `service_members` / `service_signatories` — **SUPPRIMÉES**
+Remplacées par les organisations Socle le 2026-07-11 (données migrées), gelées depuis, supprimées le 2026-10-15 avec `portal_forms.service_id` et `organizations.reply_template_data` (`20261015092015_legacy_services_suppression.sql`). `couriers.assigned_service` reste une dénormalisation d'affichage (nom de l'organisation) ; `couriers.metadata.service_id` subsiste sur d'anciens courriers, lu par personne.
 
 #### `socle_sync_runs`
 Journal des synchronisations Socle : une ligne par org et par run (`started_at`, `finished_at`, `status` running/success/error, `dry_run`, `counters` jsonb, `error`).
+
+#### `purge_runs`
+Journal de la purge RGPD nocturne (2026-10-15) : une ligne par exécution de `purge_expired_data()` (`started_at`, `finished_at`, `status` succeeded/failed, `report` jsonb, `error`). `report` reprend le compte rendu de la fonction : `deleted_couriers` (rétention), `trashed_couriers_purged` (corbeille), `deleted_notifications`, `deleted_analysis_jobs`, `deleted_sync_runs`, `deleted_purge_runs` et `by_organization` (`{organization_id: courriers effacés}`, organisations sans effacement omises). Une erreur est **consignée, pas relevée** : la purge est annulée (sous-transaction) mais la ligne `failed` reste — relever l'aurait effacée avec le reste. Service role seul (RLS `service_role_full`, aucun grant client) ; conservé un an, purgé par la fonction elle-même.
 
 #### `courier_tags`
 Dictionnaire de tags (étiquettes) de l'org, en **deux groupes**. Les tags appliqués sont dans `couriers.metadata->'tags'` (array de **noms**) : le groupe est une propriété du tag, jamais de son application — il se relit par rapprochement sur le nom, insensible à la casse.

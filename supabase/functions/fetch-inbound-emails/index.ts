@@ -335,9 +335,7 @@ async function processOrganization(
       initialStateId = initState?.id ?? null;
     }
 
-    // Auto-assignation : l'organisation (miroir Socle) propriétaire de la boîte est
-    // prioritaire ; fallback legacy sur le lien services.imap_settings_id tant que
-    // toutes les boîtes ne sont pas rattachées à une organisation.
+    // Auto-assignation : l'organisation (miroir Socle) propriétaire de la boîte.
     let autoService: { name: string; workflowStateId: string | null } | null = null;
     if (s.socle_organization_id) {
       const { data: socleOrg } = await admin
@@ -357,29 +355,6 @@ async function processOrganization(
           orgInitStateId = (initState as any)?.id ?? null;
         }
         autoService = { name: (socleOrg as any).name, workflowStateId: orgInitStateId };
-      }
-    }
-
-    if (!autoService) {
-      // Legacy : services liés à cette configuration IMAP (tables services gelées).
-      const { data: linkedServices } = await admin
-        .from("services")
-        .select("id, name, workflow_id")
-        .eq("organization_id", s.organization_id)
-        .eq("imap_settings_id", s.id);
-
-      if (linkedServices?.length === 1) {
-        const svc = linkedServices[0] as { id: string; name: string; workflow_id: string };
-        const { data: initState } = await admin
-          .from("workflow_states")
-          .select("id")
-          .eq("workflow_id", svc.workflow_id)
-          .eq("is_initial", true)
-          .maybeSingle();
-        autoService = {
-          name: svc.name,
-          workflowStateId: (initState as any)?.id ?? null,
-        };
       }
     }
 

@@ -546,7 +546,7 @@ Variables (à insérer par le menu « Variables » de l'éditeur) :
 ### Organisations Socle et anciens services
 - La hiérarchie d'assignation active est celle des **organisations Socle**, exposée dans `SocleOrganizationTree` et configurée depuis les sections « Organisations » de `SettingsPage` / `OrgSettings`.
 - Les courriers portent `couriers.socle_organization_id` pour la logique métier ; `couriers.assigned_service` reste une dénormalisation d'affichage.
-- Les tables legacy `services`, `service_members` et `service_signatories` sont gelées : elles ne doivent plus recevoir de nouveau flux d'écriture, hors fallback documenté dans `docs/data-model.md`.
+- Les anciennes tables `services`, `service_members` et `service_signatories` ont été supprimées le 2026-10-15.
 
 ## 7. Démarches & intégration partenaire (Arpège)
 

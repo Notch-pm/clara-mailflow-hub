@@ -73,8 +73,7 @@ async function cleanup() {
       "imap_settings", "smtp_settings", "portal_forms",
       "socle_organizations", "socle_categories", "socle_document_types", "socle_sync_runs",
       "workflow_transitions", "workflow_states", "workflows",
-      "courier_tags", "signatories", "service_members", "service_signatories",
-      "services", "notifications", "procedures", "organization_users",
+      "courier_tags", "signatories", "notifications", "procedures", "organization_users",
     ];
     for (const table of tablesByOrg) {
       const { error } = await admin.from(table).delete().in("organization_id", orgIds);

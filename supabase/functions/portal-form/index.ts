@@ -43,23 +43,12 @@ Deno.serve(async (req) => {
 
       const { data: form, error } = await admin
         .from("portal_forms")
-        .select("name, description, is_active, service_id, organization_id")
+        .select("name, description, is_active, organization_id")
         .eq("token", token)
         .maybeSingle();
 
       if (error || !form) return jsonResponse({ error: "Formulaire introuvable" }, 404);
       if (!form.is_active) return jsonResponse({ error: "Formulaire inactif" }, 410);
-
-      // Résolution du nom de service sans join (évite les problèmes de cache PostgREST)
-      let serviceName: string | null = null;
-      if (form.service_id) {
-        const { data: svc } = await admin
-          .from("services")
-          .select("name")
-          .eq("id", form.service_id)
-          .maybeSingle();
-        serviceName = (svc as any)?.name ?? null;
-      }
 
       // Les phrases de consentement, composées ICI avec le nom de l'organisation
       // (`organizations.name`, miroir de la racine Socle) : le POST les
@@ -73,7 +62,6 @@ Deno.serve(async (req) => {
       return jsonResponse({
         name: form.name,
         description: (form as any).description ?? null,
-        service_name: serviceName,
         consents: portalConsentsConfig((orgRow as { name?: string | null } | null)?.name ?? null),
       });
     }
@@ -98,7 +86,7 @@ Deno.serve(async (req) => {
       // 1. Charger le formulaire (sans join pour fiabilité)
       const { data: form, error: formErr } = await admin
         .from("portal_forms")
-        .select("id, organization_id, service_id, socle_organization_id, is_active, allowed_origins")
+        .select("id, organization_id, socle_organization_id, is_active, allowed_origins")
         .eq("token", token)
         .maybeSingle();
 
@@ -144,11 +132,9 @@ Deno.serve(async (req) => {
       if (!consentCheck.ok) return jsonResponse({ error: consentCheck.message }, 400);
       const receivedAt = new Date().toISOString();
 
-      // 4. Organisation gestionnaire (miroir Socle, prioritaire) ou service
-      //    legacy, et état initial du workflow
+      // 4. Organisation gestionnaire (miroir Socle) et état initial du workflow
       const routing = await resolvePortalRouting(admin, form.organization_id, {
         socleOrganizationId: form.socle_organization_id,
-        serviceId: form.service_id,
       });
 
       // 5-7. Courrier, expéditeur brut, pièces jointes (best-effort)

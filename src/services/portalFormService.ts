@@ -2,8 +2,8 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 
 /**
- * Formulaire portail citoyen. `service_id` est legacy (services gelés),
- * remplacé par `socle_organization_id` (organisation destinataire des soumissions).
+ * Formulaire portail citoyen ; `socle_organization_id` désigne l'organisation
+ * destinataire des soumissions.
  */
 export type PortalForm = Tables<"portal_forms">;
 
