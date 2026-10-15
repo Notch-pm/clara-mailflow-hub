@@ -17,7 +17,7 @@ interface UserProfile {
 interface OrgMembership {
   organization_id: string;
   role: string;
-  is_active: boolean | null;
+  is_active: boolean;
   /** Droit de signer une réponse — transverse, indépendant du rôle. */
   is_signataire: boolean | null;
   /** Qualité affichée sous la signature (« Vice-président »). */

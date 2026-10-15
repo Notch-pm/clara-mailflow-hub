@@ -71,7 +71,7 @@ export async function listOrgViseurs(organizationId: string, socleOrgId: string)
   if (lErr) throw lErr;
   if (mErr) throw mErr;
   const viseurIds = new Set(
-    ((members ?? []) as { user_id: string; is_active: boolean | null }[])
+    ((members ?? []) as { user_id: string; is_active: boolean }[])
       .filter((m) => m.is_active !== false)
       .map((m) => m.user_id),
   );

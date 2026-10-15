@@ -21,5 +21,5 @@ export interface OrgMember {
   /** Lit les courriers confidentiels, indépendant du rôle. */
   can_read_confidential: boolean;
   membership_id: string; // organization_users.id
-  membership_active: boolean | null;
+  membership_active: boolean;
 }

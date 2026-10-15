@@ -6,7 +6,7 @@ export type { OrgMember } from "@/types/user";
 interface OrgMemberRow {
   id: string;
   role: string;
-  is_active: boolean | null;
+  is_active: boolean;
   is_signataire: boolean | null;
   signataire_title: string | null;
   is_service_courrier: boolean | null;
