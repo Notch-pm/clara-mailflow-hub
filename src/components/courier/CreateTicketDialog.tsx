@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Loader2, Check, ChevronsUpDown, X, User, FileText, Building2 } from "lucide-react";
+import { Loader2, User, FileText } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -10,31 +10,8 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import {
-  listProcedureActivations,
-  listProcedures,
-  type ArpegeConfigField,
-  type ArpegeFormComponent,
-} from "@/services/procedureService";
+import { listProcedureActivations, listProcedures } from "@/services/procedureService";
 import { listSocleOrganizationTree } from "@/services/socleSyncService";
 import { buildSocleOrgTree, flattenSocleOrgTree } from "@/lib/socleOrgTree";
 import {
@@ -46,17 +23,27 @@ import {
   isPartnerSuspended,
   isRequestableProcedure,
   procedureOrigin,
-  procedureOriginLabel,
 } from "@/lib/procedure-origin";
 import { getPartnerIntegrationStatus } from "@/services/partnerIntegrationService";
-import { createTicket, createArpegeTicket } from "@/services/actionTicketService";
-import { pushIrisRequest } from "@/services/irisRequestService";
-import { logEvent } from "@/services/courierEventService";
+import {
+  createArpegeTicketFlow,
+  createSocleTicketFlow,
+} from "@/services/ticketCreationFlowService";
+import { describeTicketCreation, type TicketCreationResult } from "@/lib/ticket-creation-result";
+import {
+  arpegeBusinessPrefill,
+  buildFormValues,
+  businessRequiredMet,
+  demandeurRequiredMet,
+  flattenComponents,
+} from "@/lib/arpege-business-form";
 import { getDocuments } from "@/services/courierDocumentService";
 import { getParticipants } from "@/services/courierParticipantService";
 import { getContact, type SocleContact } from "@/services/socleContactService";
-import PiecesJointesField from "./PiecesJointesField";
 import { SocleFormFields, SocleRequesterForm } from "./SocleDemandeForm";
+import { ArpegeForm, ArpegeBusinessForm } from "./create-ticket/ArpegeForms";
+import SectionHeader from "./create-ticket/SectionHeader";
+import { OrganizationPicker, ProcedurePicker } from "./create-ticket/TargetPickers";
 import {
   buildSocleDemandeData,
   enabledAudiences,
@@ -97,373 +84,6 @@ interface Props {
   courierSocleOrganizationId?: string | null;
 }
 
-const CIVILITE_OPTIONS = [
-  { value: "M", label: "M." },
-  { value: "MME", label: "Mme" },
-  { value: "MLLE", label: "Mlle" },
-];
-
-const FIELD_CODES_DISPLAYED = [
-  "CIVILITE", "NOM_USUEL", "NOM_NAISSANCE", "PRENOMS",
-  "DATE_NAISSANCE", "EMAIL", "TEL_FIXE", "TEL_MOBILE",
-];
-
-const DEMANDEUR_FULL_WIDTH = new Set(["PRENOMS", "EMAIL"]);
-
-// ── Section header ──────────────────────────────────────────────────────────
-
-function SectionHeader({ icon: Icon, title, subtitle }: {
-  icon: React.ElementType;
-  title: string;
-  subtitle?: string;
-}) {
-  return (
-    <div className="flex items-start gap-2 pb-1">
-      <div className="mt-0.5 rounded-md bg-muted p-1.5">
-        <Icon className="h-3.5 w-3.5 text-muted-foreground" />
-      </div>
-      <div>
-        <p className="text-sm font-semibold leading-tight">{title}</p>
-        {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
-      </div>
-    </div>
-  );
-}
-
-// ── Demandeur form (2-column grid) ──────────────────────────────────────────
-
-function ArpegeForm({
-  fields,
-  values,
-  onChange,
-}: {
-  fields: ArpegeConfigField[];
-  values: Record<string, string>;
-  onChange: (code: string, value: string) => void;
-}) {
-  const visible = fields.filter((f) => FIELD_CODES_DISPLAYED.includes(f.Code));
-
-  return (
-    <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-      {visible.map((field) => {
-        const val = values[field.Code] ?? "";
-        const fullWidth = DEMANDEUR_FULL_WIDTH.has(field.Code);
-
-        const labelEl = (
-          <Label htmlFor={`arpege-${field.Code}`} className="text-xs text-muted-foreground">
-            {field.Intitule}
-            {field.Obligatoire && <span className="text-destructive ml-0.5">*</span>}
-          </Label>
-        );
-
-        let input: React.ReactNode;
-
-        if (field.Code === "CIVILITE") {
-          input = (
-            <Select value={val} onValueChange={(v) => onChange(field.Code, v)}>
-              <SelectTrigger id={`arpege-${field.Code}`} className="h-8 text-sm">
-                <SelectValue placeholder="Sélectionner…" />
-              </SelectTrigger>
-              <SelectContent>
-                {CIVILITE_OPTIONS.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          );
-        } else if (field.Code === "DATE_NAISSANCE") {
-          input = <Input id={`arpege-${field.Code}`} type="date" className="h-8 text-sm"
-            value={val} onChange={(e) => onChange(field.Code, e.target.value)} />;
-        } else if (field.Code === "EMAIL") {
-          input = <Input id={`arpege-${field.Code}`} type="email" className="h-8 text-sm"
-            value={val} onChange={(e) => onChange(field.Code, e.target.value)} />;
-        } else if (field.Code === "TEL_FIXE" || field.Code === "TEL_MOBILE") {
-          input = <Input id={`arpege-${field.Code}`} type="tel" className="h-8 text-sm"
-            value={val} onChange={(e) => onChange(field.Code, e.target.value)} />;
-        } else {
-          input = <Input id={`arpege-${field.Code}`} className="h-8 text-sm"
-            value={val} onChange={(e) => onChange(field.Code, e.target.value)} />;
-        }
-
-        return (
-          <div key={field.Code} className={cn("space-y-1", fullWidth && "col-span-2")}>
-            {labelEl}
-            {input}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ── Business form (FormComponents, 2-column grid) ───────────────────────────
-
-interface FlatComponent {
-  component: ArpegeFormComponent;
-  groupLabel?: string;
-}
-
-function flattenComponents(
-  components: ArpegeFormComponent[],
-  groupLabel?: string,
-): FlatComponent[] {
-  const result: FlatComponent[] = [];
-  // If this level contains a Pieces_jointes, sibling leaf fields are auxiliary
-  // (e.g. a title/description Texte added by Arpège alongside the upload slot)
-  // and should be skipped to avoid spurious text inputs.
-  const levelHasPJ = components.some((c) => c.Type === "Pieces_jointes");
-
-  for (const c of components) {
-    if (c.Type === "Bloc") {
-      result.push(...flattenComponents(c.Components ?? [], c.Libelle || groupLabel));
-    } else if (c.Type === "Pieces_jointes") {
-      result.push({ component: c, groupLabel });
-    } else if (!levelHasPJ && c.Type !== "Label_long") {
-      result.push({ component: c, groupLabel });
-    }
-  }
-  return result;
-}
-
-function isRequired(c: ArpegeFormComponent): boolean {
-  return !c.Libelle?.includes("(facultatif)");
-}
-
-function getOptions(c: ArpegeFormComponent): Array<{ code: string; label: string }> {
-  if (!Array.isArray(c.Value) || c.Value.length === 0) return [];
-  return (c.Value as Array<Record<string, string>>).map((v) => ({
-    code: v.Code ?? v.code ?? String(v),
-    label: v.Libelle ?? v.libelle ?? v.Label ?? v.Code ?? String(v),
-  }));
-}
-
-const FULL_WIDTH_TYPES = new Set(["Identite", "Pieces_jointes"]);
-
-type IdentiteValue = {
-  CodeCivilite: string;
-  NomUsage: string;
-  NomNaissance: string;
-  Prenoms: string;
-};
-
-function ArpegeBusinessForm({
-  components,
-  values,
-  onChange,
-  courierDocs,
-  piecesJointes,
-  onTogglePieceJointe,
-  onNewDoc,
-  orgId,
-  courierId,
-}: {
-  components: ArpegeFormComponent[];
-  values: Record<string, unknown>;
-  onChange: (dataId: string, value: unknown) => void;
-  courierDocs: CourierDocument[];
-  piecesJointes: Record<string, string[]>;
-  onTogglePieceJointe: (dataId: string, docId: string) => void;
-  onNewDoc: (dataId: string, doc: CourierDocument) => void;
-  orgId: string;
-  courierId: string;
-}) {
-  const flat = flattenComponents(components);
-  if (flat.length === 0) return null;
-
-  const groups: Array<{ label?: string; items: FlatComponent[] }> = [];
-  for (const item of flat) {
-    const last = groups[groups.length - 1];
-    if (!last || last.label !== item.groupLabel) {
-      groups.push({ label: item.groupLabel, items: [item] });
-    } else {
-      last.items.push(item);
-    }
-  }
-
-  return (
-    <div className="space-y-4">
-      {groups.map((group, gi) => (
-        <div key={gi} className="space-y-2">
-          {group.label && (
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground border-b pb-1">
-              {group.label}
-            </p>
-          )}
-          <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-            {group.items.map(({ component: c }) => {
-              const required = isRequired(c);
-              const fullWidth = FULL_WIDTH_TYPES.has(c.Type);
-
-              const labelEl = (
-                <Label htmlFor={`biz-${c.DataId}`} className="text-xs text-muted-foreground">
-                  {c.Libelle}
-                  {required && <span className="text-destructive ml-0.5">*</span>}
-                </Label>
-              );
-              const helpEl = c.LibelleAide ? (
-                <p className="text-[10px] text-muted-foreground/70 -mt-0.5">{c.LibelleAide}</p>
-              ) : null;
-
-              // ── Pieces jointes ──
-              if (c.Type === "Pieces_jointes") {
-                return (
-                  <div key={c.DataId} className="col-span-2">
-                    <PiecesJointesField
-                      label={c.Libelle}
-                      required={required}
-                      helpText={c.LibelleAide || undefined}
-                      courierDocs={courierDocs}
-                      selectedIds={piecesJointes[c.DataId] ?? []}
-                      onToggle={(id) => onTogglePieceJointe(c.DataId, id)}
-                      orgId={orgId}
-                      courierId={courierId}
-                      onNewDoc={(doc) => onNewDoc(c.DataId, doc)}
-                    />
-                  </div>
-                );
-              }
-
-              // ── Identite ──
-              if (c.Type === "Identite") {
-                const identVal = (values[c.DataId] as IdentiteValue) ?? {
-                  CodeCivilite: "", NomUsage: "", NomNaissance: "", Prenoms: "",
-                };
-                const update = (key: keyof IdentiteValue, v: string) =>
-                  onChange(c.DataId, { ...identVal, [key]: v });
-                return (
-                  <div key={c.DataId} className={cn("space-y-1.5", fullWidth && "col-span-2")}>
-                    {labelEl}
-                    {helpEl}
-                    <div className="grid grid-cols-2 gap-2">
-                      <Select value={identVal.CodeCivilite} onValueChange={(v) => update("CodeCivilite", v)}>
-                        <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Civilité" /></SelectTrigger>
-                        <SelectContent>
-                          {CIVILITE_OPTIONS.map((o) => (
-                            <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Input placeholder="Prénom(s)" className="h-8 text-sm" value={identVal.Prenoms}
-                        onChange={(e) => update("Prenoms", e.target.value)} />
-                      <Input placeholder="Nom d'usage" className="h-8 text-sm" value={identVal.NomUsage}
-                        onChange={(e) => update("NomUsage", e.target.value)} />
-                      <Input placeholder="Nom de naissance" className="h-8 text-sm" value={identVal.NomNaissance}
-                        onChange={(e) => update("NomNaissance", e.target.value)} />
-                    </div>
-                  </div>
-                );
-              }
-
-              if (c.Type === "Date") {
-                return (
-                  <div key={c.DataId} className={cn("space-y-1", fullWidth && "col-span-2")}>
-                    {labelEl}{helpEl}
-                    <Input id={`biz-${c.DataId}`} type="date" className="h-8 text-sm"
-                      value={(values[c.DataId] as string) ?? ""}
-                      onChange={(e) => onChange(c.DataId, e.target.value)} />
-                  </div>
-                );
-              }
-
-              if (c.Type === "Chiffre") {
-                return (
-                  <div key={c.DataId} className={cn("space-y-1", fullWidth && "col-span-2")}>
-                    {labelEl}{helpEl}
-                    <Input id={`biz-${c.DataId}`} type="number" className="h-8 text-sm"
-                      value={(values[c.DataId] as string) ?? ""}
-                      onChange={(e) => onChange(c.DataId, e.target.value)} />
-                  </div>
-                );
-              }
-
-              if (c.Type === "Combo_autre" || c.Type === "RadiobuttonList") {
-                const options = getOptions(c);
-                if (options.length > 0) {
-                  return (
-                    <div key={c.DataId} className={cn("space-y-1", fullWidth && "col-span-2")}>
-                      {labelEl}{helpEl}
-                      <Select
-                        value={(values[c.DataId] as string) ?? ""}
-                        onValueChange={(v) => onChange(c.DataId, v)}
-                      >
-                        <SelectTrigger id={`biz-${c.DataId}`} className="h-8 text-sm">
-                          <SelectValue placeholder="Sélectionner…" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {options.map((o) => (
-                            <SelectItem key={o.code} value={o.code}>{o.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  );
-                }
-              }
-
-              return (
-                <div key={c.DataId} className={cn("space-y-1", fullWidth && "col-span-2")}>
-                  {labelEl}{helpEl}
-                  <Input id={`biz-${c.DataId}`} className="h-8 text-sm"
-                    value={(values[c.DataId] as string) ?? ""}
-                    onChange={(e) => onChange(c.DataId, e.target.value)} />
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function buildFormValues(
-  components: ArpegeFormComponent[],
-  values: Record<string, unknown>,
-): Array<{ id: string; valeur: unknown }> {
-  return flattenComponents(components)
-    .filter(({ component: c }) => c.Type !== "Pieces_jointes")
-    .map(({ component: c }) => ({ id: c.DataId, valeur: values[c.DataId] ?? null }))
-    .filter((e) => e.valeur !== null && e.valeur !== "");
-}
-
-/**
- * Valeurs proposées par l'analyse pour le formulaire métier, réduites aux
- * champs que ce formulaire saisit réellement (ni pièce jointe, ni identité) :
- * un `DataId` inconnu — schéma Arpège changé depuis l'analyse — est ignoré.
- */
-function arpegeBusinessPrefill(
-  components: ArpegeFormComponent[],
-  prefill: Record<string, string>,
-): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const { component: c } of flattenComponents(components)) {
-    if (c.Type === "Pieces_jointes" || c.Type === "Identite") continue;
-    const value = prefill[c.DataId];
-    if (typeof value === "string" && value.trim()) out[c.DataId] = value;
-  }
-  return out;
-}
-
-function businessRequiredMet(
-  components: ArpegeFormComponent[],
-  values: Record<string, unknown>,
-  piecesJointes: Record<string, string[]>,
-): boolean {
-  return flattenComponents(components)
-    .filter(({ component: c }) => isRequired(c))
-    .every(({ component: c }) => {
-      if (c.Type === "Pieces_jointes") {
-        return (piecesJointes[c.DataId]?.length ?? 0) > 0;
-      }
-      if (c.Type === "Identite") {
-        const id = values[c.DataId] as IdentiteValue | undefined;
-        return id && (id.NomUsage || id.NomNaissance) && id.Prenoms;
-      }
-      const v = values[c.DataId];
-      return v !== undefined && v !== null && String(v).trim().length > 0;
-    });
-}
-
 // ── Main dialog ─────────────────────────────────────────────────────────────
 
 export default function CreateTicketDialog({
@@ -486,8 +106,6 @@ export default function CreateTicketDialog({
   // que la valeur par défaut — adresser une demande aux services techniques ne
   // déplace pas le courrier.
   const [socleOrgId, setSocleOrgId] = useState<string | null>(null);
-  const [orgPopoverOpen, setOrgPopoverOpen] = useState(false);
-  const [procedurePopoverOpen, setProcedurePopoverOpen] = useState(false);
   const [arpegeValues, setArpegeValues] = useState<Record<string, string>>({});
   const [businessValues, setBusinessValues] = useState<Record<string, unknown>>({});
   const [piecesJointes, setPiecesJointes] = useState<Record<string, string[]>>({});
@@ -766,9 +384,7 @@ export default function CreateTicketDialog({
     togglePieceJointe(dataId, doc.id);
   };
 
-  const arpegeObligatoryMet = arpegeFields
-    .filter((f) => f.Obligatoire && FIELD_CODES_DISPLAYED.includes(f.Code))
-    .every((f) => (arpegeValues[f.Code] ?? "").trim().length > 0);
+  const arpegeObligatoryMet = demandeurRequiredMet(arpegeFields, arpegeValues);
 
   const bizObligatoryMet =
     formComponents.length === 0 ||
@@ -785,31 +401,16 @@ export default function CreateTicketDialog({
   // Le dépôt dans Iris se raconte dans le toast de fin : une action peut être
   // créée ici et refusée là-bas (démarche obsolète, demandeur absent…) sans que
   // rien ne soit perdu — l'onglet Actions liées propose alors le renvoi.
-  const saveMutation = useMutation<{
-    irisReference?: string | null;
-    irisError?: string | null;
-    /** Pièce réclamée par la démarche restée dans Clara — la demande est incomplète. */
-    attachmentsRefused?: string | null;
-  }>({
+  const saveMutation = useMutation<TicketCreationResult>({
     mutationFn: async () => {
+      const base = { organizationId, courierId, procedureId, socleOrganizationId: socleOrgId };
       if (isArpege) {
-        const formValues = buildFormValues(formComponents, businessValues);
-        const created = await createArpegeTicket({
-          organizationId,
-          courierId,
-          procedureId,
+        return createArpegeTicketFlow({
+          ...base,
           demandeur: arpegeValues,
-          formValues,
+          formValues: buildFormValues(formComponents, businessValues),
           pieceJointes: piecesJointes,
-          socleOrganizationId: socleOrgId,
         });
-        await logEvent(organizationId, courierId, "ticket_created", {
-          ticket_id: created.id,
-          procedure_id: procedureId,
-          arpege_ref: created.arpege_demande_ref,
-          socle_organization_id: socleOrgId,
-        });
-        return {};
       }
 
       const socleData = showSocleForm
@@ -822,53 +423,13 @@ export default function CreateTicketDialog({
             attachments: piecesJointes,
           })
         : null;
-
-      const created = await createTicket({
-        organizationId,
-        courierId,
-        procedureId,
-        socleData,
-        socleOrganizationId: socleOrgId,
-      });
-      await logEvent(organizationId, courierId, "ticket_created", {
-        ticket_id: created.id,
-        procedure_id: procedureId,
-        socle_organization_id: socleOrgId,
-      });
-
-      // Démarche du référentiel ⇒ la demande appartient à Iris. Le ticket est
-      // créé d'abord : son id EST l'external_id côté Iris, il ne peut pas être
-      // connu avant. Un échec de dépôt ne détruit donc rien et se rejoue à
-      // l'identique (clé d'idempotence portée par le ticket).
-      if (isSocle) {
-        try {
-          const pushed = await pushIrisRequest(created.id);
-          // Organisation qui ne dépose pas dans Iris : rien à annoncer.
-          if (pushed.skipped) return {};
-          return {
-            irisReference: pushed.reference,
-            attachmentsRefused: pushed.attachments_refused ?? null,
-          };
-        } catch (e) {
-          return { irisError: e instanceof Error ? e.message : String(e) };
-        }
-      }
-      return {};
+      // Démarche du référentiel ⇒ la demande appartient à Iris.
+      return createSocleTicketFlow({ ...base, socleData, pushToIris: isSocle });
     },
     onSuccess: (result) => {
-      if (result.irisError) {
-        toast.warning(`Action créée, non transmise à Iris : ${result.irisError}`);
-      } else if (result.irisReference && result.attachmentsRefused) {
-        // Déposée, mais sans une pièce que la démarche réclame : l'agent doit
-        // le savoir tout de suite — la ligne du ticket le redira ensuite.
-        toast.warning(
-          `Demande ${result.irisReference} déposée dans Iris — ${result.attachmentsRefused}`,
-        );
-      } else if (result.irisReference) {
-        toast.success(`Action créée — demande ${result.irisReference} déposée dans Iris`);
-      } else {
-        toast.success("Demande créée");
-      }
+      const notice = describeTicketCreation(result);
+      if (notice.level === "warning") toast.warning(notice.message);
+      else toast.success(notice.message);
       qc.invalidateQueries({ queryKey: ["action-tickets", courierId] });
       qc.invalidateQueries({ queryKey: ["courier-events", courierId] });
       onOpenChange(false);
@@ -910,154 +471,24 @@ export default function CreateTicketDialog({
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto min-h-0 pr-1 space-y-5 py-1">
+          <OrganizationPicker
+            options={selectableOrgs}
+            selected={selectedOrg}
+            loading={loadingSocleOrgs}
+            onSelect={selectSocleOrg}
+          />
 
-          {/* Organisation destinataire — commande la liste des démarches */}
-          <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Organisation destinataire</Label>
-            <div className="flex items-center gap-1.5">
-              <Popover open={orgPopoverOpen} onOpenChange={setOrgPopoverOpen}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    role="combobox"
-                    aria-expanded={orgPopoverOpen}
-                    className="flex-1 justify-between h-9 min-w-0"
-                    disabled={loadingSocleOrgs}
-                  >
-                    <span className="flex items-center gap-2 truncate">
-                      <Building2 className="h-4 w-4 shrink-0 opacity-50" />
-                      {selectedOrg ? (
-                        <span className="truncate">{selectedOrg.name}</span>
-                      ) : loadingSocleOrgs ? "Chargement…" : (
-                        <span className="text-muted-foreground">Toutes les organisations</span>
-                      )}
-                    </span>
-                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                  <Command>
-                    <CommandInput placeholder="Rechercher une organisation…" />
-                    <CommandList>
-                      <CommandEmpty>Aucune organisation trouvée</CommandEmpty>
-                      <CommandGroup>
-                        {selectableOrgs.map((o) => (
-                          <CommandItem
-                            key={o.id}
-                            value={o.name}
-                            onSelect={() => {
-                              selectSocleOrg(o.id);
-                              setOrgPopoverOpen(false);
-                            }}
-                          >
-                            <Check className={cn("mr-2 h-4 w-4", socleOrgId === o.id ? "opacity-100" : "opacity-0")} />
-                            <span className="truncate" style={{ paddingLeft: `${(o.depth - 1) * 12}px` }}>
-                              {o.name}
-                            </span>
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
-              {selectedOrg && (
-                <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0"
-                  onClick={() => selectSocleOrg(null)} title="Retirer l'organisation">
-                  <X className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
-            <p className="text-[10px] text-muted-foreground/70">
-              Les démarches proposées sont celles que cette organisation assure dans le référentiel.
-            </p>
-          </div>
-
-          {/* Démarche — sans elle, personne n'instruit la demande */}
-          <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">
-              Démarche<span className="text-destructive ml-0.5">*</span>
-            </Label>
-            <div className="flex items-center gap-1.5">
-              <Popover open={procedurePopoverOpen} onOpenChange={setProcedurePopoverOpen}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    role="combobox"
-                    aria-expanded={procedurePopoverOpen}
-                    className="flex-1 justify-between h-9 min-w-0"
-                    disabled={loadingProcedures}
-                  >
-                    <span className="truncate">
-                      {selectedProcedure
-                        ? selectedProcedure.name
-                        : loadingProcedures ? "Chargement…" : (
-                          <span className="text-muted-foreground">Sélectionner une démarche…</span>
-                        )}
-                    </span>
-                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                  <Command>
-                    <CommandInput placeholder="Rechercher une démarche…" />
-                    <CommandList>
-                      <CommandEmpty>
-                        {displayedProcedures.length === 0 && selectedOrg
-                          ? `${selectedOrg.name} n'assure aucune démarche dans le référentiel.`
-                          : "Aucune démarche trouvée"}
-                      </CommandEmpty>
-                      <CommandGroup>
-                        {displayedProcedures.map((p) => {
-                          const suspended = isPartnerSuspended(p, arpegeActive);
-                          return (
-                            <CommandItem
-                              key={p.id}
-                              value={p.name}
-                              className="group"
-                              disabled={suspended}
-                              onSelect={() => {
-                                selectProcedure(p.id);
-                                setProcedurePopoverOpen(false);
-                              }}
-                            >
-                              <Check className={cn("mr-2 h-4 w-4", procedureId === p.id ? "opacity-100" : "opacity-0")} />
-                              {p.name}
-                              {procedureOriginLabel(p) && (
-                                <span className="ml-auto text-[10px] text-muted-foreground group-data-[selected=true]:text-accent-foreground">
-                                  {suspended
-                                    ? `${procedureOriginLabel(p)} · interface suspendue`
-                                    : procedureOriginLabel(p)}
-                                </span>
-                              )}
-                            </CommandItem>
-                          );
-                        })}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
-              {selectedProcedure && (
-                <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0"
-                  onClick={() => selectProcedure("")} title="Retirer la démarche">
-                  <X className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
-            {selectedSuspended && (
-              <p className="text-xs text-destructive">
-                L'interface Arpège est suspendue pour cette collectivité : la demande ne peut pas
-                être transmise.
-              </p>
-            )}
-            {!selectedSuspended && arpegeNeedsOrg && (
-              <p className="text-xs text-muted-foreground">
-                Choisissez l'organisation destinataire : la demande part chez Arpège au nom de
-                l'organisation qui assure cette démarche.
-              </p>
-            )}
-          </div>
+          <ProcedurePicker
+            options={displayedProcedures}
+            selected={selectedProcedure}
+            selectedId={procedureId}
+            loading={loadingProcedures}
+            arpegeActive={arpegeActive}
+            selectedOrgName={selectedOrg?.name ?? null}
+            selectedSuspended={selectedSuspended}
+            arpegeNeedsOrg={arpegeNeedsOrg}
+            onSelect={selectProcedure}
+          />
 
           {/* Arpège forms — side by side when both present */}
           {hasBothForms && (
