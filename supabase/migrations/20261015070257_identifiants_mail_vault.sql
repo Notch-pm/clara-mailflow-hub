@@ -15,7 +15,7 @@
 --     tiennent Vault à jour tant que les anciennes fonctions écrivent encore
 --     `password` ; RPC de lecture et d'écriture.
 --   B : edge functions et écran passent par les RPC.
---   C (20261015090100) : suppression des colonnes en clair.
+--   C (20261015070716) : suppression des colonnes en clair.
 --
 -- Rejouable : IF NOT EXISTS / CREATE OR REPLACE / DROP … IF EXISTS.
 -- ============================================================================

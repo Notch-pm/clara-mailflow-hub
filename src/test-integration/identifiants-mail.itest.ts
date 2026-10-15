@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { clientAs, loadFixtures, serviceRoleClient, type Fixtures } from "./helpers";
 
-// ═══ Mots de passe IMAP dans Vault (migrations 20261015070257 / 090100) :
+// ═══ Mots de passe IMAP dans Vault (migrations 20261015070257 / 20261015070716) :
 // l'administrateur REMPLACE le mot de passe d'une boîte, ne le relit jamais ;
 // seul le service le déchiffre ; un membre ne peut ni l'un ni l'autre.
 

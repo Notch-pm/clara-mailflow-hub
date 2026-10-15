@@ -260,6 +260,41 @@ export type Database = {
         }
         Relationships: []
       }
+      confidential_access_log: {
+        Row: {
+          changed_at: string
+          changed_by: string | null
+          granted: boolean
+          id: string
+          organization_id: string
+          user_id: string
+        }
+        Insert: {
+          changed_at?: string
+          changed_by?: string | null
+          granted: boolean
+          id?: string
+          organization_id: string
+          user_id: string
+        }
+        Update: {
+          changed_at?: string
+          changed_by?: string | null
+          granted?: boolean
+          id?: string
+          organization_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "confidential_access_log_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       courier_analyses: {
         Row: {
           courier_id: string
@@ -1054,7 +1089,6 @@ export type Database = {
           last_fetch_at: string | null
           max_email_bytes: number | null
           organization_id: string
-          password: string
           password_secret_id: string | null
           port: number
           scan_allowed_senders: string[] | null
@@ -1075,7 +1109,6 @@ export type Database = {
           last_fetch_at?: string | null
           max_email_bytes?: number | null
           organization_id: string
-          password?: string
           password_secret_id?: string | null
           port?: number
           scan_allowed_senders?: string[] | null
@@ -1096,7 +1129,6 @@ export type Database = {
           last_fetch_at?: string | null
           max_email_bytes?: number | null
           organization_id?: string
-          password?: string
           password_secret_id?: string | null
           port?: number
           scan_allowed_senders?: string[] | null
@@ -1917,7 +1949,6 @@ export type Database = {
           host: string
           id: string
           organization_id: string
-          password: string
           password_secret_id: string | null
           port: number
           socle_org_id: string | null
@@ -1933,7 +1964,6 @@ export type Database = {
           host?: string
           id?: string
           organization_id: string
-          password?: string
           password_secret_id?: string | null
           port?: number
           socle_org_id?: string | null
@@ -1949,7 +1979,6 @@ export type Database = {
           host?: string
           id?: string
           organization_id?: string
-          password?: string
           password_secret_id?: string | null
           port?: number
           socle_org_id?: string | null
@@ -2569,19 +2598,22 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      get_imap_password: {
-        Args: { p_imap_settings_id: string }
+      _put_mail_credential: {
+        Args: { p_name: string; p_secret_id: string; p_value: string }
         Returns: string
-      }
-      get_smtp_password: {
-        Args: { p_org_id: string }
-        Returns: string
-      }
-      set_imap_password: {
-        Args: { p_imap_settings_id: string; p_password: string }
-        Returns: undefined
       }
       can_access_mailroom: { Args: { _org: string }; Returns: boolean }
+      can_read_confidential_courier: {
+        Args: {
+          _id: string
+          _metadata: Json
+          _org: string
+          _socle_org: string
+          _state: string
+        }
+        Returns: boolean
+      }
+      can_read_courier: { Args: { p_courier_id: string }; Returns: boolean }
       claim_analysis_jobs: {
         Args: { p_limit?: number }
         Returns: {
@@ -2604,6 +2636,10 @@ export type Database = {
           title: string
           type: string
         }[]
+      }
+      claim_outbound_email_send: {
+        Args: { p_courier_id: string; p_organization_id: string }
+        Returns: boolean
       }
       claim_storage_deletions: {
         Args: { p_limit?: number }
@@ -2634,7 +2670,6 @@ export type Database = {
         Args: { p_org_id: string }
         Returns: boolean
       }
-      can_read_courier: { Args: { p_courier_id: string }; Returns: boolean }
       contact_couriers: {
         Args: { p_organization_id: string; p_socle_contact_id: string }
         Returns: {
@@ -2661,11 +2696,11 @@ export type Database = {
       create_outbound_courier: {
         Args: {
           p_channel: Database["public"]["Enums"]["courier_channel"]
+          p_is_confidential?: boolean
           p_organization_id: string
           p_recipient: Json
-          p_socle_organization_id: string
-          p_is_confidential?: boolean
           p_sender?: Json
+          p_socle_organization_id: string
           p_subject: string
         }
         Returns: string
@@ -2696,8 +2731,22 @@ export type Database = {
         Args: { p_courier_id: string; p_kind?: string }
         Returns: string
       }
+      finish_outbound_email_send: {
+        Args: { p_courier_id: string; p_message_id: string }
+        Returns: undefined
+      }
       get_cron_secret: { Args: never; Returns: string }
+      get_imap_password: {
+        Args: { p_imap_settings_id: string }
+        Returns: string
+      }
+      get_smtp_password: { Args: { p_org_id: string }; Returns: string }
+      has_confidential_access: { Args: { _org: string }; Returns: boolean }
       is_admin_of: { Args: { _org: string }; Returns: boolean }
+      is_designated_on_courier: {
+        Args: { _metadata: Json; _socle_org: string; _state: string }
+        Returns: boolean
+      }
       is_editor_of: { Args: { _org: string }; Returns: boolean }
       is_member_of: { Args: { _org: string }; Returns: boolean }
       is_superadmin: { Args: { _user_id: string }; Returns: boolean }
@@ -2705,17 +2754,17 @@ export type Database = {
       mailroom_couriers: {
         Args: { p_organization_id: string; p_since?: string }
         Returns: {
-          can_read: boolean
-          is_confidential: boolean
           acknowledged_at: string
           analysis_status: string
           assigned_service: string
+          can_read: boolean
           channel: string
           chrono: string
           created_at: string
           first_intent: string
           has_analysis: boolean
           id: string
+          is_confidential: boolean
           last_reminder_at: string
           received_at: string
           reminder_count: number
@@ -2747,11 +2796,11 @@ export type Database = {
         Args: { p_organization_id: string; p_since?: string }
         Returns: {
           can_read: boolean
-          is_confidential: boolean
           channel: string
           chrono: string
           created_at: string
           id: string
+          is_confidential: boolean
           parent_chrono: string
           parent_courier_id: string
           parent_subject: string
@@ -2804,6 +2853,10 @@ export type Database = {
         }
         Returns: string
       }
+      release_outbound_email_send: {
+        Args: { p_courier_id: string }
+        Returns: undefined
+      }
       requeue_stale_analysis_jobs: {
         Args: { p_older_than?: string }
         Returns: number
@@ -2813,7 +2866,11 @@ export type Database = {
         Returns: undefined
       }
       route_courier_blind: {
-        Args: { p_courier_id: string; p_socle_organization_id: string; p_transfer?: boolean }
+        Args: {
+          p_courier_id: string
+          p_socle_organization_id: string
+          p_transfer?: boolean
+        }
         Returns: Json
       }
       search_couriers: {
@@ -2837,15 +2894,15 @@ export type Database = {
           p_workflow_state_ids?: string[]
         }
         Returns: {
-          can_read: boolean
-          is_confidential: boolean
           acknowledged_at: string
           assigned_service: string
+          can_read: boolean
           channel: string
           chrono: string
           created_at: string
           direction: string
           id: string
+          is_confidential: boolean
           is_large_email: boolean
           is_transferred: boolean
           match_in: string[]
@@ -2867,6 +2924,10 @@ export type Database = {
       }
       set_courier_confidential: {
         Args: { p_confidential: boolean; p_courier_id: string }
+        Returns: undefined
+      }
+      set_imap_password: {
+        Args: { p_imap_settings_id: string; p_password: string }
         Returns: undefined
       }
       settle_notification_push: {
@@ -2990,7 +3051,6 @@ export type Database = {
         Args: { p_organization_id: string }
         Returns: {
           can_read: boolean
-          is_confidential: boolean
           channel: string
           chrono: string
           created_at: string
@@ -2998,6 +3058,7 @@ export type Database = {
           deleted_by_name: string
           direction: string
           id: string
+          is_confidential: boolean
           purge_at: string
           received_at: string
           reply_count: number

@@ -188,7 +188,9 @@ begin
   select * into v_row_b from public.smtp_settings where organization_id = v_org_b;
   if v_row.host <> 'a.test' or v_row_b.host <> 'b.test'
      or v_row_b.port <> 465 or v_row_b.use_tls is not false
-     or v_row_b.socle_org_id is distinct from v_racine2 then
+     or v_row_b.socle_org_id is distinct from v_racine2
+     or public.get_smtp_password(v_org_a) is distinct from 'pa'
+     or public.get_smtp_password(v_org_b) is distinct from 'pb' then
     v_echecs := v_echecs || '12. une écriture a débordé sur l''autre organisation';
   end if;
 

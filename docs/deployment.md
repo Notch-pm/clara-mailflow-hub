@@ -121,7 +121,7 @@ Ordre impératif : chaque étape suppose la précédente, et l'étape 4 coupe l'
 | 1 | `20261015070257_identifiants_mail_vault.sql` (colonnes `password_secret_id`, copie dans Vault, triggers de transition, RPC `get_smtp_password` / `get_imap_password` / `set_imap_password`) | Additive : l'ancien code continue de lire `password`, Vault suit par trigger | **Appliqué** via `apply_migration` — registre `20261015070257` (fichier renommé pour coller) ; 6 IMAP + 4 SMTP relus à l’identique depuis Vault |
 | 2 | Edge functions `action-task-mail`, `auth-email-hook`, `invite-user`, `send-assignment-notification`, `send-courier-reply`, `send-mention-notification`, `send-password-reset`, `fetch-inbound-emails` | Lisent le mot de passe dans Vault | **Fait** le 2026-10-15 |
 | 3 | Frontend (push sur `main`) : écran « Boîtes de réception » via `imapSettingsService` | Liste sans mot de passe, `set_imap_password` | **Fait** le 2026-10-15 |
-| 4 | `20261015090100_identifiants_mail_sans_clair.sql` (sync SMTP vers Vault, fin des triggers, **colonnes `password` supprimées**) | Casse tout code encore en ancienne version | ⏳ puis régénérer `types.ts`, rejouer `supabase/tests/smtp_socle.test.sql` et `identifiants-mail.itest.ts` |
+| 4 | `20261015070716_identifiants_mail_sans_clair.sql` (sync SMTP vers Vault, fin des triggers, **colonnes `password` supprimées**) | Casse tout code encore en ancienne version | **Appliqué** via `apply_migration` — registre `20261015070716` (fichier renommé pour coller) ; `types.ts` régénéré ; `smtp_socle.test.sql` 12/12 ; intégration 133/133, E2E 11/11 ; relève IMAP de prod sans erreur après bascule. ⚠️ Envoi SMTP réel pas encore observé (aucun envoi depuis) |
 
 ### Notification du viseur (2026-10-14)
 
