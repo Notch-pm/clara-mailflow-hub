@@ -118,12 +118,12 @@ Trois dépôts. Chaque étape est additive jusqu’à la 6 ; une ancienne clé p
 
 | # | Quoi | Pourquoi l’ordre | État |
 |---|---|---|---|
-| 1 | **Socle** : déployer `public-api` (1.42.0, champ `applications`) ; pousser `main` | Les deux syncs lisent ce champ ; sans lui, elles ne font rien | ⏳ |
-| 2 | **Iris** : source plateforme `clara` + identifiant (script `provision-iris-platform-key.ts`, qui pose aussi les secrets Clara `IRIS_API_URL` / `IRIS_PLATFORM_API_KEY`) | La clé doit exister avant que Clara ne s’en serve | ⏳ |
-| 3 | **Iris** : déployer `sync-socle-referentiel` ; pousser `main` ; lancer la sync | Ouvre la source `clara` des tenants abonnés ([TEST], Test 2 en plus des quatre existants) | ⏳ |
-| 4 | **Clara** : migration `20261015120000_iris_depuis_socle.sql` (RPC de service) | La sync de Clara les appelle | ⏳ |
-| 5 | **Clara** : déployer `sync-socle-referentiel`, `push-iris-request`, `sync-iris-requests`, `refresh-iris-status`, `iris-request-detail`, `iris-contact-requests` ; pousser `main` | Lecture de la clé plateforme + en-tête | ⏳ |
-| 6 | **Clara** : lancer la sync du référentiel → les lignes Iris passent sans clé (clé plateforme) ; vérifier une lecture (`refresh-iris-status`) et un dépôt | Bascule effective | ⏳ |
+| 1 | **Socle** : déployer `public-api` (1.42.0, champ `applications`) ; pousser `main` | Les deux syncs lisent ce champ ; sans lui, elles ne font rien | **Fait** — `/openapi.json` annonce 1.42.0 |
+| 2 | **Iris** : source plateforme `clara` + identifiant (script `provision-iris-platform-key.ts`, qui pose aussi les secrets Clara `IRIS_API_URL` / `IRIS_PLATFORM_API_KEY`) | La clé doit exister avant que Clara ne s’en serve | **Fait** — source plateforme `clara`, clé `irs_KtWMdymM…` (expire le 2027-10-15), secrets Clara posés |
+| 3 | **Iris** : déployer `sync-socle-referentiel` ; pousser `main` ; lancer la sync | Ouvre la source `clara` des tenants abonnés ([TEST], Test 2 en plus des quatre existants) | Déployé et poussé ; **sync Iris non lancée** (MCP Iris en lecture seule) — passe de 04:00 ou bouton « Synchroniser » d’Iris |
+| 4 | **Clara** : migration `20261015081150_iris_depuis_socle.sql` (RPC de service) | La sync de Clara les appelle | **Appliqué** — registre `20261015081150` (fichier renommé) |
+| 5 | **Clara** : déployer `sync-socle-referentiel`, `push-iris-request`, `sync-iris-requests`, `refresh-iris-status`, `iris-request-detail`, `iris-contact-requests` ; pousser `main` | Lecture de la clé plateforme + en-tête | **Fait** |
+| 6 | **Clara** : lancer la sync du référentiel → les lignes Iris passent sans clé (clé plateforme) ; vérifier une lecture (`refresh-iris-status`) et un dépôt | Bascule effective | **Fait** le 2026-10-15 : ACCM, Normandie Démo, Saint Laurent, Saône-et-Loire en clé plateforme ; réconciliation 200 pour les quatre (journal `integration_api_logs` d’Iris). [TEST] Alpha : 403 tant qu’Iris n’a pas ouvert sa source |
 | 7 | **Iris** : révoquer les quatre anciennes clés `clara` par collectivité | Après vérification seulement | ⏳ |
 
 ### Identifiants de messagerie dans Vault (2026-10-15)
