@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Webhook } from "https://esm.sh/standardwebhooks@1.0.0";
 import nodemailer from "npm:nodemailer@6";
 import { hexOr, renderBrandedEmail } from "../_shared/emailLayout.ts";
+import { loadSmtpSettings } from "../_shared/mailCredentials.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -212,11 +213,7 @@ Deno.serve(async (req) => {
     };
 
     // Get SMTP settings
-    const { data: smtp, error: smtpError } = await supabase
-      .from("smtp_settings")
-      .select("*")
-      .eq("organization_id", orgId)
-      .single();
+    const { data: smtp, error: smtpError } = await loadSmtpSettings(supabase, orgId);
 
     // Miroir du référentiel (organisation principale) : plus de saisie dans
     // Clara, et aucun relais de repli — sans miroir, aucun mail d'auth ne part.

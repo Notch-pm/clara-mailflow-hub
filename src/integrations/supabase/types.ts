@@ -1055,6 +1055,7 @@ export type Database = {
           max_email_bytes: number | null
           organization_id: string
           password: string
+          password_secret_id: string | null
           port: number
           scan_allowed_senders: string[] | null
           socle_organization_id: string | null
@@ -1075,6 +1076,7 @@ export type Database = {
           max_email_bytes?: number | null
           organization_id: string
           password?: string
+          password_secret_id?: string | null
           port?: number
           scan_allowed_senders?: string[] | null
           socle_organization_id?: string | null
@@ -1095,6 +1097,7 @@ export type Database = {
           max_email_bytes?: number | null
           organization_id?: string
           password?: string
+          password_secret_id?: string | null
           port?: number
           scan_allowed_senders?: string[] | null
           socle_organization_id?: string | null
@@ -1915,6 +1918,7 @@ export type Database = {
           id: string
           organization_id: string
           password: string
+          password_secret_id: string | null
           port: number
           socle_org_id: string | null
           socle_updated_at: string | null
@@ -1930,6 +1934,7 @@ export type Database = {
           id?: string
           organization_id: string
           password?: string
+          password_secret_id?: string | null
           port?: number
           socle_org_id?: string | null
           socle_updated_at?: string | null
@@ -1945,6 +1950,7 @@ export type Database = {
           id?: string
           organization_id?: string
           password?: string
+          password_secret_id?: string | null
           port?: number
           socle_org_id?: string | null
           socle_updated_at?: string | null
@@ -2563,6 +2569,18 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_imap_password: {
+        Args: { p_imap_settings_id: string }
+        Returns: string
+      }
+      get_smtp_password: {
+        Args: { p_org_id: string }
+        Returns: string
+      }
+      set_imap_password: {
+        Args: { p_imap_settings_id: string; p_password: string }
+        Returns: undefined
+      }
       can_access_mailroom: { Args: { _org: string }; Returns: boolean }
       claim_analysis_jobs: {
         Args: { p_limit?: number }

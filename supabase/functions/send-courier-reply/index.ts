@@ -4,6 +4,7 @@ import { assertEditor } from "../_shared/authz.ts";
 import { canReadCourier } from "../_shared/courierAccess.ts";
 import { contactsApiKeyForOrg, fetchContactsApi } from "../_shared/socleContactsClient.ts";
 import { planOutboundAttachments, type OutboundDocument } from "../_shared/outboundAttachments.ts";
+import { loadSmtpSettings } from "../_shared/mailCredentials.ts";
 
 const BUCKET = "clara-documents";
 
@@ -195,11 +196,7 @@ Deno.serve(async (req) => {
     }
 
     // SMTP config
-    const { data: smtp, error: smtpErr } = await supabase
-      .from("smtp_settings")
-      .select("*")
-      .eq("organization_id", organization_id)
-      .single();
+    const { data: smtp, error: smtpErr } = await loadSmtpSettings(supabase, organization_id);
     // Le relais vient du référentiel (organisation principale) : Clara n'en tient
     // qu'un miroir et n'a aucun repli. Pas de miroir = pas d'envoi possible.
     if (smtpErr || !smtp) {

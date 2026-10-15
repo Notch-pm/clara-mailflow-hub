@@ -14,6 +14,7 @@ import {
   scanInboxAcceptsNothing,
   SCAN_ALLOWLIST_EMPTY_MESSAGE,
 } from "./logic.ts";
+import { loadImapPassword } from "../_shared/mailCredentials.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -73,7 +74,6 @@ interface ImapSettings {
   host: string;
   port: number;
   username: string;
-  password: string;
   use_tls: boolean;
   folder: string;
   auto_fetch: boolean;
@@ -294,7 +294,8 @@ async function processOrganization(
   const rejectedSenders: string[] = [];
   try {
     await client.connect();
-    await client.login(s.username, s.password);
+    // Mot de passe lu dans Vault au dernier moment, jamais porté par la ligne relue.
+    await client.login(s.username, await loadImapPassword(admin, s.id));
 
     if (opts.onlyTest) {
       await client.logout();

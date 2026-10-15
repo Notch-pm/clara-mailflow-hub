@@ -12,6 +12,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import nodemailer from "npm:nodemailer@6";
 import { escapeHtml, hexOr, renderBrandedEmail } from "../_shared/emailLayout.ts";
 import { generateTaskToken, hashTaskToken, taskMailSubject } from "../_shared/actionTask.ts";
+import { loadSmtpSettings } from "../_shared/mailCredentials.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -83,7 +84,7 @@ Deno.serve(async (req) => {
         .select("name, primary_color, logo_url")
         .eq("id", ticket.organization_id)
         .single(),
-      admin.from("smtp_settings").select("*").eq("organization_id", ticket.organization_id).maybeSingle(),
+      loadSmtpSettings(admin, ticket.organization_id),
     ]);
 
     // L'affecté est-il (toujours) un membre actif ? Lui seul a droit au lien

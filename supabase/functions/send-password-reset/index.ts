@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import nodemailer from "npm:nodemailer@6";
 import { hexOr, renderBrandedEmail } from "../_shared/emailLayout.ts";
+import { loadSmtpSettings } from "../_shared/mailCredentials.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -187,11 +188,7 @@ Deno.serve(async (req) => {
       .eq("id", orgId)
       .single();
 
-    const { data: smtp } = await adminClient
-      .from("smtp_settings")
-      .select("*")
-      .eq("organization_id", orgId)
-      .single();
+    const { data: smtp } = await loadSmtpSettings(adminClient, orgId);
 
     // Miroir du référentiel (organisation principale) : plus de saisie dans
     // Clara, et aucun relais de repli.

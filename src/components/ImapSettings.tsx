@@ -1,6 +1,11 @@
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import type { Tables } from "@/integrations/supabase/types";
+import {
+  deleteImapSettings,
+  listImapSettings,
+  saveImapSettings,
+  type ImapSettingsRow,
+} from "@/services/imapSettingsService";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -80,7 +85,6 @@ function parseAllowedSenders(raw: string): string[] | null {
   return list.length ? list : null;
 }
 
-type ImapSettingsRow = Tables<"imap_settings">;
 
 interface InvokeErrorWithContext extends Error {
   context?: { json?: () => Promise<{ error?: string } | null> };
@@ -100,13 +104,7 @@ export default function ImapSettings({ orgId }: { orgId: string }) {
   const { data: settings = [], isLoading } = useQuery({
     queryKey: ["imap-settings", orgId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("imap_settings")
-        .select("*")
-        .eq("organization_id", orgId)
-        .order("created_at", { ascending: true });
-      if (error) throw error;
-      return data ?? [];
+      return listImapSettings(orgId);
     },
     enabled: !!orgId,
   });
@@ -152,7 +150,8 @@ export default function ImapSettings({ orgId }: { orgId: string }) {
       host: row.host || "",
       port: row.port || 993,
       username: row.username || "",
-      password: row.password || "",
+      // Jamais relu : le champ vide signifie « inchangé ».
+      password: "",
       use_tls: row.use_tls ?? true,
       folder: row.folder || "INBOX",
       auto_fetch: row.auto_fetch ?? false,
@@ -175,18 +174,8 @@ export default function ImapSettings({ orgId }: { orgId: string }) {
           "Renseignez au moins un expéditeur autorisé : sans lui, la boîte de numérisation refusera tous les courriers.",
         );
       }
-      if (editingRow) {
-        const { error } = await supabase
-          .from("imap_settings")
-          .update({ ...form, updated_at: new Date().toISOString() })
-          .eq("id", editingRow.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from("imap_settings")
-          .insert({ ...form, organization_id: orgId });
-        if (error) throw error;
-      }
+      const { password, ...fields } = form;
+      await saveImapSettings(orgId, editingRow?.id ?? null, fields, password);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["imap-settings", orgId] });
@@ -198,8 +187,7 @@ export default function ImapSettings({ orgId }: { orgId: string }) {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("imap_settings").delete().eq("id", id);
-      if (error) throw error;
+      await deleteImapSettings(orgId, id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["imap-settings", orgId] });
@@ -547,10 +535,16 @@ export default function ImapSettings({ orgId }: { orgId: string }) {
                   <Input
                     id="imap-password"
                     type="password"
-                    placeholder="••••••••"
+                    placeholder={editingRow?.password_secret_id ? "Inchangé — saisir pour remplacer" : "••••••••"}
+                    autoComplete="new-password"
                     value={form.password}
                     onChange={(e) => setForm({ ...form, password: e.target.value })}
                   />
+                  {editingRow?.password_secret_id && (
+                    <p className="text-xs text-muted-foreground">
+                      Un mot de passe est enregistré (chiffré) ; il n'est jamais réaffiché.
+                    </p>
+                  )}
                 </div>
               </div>
 

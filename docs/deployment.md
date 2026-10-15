@@ -112,6 +112,17 @@ bunx supabase functions deploy <nom> --project-ref aullweizxcjbvtdspjli
 bun run build && npx wrangler deploy --dry-run
 ```
 
+### Identifiants de messagerie dans Vault (2026-10-15)
+
+Ordre impératif : chaque étape suppose la précédente, et l'étape 4 coupe l'ancien code.
+
+| # | Quoi | Pourquoi l'ordre | État |
+|---|---|---|---|
+| 1 | `20261015090000_identifiants_mail_vault.sql` (colonnes `password_secret_id`, copie dans Vault, triggers de transition, RPC `get_smtp_password` / `get_imap_password` / `set_imap_password`) | Additive : l'ancien code continue de lire `password`, Vault suit par trigger | Éprouvée en transaction annulée (copie identique, suivi d'une mise à jour, secret supprimé avec la ligne, droits) |
+| 2 | Edge functions `action-task-mail`, `auth-email-hook`, `invite-user`, `send-assignment-notification`, `send-courier-reply`, `send-mention-notification`, `send-password-reset`, `fetch-inbound-emails` | Lisent le mot de passe dans Vault | ⏳ |
+| 3 | Frontend (push sur `main`) : écran « Boîtes de réception » via `imapSettingsService` | Liste sans mot de passe, `set_imap_password` | ⏳ |
+| 4 | `20261015090100_identifiants_mail_sans_clair.sql` (sync SMTP vers Vault, fin des triggers, **colonnes `password` supprimées**) | Casse tout code encore en ancienne version | ⏳ puis régénérer `types.ts`, rejouer `supabase/tests/smtp_socle.test.sql` et `identifiants-mail.itest.ts` |
+
 ### Notification du viseur (2026-10-14)
 
 | # | Étape | État |

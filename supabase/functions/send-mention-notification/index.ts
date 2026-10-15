@@ -3,6 +3,7 @@ import nodemailer from "npm:nodemailer@6";
 import { assertEditor } from "../_shared/authz.ts";
 import { hexOr, renderBrandedEmail } from "../_shared/emailLayout.ts";
 import { CONFIDENTIAL_SUBJECT } from "../_shared/courierAccess.ts";
+import { loadSmtpSettings } from "../_shared/mailCredentials.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -128,11 +129,7 @@ Deno.serve(async (req) => {
       .eq("id", courier.organization_id)
       .single();
 
-    const { data: smtp } = await admin
-      .from("smtp_settings")
-      .select("*")
-      .eq("organization_id", courier.organization_id)
-      .single();
+    const { data: smtp } = await loadSmtpSettings(admin, courier.organization_id);
 
     // Miroir du référentiel (organisation principale), aucun relais de repli.
     if (!smtp?.host) {

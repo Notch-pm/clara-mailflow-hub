@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import nodemailer from "npm:nodemailer@6";
 import { hexOr, renderBrandedEmail } from "../_shared/emailLayout.ts";
 import { CONFIDENTIAL_SUBJECT } from "../_shared/courierAccess.ts";
+import { loadSmtpSettings } from "../_shared/mailCredentials.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -154,11 +155,7 @@ Deno.serve(async (req) => {
     // Permalien vers le courrier, onglet « Actions liées ».
     const link = `${origin}/courrier/${ticket.courier_id}?tab=actions`;
 
-    const { data: smtp } = await admin
-      .from("smtp_settings")
-      .select("*")
-      .eq("organization_id", ticket.organization_id)
-      .single();
+    const { data: smtp } = await loadSmtpSettings(admin, ticket.organization_id);
 
     // Pas de miroir du serveur d'envoi (il vient du référentiel) ou pas
     // d'adresse : la notification in-app a déjà été posée, on n'échoue pas pour

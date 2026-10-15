@@ -91,6 +91,14 @@ begin
     v_echecs := v_echecs || '5. fraîcheur (socle_updated_at / synced_at) absente';
   end if;
   v_sync1 := v_row.synced_at;
+  -- Mot de passe dans Vault, relu tel quel par le service (jamais en clair dans la table).
+  if public.get_smtp_password(v_org_a) is distinct from 'motdepasse' then
+    v_echecs := v_echecs || '5. mot de passe absent de Vault ou altéré';
+  end if;
+  if has_function_privilege('authenticated', 'public.get_smtp_password(uuid)', 'execute')
+     or has_function_privilege('anon', 'public.get_smtp_password(uuid)', 'execute') then
+    v_echecs := v_echecs || '5. get_smtp_password exécutable hors service';
+  end if;
 
   -- ── 6. Miroir strict : le mot de passe retiré côté Socle est retiré ici ───
   perform public.sync_smtp_settings_from_socle(
@@ -98,7 +106,7 @@ begin
     'contact@test.fr', 'Mairie', true, '2026-07-12T09:00:00Z'::timestamptz);
 
   select * into v_row from public.smtp_settings where organization_id = v_org_a;
-  if v_row.password <> '' then
+  if coalesce(public.get_smtp_password(v_org_a), '') <> '' then
     v_echecs := v_echecs || '6. mot de passe retiré côté Socle mais conservé dans le miroir';
   end if;
   if v_row.synced_at < v_sync1 then
@@ -154,7 +162,11 @@ begin
   end if;
 
   -- ── 11. Effacement : vrai la première fois, faux ensuite ──────────────────
+  select password_secret_id into v_row.password_secret_id from public.smtp_settings where organization_id = v_org_a;
   select public.clear_smtp_settings_from_socle(v_org_a) into v_bool;
+  if exists (select 1 from vault.secrets where id = v_row.password_secret_id) then
+    v_echecs := v_echecs || '11. le secret Vault survit à l''effacement du relais';
+  end if;
   if v_bool is not true then
     v_echecs := v_echecs || '11. l''effacement ne signale pas la ligne retirée';
   end if;
