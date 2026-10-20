@@ -8,6 +8,7 @@ import {
   defaultConsentAnswers,
   normalizeConsents,
   organismLabel,
+  organismPhrase,
   parseConsentRecords,
 } from "../../../supabase/functions/_shared/consents/catalog";
 
@@ -33,16 +34,20 @@ describe("catalogue des consentements", () => {
 });
 
 describe("consentStatement", () => {
-  it("interpole le nom de l'organisation dans le partage", () => {
-    expect(consentStatement("partage", "la Ville d'Arles")).toBe(
-      "J'accepte de partager ces informations aux services de la Ville d'Arles afin d'améliorer "
-      + "le traitement de ma demande et de mes futures demandes.",
+  it("cite le nom de l'organisation dans le partage, sans l'accorder", () => {
+    expect(consentStatement("partage", "Agglomération Normandie Démo")).toBe(
+      "J'accepte de partager ces informations avec les services de l'organisme « Agglomération Normandie Démo » "
+      + "afin d'améliorer le traitement de ma demande et de mes futures demandes.",
     );
+    expect(organismPhrase("  ACCM  ")).toBe("l'organisme « ACCM »");
   });
 
   it("se replie sur un nom générique plutôt que de laisser un trou", () => {
     for (const name of [null, undefined, "", "   "]) {
-      expect(consentStatement("partage", name)).toContain(`aux services de ${DEFAULT_ORGANISM} afin`);
+      expect(consentStatement("partage", name)).toBe(
+        `J'accepte de partager ces informations avec les services de ${DEFAULT_ORGANISM} `
+        + "afin d'améliorer le traitement de ma demande et de mes futures demandes.",
+      );
     }
     expect(organismLabel("  ACCM  ")).toBe("ACCM");
   });

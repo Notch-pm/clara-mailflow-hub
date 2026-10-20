@@ -29,7 +29,7 @@ declare
   v_consents jsonb;
   v_trace    constant jsonb := '[
     {"kind":"traitement","granted":true,"statement":"J''accepte que les informations fournies ici soient utilisées dans le cadre du traitement de ma demande.","collected_at":"2026-09-22T08:00:00.000Z"},
-    {"kind":"partage","granted":false,"statement":"J''accepte de partager ces informations aux services de [TEST SQL] afin d''améliorer le traitement de ma demande et de mes futures demandes.","collected_at":"2026-09-22T08:00:00.000Z"}
+    {"kind":"partage","granted":false,"statement":"J''accepte de partager ces informations avec les services de l''organisme « [TEST SQL] » afin d''améliorer le traitement de ma demande et de mes futures demandes.","collected_at":"2026-09-22T08:00:00.000Z"}
   ]'::jsonb;
   v_err      text;
   v_subject  text;

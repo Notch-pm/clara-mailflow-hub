@@ -37,7 +37,7 @@ export interface ConsentDef {
 
 /**
  * Nom d'organisme de repli. Le libellé doit TOUJOURS être composable : une
- * phrase à trou (« aux services de  ») serait consignée telle quelle et
+ * phrase à trou (« les services de  ») serait consignée telle quelle et
  * resterait au dossier pour des années.
  */
 export const DEFAULT_ORGANISM = "la collectivité";
@@ -54,9 +54,9 @@ export const CONSENTS: readonly ConsentDef[] = [
     kind: "partage",
     required: false,
     defaultGranted: true,
-    label: "Partage aux services",
+    label: "Partage avec les services",
     purpose:
-      "Partager ces informations aux services de la collectivité pour améliorer le traitement de cette demande et des suivantes.",
+      "Partager ces informations avec les services de la collectivité pour améliorer le traitement de cette demande et des suivantes.",
   },
 ];
 
@@ -77,6 +77,16 @@ export function organismLabel(name: string | null | undefined): string {
 }
 
 /**
+ * Le complément du partage : « l'organisme « X » » quand le nom est connu,
+ * « la collectivité » sinon. Le nom est CITÉ, jamais accordé : « aux services
+ * de Agglomération… » n'était pas du français, et l'élision dépendrait du nom.
+ */
+export function organismPhrase(name: string | null | undefined): string {
+  const trimmed = typeof name === "string" ? name.trim() : "";
+  return trimmed === "" ? DEFAULT_ORGANISM : `l'organisme « ${trimmed} »`;
+}
+
+/**
  * Phrase EXACTE soumise à l'usager, et consignée telle quelle : c'est elle qui
  * fait la preuve du consentement (art. 7.1 RGPD), pas le booléen. Le nom de
  * l'organisation y est interpolé — une même collectivité ne pose donc pas la
@@ -87,7 +97,7 @@ export function consentStatement(kind: ConsentKind, organismName?: string | null
   if (kind === "traitement") {
     return "J'accepte que les informations fournies ici soient utilisées dans le cadre du traitement de ma demande.";
   }
-  return `J'accepte de partager ces informations aux services de ${organismLabel(organismName)} `
+  return `J'accepte de partager ces informations avec les services de ${organismPhrase(organismName)} `
     + "afin d'améliorer le traitement de ma demande et de mes futures demandes.";
 }
 

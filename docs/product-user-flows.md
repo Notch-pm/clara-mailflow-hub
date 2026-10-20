@@ -84,7 +84,7 @@ Clara relève automatiquement une ou plusieurs boîtes IMAP.
 Un usager dépose lui-même sa demande sur un formulaire public de la collectivité (lien ou iframe
 à jeton). C'est le seul chemin d'entrée où l'usager est **présent** : c'est là que Clara lui pose
 les deux questions de consentement RGPD de la gamme — l'utilisation de ses informations pour
-traiter sa demande (obligatoire, sans quoi l'envoi est refusé) et leur partage aux services de la
+traiter sa demande (obligatoire, sans quoi l'envoi est refusé) et leur partage avec les services de la
 collectivité (facultatif, proposé coché). La phrase affichée est celle qui est consignée, mot
 pour mot, avec le nom de la collectivité.
 

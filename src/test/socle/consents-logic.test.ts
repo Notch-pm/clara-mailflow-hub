@@ -29,12 +29,12 @@ describe("buildConsentsRecordBody — consignation manuelle par un agent", () =>
         { kind: "partage", granted: false, statement: consentStatement("partage", "Ville d'Arles") },
       ],
     });
-    expect(res.body.consents[1].statement).toContain("aux services de Ville d'Arles");
+    expect(res.body.consents[1].statement).toContain("avec les services de l'organisme «\u00a0Ville d'Arles\u00a0»");
   });
 
   it("se replie sur « la collectivité » sans nom, plutôt qu'une phrase à trou", () => {
     const res = buildConsentsRecordBody({ answers: [{ kind: "partage", granted: true }] }, null, NOW);
-    expect(res.ok && res.body.consents[0].statement).toContain("aux services de la collectivité");
+    expect(res.ok && res.body.consents[0].statement).toContain("avec les services de la collectivité");
   });
 
   it("refuse un libellé venu du navigateur, au niveau du payload comme d'une réponse", () => {

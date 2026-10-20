@@ -12,12 +12,12 @@ describe("portalConsentsConfig — ce que le GET sert au navigateur", () => {
     expect(cfg.map((c) => c.kind)).toEqual(["traitement", "partage"]);
     expect(cfg[0]).toMatchObject({ required: true, default_granted: false });
     expect(cfg[1]).toMatchObject({ required: false, default_granted: true });
-    expect(cfg[1].statement).toContain("aux services de Mairie de Rosny-sous-Bois");
+    expect(cfg[1].statement).toContain("avec les services de l'organisme «\u00a0Mairie de Rosny-sous-Bois\u00a0»");
     expect(cfg[0].statement).toBe(consentStatement("traitement"));
   });
 
   it("se replie sur « la collectivité » sans nom", () => {
-    expect(portalConsentsConfig(null)[1].statement).toContain("aux services de la collectivité");
+    expect(portalConsentsConfig(null)[1].statement).toContain("avec les services de la collectivité");
   });
 });
 
