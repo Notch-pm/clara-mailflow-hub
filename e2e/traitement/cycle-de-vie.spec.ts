@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { loadFixtures, loginAs } from "./helpers";
+import { loadFixtures, loginAs } from "../helpers";
 
 // ═══ Parcours critique n°1 : cycle de vie complet d'un courrier —
 // saisie manuelle → instruction via le workflow → clôture → brouillon de réponse.

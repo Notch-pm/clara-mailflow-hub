@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { loadFixtures, loginAs } from "./helpers";
+import { loadFixtures, loginAs } from "../helpers";
 
 // ═══ Parcours critique n°2 : droits d'un simple membre.
 // membre.alpha appartient uniquement à la sous-organisation « [TEST] Cabinet Alpha » :

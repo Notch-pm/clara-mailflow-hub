@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { loadFixtures, loginAs } from "./helpers";
+import { loadFixtures, loginAs } from "../helpers";
 
 // ═══ Parcours critique n°3 : étanchéité entre tenants, côté interface.
 // (L'isolation RLS est prouvée par la suite d'intégration ; ici on vérifie

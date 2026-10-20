@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { loadFixtures, loginAs } from "./helpers";
+import { loadFixtures, loginAs } from "../helpers";
 
 // ═══ Parcours : rôle `consultant` en LECTURE SEULE.
 // consultant.alpha appartient à la sous-organisation « [TEST] Cabinet Alpha » :

@@ -53,6 +53,25 @@ async function insertOne<T = Record<string, unknown>>(table: string, row: Record
   return data as T;
 }
 
+/** Supprime récursivement les objets d'un bucket sous `prefix` (best-effort). */
+async function purgeStoragePrefix(bucket: string, prefix: string): Promise<void> {
+  const { data, error } = await admin.storage.from(bucket).list(prefix, { limit: 1000 });
+  if (error || !data) return;
+  const files: string[] = [];
+  for (const entry of data) {
+    // Les « dossiers » n'ont pas d'id dans la réponse de list().
+    if (entry.id) files.push(`${prefix}/${entry.name}`);
+    else await purgeStoragePrefix(bucket, `${prefix}/${entry.name}`);
+  }
+  if (files.length > 0) await admin.storage.from(bucket).remove(files);
+}
+
+// PNG 1×1 : signature manuscrite factice (assez pour signer en E2E).
+const PNG_1X1 = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  "base64",
+);
+
 // ─── Purge ciblée [TEST] ──────────────────────────────────────────────────────
 
 async function cleanup() {
@@ -81,6 +100,11 @@ async function cleanup() {
       if (error && !/column .* does not exist/.test(error.message)) {
         console.warn(`  purge ${table}: ${error.message}`);
       }
+    }
+    // Fichiers Storage des tenants purgés (dossier = organization_id) : sans
+    // cela, chaque reseed laisserait ses pièces orphelines dans les buckets.
+    for (const orgId of orgIds) {
+      for (const bucket of ["clara-documents", "signatures"]) await purgeStoragePrefix(bucket, orgId);
     }
     const { error: orgErr } = await admin.from("organizations").delete().in("id", orgIds);
     if (orgErr) fail("purge organizations", orgErr.message);
@@ -154,6 +178,15 @@ interface TenantFixture {
   workflowBId: string;
   statesB: { initial: string; mid: string; final: string };
   socleOrgBId: string;
+  // E2E : seconde sous-organisation du tenant (étanchéité intra-tenant) et
+  // pièce jointe stockée sur le courrier « racine » (étanchéité Storage).
+  techSocleOrgId: string;
+  techCourierId: string;
+  // Circuit complet (E2E réponse / sortants) : visa → signature → envoi → clôture → archivage.
+  fullSocleOrgId: string;
+  fullStates: { initial: string; processing: string; processed: string; archived: string };
+  fullReplyStates: { draft: string; visa: string; signature: string; send: string; done: string };
+  rootDocument: { storageKey: string; fileName: string };
 }
 
 async function seedTenant(letter: "Alpha" | "Beta"): Promise<TenantFixture> {
@@ -337,6 +370,72 @@ async function seedTenant(letter: "Alpha" | "Beta"): Promise<TenantFixture> {
     organization_id: org.id, name: `${TEST_PREFIX} Tag ${letter}`, color: "#0acf83",
   });
 
+  // ─── Fixtures E2E ───────────────────────────────────────────────────────────
+  // Seconde sous-organisation (« Service Technique ») avec son propre courrier :
+  // aucun des membres du Cabinet ne doit le voir.
+  const techSocle = await insertOne<{ id: string }>("socle_organizations", {
+    organization_id: org.id,
+    socle_id: crypto.randomUUID(),
+    socle_parent_id: (rootRow as { socle_id: string }).socle_id,
+    name: `${TEST_PREFIX} Service Technique ${letter}`, status: "active",
+    workflow_id: wf.id, reply_workflow_id: replyWf.id,
+  });
+  const courierTech = await insertOne<{ id: string }>("couriers", {
+    organization_id: org.id, direction: "inbound", channel: "paper",
+    subject: `${TEST_PREFIX} Courrier ${letter} technique`,
+    received_at: new Date().toISOString(),
+    assigned_service: `${TEST_PREFIX} Service Technique ${letter}`,
+    socle_organization_id: techSocle.id,
+    workflow_state_id: stInitial.id,
+  });
+  // ─── Circuit complet ────────────────────────────────────────────────────────
+  // Workflow entrant Reçu → En instruction → Traité → Archivé, et workflow de
+  // réponse En rédaction → À viser (visa) → À signer (signature) → À envoyer
+  // (envoi) → Envoyée. Rattachés à « Direction » : c'est là que les E2E rejouent
+  // le circuit de bout en bout sans toucher aux workflows des autres fixtures.
+  const fwf = await insertOne<{ id: string }>("workflows", {
+    organization_id: org.id, name: `WF ${TEST_PREFIX} Circuit complet ${letter}`, type: "inbound",
+  });
+  const fIn = await insertOne<{ id: string }>("workflow_states", { organization_id: org.id, workflow_id: fwf.id, name: "Reçu", category: "pending", is_initial: true });
+  const fPr = await insertOne<{ id: string }>("workflow_states", { organization_id: org.id, workflow_id: fwf.id, name: "En instruction", category: "processing" });
+  const fOk = await insertOne<{ id: string }>("workflow_states", { organization_id: org.id, workflow_id: fwf.id, name: "Traité", category: "processed" });
+  const fAr = await insertOne<{ id: string }>("workflow_states", { organization_id: org.id, workflow_id: fwf.id, name: "Archivé", category: "archived", is_final: true });
+  for (const [name, from, to] of [["Instruire", fIn, fPr], ["Clôturer", fPr, fOk], ["Archiver", fOk, fAr]] as const) {
+    await insertOne("workflow_transitions", { organization_id: org.id, workflow_id: fwf.id, name, kind: "next", from_state_id: from.id, to_state_id: to.id });
+  }
+  const frw = await insertOne<{ id: string }>("workflows", {
+    organization_id: org.id, name: `WF ${TEST_PREFIX} Réponse circuit complet ${letter}`, type: "reply",
+  });
+  const rDraft = await insertOne<{ id: string }>("workflow_states", { organization_id: org.id, workflow_id: frw.id, name: "En rédaction", category: "processing", is_initial: true });
+  const rVisaF = await insertOne<{ id: string }>("workflow_states", { organization_id: org.id, workflow_id: frw.id, name: "À viser", category: "processing", requires_visa: true });
+  const rSignF = await insertOne<{ id: string }>("workflow_states", { organization_id: org.id, workflow_id: frw.id, name: "À signer", category: "processing", requires_signature: true });
+  const rSendF = await insertOne<{ id: string }>("workflow_states", { organization_id: org.id, workflow_id: frw.id, name: "À envoyer", category: "processing", is_send: true });
+  const rDoneF = await insertOne<{ id: string }>("workflow_states", { organization_id: org.id, workflow_id: frw.id, name: "Envoyée", category: "processed", is_final: true });
+  for (const [name, from, to] of [
+    ["Soumettre au visa", rDraft, rVisaF], ["Viser", rVisaF, rSignF], ["Signer", rSignF, rSendF], ["Envoyer", rSendF, rDoneF],
+  ] as const) {
+    await insertOne("workflow_transitions", { organization_id: org.id, workflow_id: frw.id, name, kind: "next", from_state_id: from.id, to_state_id: to.id });
+  }
+  await insertOne("workflow_transitions", { organization_id: org.id, workflow_id: frw.id, name: "Renvoyer en rédaction", kind: "previous", from_state_id: rVisaF.id, to_state_id: rDraft.id });
+  const fullSocle = await insertOne<{ id: string }>("socle_organizations", {
+    organization_id: org.id, socle_id: crypto.randomUUID(),
+    socle_parent_id: (rootRow as { socle_id: string }).socle_id,
+    name: `${TEST_PREFIX} Direction ${letter}`, status: "active",
+    workflow_id: fwf.id, reply_workflow_id: frw.id,
+  });
+
+  // Pièce jointe réelle (Storage + ligne courier_documents) sur le courrier racine.
+  const docName = `piece-${letter.toLowerCase()}.txt`;
+  const docKey = `${org.id}/${courierRoot.id}/${docName}`;
+  const { error: upErr } = await admin.storage
+    .from("clara-documents")
+    .upload(docKey, Buffer.from(`Pièce jointe de test ${letter}`), { contentType: "text/plain", upsert: true });
+  if (upErr) fail("upload pièce jointe", upErr.message);
+  await insertOne("courier_documents", {
+    organization_id: org.id, courier_id: courierRoot.id, document_type: "attachment",
+    file_name: docName, mime_type: "text/plain", file_size: 40, storage_key: docKey,
+  });
+
   return {
     orgId: org.id, name,
     rootSocleOrgId: rootSocle.id, subSocleOrgId: subSocle.id,
@@ -350,6 +449,12 @@ async function seedTenant(letter: "Alpha" | "Beta"): Promise<TenantFixture> {
     workflowBId: wfB.id,
     statesB: { initial: sbInitial.id, mid: sbMid.id, final: sbFinal.id },
     socleOrgBId: socleOrgB.id,
+    techSocleOrgId: techSocle.id,
+    techCourierId: courierTech.id,
+    fullSocleOrgId: fullSocle.id,
+    fullStates: { initial: fIn.id, processing: fPr.id, processed: fOk.id, archived: fAr.id },
+    fullReplyStates: { draft: rDraft.id, visa: rVisaF.id, signature: rSignF.id, send: rSendF.id, done: rDoneF.id },
+    rootDocument: { storageKey: docKey, fileName: docName },
   };
 }
 
@@ -374,6 +479,12 @@ async function main() {
   // Superadmin global (aucun membership d'org — is_member_of/is_admin_of l'incluent)
   const superadminTest = await createUser("superadmin.test", "Super", "Admin", true);
   const membreBeta = await createUser("membre.beta", "Membre", "Beta");
+  // Comptes par rôle (E2E droits) : un par rôle d'organisation, rattachés au Cabinet.
+  const gestionnaireAlpha = await createUser("gestionnaire.alpha", "Gestionnaire", "Alpha");
+  const eluAlpha = await createUser("elu.alpha", "Élu", "Alpha");
+  const superviseurAlpha = await createUser("superviseur.alpha", "Superviseur", "Alpha");
+  // Membre de l'AUTRE sous-organisation (Service Technique) : étanchéité intra-tenant.
+  const techAlpha = await createUser("tech.alpha", "Technique", "Alpha");
 
   const memberships = [
     { organization_id: alpha.orgId, user_id: adminAlpha.id, role: "administrateur", is_active: true },
@@ -384,6 +495,10 @@ async function main() {
     { organization_id: alpha.orgId, user_id: signataireAlpha.id, role: "gestionnaire", is_active: true, is_signataire: true },
     // Éditeur marqué viseur (garde de visa) — lié plus bas à la racine Socle.
     { organization_id: alpha.orgId, user_id: viseurAlpha.id, role: "gestionnaire", is_active: true, is_viseur: true },
+    { organization_id: alpha.orgId, user_id: gestionnaireAlpha.id, role: "gestionnaire", is_active: true },
+    { organization_id: alpha.orgId, user_id: eluAlpha.id, role: "elu", is_active: true },
+    { organization_id: alpha.orgId, user_id: superviseurAlpha.id, role: "superviseur", is_active: true },
+    { organization_id: alpha.orgId, user_id: techAlpha.id, role: "gestionnaire", is_active: true },
     { organization_id: beta.orgId, user_id: adminBeta.id, role: "administrateur", is_active: true },
     { organization_id: beta.orgId, user_id: membreBeta.id, role: "member", is_active: true },
   ];
@@ -411,6 +526,14 @@ async function main() {
     user_id: viseurAlpha.id,
   });
 
+  // …et à la Direction (circuit complet) : viseur.alpha vise, signataire.alpha signe.
+  await insertOne("socle_organization_signatories", {
+    organization_id: alpha.orgId, socle_organization_id: alpha.fullSocleOrgId, signatory_id: signataireRow.id,
+  });
+  await insertOne("socle_organization_viseurs", {
+    organization_id: alpha.orgId, socle_organization_id: alpha.fullSocleOrgId, user_id: viseurAlpha.id,
+  });
+
   // membre.alpha + consultant.alpha appartiennent à la sous-org « Cabinet Alpha »
   // (filtrage des courriers par organisation Socle)
   await insertOne("socle_organization_members", {
@@ -419,6 +542,23 @@ async function main() {
   await insertOne("socle_organization_members", {
     organization_id: alpha.orgId, socle_organization_id: alpha.subSocleOrgId, user_id: consultantAlpha.id,
   });
+
+  for (const u of [gestionnaireAlpha, eluAlpha, superviseurAlpha]) {
+    await insertOne("socle_organization_members", {
+      organization_id: alpha.orgId, socle_organization_id: alpha.subSocleOrgId, user_id: u.id,
+    });
+  }
+  await insertOne("socle_organization_members", {
+    organization_id: alpha.orgId, socle_organization_id: alpha.techSocleOrgId, user_id: techAlpha.id,
+  });
+
+  // Signature manuscrite factice du signataire (sans elle, « Signer » est refusé).
+  const sigKey = `${alpha.orgId}/${signataireRow.id}-seed.png`;
+  const { error: sigErr } = await admin.storage
+    .from("signatures")
+    .upload(sigKey, PNG_1X1, { contentType: "image/png", upsert: true });
+  if (sigErr) fail("upload signature", sigErr.message);
+  await admin.from("signatories").update({ signature_storage_key: sigKey }).eq("id", signataireRow.id);
 
   const fixtures = {
     seededAt: new Date().toISOString(),
@@ -433,7 +573,12 @@ async function main() {
       superadminTest: superadminTest.email,
       adminBeta: adminBeta.email,
       membreBeta: membreBeta.email,
+      gestionnaireAlpha: gestionnaireAlpha.email,
+      eluAlpha: eluAlpha.email,
+      superviseurAlpha: superviseurAlpha.email,
+      techAlpha: techAlpha.email,
     },
+    signataireAlphaSignatoryId: signataireRow.id,
     alpha, beta,
   };
   const out = join(process.cwd(), "src", "test-integration", "fixtures.json");
