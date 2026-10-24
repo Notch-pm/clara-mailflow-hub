@@ -37,13 +37,13 @@ test("API en échec : la fiche d'un courrier inexistant affiche « introuvable �
   await expect(page.getByText("Courrier introuvable").first()).toBeVisible({ timeout: 20_000 });
 });
 
-test("concurrence : deux agents instruisent le même courrier — une seule transition, pas d'état incohérent", async ({ browser, needAdmin }) => {
+test("concurrence : deux agents instruisent le même courrier — le second est refusé, avec le nom du premier", async ({ browser, needAdmin }) => {
   needAdmin();
-  test.fail(true, "DÉFAUT confirmé : un écran périmé rejoue la transition « Reçu → En instruction » — l'état final est juste mais l'historique porte deux fois state_changed / instruction_started (aucune comparaison avec l'état courant à l'écriture).");
+  // Au Cabinet : les deux agents y ont accès (l'administrateur partout, le gestionnaire comme membre).
   const id = await insertInboundCourier({
     organizationId: fx.alpha.orgId,
     subject: uniq("concurrence"),
-    socleOrganizationId: fx.alpha.rootSocleOrgId,
+    socleOrganizationId: fx.alpha.subSocleOrgId,
     assignedService: fx.alpha.name,
     workflowStateId: fx.alpha.states.initial,
   });
@@ -61,8 +61,9 @@ test("concurrence : deux agents instruisent le même courrier — une seule tran
   await expect(a.page.getByText("En instruction").first()).toBeVisible({ timeout: 20_000 });
   // B agit sur un écran périmé (il voit encore « Instruire »)
   await b.page.getByRole("button", { name: "Instruire" }).click();
-  await b.page.waitForTimeout(3_000);
-  // Quoi qu'il arrive à B (refus ou idempotence), le courrier est « En instruction » et jamais au-delà
+  // Refus explicite, qui nomme l'agent qui a agi en premier (décision PO du 2026-10-24)
+  await expect(toastLocator(b.page, /mises à jour en parallèle par Admin Alpha/)).toBeVisible({ timeout: 15_000 });
+  // Le courrier est « En instruction » et jamais au-delà
   const { data } = await adminClient().from("couriers").select("workflow_state_id").eq("id", id).single();
   expect((data as { workflow_state_id: string }).workflow_state_id).toBe(fx.alpha.states.processing);
   // …et l'historique ne porte pas deux transitions identiques

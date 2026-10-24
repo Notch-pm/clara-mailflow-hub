@@ -980,6 +980,7 @@ export type Database = {
           socle_organization_id: string | null
           subject: string | null
           updated_at: string
+          updated_by: string | null
           workflow_state_id: string | null
         }
         Insert: {
@@ -1008,6 +1009,7 @@ export type Database = {
           socle_organization_id?: string | null
           subject?: string | null
           updated_at?: string
+          updated_by?: string | null
           workflow_state_id?: string | null
         }
         Update: {
@@ -1036,6 +1038,7 @@ export type Database = {
           socle_organization_id?: string | null
           subject?: string | null
           updated_at?: string
+          updated_by?: string | null
           workflow_state_id?: string | null
         }
         Relationships: [
@@ -1150,6 +1153,42 @@ export type Database = {
             columns: ["socle_organization_id"]
             isOneToOne: false
             referencedRelation: "socle_organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      imported_email_messages: {
+        Row: {
+          imap_settings_id: string | null
+          imported_at: string
+          message_id: string
+          organization_id: string
+        }
+        Insert: {
+          imap_settings_id?: string | null
+          imported_at?: string
+          message_id: string
+          organization_id: string
+        }
+        Update: {
+          imap_settings_id?: string | null
+          imported_at?: string
+          message_id?: string
+          organization_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "imported_email_messages_imap_settings_id_fkey"
+            columns: ["imap_settings_id"]
+            isOneToOne: false
+            referencedRelation: "imap_settings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "imported_email_messages_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -2547,6 +2586,24 @@ export type Database = {
         Args: { p_courier_id: string }
         Returns: string
       }
+      courier_in_scope: {
+        Args: {
+          _id: string
+          _metadata: Json
+          _org: string
+          _socle_org: string
+          _state: string
+        }
+        Returns: boolean
+      }
+      courier_last_editor: {
+        Args: { p_courier_id: string }
+        Returns: {
+          editor_name: string
+          updated_at: string
+          updated_by: string
+        }[]
+      }
       create_outbound_courier: {
         Args: {
           p_channel: Database["public"]["Enums"]["courier_channel"]
@@ -2560,6 +2617,8 @@ export type Database = {
         Returns: string
       }
       current_user_orgs: { Args: never; Returns: string[] }
+      current_user_socle_orgs: { Args: never; Returns: string[] }
+      current_user_wide_orgs: { Args: never; Returns: string[] }
       dashboard_trends: {
         Args: {
           p_months?: number
@@ -2601,6 +2660,7 @@ export type Database = {
         Args: { _metadata: Json; _socle_org: string; _state: string }
         Returns: boolean
       }
+      is_designated_on_reply_of: { Args: { _id: string }; Returns: boolean }
       is_editor_of: { Args: { _org: string }; Returns: boolean }
       is_member_of: { Args: { _org: string }; Returns: boolean }
       is_superadmin: { Args: { _user_id: string }; Returns: boolean }
@@ -2864,6 +2924,7 @@ export type Database = {
           tag_name: string
         }[]
       }
+      storage_object_readable: { Args: { _name: string }; Returns: boolean }
       suspend_arpege_integration_from_socle: {
         Args: { p_org_id: string }
         Returns: boolean

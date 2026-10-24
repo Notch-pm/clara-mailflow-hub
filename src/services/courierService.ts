@@ -92,6 +92,54 @@ export async function getCourierAccess(courierId: string): Promise<CourierAccess
   return (data as CourierAccess) ?? "missing";
 }
 
+/** Un autre agent a modifié le courrier depuis son chargement : l'écriture est refusée. */
+export class ConcurrentUpdateError extends Error {
+  constructor(public editorName: string | null) {
+    super(
+      `L'enregistrement a échoué car les informations ont été mises à jour en parallèle par ${editorName ?? "un autre agent"}. ` +
+        "Rechargez le courrier pour voir ses modifications.",
+    );
+    this.name = "ConcurrentUpdateError";
+  }
+}
+
+/**
+ * Écriture conditionnée à la version chargée (`updated_at`) : verrouillage
+ * optimiste. Si la ligne a bougé entre-temps :
+ *  - par un AUTRE agent → `ConcurrentUpdateError` (qui, d'après `updated_by`) ;
+ *  - par soi-même (autre panneau) ou par le serveur (analyse, relève) → on
+ *    reprend la version courante et on réessaie une fois.
+ * Rend la nouvelle version, à garder pour l'écriture suivante.
+ */
+export async function updateCourierVersioned(
+  organizationId: string,
+  courierId: string,
+  data: CourierUpdate,
+  expectedUpdatedAt: string,
+  retry = true,
+): Promise<string> {
+  const { data: rows, error } = await supabase
+    .from("couriers")
+    .update(data)
+    .eq("organization_id", organizationId)
+    .eq("id", courierId)
+    .eq("updated_at", expectedUpdatedAt)
+    .select("updated_at");
+  if (error) throw error;
+  if (rows && rows.length > 0) return rows[0].updated_at;
+
+  const { data: last, error: lastErr } = await supabase.rpc("courier_last_editor", { p_courier_id: courierId });
+  if (lastErr) throw lastErr;
+  const row = (last ?? [])[0];
+  if (!row) throw new Error("Modification refusée : courrier introuvable ou droits insuffisants.");
+  const { data: session } = await supabase.auth.getSession();
+  const me = session.session?.user.id;
+  if (retry && (!row.updated_by || row.updated_by === me)) {
+    return updateCourierVersioned(organizationId, courierId, data, row.updated_at, false);
+  }
+  throw new ConcurrentUpdateError(row.editor_name);
+}
+
 /**
  * Sans relecture : un transfert vers une autre organisation sort le courrier
  * du périmètre de l'agent (RLS), et un `update().select()` échouerait alors.

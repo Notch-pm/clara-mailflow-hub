@@ -1,9 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { updateCourier, getCourierById } from "@/services/courierService";
+import {
+  ConcurrentUpdateError,
+  updateCourier,
+  updateCourierVersioned,
+  getCourierById,
+} from "@/services/courierService";
 import { logEvent } from "@/services/courierEventService";
 import { listTags } from "@/services/courierTagService";
 import { splitAppliedTags } from "@/lib/courier-tags";
@@ -34,7 +39,7 @@ import { listNotes, type CourierNote } from "@/services/courierNoteService";
 import { listRepliesForCourier } from "@/services/courierReplyService";
 import { listRelationsForCourier } from "@/services/courierRelationService";
 import { listTicketsForCourier } from "@/services/actionTicketService";
-import type { CourierChannel, CourierParticipant, CourierWithRelations, WorkflowTransition, WorkflowState } from "@/types/courier";
+import type { CourierChannel, CourierParticipant, CourierUpdate, CourierWithRelations, WorkflowTransition, WorkflowState } from "@/types/courier";
 import { courierMetadata } from "@/lib/courier-workspace";
 
 /** Champs d'un participant modifiables depuis les écrans courrier. */
@@ -113,6 +118,39 @@ export function useCourierWorkspace({
   // Point de vérité unique : un consultant (lecteur seul) ne peut jamais
   // écrire, quelle que soit la valeur de la prop `readOnly` passée par l'appelant.
   const effectiveReadOnly = readOnly || !canEditCouriers(profile, membership);
+
+  // Verrouillage optimiste : la version (`updated_at`) chargée avec la fiche,
+  // avancée à chaque écriture réussie. Un autre agent a écrit entre-temps →
+  // refus, la saisie reste à l'écran, le message nomme l'auteur.
+  const versionRef = useRef<string | null>(null);
+  useEffect(() => {
+    versionRef.current = courier?.updated_at ?? null;
+  }, [courier?.id, courier?.updated_at]);
+
+  async function writeCourier(patch: CourierUpdate) {
+    if (!courier) return;
+    if (!versionRef.current) {
+      const { error } = await updateCourier(organizationId, courier.id, patch);
+      if (error) throw error;
+      return;
+    }
+    versionRef.current = await updateCourierVersioned(organizationId, courier.id, patch, versionRef.current);
+  }
+
+  function reportWriteError(err: Error) {
+    if (err instanceof ConcurrentUpdateError) {
+      toast.error(err.message, {
+        duration: 15_000,
+        action: {
+          label: "Recharger",
+          onClick: () => queryClient.invalidateQueries({ queryKey: ["courier", courier?.id] }),
+        },
+      });
+      return;
+    }
+    toast.error(err.message);
+  }
+
   const [replyState, setReplyState] = useState<{ name: string; category: string | null } | null>(null);
   const [transferTargetServiceId, setTransferTargetServiceId] = useState<string>("");
   const [transferConfirmOpen, setTransferConfirmOpen] = useState(false);
@@ -474,10 +512,8 @@ export function useCourierWorkspace({
             .maybeSingle()).data
         : null;
 
-      const { error } = await updateCourier(organizationId, courier.id, {
-        workflow_state_id: toStateId,
-      });
-      if (error) throw error;
+      // Un écran périmé ne rejoue pas une transition déjà faite par un autre agent.
+      await writeCourier({ workflow_state_id: toStateId });
 
       await logEvent(organizationId, courier.id, "state_changed", {
         from_id: fromStateRow?.id ?? null,
@@ -550,24 +586,21 @@ export function useCourierWorkspace({
         setLocalWorkflowStateId(result.toStateId);
       }
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: reportWriteError,
   });
 
   const tagMutation = useMutation({
     mutationFn: async (updatedTags: string[]) => {
       if (!courier) return;
       const currentMeta = courierMetadata(courier.metadata);
-      const { error } = await updateCourier(organizationId, courier.id, {
-        metadata: { ...currentMeta, tags: updatedTags },
-      });
-      if (error) throw error;
+      await writeCourier({ metadata: { ...currentMeta, tags: updatedTags } });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
       queryClient.invalidateQueries({ queryKey: ["mailbox-unassigned"] });
       queryClient.invalidateQueries({ queryKey: ["mailroom-couriers"] });
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: reportWriteError,
   });
 
   function toggleTag(tagName: string) {
@@ -601,9 +634,11 @@ export function useCourierWorkspace({
 
   async function persistCourierUpdate(patch: Record<string, unknown>, successMsg = "Modifié") {
     if (!courier) return;
-    const { error } = await updateCourier(organizationId, courier.id, patch);
-    if (error) {
-      toast.error(error.message);
+    try {
+      await writeCourier(patch as CourierUpdate);
+    } catch (error) {
+      // L'éditeur en ligne attrape l'erreur et garde la saisie ouverte.
+      reportWriteError(error as Error);
       throw error;
     }
     queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
