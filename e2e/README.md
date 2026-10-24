@@ -24,6 +24,7 @@ sans elle, les specs concernées sont **sautées** avec leur raison), `VITE_SUPA
 | `sortants/` | courrier à l'initiative : rédaction assistée, visa, signature, envoi |
 | `securite/` | étanchéité tenants (URL, caches, Storage) et organisations d'un même tenant |
 | `droits/` | matrice rôles (administrateur, gestionnaire, élu, superviseur, consultant) + viseur / signataire |
+| `reel/` | **courriels réels sur ACCM (démo)**, à la demande : `E2E_REEL=1 bun run test:e2e -- e2e/reel` — envoi Mailjet vers un usager de test du Socle (`jacquotlaurent+e2e-…@gmail.com`, réception à constater dans Gmail) et relève automatique de `contact@notch.pm` ; compte agent persistant connecté par lien magique ; tout `[E2E-<run>]` est supprimé en fin de run |
 | `support/` | `admin.ts` (service_role, [TEST] seulement), `mailbox.ts` (Ethereal + garde-fou destinataires), `files.ts` (PDF fabriqués), `fixtures.ts` (`needMail`, `needAdmin`) |
 
 ## Infrastructure mail de test

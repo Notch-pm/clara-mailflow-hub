@@ -137,6 +137,19 @@ export function assertTestRecipient(address: string): string {
   return address.trim();
 }
 
+// Suite « réelle » (e2e/reel, ACCM) : les mails partent VRAIMENT. Seules deux
+// familles d'adresses sont admises : la boîte de Laurent en plus-addressing
+// (usagers de test du Socle d'ACCM) et la boîte relevée par ACCM.
+const REAL_RECIPIENTS = [/^jacquotlaurent\+e2e-[a-z0-9-]+@gmail\.com$/, /^contact@notch\.pm$/];
+
+export function assertRealTestRecipient(address: string): string {
+  const a = address.trim().toLowerCase();
+  if (!REAL_RECIPIENTS.some((re) => re.test(a))) {
+    throw new Error(`Garde-fou E2E réel : « ${address} » n'est pas une adresse de test admise.`);
+  }
+  return a;
+}
+
 /** Adresse de test unique et lisible, que les tests savent reconnaître. */
 export function testRecipient(label: string): string {
   return assertTestRecipient(`e2e-${label}-${Date.now().toString(36)}@example.test`);

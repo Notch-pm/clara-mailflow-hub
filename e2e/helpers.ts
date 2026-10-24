@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type Session } from "@supabase/supabase-js";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
@@ -106,8 +106,12 @@ export async function loginAs(
     orgId = (memberships?.[0] as { organization_id: string } | undefined)?.organization_id;
   }
 
+  await injectSession(page, data.session, orgId);
+}
+
+async function injectSession(page: Page, sessionObj: Session, orgId: string | undefined): Promise<void> {
   const storageKey = `sb-${PROJECT_REF}-auth-token`;
-  const session = JSON.stringify(data.session);
+  const session = JSON.stringify(sessionObj);
   await page.addInitScript(
     ([key, value, org]) => {
       window.localStorage.setItem(key, value);
@@ -115,6 +119,45 @@ export async function loginAs(
     },
     [storageKey, session, orgId ?? ""] as const,
   );
+}
+
+/**
+ * Session d'un compte SANS mot de passe connu (comptes persistants hors
+ * @test.clara.local, que le reseed ne recrée pas) : lien magique généré par la
+ * clé service_role (`generate_link` n'envoie AUCUN courriel), échangé contre
+ * une session par `verify` + `token_hash`.
+ */
+export async function magicLinkSession(email: string): Promise<Session> {
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceKey) throw new Error("SUPABASE_SERVICE_ROLE_KEY manquant");
+  const link = await fetch(`${SUPABASE_URL}/auth/v1/admin/generate_link`, {
+    method: "POST",
+    headers: { apikey: serviceKey, authorization: `Bearer ${serviceKey}`, "content-type": "application/json" },
+    body: JSON.stringify({ type: "magiclink", email }),
+  }).then((r) => r.json() as Promise<{ hashed_token?: string; properties?: { hashed_token?: string }; msg?: string }>);
+  const tokenHash = link.properties?.hashed_token ?? link.hashed_token;
+  if (!tokenHash) throw new Error(`Lien magique ${email} : ${link.msg ?? "pas de jeton"}`);
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/verify`, {
+    method: "POST",
+    headers: { apikey: ANON_KEY, "content-type": "application/json" },
+    body: JSON.stringify({ type: "email", token_hash: tokenHash }),
+  });
+  const session = (await res.json()) as Session & { msg?: string };
+  if (!session.access_token) throw new Error(`Session ${email} : ${session.msg ?? res.status}`);
+  return session;
+}
+
+/** Comme `loginAs`, pour un compte connecté par lien magique. */
+export async function loginWithSession(page: Page, session: Session, organizationId: string): Promise<void> {
+  await injectSession(page, session, organizationId);
+}
+
+/** Client Supabase portant la session donnée (décor posé AVEC les droits de ce compte). */
+export function sessionClient(session: Session) {
+  return createClient(SUPABASE_URL, ANON_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { headers: { Authorization: `Bearer ${session.access_token}` } },
+  });
 }
 
 /** Toast sonner contenant `text` (message de succès / d'erreur de l'application). */
