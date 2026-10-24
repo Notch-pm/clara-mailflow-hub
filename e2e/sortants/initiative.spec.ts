@@ -8,7 +8,7 @@ import { testRecipient, waitForMail } from "../support/mailbox";
 // sur consigne), visa, signature, envoi — circuit « Direction » (workflow complet).
 // Décor : le sortant est créé par la RPC `create_outbound_courier` avec les droits
 // d'un gestionnaire, avec un destinataire dont l'adresse est une adresse de test
-// (la sélection d'un contact RÉEL du Socle est un prérequis externe, voir fixme).
+// (le choix dans le référentiel du Socle est couvert par le dernier test).
 
 const fx = loadFixtures();
 test.describe.configure({ mode: "serial" });
@@ -115,6 +115,39 @@ test("signature puis envoi : le courriel part au destinataire, lu dans la boîte
   await expect(page.getByText(finalSubject).first()).toBeVisible({ timeout: 20_000 });
 });
 
-test.fixme("création par la fenêtre « Nouveau courrier » avec un destinataire choisi dans le référentiel du Socle — BLOQUÉ : il faut un contact de test dans le Socle (racine [TEST]) avec une adresse @example.test ; fournir son nom (E2E_SOCLE_CONTACT) à Laurent/Socle", async () => {
-  // Parcours : /courriers-sortants → « Nouveau courrier » → organisation émettrice → ContactPicker → mode d'envoi → objet → Créer.
+// Contact PERSISTANT du référentiel de la racine [TEST] du Socle (créé le
+// 2026-10-24, hors reseed : le Socle n'est pas purgé par `seed:test`).
+const SOCLE_CONTACT = { search: "E2E Sortant", email: "e2e-sortant@example.test" };
+
+test("création par la fenêtre « Nouveau courrier » avec un destinataire choisi dans le référentiel", async ({ page, needAdmin }) => {
+  needAdmin();
+  const newSubject = uniq("sortant référentiel");
+  await as(page, fx.users.gestionnaireAlpha);
+  await page.goto("/courriers-sortants");
+  await page.getByRole("button", { name: "Nouveau courrier" }).first().click();
+  const dialog = page.getByRole("dialog", { name: "Nouveau courrier sortant" });
+  await expect(dialog).toBeVisible();
+
+  await dialog.locator("#outbound-issuer").click();
+  await page.getByRole("option", { name: "[TEST] Cabinet Alpha" }).click();
+
+  await dialog.getByRole("combobox").filter({ hasText: "Sélectionner un contact" }).click();
+  await page.getByPlaceholder("Rechercher par nom…").fill(SOCLE_CONTACT.search);
+  await page.getByRole("option", { name: new RegExp(SOCLE_CONTACT.search) }).first().click();
+
+  await dialog.getByLabel(/^Courriel/).check();
+  await expect(dialog.getByText(SOCLE_CONTACT.email)).toBeVisible();
+  await dialog.locator("#outbound-subject").fill(newSubject);
+  await dialog.getByRole("button", { name: "Créer et rédiger" }).click();
+
+  await expect(page).toHaveURL(/\/courrier\/[0-9a-f-]{36}/, { timeout: 20_000 });
+  const id = page.url().match(/\/courrier\/([0-9a-f-]{36})/)![1];
+  const { data: row } = await adminClient().from("couriers")
+    .select("direction, channel, subject, socle_organization_id").eq("id", id).single();
+  expect(row).toMatchObject({ direction: "outbound", channel: "email", subject: newSubject, socle_organization_id: fx.alpha.subSocleOrgId });
+  const { data: parts } = await adminClient().from("courier_participants")
+    .select("role, email, socle_contact_id").eq("courier_id", id).eq("role", "recipient");
+  expect(parts).toHaveLength(1);
+  expect(parts![0]).toMatchObject({ email: SOCLE_CONTACT.email });
+  expect(parts![0].socle_contact_id).toBeTruthy();
 });
