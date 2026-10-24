@@ -547,6 +547,10 @@ public-api 1.1.0). `sync-socle-referentiel` le recopie à chaque passage.
   serveur d'envoi pour cette organisation : définissez-le dans le référentiel (organisation
   principale), puis lancez une synchronisation. »
 
+#### `imported_email_messages`
+
+Registre des courriels déjà importés par `fetch-inbound-emails` (2026-10-24) : `(organization_id, message_id)` en clé, `imap_settings_id`, `imported_at`. Survit au courrier, pour qu'un courrier définitivement supprimé ne soit pas réimporté. RLS : service_role seul. Purgé au-delà de 90 jours par la relève.
+
 #### `imap_settings`
 Plusieurs par org si `organizations.multiple_imap = true`. Réception automatique.
 

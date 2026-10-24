@@ -282,6 +282,55 @@ class ImapClient {
   }
 }
 
+// ===================== Registre des mails importés =====================
+// `imported_email_messages` survit au courrier : un courrier définitivement
+// supprimé ne revient pas au passage suivant (la fenêtre SINCE le reverrait).
+
+const IMPORTED_RETENTION_DAYS = 90;
+
+async function alreadyImported(
+  admin: ReturnType<typeof createClient>,
+  organizationId: string,
+  messageId: string,
+): Promise<boolean> {
+  const { data } = await admin
+    .from("imported_email_messages")
+    .select("message_id")
+    .eq("organization_id", organizationId)
+    .eq("message_id", messageId)
+    .maybeSingle();
+  return !!data;
+}
+
+async function recordImported(
+  admin: ReturnType<typeof createClient>,
+  organizationId: string,
+  imapSettingsId: string,
+  messageIds: (string | null)[],
+): Promise<void> {
+  const rows = [...new Set(messageIds.filter((m): m is string => !!m))].map((message_id) => ({
+    organization_id: organizationId,
+    message_id,
+    imap_settings_id: imapSettingsId,
+  }));
+  if (rows.length === 0) return;
+  const { error } = await admin
+    .from("imported_email_messages")
+    .upsert(rows, { onConflict: "organization_id,message_id", ignoreDuplicates: true });
+  // Non bloquant : le dédoublonnage par les courriers existants reste en place.
+  if (error) console.error("Registre des mails importés :", error.message);
+}
+
+async function purgeImportedRegister(admin: ReturnType<typeof createClient>, organizationId: string): Promise<void> {
+  const before = new Date(Date.now() - IMPORTED_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const { error } = await admin
+    .from("imported_email_messages")
+    .delete()
+    .eq("organization_id", organizationId)
+    .lt("imported_at", before);
+  if (error) console.error("Purge du registre des mails importés :", error.message);
+}
+
 // ===================== Traitement organisation =====================
 
 async function processOrganization(
@@ -292,6 +341,7 @@ async function processOrganization(
   const client = new ImapClient(s.host, s.port, s.use_tls);
   let processed = 0;
   const rejectedSenders: string[] = [];
+  if (!opts.onlyTest) await purgeImportedRegister(admin, s.organization_id);
   try {
     await client.connect();
     // Mot de passe lu dans Vault au dernier moment, jamais porté par la ligne relue.
@@ -401,8 +451,10 @@ async function processOrganization(
           break;
         }
 
-        // 3) Si déjà importé, on saute
+        // 3) Si déjà importé, on saute — registre d'abord (il survit à la
+        //    suppression définitive du courrier), puis les courriers eux-mêmes.
         if (earlyMessageId) {
+          if (await alreadyImported(admin, s.organization_id, earlyMessageId)) continue;
           const { data: dup } = await admin
             .from("couriers")
             .select("id")
@@ -419,6 +471,7 @@ async function processOrganization(
         const parsed = await simpleParser(rawStr);
         const messageId = parsed.messageId || earlyMessageId || `imap-${s.organization_id}-${uid}`;
 
+        if (messageId !== earlyMessageId && await alreadyImported(admin, s.organization_id, messageId)) continue;
         const { data: existing } = await admin
           .from("couriers")
           .select("id")
@@ -507,6 +560,10 @@ async function processOrganization(
           console.error("Erreur insert courier", courierErr);
           continue;
         }
+
+        // Au registre dès que le courrier existe : supprimé plus tard, il ne
+        // reviendra pas. Le Message-ID provisoire aussi, s'il diffère.
+        await recordImported(admin, s.organization_id, s.id, [messageId, earlyMessageId]);
 
         // Découpe "Prénom Nom" → { firstName, lastName }
         const splitName = (full: string | null): { firstName: string | null; lastName: string | null } => {

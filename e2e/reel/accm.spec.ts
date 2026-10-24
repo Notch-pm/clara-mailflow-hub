@@ -44,9 +44,9 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY) return;
-  // D'abord le message dans la boîte : la relève cherche `SINCE <jour>` et ne
-  // dédoublonne que par Message-ID parmi les courriers EXISTANTS — un courrier
-  // supprimé dont le mail reste en INBOX est réimporté au passage suivant.
+  // D'abord le message dans la boîte, pour ne pas la remplir de tests. (Le
+  // registre `imported_email_messages` empêche déjà qu'un courrier supprimé
+  // soit réimporté, mais seulement 90 jours.)
   await deleteFromAccmInbox(TAG);
   // Suppression en cascade (événements, participants, analyses…) ; aucune pièce Storage créée ici.
   await adminClient().from("couriers").delete().eq("organization_id", ACCM).like("subject", `%${TAG}%`);
