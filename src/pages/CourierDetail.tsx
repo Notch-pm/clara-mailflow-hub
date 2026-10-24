@@ -2,7 +2,7 @@ import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { getCourierAccess, getCourierById, type CourierAccess } from "@/services/courierService";
-import { ConfidentialAccessDenied } from "@/components/courier/ConfidentialAccessDenied";
+import { ConfidentialAccessDenied, OutOfScopeAccessDenied } from "@/components/courier/ConfidentialAccessDenied";
 import CourierWorkspacePage from "@/components/courier/CourierWorkspacePage";
 import type { WorkspaceCourier } from "@/hooks/useCourierWorkspace";
 
@@ -37,6 +37,9 @@ export default function CourierDetail() {
   }
   if (data?.access === "confidential") {
     return <ConfidentialAccessDenied />;
+  }
+  if (data?.access === "out_of_scope") {
+    return <OutOfScopeAccessDenied />;
   }
   if (!courier) {
     return <div className="p-8 text-center text-muted-foreground">Courrier introuvable.</div>;

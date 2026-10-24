@@ -55,12 +55,15 @@ export async function getCourierSlaFacts(organizationId: string, courierId: stri
   return data;
 }
 
+/**
+ * L'identifiant est posé ici et la ligne n'est pas relue : un courrier créé
+ * pour une organisation hors du périmètre de l'agent (RLS) ne lui est plus
+ * lisible, et un `insert().select()` échouerait alors qu'il est bien créé.
+ */
 export async function createCourier(data: CourierInsert) {
-  return supabase
-    .from("couriers")
-    .insert(data)
-    .select()
-    .single();
+  const id = data.id ?? crypto.randomUUID();
+  const { error } = await supabase.from("couriers").insert({ ...data, id });
+  return { data: error ? null : { id }, error };
 }
 
 /**
@@ -77,7 +80,7 @@ export async function setCourierConfidential(courierId: string, confidential: bo
   if (error) throw error;
 }
 
-export type CourierAccess = "ok" | "confidential" | "missing";
+export type CourierAccess = "ok" | "confidential" | "out_of_scope" | "missing";
 
 /**
  * Pourquoi un courrier ne s'ouvre pas : confidentiel (il existe, je n'y ai pas
@@ -89,14 +92,20 @@ export async function getCourierAccess(courierId: string): Promise<CourierAccess
   return (data as CourierAccess) ?? "missing";
 }
 
+/**
+ * Sans relecture : un transfert vers une autre organisation sort le courrier
+ * du périmètre de l'agent (RLS), et un `update().select()` échouerait alors.
+ */
 export async function updateCourier(organizationId: string, courierId: string, data: CourierUpdate) {
-  return supabase
+  const { error, count } = await supabase
     .from("couriers")
-    .update(data)
+    .update(data, { count: "exact" })
     .eq("organization_id", organizationId)
-    .eq("id", courierId)
-    .select()
-    .single();
+    .eq("id", courierId);
+  if (error) return { error };
+  // Rien de modifié = droits refusés ou courrier disparu (ce que `.single()` signalait).
+  if (count === 0) return { error: new Error("Modification refusée : courrier introuvable ou droits insuffisants.") };
+  return { error: null };
 }
 
 /**

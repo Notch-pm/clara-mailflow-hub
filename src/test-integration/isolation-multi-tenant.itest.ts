@@ -10,12 +10,14 @@ let fx: Fixtures;
 let membreAlpha: SupabaseClient;
 let adminAlpha: SupabaseClient;
 let membreBeta: SupabaseClient;
+let adminBeta: SupabaseClient;
 
 beforeAll(async () => {
   fx = loadFixtures();
   membreAlpha = await clientAs(fx.users.membreAlpha, fx.password);
   adminAlpha = await clientAs(fx.users.adminAlpha, fx.password);
   membreBeta = await clientAs(fx.users.membreBeta, fx.password);
+  adminBeta = await clientAs(fx.users.adminBeta, fx.password);
 });
 
 // Tables métier lisibles par un simple membre (policy is_member_of)
@@ -64,7 +66,8 @@ describe("Isolation en lecture (membre Alpha → données Beta)", () => {
       .select("id")
       .eq("organization_id", fx.alpha.orgId);
     expect(error).toBeNull();
-    expect((data ?? []).length).toBeGreaterThanOrEqual(3);
+    // Le sien (Cabinet) + le non assigné ; le courrier de la racine est hors de son organisation.
+    expect((data ?? []).length).toBeGreaterThanOrEqual(2);
   });
 
   it("organizations : membre Alpha ne voit pas le tenant Beta", async () => {
@@ -112,7 +115,7 @@ describe("Isolation en écriture (cross-tenant rejeté)", () => {
     expect(error).toBeNull(); // RLS filtre silencieusement
     expect(data).toEqual([]);
     // Contre-vérification côté Beta : sujet intact
-    const { data: check } = await membreBeta
+    const { data: check } = await adminBeta
       .from("couriers")
       .select("subject")
       .eq("id", fx.beta.couriers.root)
@@ -128,7 +131,7 @@ describe("Isolation en écriture (cross-tenant rejeté)", () => {
       .select();
     expect(error).toBeNull();
     expect(data).toEqual([]);
-    const { data: still } = await membreBeta
+    const { data: still } = await adminBeta
       .from("couriers")
       .select("id")
       .eq("id", fx.beta.couriers.unassigned)

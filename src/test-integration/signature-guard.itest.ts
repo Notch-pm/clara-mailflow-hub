@@ -76,11 +76,16 @@ async function setSignature(client: SupabaseClient, replyId: string, signed: boo
   return client.from("couriers").update({ metadata: nextMeta }).eq("id", replyId).select("id");
 }
 
+// Refus = erreur du trigger de signature, OU aucune ligne touchée : hors de son
+// périmètre d'organisation, l'acteur ne voit même pas la réponse (RLS).
+function expectRefused(r: { error: unknown; data: unknown[] | null }) {
+  expect(r.error !== null || (r.data ?? []).length === 0).toBe(true);
+}
+
 describe("Garde de signature — refus serveur", () => {
   it("un éditeur NON signataire ne peut pas signer (appel direct)", async () => {
     const id = await newReply(fx.alpha.rootSocleOrgId);
-    const { error } = await setSignature(membreAlpha, id, true);
-    expect(error).not.toBeNull();
+    expectRefused(await setSignature(membreAlpha, id, true));
   });
 
   it("un admin NON signataire ne peut pas signer non plus", async () => {
@@ -91,16 +96,14 @@ describe("Garde de signature — refus serveur", () => {
 
   it("le signataire de la RACINE ne peut pas signer une réponse du Cabinet (par organisation)", async () => {
     const id = await newReply(fx.alpha.subSocleOrgId);
-    const { error } = await setSignature(signataireAlpha, id, true);
-    expect(error).not.toBeNull();
+    expectRefused(await setSignature(signataireAlpha, id, true));
   });
 
   it("dé-signer est soumis à la même règle", async () => {
     const id = await newReply(fx.alpha.rootSocleOrgId);
     const ok = await setSignature(signataireAlpha, id, true);
     expect(ok.error).toBeNull();
-    const { error } = await setSignature(membreAlpha, id, false);
-    expect(error).not.toBeNull();
+    expectRefused(await setSignature(membreAlpha, id, false));
   });
 
   it("un INSERT pré-signé forgé est refusé", async () => {

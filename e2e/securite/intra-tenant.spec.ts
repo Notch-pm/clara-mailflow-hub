@@ -36,7 +36,6 @@ test("réciproque : le membre du Service Technique ne voit pas le Cabinet", asyn
 });
 
 test("URL directe : le membre du Cabinet ouvre le courrier du Service Technique → refusé", async ({ page }) => {
-  test.fail(true, "DÉFAUT confirmé : le filtre par organisation est UI-only, la fiche d'un courrier d'une autre organisation du tenant s'ouvre par URL directe (docs/permissions.md « hors périmètre »).");
   await loginAs(page, fx.users.membreAlpha, fx.password);
   await page.goto(`/courrier/${fx.alpha.techCourierId}`);
   await page.waitForLoadState("networkidle");
@@ -44,7 +43,6 @@ test("URL directe : le membre du Cabinet ouvre le courrier du Service Technique 
 });
 
 test("Storage : le membre du Cabinet lit la pièce d'un courrier hors de son organisation → refusé", async () => {
-  test.fail(true, "DÉFAUT confirmé : la politique Storage est au niveau du tenant (dossier = organization_id), pas de l'organisation Socle — la pièce d'un courrier hors périmètre se télécharge.");
   const membre = await userClient(fx.users.membreAlpha, fx.password);
   const dl = await membre.storage.from("clara-documents").download(fx.alpha.rootDocument.storageKey);
   expect(dl.error).not.toBeNull();

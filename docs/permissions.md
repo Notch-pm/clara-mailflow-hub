@@ -1,11 +1,12 @@
 # Matrice des droits d'accès
 
-> Dernière vérification : 2026-09-13.
+> Dernière vérification : 2026-10-24.
 >
 > **État au 2026-07-22.** La lecture seule du `consultant` est **appliquée côté serveur**
 > (RLS `is_editor_of` en base + garde `assertEditor` dans les edge functions) **et côté UI**.
-> Reste **hors périmètre** (voir « État d'application ») : le filtre intra-tenant par
-> organisation Socle demeure **UI-only** — un membre peut lire tout le tenant via appel direct.
+> **Depuis le 2026-10-24**, le filtre intra-tenant par organisation Socle est lui aussi
+> **appliqué en base** (voir « État d'application ») : fiche par URL directe, tables filles,
+> pièces Storage et RPC de liste.
 
 ## Niveaux de droits
 
@@ -55,7 +56,7 @@ Défense en profondeur côté edge (fonctions en `service_role`, hors RLS) : gar
 superadmin, que les demandes des organisations Socle de l'appelant et celles sans organisme.
 Contrairement aux courriers, ce filtre n'est **pas** UI-only : ce sont les données d'Iris.
 
-**Hors périmètre (inchangé) — filtre intra-tenant par organisation Socle** : toujours appliqué **UI-only** (`useUserServiceFilter`) ; la RLS SELECT reste `is_member_of` (visibilité à l'échelle du tenant). Un membre — consultant compris — peut donc *lire* tout le tenant via appel direct. Risque pré-existant, à traiter dans un ticket dédié. Conséquence : **toute requête de courriers d'un écran doit poser le périmètre** — les suggestions « Courriers liés » et la recherche du dialogue de liaison l'oubliaient et montraient l'objet de courriers d'autres organisations (repéré par l'E2E `droits-membre`, corrigé le 2026-10-01 : `scopeFilter` dans `courierRelationService.ts`). Les liens déjà posés restent affichés quel que soit le périmètre.
+**Périmètre par organisation Socle — appliqué en base depuis le 2026-10-24** (migrations `20261024160841_perimetre_organisation_rls`, `…162107_perimetre_auteur`, `…163231_perimetre_rattachement`). Un courrier est lisible si : il n'est assigné à aucune organisation ; ou le lecteur est superadmin, administrateur ou gestionnaire courrier (`can_access_mailroom`) ; ou il est **rattaché** à l'organisation du courrier comme membre, viseur ou signataire (`current_user_socle_orgs()`) ; ou il est désigné sur le courrier ou une de ses réponses ; ou il en est l'**auteur** ou le **dernier modificateur** (`created_by` / `updated_by`, posé par trigger). Cette dernière règle est nécessaire : PostgREST écrit avec un `RETURNING` interne, la nouvelle ligne doit rester lisible par celui qui vient d'agir (viseur qui vise, agent qui transfère). Appliqué par la policy SELECT de `couriers`, `can_read_courier` (toutes les tables filles), la policy Storage `clara_documents_select_org_member` (`storage_object_readable`) et les RPC de liste `search_couriers` / `outbound_couriers` / `contact_couriers` (`mailroom_couriers` et `trashed_couriers` sont réservées au service courrier : tout le tenant). Une fiche hors périmètre affiche « Courrier d'une autre organisation » (`courier_access` → `out_of_scope`). L'UI garde son filtre (`useUserServiceFilter`, membres seulement) : elle peut montrer moins que la base, jamais plus. Les écritures restent `is_editor_of`.
 
 ---
 
