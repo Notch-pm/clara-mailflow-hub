@@ -108,7 +108,6 @@ test("visa : seul le viseur vise (le signataire n'a pas le geste), depuis le par
 
 test("signature : la réponse d'un gestionnaire arrive dans « À signer » du signataire unique de l'organisation", async ({ page, needMail }) => {
   needMail();
-  test.fail(true, "DÉFAUT connu (voir rapport) : le brouillon d'un non-signataire naît sans signatory_id ; avec un seul signataire dans l'organisation, aucune désignation n'est proposée et la réponse n'entre jamais dans la file du parapheur.");
   await as(page, fx.users.signataireAlpha);
   await page.goto(`/parapheur?onglet=signature&reponse=${replyId}`);
   await expect(page.getByRole("button", { name: /^Signer/ })).toBeVisible({ timeout: 10_000 });
