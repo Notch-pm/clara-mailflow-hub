@@ -15,6 +15,7 @@ import {
 } from "@/services/socleOrgConfigService";
 import { listSignatories, type Signatory } from "@/services/signatoryService";
 import { getOrgMembers } from "@/services/userService";
+import { useAgentsManagedBySocle } from "@/hooks/useAgentsManagedBySocle";
 import {
   Dialog,
   DialogContent,
@@ -58,6 +59,9 @@ interface Props {
 export default function OrganizationConfigDialog({ open, onOpenChange, org, orgId }: Props) {
   const queryClient = useQueryClient();
   const isRoot = org?.socle_parent_id === null;
+  // Tenant rattaché au Socle : les membres d'une organisation sont les agents
+  // à qui le Socle y ouvre Clara (`sync-socle-users`) — lecture seule ici.
+  const membersManagedBySocle = useAgentsManagedBySocle(orgId);
 
   const [workflowId, setWorkflowId] = useState<string>(NONE);
   const [replyWorkflowId, setReplyWorkflowId] = useState<string>(NONE);
@@ -185,7 +189,7 @@ export default function OrganizationConfigDialog({ open, onOpenChange, org, orgI
       }
 
       await Promise.all([
-        setOrgMembers(orgId, org.id, memberIds),
+        membersManagedBySocle ? Promise.resolve() : setOrgMembers(orgId, org.id, memberIds),
         setOrgSignatories(orgId, org.id, signatoryIds),
         setOrgViseurs(orgId, org.id, viseurIds),
       ]);
@@ -439,6 +443,7 @@ export default function OrganizationConfigDialog({ open, onOpenChange, org, orgI
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label>Membres associés</Label>
+              {!membersManagedBySocle && (
               <div className="flex gap-2 text-xs">
                 <button
                   type="button"
@@ -455,6 +460,7 @@ export default function OrganizationConfigDialog({ open, onOpenChange, org, orgI
                   Aucun
                 </button>
               </div>
+              )}
             </div>
             <div className="max-h-40 overflow-y-auto rounded-lg border p-2 space-y-1">
               {activeMembers.length === 0 ? (
@@ -464,6 +470,7 @@ export default function OrganizationConfigDialog({ open, onOpenChange, org, orgI
                   <label key={m.id} className="flex items-center gap-2 text-sm p-1 rounded hover:bg-muted cursor-pointer">
                     <Checkbox
                       checked={memberIds.includes(m.id)}
+                      disabled={membersManagedBySocle}
                       onCheckedChange={() => setMemberIds((prev) => toggleId(prev, m.id))}
                     />
                     {[m.first_name, m.last_name].filter(Boolean).join(" ") || m.email}
@@ -473,6 +480,7 @@ export default function OrganizationConfigDialog({ open, onOpenChange, org, orgI
             </div>
             <p className="text-xs text-muted-foreground">
               Les membres ne voient que les courriers de leurs organisations (et les non-assignés).
+              {membersManagedBySocle && " Ils se règlent dans le Socle : l'accès à Clara ouvert sur cette organisation."}
             </p>
           </div>
 

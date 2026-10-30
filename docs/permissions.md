@@ -20,6 +20,27 @@
 
 > Un superadmin est redirigé d'office vers `/superadmin` et n'utilise pas les écrans utilisateur standards.
 
+### Agents gérés par le Socle (2026-10-30)
+
+Pour un tenant **rattaché au Socle** (`organizations.socle_org_id` posé), le Socle décide qui accède
+à Clara, sur quel organisme et avec quel rôle de base (`GET /v1/users`, public-api 1.43.0). La
+fonction `sync-socle-users` (cron chaque minute + réconciliation complète à 03:20) l'applique :
+
+- **rôle** de `organization_users` = le **plus élevé** des rôles actifs de l'agent (ordre
+  `administrateur > superviseur > gestionnaire > elu > consultant`) ; `is_active` = au moins un
+  accès actif ;
+- **affectations** (`socle_organization_members`) = exactement les organismes de ses accès actifs
+  qui ont un miroir dans Clara (racine comprise) ;
+- **compte** créé à la première ouverture (invitation par le relais du tenant), **banni** quand
+  il ne reste aucune appartenance active (jamais supprimé ; jamais un superadmin) ;
+- ⚠️ les **droits fins** (signataire, viseur, gestionnaire courrier, confidentiel) restent
+  réglés dans Clara : la synchronisation n'y touche jamais.
+
+Écrans verrouillés sur un tel tenant (`useAgentsManagedBySocle`) : création d'utilisateur,
+activation/désactivation, prénom/nom/rôle dans « Modifier », « Membres associés » d'une
+organisation. `invite-user` répond **409**. `users.socle_user_id` (clé de correspondance) ne
+s'écrit que côté serveur (trigger `prevent_socle_user_id_change`).
+
 ### Droits par rôle d'organisation (cible)
 
 | Action | administrateur | gestionnaire | elu | superviseur | consultant |

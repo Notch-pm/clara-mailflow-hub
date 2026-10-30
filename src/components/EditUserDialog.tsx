@@ -39,10 +39,15 @@ const editSchema = z
 interface Props {
   member: OrgMember | null;
   organizationId: string;
+  /**
+   * Tenant rattaché au Socle : prénom, nom et rôle viennent de lui (lecture
+   * seule ici, et jamais envoyés) ; seuls les droits propres à Clara s'éditent.
+   */
+  managedBySocle?: boolean;
   onClose: () => void;
 }
 
-export function EditUserDialog({ member, organizationId, onClose }: Props) {
+export function EditUserDialog({ member, organizationId, managedBySocle = false, onClose }: Props) {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -75,9 +80,9 @@ export function EditUserDialog({ member, organizationId, onClose }: Props) {
     mutationFn: async (values: z.infer<typeof editSchema>) => {
       if (!member) throw new Error("Aucun utilisateur sélectionné");
       await updateOrgMember(organizationId, member.id, member.membership_id, {
-        first_name: values.first_name,
-        last_name: values.last_name,
-        role: values.role,
+        ...(managedBySocle
+          ? {}
+          : { first_name: values.first_name, last_name: values.last_name, role: values.role }),
         is_signataire: values.is_signataire,
         signataire_title: values.is_signataire ? (values.signataire_title?.trim() || null) : null,
         is_service_courrier: values.is_service_courrier,
@@ -191,15 +196,20 @@ export function EditUserDialog({ member, organizationId, onClose }: Props) {
               <form onSubmit={form.handleSubmit((v) => updateMutation.mutate(v))} className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
                   <FormField control={form.control} name="first_name" render={({ field }) => (
-                    <FormItem><FormLabel>Prénom</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                    <FormItem><FormLabel>Prénom</FormLabel><FormControl><Input {...field} disabled={managedBySocle} /></FormControl><FormMessage /></FormItem>
                   )} />
                   <FormField control={form.control} name="last_name" render={({ field }) => (
-                    <FormItem><FormLabel>Nom</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                    <FormItem><FormLabel>Nom</FormLabel><FormControl><Input {...field} disabled={managedBySocle} /></FormControl><FormMessage /></FormItem>
                   )} />
                 </div>
+                {managedBySocle && (
+                  <p className="text-xs text-muted-foreground">
+                    Nom et rôle viennent du Socle (Paramètres › Utilisateurs).
+                  </p>
+                )}
                 <FormField control={form.control} name="role" render={({ field }) => (
                   <FormItem><FormLabel>Rôle</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value} disabled={managedBySocle}>
                       <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
                       <SelectContent>
                         {ROLES.map((r) => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}

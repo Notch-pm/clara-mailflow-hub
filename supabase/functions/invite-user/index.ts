@@ -104,6 +104,21 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Tenant rattaché au Socle : ses agents viennent du Socle (sync-socle-users),
+    // superadmin compris — un compte invité ici échapperait au DSI, qui ne le
+    // verrait ni ne pourrait le suspendre depuis le Socle.
+    const { data: tenant } = await supabaseAdmin
+      .from("organizations")
+      .select("socle_org_id")
+      .eq("id", organization_id)
+      .maybeSingle();
+    if (tenant?.socle_org_id) {
+      return new Response(
+        JSON.stringify({ error: "Les accès à Clara de cette organisation se gèrent dans le Socle (Paramètres › Utilisateurs)." }),
+        { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     if (!isSuperAdmin) {
       const { data: callerMembership } = await supabaseAdmin
         .from("organization_users")

@@ -20,6 +20,7 @@ import { UserAvatar } from "@/components/UserAvatar";
 import { EditUserDialog } from "@/components/EditUserDialog";
 import type { OrgMember } from "@/types/user";
 import { ORG_ROLES, ORG_ROLE_VALUES } from "@/lib/permissions";
+import { MANAGED_BY_SOCLE_MESSAGE, useAgentsManagedBySocle } from "@/hooks/useAgentsManagedBySocle";
 
 const ROLES = ORG_ROLES;
 
@@ -45,6 +46,8 @@ interface UsersPageProps {
 export default function UsersPage({ organizationId: propOrgId }: UsersPageProps = {}) {
   const { organizationId: ctxOrgId } = useOrganization();
   const organizationId = propOrgId || ctxOrgId;
+  // Tenant rattaché au Socle : invitation, rôle et activation viennent de lui.
+  const managedBySocle = useAgentsManagedBySocle(organizationId);
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
@@ -132,6 +135,7 @@ export default function UsersPage({ organizationId: propOrgId }: UsersPageProps 
             <p className="text-muted-foreground">Gestion des membres de l'organisation</p>
           </div>
         </div>
+        {!managedBySocle && (
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <DialogTrigger asChild>
             <Button className="gap-1.5"><Plus className="h-4 w-4" /> Nouvel utilisateur</Button>
@@ -171,7 +175,14 @@ export default function UsersPage({ organizationId: propOrgId }: UsersPageProps 
             </Form>
           </DialogContent>
         </Dialog>
+        )}
       </div>
+
+      {managedBySocle && (
+        <Card>
+          <CardContent className="py-3 text-sm text-muted-foreground">{MANAGED_BY_SOCLE_MESSAGE}</CardContent>
+        </Card>
+      )}
 
       <div className="flex items-center gap-2">
         <div className="relative flex-1 max-w-sm">
@@ -185,7 +196,9 @@ export default function UsersPage({ organizationId: propOrgId }: UsersPageProps 
       ) : isLoading ? (
         <Card><CardContent className="py-8 text-center text-muted-foreground">Chargement…</CardContent></Card>
       ) : !filteredMembers?.length ? (
-        <Card><CardContent className="py-8 text-center text-muted-foreground">Aucun utilisateur. Cliquez sur "Nouvel utilisateur".</CardContent></Card>
+        <Card><CardContent className="py-8 text-center text-muted-foreground">
+          {managedBySocle ? "Aucun utilisateur : ouvrez l'accès à Clara depuis le Socle." : "Aucun utilisateur. Cliquez sur \"Nouvel utilisateur\"."}
+        </CardContent></Card>
       ) : (
         <Card>
           <Table>
@@ -265,7 +278,7 @@ export default function UsersPage({ organizationId: propOrgId }: UsersPageProps 
                           <KeyRound className="h-3.5 w-3.5" />
                         )}
                       </Button>
-                      {m.is_active !== false ? (
+                      {managedBySocle ? null : m.is_active !== false ? (
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
                             <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" title="Désactiver" aria-label="Désactiver l'utilisateur">
@@ -312,6 +325,7 @@ export default function UsersPage({ organizationId: propOrgId }: UsersPageProps 
       <EditUserDialog
         member={editMember}
         organizationId={organizationId ?? ""}
+        managedBySocle={managedBySocle}
         onClose={() => setEditMember(null)}
       />
     </div>
