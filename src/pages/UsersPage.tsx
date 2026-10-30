@@ -36,7 +36,7 @@ const createSchema = z.object({
   email: z.string().email("Email invalide").max(255),
   first_name: z.string().min(1, "Prénom obligatoire").max(100),
   last_name: z.string().min(1, "Nom obligatoire").max(100),
-  role: z.enum(ORG_ROLE_VALUES, { required_error: "Rôle obligatoire" }),
+  role: z.enum(ORG_ROLE_VALUES, { error: "Rôle obligatoire" }),
 });
 
 interface UsersPageProps {

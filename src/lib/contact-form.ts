@@ -31,13 +31,13 @@ export const contactFormSchema = z
   .superRefine((values, ctx) => {
     if (values.contact_type === "personne") {
       if (!values.civility) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["civility"], message: "Civilité obligatoire pour une personne" });
+        ctx.addIssue({ code: "custom", path: ["civility"], message: "Civilité obligatoire pour une personne" });
       }
       if (!values.last_name?.trim()) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["last_name"], message: "Nom obligatoire" });
+        ctx.addIssue({ code: "custom", path: ["last_name"], message: "Nom obligatoire" });
       }
     } else if (!values.legal_name?.trim()) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["legal_name"], message: "Raison sociale obligatoire" });
+      ctx.addIssue({ code: "custom", path: ["legal_name"], message: "Raison sociale obligatoire" });
     }
   });
 

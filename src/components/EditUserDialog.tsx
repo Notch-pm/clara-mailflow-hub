@@ -24,7 +24,7 @@ const editSchema = z
   .object({
     first_name: z.string().min(1, "Prénom obligatoire").max(100),
     last_name: z.string().min(1, "Nom obligatoire").max(100),
-    role: z.enum(ORG_ROLE_VALUES, { required_error: "Rôle obligatoire" }),
+    role: z.enum(ORG_ROLE_VALUES, { error: "Rôle obligatoire" }),
     is_signataire: z.boolean().default(false),
     is_service_courrier: z.boolean().default(false),
     is_viseur: z.boolean().default(false),
@@ -51,7 +51,7 @@ export function EditUserDialog({ member, organizationId, managedBySocle = false,
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const form = useForm<z.infer<typeof editSchema>>({
+  const form = useForm<z.input<typeof editSchema>, unknown, z.output<typeof editSchema>>({
     resolver: zodResolver(editSchema),
     values: member
       ? {
