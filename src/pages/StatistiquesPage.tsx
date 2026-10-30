@@ -17,7 +17,12 @@ import {
   getByService,
   getRepliesByMonth,
   getProcessingTimes,
+  getSlaFacts,
 } from "@/services/statsService";
+import { lastMonths, lateByService, lateRateEvolution } from "@/lib/stats-sla";
+import { LateByServiceChart } from "@/components/stats/charts/LateByServiceChart";
+import { LateRateByServiceChart } from "@/components/stats/charts/LateRateByServiceChart";
+import { LateRateEvolutionChart } from "@/components/stats/charts/LateRateEvolutionChart";
 import { StatsFilters, type StatPeriod } from "@/components/stats/StatsFilters";
 import { InboundVolumeChart } from "@/components/stats/charts/InboundVolumeChart";
 import { InboundDailyChart } from "@/components/stats/charts/InboundDailyChart";
@@ -146,6 +151,28 @@ export default function StatistiquesPage() {
     enabled,
   });
 
+  // Retards : une seule lecture sur 12 mois (la courbe d'évolution), les barres
+  // par service n'en gardent que la période choisie. Le jugement d'échéance
+  // reste celui des listes (`courierSla`), d'où un calcul côté client.
+  const lateMonths = useMemo(() => lastMonths(12), []);
+  // La veille du premier mois, en UTC : large de quelques heures quel que soit
+  // le décalage de Paris, le découpage exact par mois se fait dans `stats-sla`.
+  const lateSinceISO = new Date(Date.parse(`${lateMonths[0]}-01T00:00:00Z`) - 86_400_000).toISOString();
+  const { data: slaFacts, isLoading: loadingSla } = useQuery({
+    queryKey: ["stats-sla-facts", organizationId, socleOrgId, lateSinceISO],
+    queryFn: () => getSlaFacts(organizationId!, new Date(lateSinceISO), socleOrgId ?? undefined),
+    enabled,
+  });
+  const loadingLate = loadingSla || !services.length;
+  const lateData = useMemo(
+    () => (slaFacts && services.length ? lateByService(slaFacts, services, since) : undefined),
+    [slaFacts, services, since],
+  );
+  const lateEvolution = useMemo(
+    () => (slaFacts && services.length ? lateRateEvolution(slaFacts, services, lateMonths) : undefined),
+    [slaFacts, services, lateMonths],
+  );
+
   const totalInbound = useMemo(
     () => (monthlyData ?? []).reduce((s, d) => s + d.count, 0),
     [monthlyData],
@@ -220,6 +247,9 @@ export default function StatistiquesPage() {
         <ByServiceChart data={inboundByService} loading={loadingInboundService} direction="inbound" />
         <ByServiceChart data={outboundByService} loading={loadingOutboundService} direction="outbound" />
         <ProcessingTimesChart data={processingData} loading={loadingProcessing} />
+        <LateByServiceChart data={lateData} loading={loadingLate} />
+        <LateRateByServiceChart data={lateData} loading={loadingLate} />
+        <LateRateEvolutionChart data={lateEvolution} loading={loadingLate} />
       </div>
     </div>
   );

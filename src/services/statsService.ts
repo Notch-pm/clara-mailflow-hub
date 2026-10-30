@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import type { SlaFactRow } from "@/lib/stats-sla";
 
 export interface StatMonthPoint { month: string; count: number }
 export interface StatDayPoint { day: string; count: number }
@@ -109,3 +110,37 @@ export async function getProcessingTimes(
   });
 }
 
+
+const SLA_FACTS_PAGE_SIZE = 1000;
+
+/**
+ * Faits de délai des courriers reçus depuis `since` (date de réception, à
+ * défaut de création) : de quoi juger chaque échéance côté client avec
+ * `courierSla`. Lu sous RLS — un confidentiel non lisible ne compte pas, comme
+ * dans les autres graphiques.
+ */
+export async function getSlaFacts(
+  orgId: string,
+  since: Date,
+  socleOrganizationId?: string,
+): Promise<SlaFactRow[]> {
+  const sinceISO = since.toISOString();
+  const rows: SlaFactRow[] = [];
+  for (let offset = 0; ; offset += SLA_FACTS_PAGE_SIZE) {
+    let query = supabase
+      .from("couriers")
+      .select("id, received_at, created_at, acknowledged_at, resolved_at, socle_organization_id")
+      .eq("organization_id", orgId)
+      .eq("direction", "inbound")
+      .is("deleted_at", null)
+      .or(`received_at.gte."${sinceISO}",and(received_at.is.null,created_at.gte."${sinceISO}")`)
+      .order("id")
+      .range(offset, offset + SLA_FACTS_PAGE_SIZE - 1);
+    if (socleOrganizationId) query = query.eq("socle_organization_id", socleOrganizationId);
+    const { data, error } = await query;
+    if (error) throw error;
+    const page = data ?? [];
+    rows.push(...page);
+    if (page.length < SLA_FACTS_PAGE_SIZE) return rows;
+  }
+}

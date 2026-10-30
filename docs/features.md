@@ -327,8 +327,15 @@ l'échéance (jours civils de Paris, pas de tranches de 24 h).
   hook `useCourierSla`. Les échéances ne sont **jamais stockées** : modifier un objectif vaut
   aussitôt pour les courriers en cours. Seuls les faits datés le sont, par trigger (voir
   `docs/data-model.md`, `couriers.acknowledged_at` / `resolved_at`).
-- **Pas encore** : filtre « en retard » côté serveur, statistiques de respect des délais,
-  alertes. Les deux premiers demanderont le calcul des jours ouvrés en SQL.
+- **Statistiques de retard** (page Statistiques, depuis le 2026-10-30) : courriers en retard
+  de RÉSOLUTION par service (traités hors délai / en retard non traités), taux de retard sur
+  les reçus, évolution mensuelle du taux sur 12 mois (ensemble + 5 services qui reçoivent le
+  plus). Calcul **côté client** (`src/lib/stats-sla.ts`, réutilise `courierSla`) sur les faits
+  lus par `getSlaFacts` (12 mois, sous RLS, paginé) — pas de recopie des jours ouvrés en SQL.
+  Une organisation sans objectif de résolution est écartée (pas de 0 % trompeur). Si les
+  volumes rendent la lecture trop lourde, ce sera le moment de passer en SQL.
+- **Pas encore** : filtre « en retard » côté serveur, alertes. Le premier demandera le calcul
+  des jours ouvrés en SQL.
 
 ## 4. Actions issues d'un courrier
 

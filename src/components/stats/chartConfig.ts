@@ -15,6 +15,9 @@ export const CHART_COLORS = [
   "#fb923c",
 ];
 
+/** Courbe « ensemble » d'un graphique où chaque autre série est un service. */
+export const CHART_TOTAL_COLOR = "#374151";
+
 const baseChart: ApexOptions["chart"] = {
   fontFamily: "'Nunito Sans', sans-serif",
   toolbar: {
