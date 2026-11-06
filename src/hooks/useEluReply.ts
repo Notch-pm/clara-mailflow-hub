@@ -16,6 +16,12 @@ import type { WorkflowState, WorkflowTransition } from "@/types/courier";
 export interface EluTransitionChoice {
   transitionId: string;
   label: string;
+  /**
+   * Le nom donné à la transition par la collectivité, `null` s'il n'en a pas.
+   * Un geste (viser, signer, envoyer) ne se nomme jamais d'après l'état
+   * d'arrivée : « Envoyé » décrit où l'on arrive, le bouton dit « Envoyer ».
+   */
+  transitionName: string | null;
   kind: "next" | "previous" | null;
   target: {
     id: string;
@@ -36,6 +42,7 @@ function toChoice(
     // Le libellé de la transition prime : c'est le mot choisi par la
     // collectivité (« Renvoyer au service »), pas le nom de l'état d'arrivée.
     label: transition.name || target.name,
+    transitionName: transition.name?.trim() || null,
     kind: ((transition as { kind?: string | null }).kind ?? null) as "next" | "previous" | null,
     target: {
       id: target.id,

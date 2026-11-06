@@ -208,7 +208,7 @@ export function useSignAndAdvance(ctx: EluSignContext): {
     if (visaPending) {
       return {
         id: "visa",
-        label: approvalLabel("visa", nextEntry?.label),
+        label: approvalLabel("visa", nextEntry?.transitionName),
         disabledReason: ctx.canVisa ? null : "Vous n'êtes pas viseur de l'organisation gestionnaire.",
         run: (comment) => visaAndAdvance.mutate(comment),
       };
@@ -225,7 +225,7 @@ export function useSignAndAdvance(ctx: EluSignContext): {
       const reason = signatureBlocker(ctx.signatory, ctx.currentUserId);
       return {
         id: "sign",
-        label: approvalLabel("sign", nextEntry.label),
+        label: approvalLabel("sign", nextEntry.transitionName),
         disabledReason: reason,
         run: () => signAndAdvance.mutate(),
       };
@@ -234,7 +234,7 @@ export function useSignAndAdvance(ctx: EluSignContext): {
     if (requiresSend) {
       return {
         id: "send",
-        label: approvalLabel("send", nextEntry.label),
+        label: approvalLabel("send", nextEntry.transitionName),
         disabledReason: ctx.canEmail ? null : "L'usager n'a pas d'adresse électronique.",
         run: () => sendAndAdvance.mutate(),
       };

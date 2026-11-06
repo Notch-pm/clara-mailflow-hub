@@ -6,7 +6,9 @@
  * mot de la collectivité. Mais viser ou signer engage le nom de qui clique,
  * et ni une signature ni un envoi ne se reprennent. Quand le nom de la
  * transition ne dit pas le geste (« Terminer » depuis « À signer »), on le dit
- * devant : « Signer · Terminer ». Sans transition suivante, le geste seul.
+ * devant : « Signer · Terminer ». Sans transition suivante, ou une transition
+ * sans nom, le geste seul — ne JAMAIS passer ici le nom de l'état d'arrivée à
+ * la place (« Envoyé » se lirait comme le geste et resterait tel quel).
  */
 
 export type ApprovalGesture = "visa" | "sign" | "send";

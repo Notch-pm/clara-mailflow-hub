@@ -118,7 +118,7 @@ export function OutboundTransitionsBar({
             onClick={() => (gesture ? onGesture() : run(nextEntry.target))}
           >
             {gesture ? GESTURE_ICON[gesture] : <span className={stateDot(nextEntry.target.category)} />}
-            {gestureLabel(gesture, nextEntry.transition.name || nextEntry.target.name, sending)}
+            {gestureLabel(gesture, nextEntry.transition.name, nextEntry.target.name, sending)}
           </Button>
         </MaybeTooltip>
       )}

@@ -61,9 +61,18 @@ describe("gestureBlocker", () => {
 
 describe("gestureLabel", () => {
   it("garde le nom de la transition, en signalant l'envoi en cours", () => {
-    expect(gestureLabel(null, "Clore")).toBe("Clore");
-    expect(gestureLabel("post", "Envoyer")).toBe("Envoyer");
-    expect(gestureLabel("post", "Terminer")).toBe("Envoyer · Terminer");
-    expect(gestureLabel("send", "Envoyer", true)).toBe("Envoi…");
+    expect(gestureLabel(null, "Clore", "Clos")).toBe("Clore");
+    expect(gestureLabel("post", "Envoyer", "Envoyé")).toBe("Envoyer");
+    expect(gestureLabel("post", "Terminer", "Envoyé")).toBe("Envoyer · Terminer");
+    expect(gestureLabel("send", "Envoyer", "Envoyé", true)).toBe("Envoi…");
+  });
+
+  it("sans nom de transition : le nom de l'état pour une simple transition, le verbe pour un geste", () => {
+    // Cas vécu : « Prêt à envoyer » → « Envoyé », transition sans nom.
+    expect(gestureLabel("post", null, "Envoyé")).toBe("Envoyer");
+    expect(gestureLabel("send", "", "Envoyé")).toBe("Envoyer");
+    expect(gestureLabel("sign", null, "Signé")).toBe("Signer");
+    expect(gestureLabel("visa", "  ", "Visé")).toBe("Viser");
+    expect(gestureLabel(null, null, "En cours")).toBe("En cours");
   });
 });

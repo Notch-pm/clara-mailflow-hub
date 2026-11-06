@@ -57,8 +57,19 @@ export function gestureBlocker(gesture: NextGesture, r: GestureRights): string |
   }
 }
 
-/** Libellé du bouton : le nom de la transition, précédé du geste quand il ne le dit pas. */
-export function gestureLabel(gesture: NextGesture, transitionName: string, sending = false): string {
+/**
+ * Libellé du bouton. Sans geste : le nom de la transition, sinon celui de
+ * l'état d'arrivée. Avec un geste : le nom de la transition, précédé du geste
+ * quand il ne le dit pas — et le verbe du geste seul quand la transition n'a
+ * pas de nom (jamais le nom de l'état d'arrivée : une transition sans nom vers
+ * « Envoyé » affichait « Envoyé » au lieu d'« Envoyer »).
+ */
+export function gestureLabel(
+  gesture: NextGesture,
+  transitionName: string | null | undefined,
+  targetName: string,
+  sending = false,
+): string {
   switch (gesture) {
     case "post":
       // Le geste de l'étape d'envoi : « Envoyer » ouvre la déclaration d'envoi postal.
@@ -70,6 +81,6 @@ export function gestureLabel(gesture: NextGesture, transitionName: string, sendi
     case "send":
       return sending ? "Envoi…" : approvalLabel("send", transitionName);
     default:
-      return transitionName;
+      return transitionName?.trim() || targetName;
   }
 }
