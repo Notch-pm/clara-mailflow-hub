@@ -96,6 +96,13 @@ export default function OutboxList({ view, items, selectedId, onSelect, orgName,
                     <span className="flex min-w-0 items-center gap-2">
                       <OutboundKindBadge kind={item.kind} />
                       {row.is_confidential && <ConfidentialBadge compact />}
+                      {/* En affichage compact, la ligne de détail disparaît : la
+                          référence remonte ici, c'est par elle qu'on retrouve un courrier. */}
+                      {chrono && (
+                        <span className="hidden shrink-0 text-xs font-semibold tabular-nums text-foreground/80 group-data-[density=compact]/list:inline">
+                          {chrono}
+                        </span>
+                      )}
                       <span
                         className={cn(
                           "truncate text-[13.5px] font-semibold text-foreground",

@@ -170,6 +170,13 @@ Aucun changement de frontend ni d'edge function.
 | 1 | `20261013142643_courriers_sortants_ecran.sql` (RPC `outbound_couriers`, SECURITY DEFINER gardée par `is_member_of`) | **Appliqué** via `apply_migration` — registre `20261013142643` (fichier renommé pour coller). SNA27, en membre : 27 sortants, 8 envoyés, 0 visa, 4 signature, 10 prêts à l'envoi |
 | 2 | Frontend : `/courriers-sortants` réécrit (onglets par étape, panneau `ParapheurDetail`) | Après la migration |
 
+### Lot « recherche par référence » (2026-11-06) — à appliquer
+
+| # | Étape | État |
+|---|---|---|
+| 1 | `20261106120500_recherche_par_reference.sql` : `search_couriers` compare la référence (`chrono`) pour tout courrier, plus seulement les confidentiels illisibles. Réécriture textuelle de la définition en base (motif vérifié présent une fois en production) | **À appliquer** (`apply_migration` refusé en mode auto le 2026-11-06), puis `supabase/tests/recherche_par_reference.test.sql` : VERDICT OK attendu (4 scénarios). Renommer le fichier sur la version du registre |
+| 2 | Frontend : référence affichée en tête de ligne dans la liste des courriers sortants en affichage compact (la ligne de détail, qui la portait, y est masquée) | Indépendant de 1 |
+
 ### Chantier « envois papiers réels » (Merci Facteur, 2026-11-06) — migration, secrets et fonctions en ligne le 2026-11-06 ; frontend et recette à faire
 
 | # | Étape | État |
