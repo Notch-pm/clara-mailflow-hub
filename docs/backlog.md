@@ -2,7 +2,7 @@
 
 > **Public** : PO et équipe Clara · **Question traitée** : qu'est-ce qui a été demandé, pas
 > encore arbitré, et que faut-il savoir avant de s'y mettre ? · **Dernière mise à jour** :
-> 2026-11-04
+> 2026-11-06
 
 Ce document porte les demandes **produit** en attente. Il ne double pas
 [`technical-debt.md`](technical-debt.md), qui traite de la dette technique. Chaque entrée dit
@@ -177,3 +177,44 @@ l'élu quand son courrier avance.
 **L'ajustement** : une liste « Courriers que j'ai relayés » dans l'espace élu, et un avis
 d'avancement (réponse envoyée, clôture). À confirmer avec le client : c'est ce que « les
 besoins des élus » visait-il ?
+
+---
+
+## Envois papiers réels (Merci Facteur)
+
+Livrés et recettés le 2026-11-06 (compte Merci Facteur en sandbox) : voir `features.md`
+§ « Envois papiers réels ». **Un seul compte Merci Facteur, celui de Notch**, qui
+refacture les collectivités.
+
+## P1 — Suivi de la facturation Merci Facteur
+
+**Demandé le 2026-11-06.**
+
+**Ce qui existe** : chaque envoi par le prestataire garde son prix dans `postal_sendings`
+(`price_ht`, `price_ttc`, `nb_pages`, `mode`, `provider_envoi_id`, `sent_at`, par
+`organization_id`). Paramètres → Envois papiers montre aux administrateurs de la collectivité
+les 50 derniers envois et le **total TTC du mois** (`monthTotalTtc`,
+`src/lib/postal-sending.ts`). Un plafond d'envois par 24 h existe (`postal_daily_cap`), mais
+aucun plafond en euros.
+
+**Ce qui manque** :
+- **Pour Notch** : aucune vue toutes collectivités confondues. Il faudrait une vue réservée au
+  superadmin, avec le total HT/TTC par collectivité et par mois, un export pour la
+  refacturation, et le détail par envoi (date, référence du courrier, type, pages, prix).
+- **Rapprochement avec Merci Facteur** : rien ne vérifie que la somme des prix enregistrés
+  égale la facture du compte Notch. Les envois « à vérifier » (`to_verify`, issue incertaine)
+  n'ont pas de prix : s'ils sont partis, ils sont facturés chez Merci Facteur sans l'être dans
+  Clara. L'API offre `listEnvois` / `getEnvoi`, ainsi que `getQuotaCompte` pour l'état du
+  compte. La réponse de `sendCourrier` porte aussi `account.pages` (`thisMonth`,
+  `maxMonth`), que Clara ne garde pas aujourd'hui.
+- **Pour la collectivité** : pas d'historique au-delà des 50 derniers envois, pas d'export,
+  pas de budget ni d'alerte de dépassement.
+
+**Questions ouvertes** :
+- La refacturation se fait-elle au prix coûtant (le `price_ttc` de Merci Facteur) ou avec une
+  marge, ou un forfait ? Le prix montré à la collectivité doit-il être celui-là ?
+- Quel rythme et quel format pour Notch : export mensuel CSV, écran, envoi automatique ?
+- Les **tarifs affichés avant l'envoi** (aide de la fenêtre d'envoi, Paramètres) sont en
+  attente de la grille, demandés le 2026-11-06. Une grille fixe ou le devis exact
+  `getPostagePrice` : le choix rejoint celui de la refacturation.
+
