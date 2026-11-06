@@ -16,7 +16,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { assertEditor } from "../_shared/authz.ts";
 import { canReadCourier } from "../_shared/courierAccess.ts";
 import { contactsApiKeyForOrg, fetchContactsApi } from "../_shared/socleContactsClient.ts";
-import { mfConfig, mfSendAttempt, mfToken } from "../_shared/merciFacteur.ts";
+import { mfConfig, mfResolveUserId, mfSendAttempt, mfToken } from "../_shared/merciFacteur.ts";
 import {
   bytesToBase64,
   decideOutcome,
@@ -199,7 +199,7 @@ Deno.serve(async (req) => {
 
     // ─── Envoi ─────────────────────────────────────────────────────────
     const input = {
-      idUser: cfg.userId,
+      idUser: "",
       exp,
       dest,
       pdfBase64,
@@ -211,6 +211,8 @@ Deno.serve(async (req) => {
     const attempts: MfAttempt[] = [];
     try {
       let token = await mfToken(admin, cfg);
+      // Avant tout envoi : une configuration fausse échoue ici, rien ne part.
+      input.idUser = await mfResolveUserId(cfg, token);
       for (let i = 0; i < 3; i++) {
         const a = await mfSendAttempt(cfg, token, input);
         // Jeton refusé (réponse lisible, rien n'est parti) : un nouveau jeton, une fois.

@@ -26,16 +26,18 @@ export interface MfConfig {
 
 /** La configuration, ou `null` si un secret manque (l'envoi est alors refusé proprement). */
 export function mfConfig(): MfConfig | null {
-  const serviceId = Deno.env.get("MF_SERVICE_ID");
-  const secretKey = Deno.env.get("MF_SECRET_KEY");
-  const userId = Deno.env.get("MF_USER_ID");
+  // Un secret collé depuis l'interface traîne souvent un espace ou un retour à la ligne.
+  const env = (k: string) => Deno.env.get(k)?.trim() || "";
+  const serviceId = env("MF_SERVICE_ID");
+  const secretKey = env("MF_SECRET_KEY");
+  const userId = env("MF_USER_ID");
   if (!serviceId || !secretKey || !userId) return null;
   return {
-    base: (Deno.env.get("MF_BASE_URL") || DEFAULT_BASE).replace(/\/+$/, ""),
+    base: (env("MF_BASE_URL") || DEFAULT_BASE).replace(/\/+$/, ""),
     serviceId,
     secretKey,
     userId,
-    authorizedIp: Deno.env.get("MF_AUTHORIZED_IP") || "111.111.111",
+    authorizedIp: env("MF_AUTHORIZED_IP") || "111.111.111",
   };
 }
 
@@ -103,4 +105,28 @@ export async function mfSendAttempt(cfg: MfConfig, token: string, input: MfSendI
   }
   if (data?.success === true) return { kind: "ok", data };
   return { kind: "refused", error: mfErrorText(data?.error ?? `HTTP ${res.status}`) };
+}
+
+/**
+ * L'identifiant numérique de l'utilisateur Merci Facteur au nom duquel les
+ * courriers partent (`idUser`, un entier). `MF_USER_ID` peut porter cet entier,
+ * ou l'e-mail de l'utilisateur : il est alors résolu par `getUserId`. Lève un
+ * message explicite sinon.
+ */
+export async function mfResolveUserId(cfg: MfConfig, token: string): Promise<string> {
+  const v = cfg.userId;
+  if (/^\d+$/.test(v)) return v;
+  if (!v.includes("@")) {
+    throw new Error("Configuration du prestataire : MF_USER_ID doit être l'identifiant numérique de l'utilisateur Merci Facteur (menu « Utilisateurs ») ou son e-mail.");
+  }
+  const res = await fetch(`${cfg.base}/getUserId?emailUser=${encodeURIComponent(v)}`, {
+    headers: { "ww-access-token": token, "ww-service-id": cfg.serviceId },
+    signal: AbortSignal.timeout(20_000),
+  });
+  const data = await res.json().catch(() => null);
+  const id = data?.user_id;
+  if (!data?.success || (typeof id !== "number" && !/^\d+$/.test(String(id ?? "")))) {
+    throw new Error(`Configuration du prestataire : utilisateur Merci Facteur introuvable pour ${v} (${mfErrorText(data?.error ?? `HTTP ${res.status}`)}).`);
+  }
+  return String(id);
 }
