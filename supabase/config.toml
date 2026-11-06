@@ -69,3 +69,9 @@ verify_jwt = false
 
 [functions.invite-user]
 verify_jwt = false
+
+# Webhook de Merci Facteur (envois papiers réels) : appelé par le prestataire,
+# sans en-tête Authorization. La garde est le jeton secret de l'URL
+# (MF_WEBHOOK_TOKEN), comparé à temps constant dans la fonction.
+[functions.merci-facteur-webhook]
+verify_jwt = false

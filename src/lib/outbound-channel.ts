@@ -71,17 +71,30 @@ export function nowTimeIso(now: Date = new Date()): string {
 
 // ─── Envoi postal : type d'envoi et horodatage ─────────────────────────
 
-/** Le type d'envoi d'un courrier postal (`metadata.posted_mode`). */
-export type PostalMode = "simple" | "recommande";
+/**
+ * Le type d'envoi d'un courrier postal (`metadata.posted_mode`) : lettre verte,
+ * lettre suivie, ou recommandé avec accusé de réception. Mêmes valeurs en base
+ * (garde `couriers_enforce_outbound_initiative`, `postal_sendings.mode`).
+ */
+export type PostalMode = "simple" | "suivi" | "recommande";
 
-export const POSTAL_MODES: { value: PostalMode; label: string }[] = [
-  { value: "simple", label: "Courrier simple" },
-  { value: "recommande", label: "Recommandé" },
+export const POSTAL_MODES: { value: PostalMode; label: string; short: string }[] = [
+  { value: "simple", label: "Simple", short: "Simple" },
+  { value: "suivi", label: "Suivie", short: "Suivie" },
+  { value: "recommande", label: "Recommandé avec accusé de réception", short: "Recommandé AR" },
 ];
 
-export function postalModeLabel(mode: string | null | undefined): string | null {
-  return POSTAL_MODES.find((m) => m.value === mode)?.label ?? null;
+export function isPostalMode(mode: unknown): mode is PostalMode {
+  return POSTAL_MODES.some((m) => m.value === mode);
 }
+
+/** Libellé court (badge, historique), ou `null` pour une valeur inconnue. */
+export function postalModeLabel(mode: string | null | undefined): string | null {
+  return POSTAL_MODES.find((m) => m.value === mode)?.short ?? null;
+}
+
+/** Qui poste la lettre : le prestataire (envoi papier réel), ou l'agent lui-même. */
+export type PostalVia = "provider" | "self";
 
 /** Date et heure locales saisies → horodatage ISO (UTC), ou `null` si illisibles. */
 export function postedAtIso(date: string, time: string): string | null {
@@ -96,17 +109,20 @@ export function postedAtIso(date: string, time: string): string | null {
  * heure exigées, ni futures, ni antérieures à la création ; type d'envoi exigé.
  */
 export function postDeclarationError(
-  input: { date: string; time: string; mode: PostalMode | null | undefined },
+  input: { date: string; time: string; mode: PostalMode | null | undefined; via?: PostalVia },
   createdAt: string | null | undefined,
   now: Date = new Date(),
 ): string | null {
+  // Par le prestataire, l'horodatage est celui de l'acceptation de la lettre :
+  // rien à saisir, seul le type d'envoi est exigé.
+  if (input.via === "provider") return isPostalMode(input.mode) ? null : POSTED_MODE_REASON;
   const iso = postedAtIso(input.date, input.time);
   if (!iso) return POSTED_TIME_REQUIRED_REASON;
   const at = new Date(iso).getTime();
   // Saisie à la minute : on compare la création tronquée à la minute.
   const created = createdAt ? Math.floor(new Date(createdAt).getTime() / 60_000) * 60_000 : null;
   if (at > now.getTime() + 60_000 || (created !== null && at < created)) return POSTED_DATE_REASON;
-  if (input.mode !== "simple" && input.mode !== "recommande") return POSTED_MODE_REASON;
+  if (!isPostalMode(input.mode)) return POSTED_MODE_REASON;
   return null;
 }
 

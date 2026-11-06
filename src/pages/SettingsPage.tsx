@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Users, ArrowLeft, GitBranch, Settings, Tags, Building2, ClipboardList, Mail, PenTool, FileText, Globe, Sparkles, RefreshCw, LucideIcon } from "lucide-react";
+import { Users, ArrowLeft, GitBranch, Settings, Tags, Building2, ClipboardList, Mail, PenTool, FileText, Globe, Sparkles, RefreshCw, Mailbox, LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { triggerSocleSync, type SocleSyncResult } from "@/services/socleSyncService";
 import UsersPage from "./UsersPage";
@@ -16,11 +16,12 @@ import ImapSettings from "@/components/ImapSettings";
 import SocleOrganizationTree from "@/components/SocleOrganizationTree";
 import PortalFormsSettings from "@/components/portal/PortalFormsSettings";
 import AiUsageSettings from "@/components/AiUsageSettings";
+import PostalSendingSettings from "@/components/PostalSendingSettings";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { ShieldAlert } from "lucide-react";
 
-type Section = "menu" | "organisations" | "utilisateurs" | "workflows" | "classification" | "demarches" | "emails" | "signatures" | "modeles" | "portail" | "ia";
+type Section = "menu" | "organisations" | "utilisateurs" | "workflows" | "classification" | "demarches" | "emails" | "signatures" | "modeles" | "portail" | "envois" | "ia";
 
 const settingSections: { key: Section; title: string; description: string; icon: LucideIcon }[] = [
   { key: "organisations", title: "Organisations", description: "Hiérarchie des organisations du référentiel : workflows, boîtes IMAP, membres et signataires par organisation", icon: Building2 },
@@ -32,6 +33,7 @@ const settingSections: { key: Section; title: string; description: string; icon:
   { key: "classification", title: "Classification", description: "Tags de classement des courriers", icon: Tags },
   { key: "modeles", title: "Modèles de documents", description: "Modèle Word pour les courriers papier", icon: FileText },
   { key: "portail", title: "Portail citoyen", description: "Formulaires intégrables sur votre site web", icon: Globe },
+  { key: "envois", title: "Envois papiers", description: "Envois papiers réels par un prestataire : activation, plafond, coûts", icon: Mailbox },
   { key: "ia", title: "Consommation IA", description: "Suivi de la consommation des appels IA (lecture seule)", icon: Sparkles },
 ];
 
@@ -62,6 +64,7 @@ const sectionLabels: Record<string, string> = {
   classification: "Classification (tags)",
   modeles: "Modèles de documents",
   portail: "Portail citoyen — formulaires",
+  envois: "Envois papiers réels",
   ia: "Consommation IA",
 };
 
@@ -147,6 +150,9 @@ export default function SettingsPage() {
           <ModeleSettings orgId={organizationId} />
         )}
         {activeSection === "portail" && <PortalFormsSettings />}
+        {activeSection === "envois" && organizationId && (
+          <PostalSendingSettings organizationId={organizationId} />
+        )}
         {activeSection === "ia" && organizationId && (
           <AiUsageSettings organizationId={organizationId} />
         )}

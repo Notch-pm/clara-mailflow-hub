@@ -58,4 +58,5 @@ export const POSTED_DATE_REASON =
 
 export const POSTED_TIME_REQUIRED_REASON = "Indiquez la date et l'heure d'envoi du courrier.";
 
-export const POSTED_MODE_REASON = "Précisez le type d'envoi : courrier simple ou recommandé.";
+export const POSTED_MODE_REASON =
+  "Précisez le type d'envoi : simple, suivie ou recommandé avec accusé de réception.";

@@ -35,7 +35,7 @@ export function NotificationBell() {
       navigate(`/courrier-entrant?open=${resourceId}`);
       return;
     }
-    if (type === "courier_reminder") {
+    if (type === "courier_reminder" || type === "postal_returned") {
       navigate(`/courrier/${resourceId}`);
       return;
     }
@@ -147,6 +147,11 @@ export function NotificationBell() {
                           {notif.type === "visa_requested" && (
                             <span className="inline-flex items-center rounded px-1 py-0 text-[10px] font-medium bg-primary/15 text-primary border border-primary/30">
                               à viser
+                            </span>
+                          )}
+                          {notif.type === "postal_returned" && (
+                            <span className="inline-flex items-center rounded px-1 py-0 text-[10px] font-medium bg-destructive/10 text-destructive border border-destructive/30">
+                              courrier revenu
                             </span>
                           )}
                           {notif.type === "task_completed" && (

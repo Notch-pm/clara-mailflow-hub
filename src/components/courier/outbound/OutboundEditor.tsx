@@ -54,6 +54,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import { printReply, renderLetterHtml } from "@/utils/printReply";
 import { storage } from "@/services/storageService";
 import { markOutboundPosted } from "@/services/outboundCourierService";
+import { getPostalSendingSettings, sendPostalLetter } from "@/services/postalSendingService";
+import { renderLetterPdf } from "@/lib/letter-pdf";
+import { formatEuros } from "@/lib/postal-sending";
 import {
   formatPostedAt,
   nowTimeIso,
@@ -308,7 +311,12 @@ export function OutboundEditor({
   const isSent = !!replyMeta.sent_email_at;
   // Sortant postal (réponse ou initiative) : déclaré envoyé à une date et une
   // heure saisies, en courrier simple ou recommandé.
-  const postedMeta = (reply?.metadata as { posted_at?: string | null; posted_mode?: string | null } | null) ?? {};
+  const postedMeta = (reply?.metadata as {
+    posted_at?: string | null;
+    posted_mode?: string | null;
+    postal_provider?: string | null;
+  } | null) ?? {};
+  const postedByProvider = postedMeta.postal_provider === "merci_facteur";
   const postedOn = postedMeta.posted_at ?? null;
   const postedModeText = postalModeLabel(postedMeta.posted_mode);
   const isPosted = !!postedOn;
@@ -557,7 +565,20 @@ export function OutboundEditor({
 
   const [postDialog, setPostDialog] = useState<{ advance: boolean } | null>(null);
   // Par défaut : maintenant, en courrier simple.
-  const freshDeclaration = (): PostDeclaration => ({ date: todayIso(), time: nowTimeIso(), mode: "simple" });
+  // Envois papiers réels activés : le prestataire est proposé, coché d'office.
+  const { data: postalSettings } = useQuery({
+    queryKey: ["postal-sending-settings", organizationId],
+    queryFn: () => getPostalSendingSettings(organizationId),
+    enabled: !!organizationId && channel === "paper",
+    staleTime: 60_000,
+  });
+  const providerAvailable = postalSettings?.enabled === true;
+  const freshDeclaration = (): PostDeclaration => ({
+    via: providerAvailable ? "provider" : "self",
+    date: todayIso(),
+    time: nowTimeIso(),
+    mode: "simple",
+  });
   const [postDecl, setPostDecl] = useState<PostDeclaration>(freshDeclaration);
   function openPostDialog(advance: boolean) {
     setPostDecl(freshDeclaration());
@@ -574,12 +595,36 @@ export function OutboundEditor({
     return renderLetterHtml({ ...printArgs });
   }
 
-  // Imprimer, mettre sous pli, puis déclarer l'envoi (date, heure, type) :
-  // l'exemplaire conservé est la lettre telle qu'elle est partie.
+  // Deux façons de poster, un même exemplaire conservé (la lettre telle qu'elle
+  // est partie) :
+  //   • par le prestataire — la lettre est mise en PDF, déposée, puis transmise
+  //     par `send-postal-letter`, qui déclare lui-même le courrier « posté » ;
+  //   • par nos soins — imprimer, mettre sous pli, puis déclarer date, heure, type.
   const doPost = useMutation({
-    mutationFn: async (args: { advance: boolean; decl: PostDeclaration }) => {
+    mutationFn: async (args: { advance: boolean; decl: PostDeclaration }): Promise<{ postedAt: string; priceTtc: number | null; viaProvider: boolean }> => {
       if (!reply) throw new Error("Aucun courrier.");
       if (postBlocker) throw new Error(postBlocker);
+      if (providerAvailable && args.decl.via === "provider") {
+        if (dirty) await ensureReply();
+        const pdf = await renderLetterPdf(await letterHtml(), `lettre ${(reply as { chrono?: string | null }).chrono ?? reply.id}`);
+        const doc = await storage.upload(organizationId, reply.id, pdf, "response");
+        let sent;
+        try {
+          sent = await sendPostalLetter({ organizationId, courierId: reply.id, mode: args.decl.mode, documentId: doc.id });
+        } catch (e) {
+          // Refus certain (le serveur l'a dit) : la lettre jamais partie ne reste pas
+          // parmi les documents. Issue incertaine (504) : on la garde, elle a pu partir.
+          if ((e as { status?: number }).status !== 504) await storage.delete(organizationId, doc.id).catch(() => undefined);
+          throw e;
+        }
+        if (args.advance && nextForward) {
+          await transitionReplyState(
+            organizationId, anchor(reply.id), reply.id,
+            nextForward.target.id, nextForward.target.name, nextForward.target.category,
+          );
+        }
+        return { postedAt: sent.posted_at, priceTtc: sent.price_ttc, viaProvider: true };
+      }
       const postedAt = postedAtIso(args.decl.date, args.decl.time);
       if (!postedAt) throw new Error("Indiquez la date et l'heure d'envoi du courrier.");
       if (dirty) await ensureReply();
@@ -602,18 +647,27 @@ export function OutboundEditor({
           nextForward.target.id, nextForward.target.name, nextForward.target.category,
         );
       }
+      return { postedAt, priceTtc: null, viaProvider: false };
     },
-    onSuccess: (_, args) => {
+    onSuccess: (res, args) => {
       setPostDialog(null);
       setDirty(false);
       invalidate();
       queryClient.invalidateQueries({ queryKey: ["courier-documents"] });
       queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
       onChanged();
-      const at = postedAtIso(args.decl.date, args.decl.time);
-      toast.success(`Courrier déclaré posté${at ? ` le ${formatPostedAt(at)}` : ""} (${postalModeLabel(args.decl.mode)})`);
+      queryClient.invalidateQueries({ queryKey: ["postal-sendings"] });
+      toast.success(
+        res.viaProvider
+          ? `Lettre transmise au prestataire (${postalModeLabel(args.decl.mode)}${res.priceTtc !== null ? `, ${formatEuros(res.priceTtc)} TTC` : ""})`
+          : `Courrier déclaré posté le ${formatPostedAt(res.postedAt)} (${postalModeLabel(args.decl.mode)})`,
+      );
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => {
+      // Un envoi incertain ou refusé laisse une trace : le journal se relit.
+      queryClient.invalidateQueries({ queryKey: ["postal-sendings"] });
+      toast.error(err.message);
+    },
   });
 
   const isBusy = doPost.isPending || saveDraft.isPending || doUnsign.isPending ||
@@ -885,7 +939,8 @@ export function OutboundEditor({
           )}
           {isPosted && (
             <Badge variant="secondary" className="gap-1 bg-emerald-100 text-emerald-700 border-emerald-200">
-              Posté le {formatPostedAt(postedOn!)}{postedModeText ? ` · ${postedModeText}` : ""}
+              {postedByProvider ? "Envoyé par le prestataire le " : "Posté le "}
+              {formatPostedAt(postedOn!)}{postedModeText ? ` · ${postedModeText}` : ""}
             </Badge>
           )}
           {isSent && (
@@ -931,6 +986,7 @@ export function OutboundEditor({
         value={postDecl}
         onChange={setPostDecl}
         createdAt={reply?.created_at}
+        providerAvailable={providerAvailable}
         onPrint={() => void handlePrintPdf(hasTemplate)}
         onConfirm={() => postDialog && doPost.mutate({ advance: postDialog.advance, decl: postDecl })}
         pending={doPost.isPending}

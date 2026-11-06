@@ -170,6 +170,16 @@ Aucun changement de frontend ni d'edge function.
 | 1 | `20261013142643_courriers_sortants_ecran.sql` (RPC `outbound_couriers`, SECURITY DEFINER gardée par `is_member_of`) | **Appliqué** via `apply_migration` — registre `20261013142643` (fichier renommé pour coller). SNA27, en membre : 27 sortants, 8 envoyés, 0 visa, 4 signature, 10 prêts à l'envoi |
 | 2 | Frontend : `/courriers-sortants` réécrit (onglets par étape, panneau `ParapheurDetail`) | Après la migration |
 
+### Chantier « envois papiers réels » (Merci Facteur, 2026-11-06) — migration, secrets et fonctions en ligne le 2026-11-06 ; frontend et recette à faire
+
+| # | Étape | État |
+|---|---|---|
+| 1 | `20261106102716_envois_papier_reels.sql` : `organizations.postal_sending_enabled` / `postal_daily_cap` (+ grant UPDATE colonne), tables `postal_sendings` (réservation unique par courrier) et `provider_tokens`, garde `couriers_enforce_outbound_initiative` qui accepte `posted_mode = 'suivi'` | **Appliqué** via `apply_migration` — registre `20261106102716` (fichier renommé pour coller). `supabase/tests/postal_sendings.test.sql` : VERDICT OK (7 scénarios), aucune donnée de test restante. Advisor : `provider_tokens` « RLS sans policy » (INFO), voulu — comme `action_task_tokens` |
+| 2 | Secrets : `MF_SERVICE_ID`, `MF_SECRET_KEY`, `MF_USER_ID`, `MF_WEBHOOK_TOKEN` (et `MF_AUTHORIZED_IP` si la restriction d'IP n'est pas levée) | **Posés le 2026-11-06** par l'utilisateur (`MF_WEBHOOK_TOKEN` : 32 octets aléatoires en hexadécimal, posé par `--env-file`). Sous Windows PowerShell 5.1, pas de `RandomNumberGenerator.Fill` : utiliser `RNGCryptoServiceProvider`, et `Set-Content -Path … -Value … -Encoding Ascii`. **Levée de la restriction d'IP à demander au support** |
+| 3 | `supabase functions deploy send-postal-letter merci-facteur-webhook --project-ref aullweizxcjbvtdspjli` (`config.toml` porte `verify_jwt = false` pour le webhook) | **Déployé le 2026-11-06** par l'utilisateur. Vérifié : webhook 403 sans jeton et avec un faux jeton (réponse du code, donc `verify_jwt = false` appliqué) ; `send-postal-letter` 401 sans session |
+| 4 | Déclarer l'URL du webhook dans l'onglet « API » de Merci Facteur Pro (voir `docs/edge-functions.md`) | **Fait** le 2026-11-06 |
+| 5 | Frontend : section Paramètres « Envois papiers », fenêtre d'envoi avec le choix du prestataire et les trois types, PDF de la lettre, badge et historique, notification `postal_returned` | Après 1 (la section lit les nouvelles colonnes). Recette : une lettre « Simple » vers une adresse Notch sur un tenant de démo, puis un second clic (409) |
+
 ### Lot « envoi postal horodaté » (2026-11-06) — appliqué le 2026-11-06
 
 | # | Étape | État |

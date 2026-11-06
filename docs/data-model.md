@@ -56,6 +56,8 @@ Tenants racine. RLS sur `id` (pas sur `organization_id`).
 | `logo_url` / `primary_color` / `secondary_color` | text | **Charte graphique — MIROIR du Socle depuis le 2026-09-13, aucune saisie dans Clara.** Couleurs en `#rrggbb` minuscule (CHECK `organizations_branding_colors_hex`). Voir ci-dessous. |
 | `multiple_imap` | boolean | multi-boîtes IMAP |
 | `ai_voice_enabled` | boolean | **Miroir** de `assistant.voice_enabled` du Socle (2026-10-09) : ouvre la dictée vocale d'un courrier. Écrit par `sync-socle-referentiel` seule — **aucun grant UPDATE client** (les droits d'écriture sur `organizations` sont colonne par colonne). Défaut `false`. |
+| `postal_sending_enabled` | boolean | **Envois papiers réels** (2026-11-06) : les agents peuvent faire imprimer et poster une lettre par le prestataire (Merci Facteur, compte unique Notch), facturé à l'envoi. Défaut `false`. Écrit par un administrateur (policy `org_admin_update` + **grant UPDATE colonne**). |
+| `postal_daily_cap` | integer | Plafond d'envois par le prestataire sur 24 h glissantes (0–1000, défaut 50) : garde-fou contre une boucle. Même droit d'écriture. |
 | `reply_template_html` / `_design` / `_storage_key` | text/jsonb | template courrier Unlayer |
 | `address_*` / `phone` / `website` / `contact_email` | text | coordonnées org |
 | `socle_org_id` | uuid | mapping vers l'org Socle (renseigné par le superadmin) ; NULL = pas de sync Socle |
@@ -710,3 +712,40 @@ Fonctions de service (aucune `EXECUTE` cliente) : `claim_notification_pushes`,
 5. Index sur `(organization_id, ...)` pour les requêtes fréquentes
 6. `created_at` / `updated_at` + trigger `set_updated_at`
 7. Migration versionnée `supabase/migrations/<timestamp>_<slug>.sql`
+
+
+## Envois papiers réels (2026-11-06)
+
+### `postal_sendings`
+
+Un envoi par le prestataire par ligne. **Écrite par les edge functions seules** (service role) ;
+lecture par les membres (`is_member_of`), aucun INSERT/UPDATE/DELETE pour `authenticated`.
+
+| Colonne | Type | Rôle |
+|---|---|---|
+| `courier_id` / `organization_id` | uuid | le sortant envoyé |
+| `document_id` | uuid | le PDF transmis (= exemplaire conservé) |
+| `provider` | text | `merci_facteur` |
+| `mode` | text | `simple` (lettre verte) \| `suivi` (lettre suivie) \| `recommande` (LRAR papier) |
+| `status` | text | `pending` (réservé, en cours) \| `sent` \| `to_verify` (issue incertaine, à trancher dans Merci Facteur Pro) \| `failed` (refus certain, rien n'est parti) |
+| `provider_envoi_id` | text | `envoi_id` du prestataire (plusieurs séparés par des virgules) |
+| `price_ht` / `price_ttc` / `nb_pages` | numeric/int | facturation (refacturation Notch → collectivité) |
+| `antidoublon` | text | `clara-<courier_id>` : stable d'une tentative à l'autre |
+| `error` | text | motif d'un échec ou d'une issue incertaine |
+| `requested_by` / `requested_at` / `sent_at` | | qui, quand |
+| `events` / `last_event` / `last_event_at` | jsonb/text | événements poussés par le webhook (imprimé, distribué, NPAI, AR) |
+
+**Réservation anti-double envoi** : index unique partiel `(courier_id) WHERE status IN
+('pending','sent','to_verify')`. Un échec certain (`failed`) libère la place pour une relance.
+
+### `provider_tokens`
+
+Cache du jeton Merci Facteur (24 h) partagé entre invocations : `provider` (PK), `token`,
+`expire_at`. RLS active, **aucune policy, aucun grant client**.
+
+### Côté courrier
+
+Un envoi réussi pose sur le sortant `metadata.posted_at` (heure d'acceptation), `posted_mode`,
+`posted_by`, `posted_document_id`, `postal_provider = 'merci_facteur'`, `postal_sending_id` ;
+la garde `couriers_enforce_outbound_initiative` fixe `sent_at`. `posted_mode` accepte
+désormais `simple`, `suivi` et `recommande`, pour l'envoi manuel comme pour le prestataire.

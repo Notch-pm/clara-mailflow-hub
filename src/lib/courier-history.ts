@@ -3,6 +3,7 @@
 // l'espace élu, pour qu'un même fait se lise de la même façon partout.
 
 import { formatPostedAt, postalModeLabel } from "./outbound-channel";
+import { formatEuros } from "./postal-sending";
 
 export const COURIER_EVENT_LABELS: Record<string, string> = {
   courier_created: "Création du courrier",
@@ -34,6 +35,8 @@ export const COURIER_EVENT_LABELS: Record<string, string> = {
   outbound_created: "Courrier créé",
   outbound_ai_drafted: "Texte proposé par l'assistant",
   outbound_posted: "Courrier sortant posté",
+  outbound_postal_failed: "Envoi par le prestataire non abouti",
+  outbound_postal_event: "Suivi du courrier papier",
   outbound_linked: "Lien avec un courrier sortant",
   outbound_unlinked: "Lien avec un courrier sortant retiré",
   outbound_recipient_changed: "Destinataire modifié",
@@ -150,7 +153,20 @@ export function describeCourierEvent(
       detail = [p.other_chrono, p.other_subject ? `« ${p.other_subject} »` : null].filter(Boolean).join(" ") || null;
       break;
     case "outbound_posted":
-      detail = [p.posted_on ? `le ${formatPostedAt(p.posted_on)}` : null, postalModeLabel(p.posted_mode)]
+      detail = [
+        p.provider === "merci_facteur" ? "Par le prestataire" : null,
+        p.posted_on ? `le ${formatPostedAt(p.posted_on)}` : null,
+        postalModeLabel(p.posted_mode),
+        p.price_ttc !== undefined && p.price_ttc !== null ? `${formatEuros(p.price_ttc)} TTC` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ") || null;
+      break;
+    case "outbound_postal_event":
+      detail = p.label ?? p.status ?? null;
+      break;
+    case "outbound_postal_failed":
+      detail = [p.status === "to_verify" ? "À vérifier chez le prestataire" : "Refusé", p.reason ?? null]
         .filter(Boolean)
         .join(" · ") || null;
       break;

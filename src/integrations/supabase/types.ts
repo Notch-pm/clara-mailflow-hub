@@ -1394,6 +1394,8 @@ export type Database = {
           multiple_imap: boolean
           name: string
           phone: string | null
+          postal_daily_cap: number
+          postal_sending_enabled: boolean
           primary_color: string | null
           reply_template_design: Json | null
           reply_template_html: string | null
@@ -1420,6 +1422,8 @@ export type Database = {
           multiple_imap?: boolean
           name: string
           phone?: string | null
+          postal_daily_cap?: number
+          postal_sending_enabled?: boolean
           primary_color?: string | null
           reply_template_design?: Json | null
           reply_template_html?: string | null
@@ -1446,6 +1450,8 @@ export type Database = {
           multiple_imap?: boolean
           name?: string
           phone?: string | null
+          postal_daily_cap?: number
+          postal_sending_enabled?: boolean
           primary_color?: string | null
           reply_template_design?: Json | null
           reply_template_html?: string | null
@@ -1458,6 +1464,90 @@ export type Database = {
           website?: string | null
         }
         Relationships: []
+      }
+      postal_sendings: {
+        Row: {
+          antidoublon: string | null
+          courier_id: string
+          document_id: string | null
+          error: string | null
+          events: Json
+          id: string
+          last_event: string | null
+          last_event_at: string | null
+          mode: string
+          nb_pages: number | null
+          organization_id: string
+          price_ht: number | null
+          price_ttc: number | null
+          provider: string
+          provider_envoi_id: string | null
+          requested_at: string
+          requested_by: string | null
+          sent_at: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          antidoublon?: string | null
+          courier_id: string
+          document_id?: string | null
+          error?: string | null
+          events?: Json
+          id?: string
+          last_event?: string | null
+          last_event_at?: string | null
+          mode: string
+          nb_pages?: number | null
+          organization_id: string
+          price_ht?: number | null
+          price_ttc?: number | null
+          provider?: string
+          provider_envoi_id?: string | null
+          requested_at?: string
+          requested_by?: string | null
+          sent_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          antidoublon?: string | null
+          courier_id?: string
+          document_id?: string | null
+          error?: string | null
+          events?: Json
+          id?: string
+          last_event?: string | null
+          last_event_at?: string | null
+          mode?: string
+          nb_pages?: number | null
+          organization_id?: string
+          price_ht?: number | null
+          price_ttc?: number | null
+          provider?: string
+          provider_envoi_id?: string | null
+          requested_at?: string
+          requested_by?: string | null
+          sent_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "postal_sendings_courier_id_fkey"
+            columns: ["courier_id"]
+            isOneToOne: false
+            referencedRelation: "couriers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "postal_sendings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       portal_form_submissions: {
         Row: {

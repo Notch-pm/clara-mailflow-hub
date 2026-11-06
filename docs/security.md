@@ -71,6 +71,8 @@ Pour servir un document privé : passer par l'edge function `storage-documents` 
 - `invite-user` : exige `admin` de l'org cible.
 - `sync-arpege-*` / `test-arpege-connection` : exigent admin de l'`organization_id` cible spécifiquement (ou service role, ou `x-cron-secret` pour le cron).
 - `action-task-public` (2026-10-09) est **publique intentionnellement** : l'agent affecté d'une tâche n'a pas forcément de compte. Garde = jeton du lien reçu par mail — 256 bits aléatoires (force brute hors de portée, d'où l'absence de limite de débit), stocké **haché** (SHA-256, `action_task_tokens`, aucune policy RLS), **révoqué** à la clôture de la tâche, détruit avec elle. Tout passe en POST : un scanner de liens qui ouvre la page ne clôt rien. Contenu servi **minimal** (intitulé, commentaire, chrono, collectivité, auteur) : ni objet du courrier, ni usager, ni pièces.
+- `merci-facteur-webhook` (2026-11-06) est **sans JWT intentionnellement** : c'est le prestataire qui l'appelle. Garde = jeton secret dans l'URL (`MF_WEBHOOK_TOKEN`), comparé à temps constant ; sans secret posé, tout est refusé (403). Il n'écrit que des événements sur des envois déjà connus (`postal_sendings`, retrouvés par `envoi_id`, chiffres seulement) : un appel forgé ne peut ni envoyer ni facturer.
+- `send-postal-letter` (2026-11-06) **engage une dépense** à chaque succès : option activée par un administrateur, plafond quotidien par collectivité, réservation unique par courrier, `antidoublon` stable. Les identifiants Merci Facteur ne quittent jamais le serveur.
 - Toutes : vérifient l'auth **avant** toute opération.
 
 ## Secrets (à configurer côté Supabase / Lovable Cloud)
@@ -87,6 +89,7 @@ Pour servir un document privé : passer par l'edge function `storage-documents` 
 - `RESEND_API_KEY` — emails transactionnels (invite, reset).
 - `CRON_SECRET` — header `x-cron-secret` pour pg_cron → edge functions. Doit aussi être inséré dans `vault.decrypted_secrets` (key = `cron_secret`).
 - `ARPEGE_*` — credentials API Arpège (URL, client_id, secret).
+- `MF_SERVICE_ID`, `MF_SECRET_KEY`, `MF_USER_ID` — compte Merci Facteur Pro **de Notch** (envois papiers réels, refacturés). La secret key ne sert que de clé HMAC, jamais en clair sur le réseau. `MF_AUTHORIZED_IP` facultatif (restriction d'IP à faire lever par le support : les edge functions n'ont pas d'IP fixe). `MF_WEBHOOK_TOKEN` — jeton du webhook (32 octets aléatoires au moins).
 
 ## Risques acceptés / comportements intentionnels
 

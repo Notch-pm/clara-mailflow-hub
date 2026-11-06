@@ -99,6 +99,7 @@ describe("déclaration d'envoi postal", () => {
   it("accepte maintenant, en simple comme en recommandé", () => {
     expect(postDeclarationError(ok, created, now)).toBeNull();
     expect(postDeclarationError({ ...ok, mode: "recommande" }, created, now)).toBeNull();
+    expect(postDeclarationError({ ...ok, mode: "suivi" }, created, now)).toBeNull();
     // La minute de création elle-même est permise.
     expect(postDeclarationError({ ...ok, time: "09:15" }, created, now)).toBeNull();
   });
@@ -109,6 +110,12 @@ describe("déclaration d'envoi postal", () => {
     expect(postDeclarationError({ ...ok, mode: null }, created, now)).toBe(POSTED_MODE_REASON);
   });
 
+  it("par le prestataire, seul le type d'envoi est exigé", () => {
+    expect(postDeclarationError({ date: "", time: "", mode: "suivi", via: "provider" }, created, now)).toBeNull();
+    expect(postDeclarationError({ date: "", time: "", mode: null, via: "provider" }, created, now)).toBe(POSTED_MODE_REASON);
+    expect(postDeclarationError({ ...ok, time: "", via: "self" }, created, now)).toBe(POSTED_TIME_REQUIRED_REASON);
+  });
+
   it("refuse le futur et l'avant-création", () => {
     expect(postDeclarationError({ ...ok, time: "14:35" }, created, now)).toBe(POSTED_DATE_REASON);
     expect(postDeclarationError({ ...ok, time: "09:14" }, created, now)).toBe(POSTED_DATE_REASON);
@@ -117,7 +124,9 @@ describe("déclaration d'envoi postal", () => {
   it("affiche date et heure, et la date seule d'une ancienne déclaration", () => {
     expect(formatPostedAt(new Date(2026, 10, 6, 14, 5).toISOString())).toBe("06/11/2026 à 14:05");
     expect(formatPostedAt("2026-10-13")).toBe("13/10/2026");
-    expect(postalModeLabel("recommande")).toBe("Recommandé");
+    expect(postalModeLabel("recommande")).toBe("Recommandé AR");
+    expect(postalModeLabel("suivi")).toBe("Suivie");
+    expect(postalModeLabel("colis")).toBeNull();
     expect(postalModeLabel(undefined)).toBeNull();
   });
 });
