@@ -170,14 +170,14 @@ Aucun changement de frontend ni d'edge function.
 | 1 | `20261013142643_courriers_sortants_ecran.sql` (RPC `outbound_couriers`, SECURITY DEFINER gardée par `is_member_of`) | **Appliqué** via `apply_migration` — registre `20261013142643` (fichier renommé pour coller). SNA27, en membre : 27 sortants, 8 envoyés, 0 visa, 4 signature, 10 prêts à l'envoi |
 | 2 | Frontend : `/courriers-sortants` réécrit (onglets par étape, panneau `ParapheurDetail`) | Après la migration |
 
-### Lot « recherche par référence » (2026-11-06) — à appliquer
+### Lot « recherche par référence » (2026-11-06) — appliqué le 2026-11-06
 
 | # | Étape | État |
 |---|---|---|
-| 1 | `20261106120500_recherche_par_reference.sql` : `search_couriers` compare la référence (`chrono`) pour tout courrier, plus seulement les confidentiels illisibles. Réécriture textuelle de la définition en base (motif vérifié présent une fois en production) | **À appliquer** (`apply_migration` refusé en mode auto le 2026-11-06), puis `supabase/tests/recherche_par_reference.test.sql` : VERDICT OK attendu (4 scénarios). Renommer le fichier sur la version du registre |
-| 2 | Frontend : référence affichée en tête de ligne dans la liste des courriers sortants en affichage compact (la ligne de détail, qui la portait, y est masquée) | Indépendant de 1 |
+| 1 | `20261106111155_recherche_par_reference.sql` : `search_couriers` compare la référence (`chrono`) pour tout courrier, plus seulement les confidentiels illisibles. Réécriture textuelle de la définition en base (motif vérifié présent une fois en production) | **Appliqué** via `apply_migration` — registre `20261106111155` (fichier renommé pour coller). `supabase/tests/recherche_par_reference.test.sql` : VERDICT OK (4 scénarios). Vérifié sous un compte réel : « 2026-S-00007 », « 2026-E-00032 » et « S-00007 » trouvés |
+| 2 | Frontend : référence affichée en tête de ligne dans la liste des courriers sortants en affichage compact (la ligne de détail, qui la portait, y est masquée) | **Poussé** sur `main` le 2026-11-06 |
 
-### Chantier « envois papiers réels » (Merci Facteur, 2026-11-06) — migration, secrets et fonctions en ligne le 2026-11-06 ; frontend et recette à faire
+### Chantier « envois papiers réels » (Merci Facteur, 2026-11-06) — en ligne et recetté le 2026-11-06
 
 | # | Étape | État |
 |---|---|---|
@@ -185,7 +185,7 @@ Aucun changement de frontend ni d'edge function.
 | 2 | Secrets : `MF_SERVICE_ID`, `MF_SECRET_KEY`, `MF_USER_ID`, `MF_WEBHOOK_TOKEN` (et `MF_AUTHORIZED_IP` si la restriction d'IP n'est pas levée) | **Posés le 2026-11-06** par l'utilisateur (`MF_WEBHOOK_TOKEN` : 32 octets aléatoires en hexadécimal, posé par `--env-file`). Sous Windows PowerShell 5.1, pas de `RandomNumberGenerator.Fill` : utiliser `RNGCryptoServiceProvider`, et `Set-Content -Path … -Value … -Encoding Ascii`. **Levée de la restriction d'IP à demander au support** |
 | 3 | `supabase functions deploy send-postal-letter merci-facteur-webhook --project-ref aullweizxcjbvtdspjli` (`config.toml` porte `verify_jwt = false` pour le webhook) | **Déployé le 2026-11-06** par l'utilisateur. Vérifié : webhook 403 sans jeton et avec un faux jeton (réponse du code, donc `verify_jwt = false` appliqué) ; `send-postal-letter` 401 sans session |
 | 4 | Déclarer l'URL du webhook dans l'onglet « API » de Merci Facteur Pro (voir `docs/edge-functions.md`) | **Fait** le 2026-11-06 |
-| 5 | Frontend : section Paramètres « Envois papiers », fenêtre d'envoi avec le choix du prestataire et les trois types, PDF de la lettre, badge et historique, notification `postal_returned` | Après 1 (la section lit les nouvelles colonnes). Recette : une lettre « Simple » vers une adresse Notch sur un tenant de démo, puis un second clic (409) |
+| 5 | Frontend : section Paramètres « Envois papiers », fenêtre d'envoi avec le choix du prestataire et les trois types, PDF de la lettre, badge et historique, notification `postal_returned` | **Poussé** le 2026-11-06. **Recette** (compte Merci Facteur sandbox, ACCM, 2026-S-00007) : 1er essai refusé `INVALID_USER_ID` (secret à corriger ; échec propre, PDF retiré) ; 2e essai envoyé — envoi 4387206, lettre suivie, 2 pages, 2,88 € TTC, courrier déclaré posté et passé à « Envoyé ». Non éprouvés en réel : second clic sur un courrier clos, événements du webhook |
 
 ### Lot « envoi postal horodaté » (2026-11-06) — appliqué le 2026-11-06
 

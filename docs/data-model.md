@@ -126,7 +126,7 @@ Table centrale. Tags stockés dans `metadata->'tags'` (tableau JSON de strings).
 |---|---|---|
 | `id` | uuid PK | |
 | `organization_id` | uuid FK | |
-| `chrono` | varchar | Référence du registre, `AAAA-E\|S\|I-NNNNN` (ex. `2026-E-00042`). Posée par le trigger `assign_courier_chrono()` **à l'insertion, quelle que soit la porte d'entrée** ; définitive ensuite. **Cherchable** (2026-11-06) : `search_couriers` la compare par `ILIKE` pour tout courrier, entrant ou sortant, lisible ou non (migration `20261106120500_recherche_par_reference.sql`) — avant, seuls les confidentiels illisibles l'étaient, et la barre du haut ne trouvait aucune référence. Voir ci-dessous. |
+| `chrono` | varchar | Référence du registre, `AAAA-E\|S\|I-NNNNN` (ex. `2026-E-00042`). Posée par le trigger `assign_courier_chrono()` **à l'insertion, quelle que soit la porte d'entrée** ; définitive ensuite. **Cherchable** (2026-11-06) : `search_couriers` la compare par `ILIKE` pour tout courrier, entrant ou sortant, lisible ou non (migration `20261106111155_recherche_par_reference.sql`) — avant, seuls les confidentiels illisibles l'étaient, et la barre du haut ne trouvait aucune référence. Voir ci-dessous. |
 | `direction` | enum `courier_direction` | `inbound` \| `outbound` \| `internal` |
 | `channel` | enum `courier_channel` | `email` \| `paper` \| `portal` \| `relaye_elu` \| `guichet` \| `autre` \| `relaye_agent` |
 | `subject` | text | |

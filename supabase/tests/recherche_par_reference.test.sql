@@ -1,5 +1,5 @@
 -- ============================================================================
--- Recherche par référence (migration 20261106120500_recherche_par_reference.sql).
+-- Recherche par référence (migration 20261106111155_recherche_par_reference.sql).
 --
 -- Bloc DO qui finit TOUJOURS par une exception : la transaction est annulée.
 -- Joué en propriétaire de la base, qui se fait passer pour un membre (JWT).
