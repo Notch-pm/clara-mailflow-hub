@@ -53,6 +53,22 @@ async function insertOne<T = Record<string, unknown>>(table: string, row: Record
   return data as T;
 }
 
+/**
+ * Insère ou met à jour sur la clé d'unicité `onConflict`. Depuis les agents
+ * gérés par le Socle (2026-10-30), `sync-socle-users` (cron chaque minute)
+ * peut recréer comptes et appartenances d'Alpha entre la purge et le seed :
+ * le seed réécrit alors SES valeurs au lieu d'échouer sur un doublon.
+ */
+async function upsertOne<T = Record<string, unknown>>(
+  table: string,
+  row: Record<string, unknown>,
+  onConflict: string,
+): Promise<T> {
+  const { data, error } = await admin.from(table).upsert(row, { onConflict }).select("*").single();
+  if (error) fail(`upsert ${table}`, error.message);
+  return data as T;
+}
+
 /** Supprime récursivement les objets d'un bucket sous `prefix` (best-effort). */
 async function purgeStoragePrefix(bucket: string, prefix: string): Promise<void> {
   const { data, error } = await admin.storage.from(bucket).list(prefix, { limit: 1000 });
@@ -134,6 +150,17 @@ async function cleanup() {
 
 interface SeededUser { id: string; email: string }
 
+/** L'id d'un compte d'authentification par son e-mail, ou `null`. */
+async function findAuthUserByEmail(email: string): Promise<string | null> {
+  for (let page = 1; ; page++) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 200 });
+    if (error) fail("listUsers", error.message);
+    const hit = data.users.find((u) => u.email?.toLowerCase() === email.toLowerCase());
+    if (hit) return hit.id;
+    if (data.users.length < 200) return null;
+  }
+}
+
 async function createUser(
   local: string,
   firstName: string,
@@ -141,24 +168,37 @@ async function createUser(
   isSuperadmin = false,
 ): Promise<SeededUser> {
   const email = `${local}@${TEST_EMAIL_DOMAIN}`;
-  const { data, error } = await admin.auth.admin.createUser({
-    email,
+  const attributes = {
     password: TEST_PASSWORD,
     email_confirm: true,
     user_metadata: { first_name: firstName, last_name: lastName },
-  });
-  if (error || !data.user) fail(`createUser ${email}`, error?.message);
+  };
+  const { data, error } = await admin.auth.admin.createUser({ email, ...attributes });
+  let userId = data?.user?.id ?? null;
+  if (!userId) {
+    // Compte recréé entre la purge et ici par `sync-socle-users` (agents d'Alpha
+    // déclarés au Socle) : on le reprend, avec le mot de passe de test.
+    const existing = /already been registered|already exists/i.test(error?.message ?? "")
+      ? await findAuthUserByEmail(email)
+      : null;
+    if (!existing) fail(`createUser ${email}`, error?.message);
+    const { error: updErr } = await admin.auth.admin.updateUserById(existing, attributes);
+    if (updErr) fail(`updateUser ${email}`, updErr.message);
+    userId = existing;
+    console.log(`  ${email} : compte déjà recréé par la synchronisation du Socle, repris`);
+  }
   // NB : le trigger users_prevent_superadmin_escalation ne vise que l'UPDATE —
-  // l'INSERT service_role d'un superadmin de test est permis.
-  await insertOne("users", {
-    id: data.user.id,
+  // l'INSERT service_role d'un superadmin de test est permis. Le superadmin de
+  // test n'est pas un agent du Socle : il n'est jamais repris, toujours inséré.
+  await upsertOne("users", {
+    id: userId,
     email,
     first_name: firstName,
     last_name: lastName,
     is_active: true,
     is_superadmin: isSuperadmin,
-  });
-  return { id: data.user.id, email };
+  }, "id");
+  return { id: userId, email };
 }
 
 interface TenantFixture {
@@ -502,7 +542,20 @@ async function main() {
     { organization_id: beta.orgId, user_id: adminBeta.id, role: "administrateur", is_active: true },
     { organization_id: beta.orgId, user_id: membreBeta.id, role: "member", is_active: true },
   ];
-  for (const m of memberships) await insertOne("organization_users", m);
+  for (const m of memberships) await upsertOne("organization_users", m, "organization_id,user_id");
+
+  // Alpha est rattaché au Socle : sans curseur, la prochaine passe de
+  // `sync-socle-users` (chaque minute) serait une lecture COMPLÈTE, qui
+  // réimposerait les rôles et affectations du Socle (membre.alpha y est
+  // « gestionnaire ») et retirerait celles posées ici — échecs aléatoires.
+  // Un curseur à maintenant : les passes suivantes ne lisent que les
+  // changements réels du Socle. (La passe complète nocturne, 03:20, reste.)
+  await upsertOne("socle_user_sync_state", {
+    organization_id: alpha.orgId,
+    cursor: new Date().toISOString(),
+    last_run_at: new Date().toISOString(),
+    last_error: null,
+  }, "organization_id");
 
   // Signataire PERSONNE (signatories.user_id) lié à la racine Socle d'Alpha :
   // signataire.alpha peut signer les réponses de la racine — pas celles du Cabinet.
@@ -536,21 +589,21 @@ async function main() {
 
   // membre.alpha + consultant.alpha appartiennent à la sous-org « Cabinet Alpha »
   // (filtrage des courriers par organisation Socle)
-  await insertOne("socle_organization_members", {
+  await upsertOne("socle_organization_members", {
     organization_id: alpha.orgId, socle_organization_id: alpha.subSocleOrgId, user_id: membreAlpha.id,
-  });
-  await insertOne("socle_organization_members", {
+  }, "socle_organization_id,user_id");
+  await upsertOne("socle_organization_members", {
     organization_id: alpha.orgId, socle_organization_id: alpha.subSocleOrgId, user_id: consultantAlpha.id,
-  });
+  }, "socle_organization_id,user_id");
 
   for (const u of [gestionnaireAlpha, eluAlpha, superviseurAlpha]) {
-    await insertOne("socle_organization_members", {
+    await upsertOne("socle_organization_members", {
       organization_id: alpha.orgId, socle_organization_id: alpha.subSocleOrgId, user_id: u.id,
-    });
+    }, "socle_organization_id,user_id");
   }
-  await insertOne("socle_organization_members", {
+  await upsertOne("socle_organization_members", {
     organization_id: alpha.orgId, socle_organization_id: alpha.techSocleOrgId, user_id: techAlpha.id,
-  });
+  }, "socle_organization_id,user_id");
 
   // Signature manuscrite factice du signataire (sans elle, « Signer » est refusé).
   const sigKey = `${alpha.orgId}/${signataireRow.id}-seed.png`;
