@@ -16,6 +16,7 @@ import {
 import { useUserServiceFilter } from "@/hooks/useUserServiceFilter";
 import type { WorkspaceCourier } from "@/hooks/useCourierWorkspace";
 import type { CourierParticipant } from "@/types/courier";
+import { postalBlocker } from "@/lib/outbound-channel";
 import {
   ISSUER_NOT_AT_INITIAL_REASON,
   LOCKED_ISSUER_REASON,
@@ -88,17 +89,25 @@ export function InitiativeComposer({ organizationId, courier, readOnly, onStateC
     staleTime: 60_000,
   });
   const recipientEmail = recipient?.email?.trim() || recipientContact?.email?.trim() || null;
-  // Adresse postale : la fiche du référentiel si elle répond, sinon
-  // l'instantané pris à la création (`courier_participants.metadata`).
+  // Adresse postale : la fiche du référentiel si elle porte une adresse
+  // complète, sinon l'instantané pris à la création
+  // (`courier_participants.metadata`) — même ordre que le serveur
+  // (`resolveRecipientAddress`). Prendre la fiche dès qu'elle répond bloquait
+  // l'envoi d'une fiche sans adresse alors que l'instantané en avait une.
   const snapshot = ((recipient as { metadata?: Record<string, string | null> | null } | null)?.metadata ?? {}) as Record<
     string,
     string | null
   >;
-  const recipientPostal = recipientContact ?? {
+  const snapshotPostal = {
     address_line1: snapshot.address_line1 ?? null,
     postal_code: snapshot.postal_code ?? null,
     city: snapshot.city ?? null,
   };
+  const recipientPostal = recipientContact && postalBlocker(recipientContact) === null
+    ? recipientContact
+    : postalBlocker(snapshotPostal) === null
+      ? snapshotPostal
+      : recipientContact ?? snapshotPostal;
 
   const meta = record.metadata ?? {};
   const state = workflow?.states.find((s) => s.id === courier.workflow_state_id) ?? null;
