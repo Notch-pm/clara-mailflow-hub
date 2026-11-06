@@ -3,6 +3,10 @@
 export const POSTAL_SENDING_EXPLANATION =
   "L'envoi papier réel est réalisé par un prestataire et entraîne un coût par envoi. L'envoi peut être réalisé en courrier simple ou en courrier recommandé.";
 
+/** L'aide de la fenêtre d'envoi : les trois types d'envoi proposés. */
+export const POSTAL_SENDING_DIALOG_HELP =
+  "L'envoi papier réel est réalisé par un prestataire et entraîne un coût par envoi. L'envoi peut être réalisé en courrier simple, en lettre suivie ou en recommandé avec accusé de réception.";
+
 export type PostalSendingStatus = "pending" | "sent" | "to_verify" | "failed";
 
 const STATUS_LABELS: Record<PostalSendingStatus, string> = {

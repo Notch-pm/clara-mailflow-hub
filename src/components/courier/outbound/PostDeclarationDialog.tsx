@@ -6,7 +6,7 @@ import {
   type PostalMode,
   type PostalVia,
 } from "@/lib/outbound-channel";
-import { POSTAL_SENDING_EXPLANATION } from "@/lib/postal-sending";
+import { POSTAL_SENDING_DIALOG_HELP } from "@/lib/postal-sending";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -88,7 +88,7 @@ export function PostDeclarationDialog({
           {viaProvider ? (
             <div className="flex items-start gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs">
               <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
-              <p>{POSTAL_SENDING_EXPLANATION}</p>
+              <p>{POSTAL_SENDING_DIALOG_HELP}</p>
             </div>
           ) : (
             <>
