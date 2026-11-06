@@ -54,4 +54,8 @@ export const UNPOSTED_LETTER_CLOSE_REASON =
   "Ce courrier n'a pas encore été posté : déclarez-le « posté » avant de le clore (ou abandonnez-le).";
 
 export const POSTED_DATE_REASON =
-  "La date d'envoi ne peut être ni dans le futur, ni antérieure à la création du courrier.";
+  "La date et l'heure d'envoi ne peuvent être ni dans le futur, ni antérieures à la création du courrier.";
+
+export const POSTED_TIME_REQUIRED_REASON = "Indiquez la date et l'heure d'envoi du courrier.";
+
+export const POSTED_MODE_REASON = "Précisez le type d'envoi : courrier simple ou recommandé.";

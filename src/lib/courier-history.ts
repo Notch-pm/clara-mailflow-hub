@@ -2,6 +2,8 @@
 // l'onglet Historique du poste de travail et le bas de page du courrier dans
 // l'espace élu, pour qu'un même fait se lise de la même façon partout.
 
+import { formatPostedAt, postalModeLabel } from "./outbound-channel";
+
 export const COURIER_EVENT_LABELS: Record<string, string> = {
   courier_created: "Création du courrier",
   courier_trashed: "Placé dans la corbeille",
@@ -148,7 +150,9 @@ export function describeCourierEvent(
       detail = [p.other_chrono, p.other_subject ? `« ${p.other_subject} »` : null].filter(Boolean).join(" ") || null;
       break;
     case "outbound_posted":
-      detail = p.posted_on ? `le ${new Date(p.posted_on).toLocaleDateString("fr-FR")}` : null;
+      detail = [p.posted_on ? `le ${formatPostedAt(p.posted_on)}` : null, postalModeLabel(p.posted_mode)]
+        .filter(Boolean)
+        .join(" · ") || null;
       break;
     case "outbound_created":
       detail = [p.organization_name ? `Par ${p.organization_name}` : null, p.recipient_name ? `à ${p.recipient_name}` : null]

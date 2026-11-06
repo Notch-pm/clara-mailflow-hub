@@ -18,6 +18,8 @@
 > brouillon de l'éditeur et les courriers liés, jamais les notes internes.
 > **Lot 4 livré le 2026-10-13** : « Imprimer et marquer posté » (date déclarée, exemplaire HTML
 > conservé, `sent_at` fixé par la base). La garde de clôture couvre désormais courriel ET courrier.
+> **Suite du 2026-11-06** : la déclaration porte désormais la date ET l'heure, et le type d'envoi
+> (courrier simple / recommandé), obligatoires ; elle vaut aussi pour les réponses (voir `docs/features.md`).
 > **Lot 5 livré le 2026-10-13 — chantier terminé.** Liens vers les courriers reçus depuis l'onglet
 > Liens, tracés des deux côtés ; départ (courriel, « posté ») recopié sur les courriers liés. Écart :
 > pas de lien à la création (le formulaire reste court) — il se pose depuis l'onglet Liens.

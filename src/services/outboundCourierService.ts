@@ -2,23 +2,28 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
 import { logEvent } from "./courierEventService";
 import { createRelation, deleteRelation } from "./courierRelationService";
-import { addressLines, type OutboundChannel } from "@/lib/outbound-channel";
+import { addressLines, type OutboundChannel, type PostalMode } from "@/lib/outbound-channel";
 import type { SocleContact } from "./socleContactService";
 
 // Courriers sortants à l'initiative de la collectivité (sans parent).
 // La base tient les règles (trigger `couriers_enforce_outbound_initiative`) :
 // ce service ne fait que les appeler et journaliser sur le sortant lui-même.
+// La déclaration d'envoi postal (`markOutboundPosted`) vaut aussi pour les réponses.
 
 /**
- * Déclare un courrier postal « posté » le jour donné (AAAA-MM-JJ), avec
- * l'exemplaire conservé. La base refuse une date future ou antérieure à la
- * création, une seconde déclaration, un courrier qui n'est pas postal, et
- * fixe elle-même `sent_at` à ce jour.
+ * Déclare un sortant postal (réponse ou courrier à l'initiative) envoyé à
+ * l'horodatage donné (ISO), avec son type d'envoi et l'exemplaire conservé.
+ * La base refuse un horodatage futur ou antérieur à la création, un type
+ * d'envoi absent, une seconde déclaration, un courrier qui n'est pas postal,
+ * et fixe elle-même `sent_at` à cet horodatage.
  */
 export async function markOutboundPosted(args: {
   organizationId: string;
   outboundId: string;
-  postedOn: string;
+  /** Le courrier qui porte l'historique : le reçu pour une réponse, sinon le sortant. */
+  eventCourierId: string;
+  postedAt: string;
+  postedMode: PostalMode;
   postedBy: string;
   documentId: string | null;
 }): Promise<void> {
@@ -33,16 +38,20 @@ export async function markOutboundPosted(args: {
   const { error } = await supabase
     .from("couriers")
     .update({
-      metadata: { ...meta, posted_at: args.postedOn, posted_by: args.postedBy, posted_document_id: args.documentId },
+      metadata: {
+        ...meta,
+        posted_at: args.postedAt,
+        posted_mode: args.postedMode,
+        posted_by: args.postedBy,
+        posted_document_id: args.documentId,
+      },
     })
     .eq("id", args.outboundId)
     .eq("organization_id", args.organizationId);
   if (error) throw error;
-  await logEvent(args.organizationId, args.outboundId, "outbound_posted", {
-    reply_id: args.outboundId,
-    posted_on: args.postedOn,
-  });
-  await mirrorOnLinkedInbound(args.organizationId, args.outboundId, "outbound_posted", { posted_on: args.postedOn });
+  const payload = { posted_on: args.postedAt, posted_mode: args.postedMode };
+  await logEvent(args.organizationId, args.eventCourierId, "outbound_posted", { reply_id: args.outboundId, ...payload });
+  await mirrorOnLinkedInbound(args.organizationId, args.outboundId, "outbound_posted", payload);
 }
 
 interface LinkedSide {

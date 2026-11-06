@@ -170,6 +170,13 @@ Aucun changement de frontend ni d'edge function.
 | 1 | `20261013142643_courriers_sortants_ecran.sql` (RPC `outbound_couriers`, SECURITY DEFINER gardée par `is_member_of`) | **Appliqué** via `apply_migration` — registre `20261013142643` (fichier renommé pour coller). SNA27, en membre : 27 sortants, 8 envoyés, 0 visa, 4 signature, 10 prêts à l'envoi |
 | 2 | Frontend : `/courriers-sortants` réécrit (onglets par étape, panneau `ParapheurDetail`) | Après la migration |
 
+### Lot « envoi postal horodaté » (2026-11-06) — appliqué le 2026-11-06
+
+| # | Étape | État |
+|---|---|---|
+| 1 | `20261106092631_envoi_postal_horodate.sql` (trigger `couriers_enforce_outbound_initiative` : la déclaration « posté » vaut aussi pour les **réponses** ; `posted_at` = date ET heure (ISO, `T` exigé), ni future (tolérance 5 min) ni antérieure à la création ; `posted_mode` ∈ `simple`/`recommande` exigé ; tous deux immuables ; `sent_at` = horodatage déclaré. Le reste de la garde reste propre aux courriers à l'initiative) | **Appliqué** via `apply_migration` — registre `20261106092631` (fichier renommé pour coller). `supabase/tests/outbound_posted.test.sql` : VERDICT OK (15 scénarios), aucune donnée de test restante. Les 2 déclarations existantes (date seule) ne sont pas réécrites |
+| 2 | Frontend : déclaration d'envoi (date, heure, type ; maintenant + courrier simple par défaut) sur réponses et courriers à l'initiative, badge et historique avec l'heure et le type | **Poussé sur `main` le 2026-11-06** (Workers Builds) juste après la migration : l'ancien écran envoie une date seule, que la nouvelle garde refuse |
+
 ### Lot « courriers sortants à l'initiative, lot 5 : liens avec les courriers reçus » (2026-10-13) — déployé le 2026-10-13
 
 | # | Étape | État |

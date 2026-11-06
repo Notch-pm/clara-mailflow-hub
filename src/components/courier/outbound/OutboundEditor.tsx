@@ -54,7 +54,15 @@ import { useAuth } from "@/contexts/AuthContext";
 import { printReply, renderLetterHtml } from "@/utils/printReply";
 import { storage } from "@/services/storageService";
 import { markOutboundPosted } from "@/services/outboundCourierService";
-import { postalBlocker, todayIso, type OutboundRecipientInfo } from "@/lib/outbound-channel";
+import {
+  formatPostedAt,
+  nowTimeIso,
+  postalBlocker,
+  postalModeLabel,
+  postedAtIso,
+  todayIso,
+  type OutboundRecipientInfo,
+} from "@/lib/outbound-channel";
 import { getOrgHtmlTemplate } from "@/services/templateService";
 import { visibleText } from "../../../../supabase/functions/_shared/improveMessage";
 import type { CourierChannel, CourierParticipant } from "@/types/courier";
@@ -71,7 +79,7 @@ import {
 } from "./OutboundAssistantPanels";
 import { MaybeTooltip, OutboundTransitionsBar, type TransitionTarget } from "./OutboundTransitionsBar";
 import { gestureBlocker, nextGesture, NO_EMAIL_REASON } from "./nextGesture";
-import { PostDeclarationDialog } from "./PostDeclarationDialog";
+import { PostDeclarationDialog, type PostDeclaration } from "./PostDeclarationDialog";
 import { VisaWaitingNotice } from "./VisaWaitingNotice";
 
 type SendEmailResult = { error?: string; to?: string };
@@ -133,7 +141,10 @@ export interface OutboundEditorProps {
   /** Après chaque écriture : le conteneur relit le sortant. */
   onChanged: () => void;
   onStateChange?: (state: { name: string; category: string | null } | null) => void;
-  /** Adresse postale du destinataire (courrier à l'initiative) : exigée pour déclarer « posté ». */
+  /**
+   * Adresse postale du destinataire (courrier à l'initiative) : exigée pour
+   * déclarer « posté ». Absente (réponse), l'envoi postal n'est pas bloqué.
+   */
   recipientPostal?: OutboundRecipientInfo | null;
 }
 
@@ -295,12 +306,15 @@ export function OutboundEditor({
 
   const isSigned = !!replyMeta.signed_at;
   const isSent = !!replyMeta.sent_email_at;
-  // Courrier postal à l'initiative : déclaré « posté » à une date choisie.
-  const postedOn = (reply?.metadata as { posted_at?: string | null } | null)?.posted_at ?? null;
+  // Sortant postal (réponse ou initiative) : déclaré envoyé à une date et une
+  // heure saisies, en courrier simple ou recommandé.
+  const postedMeta = (reply?.metadata as { posted_at?: string | null; posted_mode?: string | null } | null) ?? {};
+  const postedOn = postedMeta.posted_at ?? null;
+  const postedModeText = postalModeLabel(postedMeta.posted_mode);
   const isPosted = !!postedOn;
-  const postBlocker = postalBlocker(recipientPostal);
+  const postBlocker = recipientPostal ? postalBlocker(recipientPostal) : null;
   const hasSendStep = !!workflow?.states.some((s) => s.is_send);
-  const canDeclarePosted = kind === "initiative" && !!reply && !isPosted;
+  const canDeclarePosted = !!reply && !isPosted;
   const isFinal = currentState?.category === "processed" || currentState?.is_final === true;
   const isSignatureState = currentState?.requires_signature === true;
   const isSendState = currentState?.is_send === true;
@@ -542,7 +556,13 @@ export function OutboundEditor({
   });
 
   const [postDialog, setPostDialog] = useState<{ advance: boolean } | null>(null);
-  const [postDate, setPostDate] = useState<string>(todayIso());
+  // Par défaut : maintenant, en courrier simple.
+  const freshDeclaration = (): PostDeclaration => ({ date: todayIso(), time: nowTimeIso(), mode: "simple" });
+  const [postDecl, setPostDecl] = useState<PostDeclaration>(freshDeclaration);
+  function openPostDialog(advance: boolean) {
+    setPostDecl(freshDeclaration());
+    setPostDialog({ advance });
+  }
 
   /** La lettre telle qu'elle part : le modèle de l'organisation s'il existe. */
   async function letterHtml(): Promise<string> {
@@ -554,20 +574,25 @@ export function OutboundEditor({
     return renderLetterHtml({ ...printArgs });
   }
 
-  // Imprimer, mettre sous pli, puis déclarer « posté » : l'exemplaire conservé
-  // est la lettre telle qu'elle est partie.
+  // Imprimer, mettre sous pli, puis déclarer l'envoi (date, heure, type) :
+  // l'exemplaire conservé est la lettre telle qu'elle est partie.
   const doPost = useMutation({
-    mutationFn: async (args: { advance: boolean; postedOn: string }) => {
+    mutationFn: async (args: { advance: boolean; decl: PostDeclaration }) => {
       if (!reply) throw new Error("Aucun courrier.");
       if (postBlocker) throw new Error(postBlocker);
+      const postedAt = postedAtIso(args.decl.date, args.decl.time);
+      if (!postedAt) throw new Error("Indiquez la date et l'heure d'envoi du courrier.");
       if (dirty) await ensureReply();
       const html = await letterHtml();
-      const file = new File([html], `exemplaire posté le ${args.postedOn}.html`, { type: "text/html" });
+      const stamp = `${args.decl.date} ${args.decl.time.replace(":", "h")}`;
+      const file = new File([html], `exemplaire posté le ${stamp}.html`, { type: "text/html" });
       const doc = await storage.upload(organizationId, reply.id, file, "response");
       await markOutboundPosted({
         organizationId,
         outboundId: reply.id,
-        postedOn: args.postedOn,
+        eventCourierId: anchor(reply.id),
+        postedAt,
+        postedMode: args.decl.mode,
         postedBy: currentUserId!,
         documentId: doc.id,
       });
@@ -585,7 +610,8 @@ export function OutboundEditor({
       queryClient.invalidateQueries({ queryKey: ["courier-documents"] });
       queryClient.invalidateQueries({ queryKey: ["mailbox-couriers"] });
       onChanged();
-      toast.success(`Courrier déclaré posté le ${new Date(args.postedOn).toLocaleDateString("fr-FR")}`);
+      const at = postedAtIso(args.decl.date, args.decl.time);
+      toast.success(`Courrier déclaré posté${at ? ` le ${formatPostedAt(at)}` : ""} (${postalModeLabel(args.decl.mode)})`);
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -663,10 +689,8 @@ export function OutboundEditor({
   });
 
   function runGesture() {
-    if (gesture === "post") {
-      setPostDate(todayIso());
-      setPostDialog({ advance: true });
-    } else if (gesture === "visa") doVisaAndAdvance.mutate();
+    if (gesture === "post") openPostDialog(true);
+    else if (gesture === "visa") doVisaAndAdvance.mutate();
     else if (gesture === "sign") doSignAndAdvance.mutate();
     else if (gesture === "send") doSendAndAdvance.mutate();
   }
@@ -853,7 +877,7 @@ export function OutboundEditor({
                 variant="outline"
                 className="gap-1.5"
                 disabled={isBusy || !!postBlocker}
-                onClick={() => { setPostDate(todayIso()); setPostDialog({ advance: false }); }}
+                onClick={() => openPostDialog(false)}
               >
                 <Printer className="h-4 w-4" />Marquer posté
               </Button>
@@ -861,7 +885,7 @@ export function OutboundEditor({
           )}
           {isPosted && (
             <Badge variant="secondary" className="gap-1 bg-emerald-100 text-emerald-700 border-emerald-200">
-              Posté le {new Date(postedOn!).toLocaleDateString("fr-FR")}
+              Posté le {formatPostedAt(postedOn!)}{postedModeText ? ` · ${postedModeText}` : ""}
             </Badge>
           )}
           {isSent && (
@@ -904,11 +928,11 @@ export function OutboundEditor({
       <PostDeclarationDialog
         open={!!postDialog}
         onClose={() => setPostDialog(null)}
-        date={postDate}
-        onDateChange={setPostDate}
-        minDate={reply?.created_at?.slice(0, 10)}
+        value={postDecl}
+        onChange={setPostDecl}
+        createdAt={reply?.created_at}
         onPrint={() => void handlePrintPdf(hasTemplate)}
-        onConfirm={() => postDialog && doPost.mutate({ advance: postDialog.advance, postedOn: postDate })}
+        onConfirm={() => postDialog && doPost.mutate({ advance: postDialog.advance, decl: postDecl })}
         pending={doPost.isPending}
       />
 

@@ -62,7 +62,8 @@ describe("gestureBlocker", () => {
 describe("gestureLabel", () => {
   it("garde le nom de la transition, en signalant l'envoi en cours", () => {
     expect(gestureLabel(null, "Clore")).toBe("Clore");
-    expect(gestureLabel("post", "Envoyer")).toBe("Imprimer et marquer posté");
+    expect(gestureLabel("post", "Envoyer")).toBe("Envoyer");
+    expect(gestureLabel("post", "Terminer")).toBe("Envoyer · Terminer");
     expect(gestureLabel("send", "Envoyer", true)).toBe("Envoi…");
   });
 });

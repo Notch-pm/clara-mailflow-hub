@@ -19,7 +19,7 @@ export interface GestureContext {
   isSendState: boolean;
   isSent: boolean;
   channel: CourierChannel;
-  /** Courrier postal à l'initiative pas encore déclaré posté. */
+  /** Sortant postal (réponse ou initiative) pas encore déclaré posté. */
   canDeclarePosted: boolean;
 }
 
@@ -61,7 +61,8 @@ export function gestureBlocker(gesture: NextGesture, r: GestureRights): string |
 export function gestureLabel(gesture: NextGesture, transitionName: string, sending = false): string {
   switch (gesture) {
     case "post":
-      return "Imprimer et marquer posté";
+      // Le geste de l'étape d'envoi : « Envoyer » ouvre la déclaration d'envoi postal.
+      return approvalLabel("send", transitionName);
     case "visa":
       return approvalLabel("visa", transitionName);
     case "sign":

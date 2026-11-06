@@ -1,10 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { addressLines, defaultChannel, emailBlocker, postalBlocker } from "@/lib/outbound-channel";
+import {
+  addressLines,
+  defaultChannel,
+  emailBlocker,
+  formatPostedAt,
+  nowTimeIso,
+  postalBlocker,
+  postalModeLabel,
+  postDeclarationError,
+  postedAtIso,
+  todayIso,
+} from "@/lib/outbound-channel";
 import {
   issuerBlockReason,
   noReplyWorkflowReason,
   obsoleteIssuerReason,
   NO_ISSUER_REASON,
+  POSTED_DATE_REASON,
+  POSTED_MODE_REASON,
+  POSTED_TIME_REQUIRED_REASON,
 } from "../../../supabase/functions/_shared/outboundInitiativeGuard";
 
 const FULL = { email: "a@b.fr", address_line1: "3 rue X", postal_code: "27000", city: "Évreux" };
@@ -63,5 +77,47 @@ describe("issuerBlockReason — mêmes messages que la base", () => {
       obsoleteIssuerReason("Ancienne"),
     );
     expect(issuerBlockReason(null)).toBe(NO_ISSUER_REASON);
+  });
+});
+
+describe("déclaration d'envoi postal", () => {
+  const now = new Date(2026, 10, 6, 14, 30); // 6 nov. 2026, 14:30 locale
+  const created = new Date(2026, 10, 6, 9, 15, 42).toISOString();
+  const ok = { date: "2026-11-06", time: "14:30", mode: "simple" as const };
+
+  it("propose maintenant, à la minute, en heure locale", () => {
+    expect(todayIso(now)).toBe("2026-11-06");
+    expect(nowTimeIso(now)).toBe("14:30");
+  });
+
+  it("convertit la date et l'heure locales en horodatage ISO", () => {
+    expect(postedAtIso("2026-11-06", "14:30")).toBe(new Date(2026, 10, 6, 14, 30).toISOString());
+    expect(postedAtIso("2026-11-06", "")).toBeNull();
+    expect(postedAtIso("", "14:30")).toBeNull();
+  });
+
+  it("accepte maintenant, en simple comme en recommandé", () => {
+    expect(postDeclarationError(ok, created, now)).toBeNull();
+    expect(postDeclarationError({ ...ok, mode: "recommande" }, created, now)).toBeNull();
+    // La minute de création elle-même est permise.
+    expect(postDeclarationError({ ...ok, time: "09:15" }, created, now)).toBeNull();
+  });
+
+  it("exige la date, l'heure et le type d'envoi", () => {
+    expect(postDeclarationError({ ...ok, time: "" }, created, now)).toBe(POSTED_TIME_REQUIRED_REASON);
+    expect(postDeclarationError({ ...ok, date: "" }, created, now)).toBe(POSTED_TIME_REQUIRED_REASON);
+    expect(postDeclarationError({ ...ok, mode: null }, created, now)).toBe(POSTED_MODE_REASON);
+  });
+
+  it("refuse le futur et l'avant-création", () => {
+    expect(postDeclarationError({ ...ok, time: "14:35" }, created, now)).toBe(POSTED_DATE_REASON);
+    expect(postDeclarationError({ ...ok, time: "09:14" }, created, now)).toBe(POSTED_DATE_REASON);
+  });
+
+  it("affiche date et heure, et la date seule d'une ancienne déclaration", () => {
+    expect(formatPostedAt(new Date(2026, 10, 6, 14, 5).toISOString())).toBe("06/11/2026 à 14:05");
+    expect(formatPostedAt("2026-10-13")).toBe("13/10/2026");
+    expect(postalModeLabel("recommande")).toBe("Recommandé");
+    expect(postalModeLabel(undefined)).toBeNull();
   });
 });
