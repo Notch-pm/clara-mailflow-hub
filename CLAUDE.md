@@ -100,6 +100,26 @@ bun run test           # vitest run
 bun run lint           # eslint
 ```
 
+## Production, migrations et CI
+
+- Clara est **en production** sur <https://clara.edilumen.fr> : un push sur `main` est une
+  **mise en ligne** (Cloudflare Workers Builds). Pousser sur `main` exige un accord explicite ;
+  sans moyen de vérifier (ni `bun run test`, ni build, ni navigateur — session cloud), travailler
+  sur une branche. Une variable `VITE_*` nouvelle est figée au build : lui donner une valeur par
+  défaut dans le code, sinon la page peut s'ouvrir blanche.
+- **Migrations** : jamais `supabase db push`, et jamais « déjà déployé » d'après
+  `list_migrations` — le registre ment, vérifier l'objet en base (détail dans
+  `docs/deployment.md`).
+- ⚠️ **Un push sur `main` re-seede les tenants [TEST]** sur le projet live : la CI
+  (`.github/workflows/ci.yml`) purge et recrée [TEST] Alpha/Beta environ 30 s après le push
+  (intégration), puis environ 10 min plus tard (E2E). Les ids d'organisation changent et les
+  sessions tombent. Attendre la fin du run avant de vérifier à la main sur [TEST], et remettre
+  tout rôle modifié à sa valeur de seed. L'E2E dépend de l'intégration : si celle-ci échoue,
+  l'E2E est **sauté**, pas rouge.
+- **Toucher au Socle depuis Clara** : `git fetch` du dépôt Socle et partir de `origin/main`
+  avant de numéroter une version de contrat (`openapi.ts`, `docs/api-changelog.md`) — le
+  2026-10-09, la 1.38.0 a été prise deux fois le même jour.
+
 ## Ce qu'il ne faut PAS faire
 
 - Ajouter du backend Node/Python dans le repo (uniquement edge functions Deno).
