@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { LogIn, Loader2 } from "lucide-react";
 import notchLogo from "@/assets/logo-notch.svg";
+import { readSsoReturnError, ssoSignInCredentials } from "@/lib/sso";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -14,6 +15,27 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState<"login" | "forgot">("login");
   const { toast } = useToast();
+  const [redirecting, setRedirecting] = useState(false);
+  // Erreur rapportée au retour de Keycloak (agent non provisionné, suspendu…),
+  // lue une fois au montage, puis effacée de l'URL pour ne pas réapparaître.
+  const [ssoError, setSsoError] = useState<string | null>(
+    () => readSsoReturnError(window.location.search, window.location.hash)?.message ?? null,
+  );
+
+  useEffect(() => {
+    if (ssoError) window.history.replaceState(null, "", window.location.pathname);
+  }, [ssoError]);
+
+  async function handleSso() {
+    setSsoError(null);
+    setRedirecting(true);
+    const { error } = await supabase.auth.signInWithOAuth(ssoSignInCredentials(window.location.origin));
+    // En cas de succès, le navigateur part vers Keycloak : on ne revient ici qu'en échec.
+    if (error) {
+      setRedirecting(false);
+      setSsoError(readSsoReturnError(`?error=${encodeURIComponent(error.message)}`, "")!.message);
+    }
+  }
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -67,6 +89,28 @@ export default function Login() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {mode === "login" && (
+            <>
+              <div className="space-y-2">
+                <Button type="button" variant="outline" className="w-full" disabled={redirecting} onClick={handleSso}>
+                  {redirecting ? "Redirection…" : "Se connecter avec le compte de ma collectivité"}
+                </Button>
+                <p className="text-center text-xs text-muted-foreground">
+                  Si votre collectivité a relié son annuaire (Microsoft…).
+                </p>
+                {ssoError ? (
+                  <p role="alert" className="text-sm text-destructive">
+                    {ssoError}
+                  </p>
+                ) : null}
+              </div>
+              <div className="my-5 flex items-center gap-3 text-xs text-muted-foreground">
+                <span className="h-px flex-1 bg-border" />
+                ou avec votre mot de passe
+                <span className="h-px flex-1 bg-border" />
+              </div>
+            </>
+          )}
           <form onSubmit={mode === "login" ? handleLogin : handleForgotPassword} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>

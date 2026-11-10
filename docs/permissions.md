@@ -36,6 +36,14 @@ fonction `sync-socle-users` (cron chaque minute + réconciliation complète à 0
 - ⚠️ les **droits fins** (signataire, viseur, gestionnaire courrier, confidentiel) restent
   réglés dans Clara : la synchronisation n'y touche jamais.
 
+**Connexion par le compte de la collectivité** (lot 4 de la gamme, branche `feature/sso-lot4`) :
+bouton « Se connecter avec le compte de ma collectivité » sur `/connexion` → Keycloak
+(`auth.edilumen.fr`, realm `edilumen`, client `clara`, provider `keycloak` du Supabase de Clara),
+qui oriente par le domaine de l'e-mail (aucun `kc_idp_hint`). Un agent non provisionné par le
+Socle est refusé par Supabase Auth (inscriptions fermées depuis le 2026-11-10) ; l'erreur revient
+sur `/connexion` (`src/lib/sso.ts`, testé). ⚠️ `scopes: "openid"` obligatoire ; `https://clara.edilumen.fr/connexion`
+doit figurer dans les *Redirect URLs* du projet. Pas de mise en ligne avant l'essai réel sur le Socle.
+
 Écrans verrouillés sur un tel tenant (`useAgentsManagedBySocle`) : création d'utilisateur,
 activation/désactivation, prénom/nom/rôle dans « Modifier », « Membres associés » d'une
 organisation. `invite-user` répond **409**. `users.socle_user_id` (clé de correspondance) ne

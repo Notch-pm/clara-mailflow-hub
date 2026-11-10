@@ -19,7 +19,7 @@ describe("Login", () => {
     it("affiche le titre Clara et le bouton Se connecter", () => {
       renderWithProviders(<Login />);
       expect(screen.getByText("Clara")).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /se connecter/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /^se connecter$/i })).toBeInTheDocument();
     });
 
     it("affiche les champs email et mot de passe", () => {
@@ -38,7 +38,7 @@ describe("Login", () => {
       fireEvent.change(screen.getByLabelText(/mot de passe/i), {
         target: { value: "secret123" },
       });
-      fireEvent.click(screen.getByRole("button", { name: /se connecter/i }));
+      fireEvent.click(screen.getByRole("button", { name: /^se connecter$/i }));
 
       await waitFor(() => {
         expect(mockSupabase.auth.signInWithPassword).toHaveBeenCalledWith({
@@ -61,7 +61,7 @@ describe("Login", () => {
       fireEvent.change(screen.getByLabelText(/mot de passe/i), {
         target: { value: "mauvais" },
       });
-      fireEvent.click(screen.getByRole("button", { name: /se connecter/i }));
+      fireEvent.click(screen.getByRole("button", { name: /^se connecter$/i }));
 
       await waitFor(() => {
         expect(toastMock).toHaveBeenCalledWith(
@@ -116,7 +116,7 @@ describe("Login", () => {
       fireEvent.click(screen.getByRole("button", { name: /envoyer le lien/i }));
 
       await waitFor(() => {
-        expect(screen.getByRole("button", { name: /se connecter/i })).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: /^se connecter$/i })).toBeInTheDocument();
       });
     });
 
@@ -124,7 +124,47 @@ describe("Login", () => {
       renderWithProviders(<Login />);
       fireEvent.click(screen.getByText(/mot de passe oublié/i));
       fireEvent.click(screen.getByText(/retour à la connexion/i));
-      expect(screen.getByRole("button", { name: /se connecter/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /^se connecter$/i })).toBeInTheDocument();
+    });
+  });
+
+  describe("connexion avec le compte de la collectivité (Keycloak, lot 4)", () => {
+    it("le bouton part vers Keycloak avec le scope openid et revient sur /connexion", async () => {
+      renderWithProviders(<Login />);
+      fireEvent.click(screen.getByRole("button", { name: /compte de ma collectivité/i }));
+      await waitFor(() => {
+        expect(mockSupabase.auth.signInWithOAuth).toHaveBeenCalledWith({
+          provider: "keycloak",
+          options: { scopes: "openid", redirectTo: `${window.location.origin}/connexion` },
+        });
+      });
+      expect(mockSupabase.auth.signInWithPassword).not.toHaveBeenCalled();
+    });
+
+    it("au retour d'un agent non provisionné : message clair, et l'URL est nettoyée", () => {
+      window.history.replaceState(
+        null,
+        "",
+        "/connexion?error=access_denied&error_code=signup_disabled&error_description=Signups+not+allowed+for+this+instance",
+      );
+      renderWithProviders(<Login />);
+      expect(screen.getByRole("alert").textContent).toMatch(/n'a pas accès à Clara/);
+      expect(window.location.search).toBe("");
+      window.history.replaceState(null, "", "/");
+    });
+
+    it("si le départ vers Keycloak échoue, on le dit et on propose le mot de passe", async () => {
+      mockSupabase.auth.signInWithOAuth.mockResolvedValueOnce({ data: {}, error: { message: "provider is not enabled" } });
+      renderWithProviders(<Login />);
+      fireEvent.click(screen.getByRole("button", { name: /compte de ma collectivité/i }));
+      expect((await screen.findByRole("alert")).textContent).toMatch(/mot de passe/);
+    });
+
+    it("absent du mode « mot de passe oublié »", () => {
+      renderWithProviders(<Login />);
+      fireEvent.click(screen.getByText(/mot de passe oublié/i));
+      expect(screen.queryByRole("button", { name: /compte de ma collectivité/i })).not.toBeInTheDocument();
     });
   });
 });
+

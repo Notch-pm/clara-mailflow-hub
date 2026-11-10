@@ -33,6 +33,7 @@ export const mockSupabase = {
     onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } })),
     signOut: vi.fn().mockResolvedValue({ error: null }),
     signInWithPassword: vi.fn().mockResolvedValue({ data: {}, error: null }),
+    signInWithOAuth: vi.fn().mockResolvedValue({ data: {}, error: null }),
     resetPasswordForEmail: vi.fn().mockResolvedValue({ data: {}, error: null }),
   },
   functions: {
