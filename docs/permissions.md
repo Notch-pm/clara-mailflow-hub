@@ -31,7 +31,9 @@ fonction `sync-socle-users` (cron chaque minute + réconciliation complète à 0
   accès actif ;
 - **affectations** (`socle_organization_members`) = exactement les organismes de ses accès actifs
   qui ont un miroir dans Clara (racine comprise) ;
-- **compte** créé à la première ouverture (invitation par le relais du tenant), **banni** quand
+- **compte** créé à la première ouverture (sans mot de passe ni e-mail depuis la connexion unique,
+  branche `feature/sso-lot4` : le Socle envoie seul le message de bienvenue ; avant, invitation par
+  le relais du tenant), **banni** quand
   il ne reste aucune appartenance active (jamais supprimé ; jamais un superadmin) ;
 - ⚠️ les **droits fins** (signataire, viseur, gestionnaire courrier, confidentiel) restent
   réglés dans Clara : la synchronisation n'y touche jamais.
@@ -42,7 +44,8 @@ bouton « Se connecter avec le compte de ma collectivité » sur `/connexion` �
 qui oriente par le domaine de l'e-mail (aucun `kc_idp_hint`). Un agent non provisionné par le
 Socle est refusé par Supabase Auth (inscriptions fermées depuis le 2026-11-10) ; l'erreur revient
 sur `/connexion` (`src/lib/sso.ts`, testé). ⚠️ `scopes: "openid"` obligatoire ; `https://clara.edilumen.fr/connexion`
-doit figurer dans les *Redirect URLs* du projet. Pas de mise en ligne avant l'essai réel sur le Socle.
+doit figurer dans les *Redirect URLs* du projet. Le formulaire de mot de passe reste en secours derrière « Autre méthode de connexion ». Pas de
+mise en ligne avant l'essai réel sur le Socle.
 
 Écrans verrouillés sur un tel tenant (`useAgentsManagedBySocle`) : création d'utilisateur,
 activation/désactivation, prénom/nom/rôle dans « Modifier », « Membres associés » d'une

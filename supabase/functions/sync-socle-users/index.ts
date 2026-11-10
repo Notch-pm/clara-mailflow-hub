@@ -3,8 +3,10 @@
 // Le Socle décide qui accède à Clara (`GET /v1/users`, public-api 1.43.0,
 // scope `users` sur la clé SOCLE_API_KEY). Pour chaque tenant rattaché au
 // Socle (`organizations.socle_org_id`), cette fonction applique :
-//   - le compte (créé à la première ouverture, invitation par le relais du
-//     tenant ; banni quand plus rien n'est actif — jamais supprimé) ;
+//   - le compte (créé à la première ouverture, SANS mot de passe ni e-mail :
+//     l'agent se connecte par Keycloak et le Socle envoie seul le message de
+//     bienvenue — connexion unique, 2026-11-10 ; banni quand plus rien n'est
+//     actif — jamais supprimé) ;
 //   - l'appartenance `organization_users` (rôle de base, actif ou non) ;
 //   - les affectations `socle_organization_members`.
 // Les droits fins (signataire, viseur…) ne sont jamais touchés. Logique pure :
@@ -21,9 +23,6 @@
 // Auth : x-cron-secret (pg_cron), Bearer SERVICE_ROLE_KEY, ou JWT superadmin.
 
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
-import nodemailer from "npm:nodemailer@6";
-import { hexOr, renderBrandedEmail } from "../_shared/emailLayout.ts";
-import { loadSmtpSettings } from "../_shared/mailCredentials.ts";
 import {
   missingFromFullList,
   planAgent,
@@ -91,55 +90,6 @@ async function isAuthorized(req: Request, admin: Admin): Promise<boolean> {
   return profile?.is_superadmin === true;
 }
 
-/** Invitation au premier accès : même courriel que `invite-user`, relais du tenant. */
-async function sendInvitation(admin: Admin, organizationId: string, email: string): Promise<string | null> {
-  try {
-    const origin = (Deno.env.get("APP_ORIGIN") || "https://clara.edilumen.fr").replace(/\/+$/, "");
-    const { data: link, error: linkError } = await admin.auth.admin.generateLink({
-      type: "invite",
-      email,
-      options: { redirectTo: `${origin}/activer-compte` },
-    });
-    if (linkError || !link?.properties?.action_link) throw new Error(linkError?.message ?? "lien d'invitation");
-
-    const { data: org } = await admin
-      .from("organizations")
-      .select("name, primary_color, logo_url")
-      .eq("id", organizationId)
-      .single();
-    const { data: smtp } = await loadSmtpSettings(admin, organizationId);
-    if (!smtp) throw new Error("aucun serveur d'envoi pour ce tenant");
-
-    const siteName = org?.name || "Clara";
-    const bodyText = `Vous avez été invité(e) à rejoindre <strong>${siteName}</strong>. Cliquez sur le bouton ci-dessous pour définir votre mot de passe et activer votre compte.`;
-    const html = renderBrandedEmail({
-      primary: hexOr(org?.primary_color ?? null, "#18181b"),
-      siteName,
-      logoUrl: org?.logo_url ?? null,
-      heading: "Bienvenue !",
-      bodyHtml: `<p style="margin:0 0 28px;font-size:14px;line-height:1.6;color:#52525b;">${bodyText}</p>`,
-      action: { label: "Activer mon compte", url: link.properties.action_link },
-    });
-    const transporter = nodemailer.createTransport({
-      host: smtp.host,
-      port: smtp.port || 587,
-      secure: smtp.use_tls && smtp.port === 465,
-      auth: { user: smtp.username, pass: smtp.password },
-      tls: smtp.use_tls ? { rejectUnauthorized: false } : undefined,
-    });
-    await transporter.sendMail({
-      from: smtp.from_name ? `${smtp.from_name} <${smtp.from_email}>` : smtp.from_email,
-      to: email,
-      subject: `Activez votre compte — ${siteName}`,
-      html,
-      text: `Bienvenue !\n\n${bodyText.replace(/<[^>]+>/g, "")}\n\nActiver mon compte : ${link.properties.action_link}`,
-    });
-    return null;
-  } catch (e) {
-    return e instanceof Error ? e.message : String(e);
-  }
-}
-
 interface Counters {
   agents: number;
   created: number;
@@ -149,7 +99,6 @@ interface Counters {
   banned: number;
   unbanned: number;
   skipped: string[];
-  invitation_errors: string[];
 }
 
 interface UserRow {
@@ -213,8 +162,7 @@ async function syncAgent(
   }
   if (!user && !plan.active) return; // jamais créé pour un agent sans accès
 
-  // 1. Le compte.
-  let isNew = false;
+  // 1. Le compte — sans mot de passe : l'agent se connecte par Keycloak.
   if (!user) {
     const { data: created, error } = await admin.auth.admin.createUser({
       email: agent.email,
@@ -238,7 +186,6 @@ async function syncAgent(
     );
     if (upsertError) throw upsertError;
     user = { id: created.user.id, email: agent.email, is_active: true, is_superadmin: false, socle_user_id: agent.socle_user_id, first_name: agent.first_name, last_name: agent.last_name };
-    isNew = true;
     counters.created++;
   } else {
     const patch: Record<string, unknown> = {};
@@ -300,13 +247,6 @@ async function syncAgent(
     await admin.from("users").update({ is_active: true }).eq("id", user.id);
     counters.unbanned++;
   }
-
-  // 5. Invitation au premier accès (Clara invite tant que la connexion unique
-  //    n'est pas en place).
-  if (isNew) {
-    const failure = await sendInvitation(admin, tenantId, agent.email);
-    if (failure) counters.invitation_errors.push(`${agent.email} : ${failure}`);
-  }
 }
 
 Deno.serve(async (req) => {
@@ -330,7 +270,7 @@ Deno.serve(async (req) => {
   for (const tenant of (tenants ?? []) as Array<{ id: string; name: string; socle_org_id: string }>) {
     const counters: Counters = {
       agents: 0, created: 0, memberships: 0, affectations_added: 0, affectations_removed: 0,
-      banned: 0, unbanned: 0, skipped: [], invitation_errors: [],
+      banned: 0, unbanned: 0, skipped: [],
     };
     const plans: unknown[] = [];
     const now = new Date().toISOString();

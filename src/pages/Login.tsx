@@ -16,6 +16,10 @@ export default function Login() {
   const [mode, setMode] = useState<"login" | "forgot">("login");
   const { toast } = useToast();
   const [redirecting, setRedirecting] = useState(false);
+  // Connexion unique (lot 4) : Keycloak est l'entrée de la gamme. Le mot de
+  // passe de Clara reste en secours (superadmin, panne de Keycloak), derrière
+  // « Autre méthode de connexion ».
+  const [showPassword, setShowPassword] = useState(false);
   // Erreur rapportée au retour de Keycloak (agent non provisionné, suspendu…),
   // lue une fois au montage, puis effacée de l'URL pour ne pas réapparaître.
   const [ssoError, setSsoError] = useState<string | null>(
@@ -92,11 +96,11 @@ export default function Login() {
           {mode === "login" && (
             <>
               <div className="space-y-2">
-                <Button type="button" variant="outline" className="w-full" disabled={redirecting} onClick={handleSso}>
+                <Button type="button" className="w-full" disabled={redirecting} onClick={handleSso}>
                   {redirecting ? "Redirection…" : "Se connecter avec le compte de ma collectivité"}
                 </Button>
                 <p className="text-center text-xs text-muted-foreground">
-                  Si votre collectivité a relié son annuaire (Microsoft…).
+                  Un seul compte pour toutes les applications de la gamme.
                 </p>
                 {ssoError ? (
                   <p role="alert" className="text-sm text-destructive">
@@ -104,65 +108,79 @@ export default function Login() {
                   </p>
                 ) : null}
               </div>
-              <div className="my-5 flex items-center gap-3 text-xs text-muted-foreground">
-                <span className="h-px flex-1 bg-border" />
-                ou avec votre mot de passe
-                <span className="h-px flex-1 bg-border" />
+              {showPassword ? (
+                <div className="my-5 flex items-center gap-3 text-xs text-muted-foreground">
+                  <span className="h-px flex-1 bg-border" />
+                  ou avec le mot de passe de Clara
+                  <span className="h-px flex-1 bg-border" />
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(true)}
+                  className="mt-6 w-full text-center text-sm text-muted-foreground hover:text-primary transition-colors"
+                >
+                  Autre méthode de connexion
+                </button>
+              )}
+            </>
+          )}
+          {(mode === "forgot" || showPassword) && (
+            <>
+              <form onSubmit={mode === "login" ? handleLogin : handleForgotPassword} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="agent@organisation.fr"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                  />
+                </div>
+                {mode === "login" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="password">Mot de passe</Label>
+                    <Input
+                      id="password"
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                    />
+                  </div>
+                )}
+                <Button type="submit" variant={mode === "login" ? "outline" : "default"} className="w-full" disabled={loading}>
+                  {loading ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <LogIn className="h-4 w-4 mr-2" />
+                  )}
+                  {mode === "login" ? "Se connecter" : "Envoyer le lien"}
+                </Button>
+              </form>
+              <div className="mt-4 text-center">
+                {mode === "login" ? (
+                  <button
+                    type="button"
+                    className="text-sm text-muted-foreground hover:text-primary transition-colors"
+                    onClick={() => setMode("forgot")}
+                  >
+                    Mot de passe oublié ?
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="text-sm text-muted-foreground hover:text-primary transition-colors"
+                    onClick={() => setMode("login")}
+                  >
+                    Retour à la connexion
+                  </button>
+                )}
               </div>
             </>
           )}
-          <form onSubmit={mode === "login" ? handleLogin : handleForgotPassword} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="agent@organisation.fr"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </div>
-            {mode === "login" && (
-              <div className="space-y-2">
-                <Label htmlFor="password">Mot de passe</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
-              </div>
-            )}
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              ) : (
-                <LogIn className="h-4 w-4 mr-2" />
-              )}
-              {mode === "login" ? "Se connecter" : "Envoyer le lien"}
-            </Button>
-          </form>
-          <div className="mt-4 text-center">
-            {mode === "login" ? (
-              <button
-                type="button"
-                className="text-sm text-muted-foreground hover:text-primary transition-colors"
-                onClick={() => setMode("forgot")}
-              >
-                Mot de passe oublié ?
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="text-sm text-muted-foreground hover:text-primary transition-colors"
-                onClick={() => setMode("login")}
-              >
-                Retour à la connexion
-              </button>
-            )}
-          </div>
         </CardContent>
       </Card>
     </div>

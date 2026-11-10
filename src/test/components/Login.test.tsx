@@ -14,23 +14,35 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+/** Le mot de passe est en secours : on déplie « Autre méthode de connexion ». */
+function renderWithPassword() {
+  renderWithProviders(<Login />);
+  fireEvent.click(screen.getByRole("button", { name: "Autre méthode de connexion" }));
+}
+
 describe("Login", () => {
   describe("mode connexion", () => {
-    it("affiche le titre Clara et le bouton Se connecter", () => {
+    it("le mot de passe est replié derrière « Autre méthode de connexion »", () => {
       renderWithProviders(<Login />);
+      expect(screen.queryByLabelText(/mot de passe/i)).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /compte de ma collectivité/i })).toBeInTheDocument();
+    });
+
+    it("affiche le titre Clara et le bouton Se connecter", () => {
+      renderWithPassword();
       expect(screen.getByText("Clara")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /^se connecter$/i })).toBeInTheDocument();
     });
 
     it("affiche les champs email et mot de passe", () => {
-      renderWithProviders(<Login />);
+      renderWithPassword();
       expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
       expect(screen.getByLabelText(/mot de passe/i)).toBeInTheDocument();
     });
 
     it("appelle signInWithPassword avec les bonnes valeurs", async () => {
       mockSupabase.auth.signInWithPassword.mockResolvedValue({ data: {}, error: null });
-      renderWithProviders(<Login />);
+      renderWithPassword();
 
       fireEvent.change(screen.getByLabelText(/email/i), {
         target: { value: "agent@mairie.fr" },
@@ -53,7 +65,7 @@ describe("Login", () => {
         data: {},
         error: { message: "Invalid login credentials" },
       });
-      renderWithProviders(<Login />);
+      renderWithPassword();
 
       fireEvent.change(screen.getByLabelText(/email/i), {
         target: { value: "agent@mairie.fr" },
@@ -74,14 +86,14 @@ describe("Login", () => {
     });
 
     it("affiche le lien 'Mot de passe oublié ?'", () => {
-      renderWithProviders(<Login />);
+      renderWithPassword();
       expect(screen.getByText(/mot de passe oublié/i)).toBeInTheDocument();
     });
   });
 
   describe("mode mot de passe oublié", () => {
     it("bascule en mode forgot au clic sur 'Mot de passe oublié ?'", () => {
-      renderWithProviders(<Login />);
+      renderWithPassword();
       fireEvent.click(screen.getByText(/mot de passe oublié/i));
       expect(screen.getByRole("button", { name: /envoyer le lien/i })).toBeInTheDocument();
       expect(screen.queryByLabelText(/mot de passe/i)).not.toBeInTheDocument();
@@ -89,7 +101,7 @@ describe("Login", () => {
 
     it("appelle resetPasswordForEmail avec le bon email", async () => {
       mockSupabase.auth.resetPasswordForEmail.mockResolvedValue({ data: {}, error: null });
-      renderWithProviders(<Login />);
+      renderWithPassword();
 
       fireEvent.click(screen.getByText(/mot de passe oublié/i));
       fireEvent.change(screen.getByLabelText(/email/i), {
@@ -107,7 +119,7 @@ describe("Login", () => {
 
     it("revient en mode login après envoi réussi", async () => {
       mockSupabase.auth.resetPasswordForEmail.mockResolvedValue({ data: {}, error: null });
-      renderWithProviders(<Login />);
+      renderWithPassword();
 
       fireEvent.click(screen.getByText(/mot de passe oublié/i));
       fireEvent.change(screen.getByLabelText(/email/i), {
@@ -121,7 +133,7 @@ describe("Login", () => {
     });
 
     it("revient en mode login au clic sur 'Retour à la connexion'", () => {
-      renderWithProviders(<Login />);
+      renderWithPassword();
       fireEvent.click(screen.getByText(/mot de passe oublié/i));
       fireEvent.click(screen.getByText(/retour à la connexion/i));
       expect(screen.getByRole("button", { name: /^se connecter$/i })).toBeInTheDocument();
@@ -161,7 +173,7 @@ describe("Login", () => {
     });
 
     it("absent du mode « mot de passe oublié »", () => {
-      renderWithProviders(<Login />);
+      renderWithPassword();
       fireEvent.click(screen.getByText(/mot de passe oublié/i));
       expect(screen.queryByRole("button", { name: /compte de ma collectivité/i })).not.toBeInTheDocument();
     });
