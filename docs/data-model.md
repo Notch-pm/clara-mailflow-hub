@@ -143,6 +143,7 @@ Table centrale. Tags stockés dans `metadata->'tags'` (tableau JSON de strings).
 | `fts_subject` / `fts_body` | tsvector | index full-text français |
 | `deleted_at` / `deleted_by` | timestamptz / uuid FK → users | **Corbeille** (2026-10-01). NULL = courrier vivant. Posés par `trash_courier` sur le courrier ET ses réponses (même horodatage, d'où une restauration groupée). La policy `auth_select` ajoute `deleted_at IS NULL` ; les RPC SECURITY DEFINER (`search_couriers`, `mailroom_couriers`, `enqueue_courier_analysis`, `courier_creation_block_reason`) filtrent explicitement. Le service role voit tout — la déduplication IMAP doit voir la corbeille. Purge définitive à 30 jours par `purge_expired_data()` |
 | `is_confidential` | boolean | **Courrier confidentiel** (2026-10-13). Lisible par les habilités (`organization_users.can_read_confidential`) et les viseurs / signataires désignés (sur lui ou, pour un entrant, sur ses réponses) — `can_read_courier()`. Une réponse suit son parent. Se pose / se lève par `set_courier_confidential` (jamais d'UPDATE direct). Les RPC de liste rendent la ligne masquée ; voir `docs/security.md` |
+| `iris_request_id` / `iris_reference` / `iris_url` / `iris_reply_key` | uuid / text / text / uuid | **Courrier de réponse déposé par Iris** (2026-11-12, `iris-reply-courier`) : la demande Iris dont ce sortant est la réponse (UUID nu, aucune FK inter-projets), sa référence, l'URL de sa fiche (`https` seulement) et l'identifiant de soumission (unique par organisation — idempotence). Le trigger `couriers_enqueue_iris_reply_notification` (AFTER UPDATE) met un avis dans `iris_reply_notifications` dès que le courrier part ou est abandonné — voir `docs/iris-integration.md` §5 quater. |
 
 **Référence du registre (`chrono`) — implémentée le 2026-09-13.** Format `AAAA-E|S|I-NNNNN`,
 compteurs dans `courier_sequences` (une suite par organisation × année × sens).
@@ -299,6 +300,14 @@ Deux garde-fous à ne pas retirer :
 - **Crédit IA épuisé** → job reporté **à la date de renouvellement rendue par le Socle** (jamais recalculée localement), sans consommer de tentative. Sans ce rollback, trois passages de cron condamneraient un courrier parfaitement analysable le mois suivant. ⚠️ Depuis la centralisation IA du 2026-08-29, le guichet renvoie **deux refus distincts en 429** : le plafond (rien à tenter avant le renouvellement) et la **cadence** (`ai_rate_limited` — le crédit est intact, replanification à 5 min, tentative également rendue). Les confondre endormirait un mois durant un courrier simplement arrivé dans une rafale.
 
 RLS : lecture seule pour les membres du tenant. Aucune écriture cliente — l'enfilement passe par le RPC `enqueue_courier_analysis` (SECURITY DEFINER, re-vérifie l'appartenance), la consommation par `claim_analysis_jobs` / `requeue_stale_analysis_jobs`, réservés au `service_role`.
+
+#### `iris_reply_notifications`
+File des avis à Iris sur un courrier de réponse qu'elle a déposé (2026-11-12) : `courier_id`
+(**unique** — un courrier n'a qu'un destin, parti ou abandonné, le premier fait l'emporte),
+`iris_request_id`, `event` (`sent` \| `cancelled`), `occurred_at`, `status` (`pending` \|
+`delivered` \| `rejected` \| `failed`), `attempts`, `next_attempt_at`, `last_http_status`,
+`last_error`. Alimentée par trigger, réclamée par `claim_iris_reply_notifications` (bail 5 min,
+`SKIP LOCKED`), drainée par `notify-iris-reply`. RLS sans policy cliente (`service_role` seul).
 
 #### `courier_events`
 Journal d'audit immuable.

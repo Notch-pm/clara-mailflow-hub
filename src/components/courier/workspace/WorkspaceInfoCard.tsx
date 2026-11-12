@@ -10,6 +10,7 @@ import { channelLabels, type WorkspaceCourier } from "@/hooks/useCourierWorkspac
 import type { CourierChannel } from "@/types/courier";
 import InlineEditField from "../InlineEditField";
 import { EmptyValue, InfoRow } from "./RailParts";
+import { irisReplyLinkOf } from "@/lib/iris-reply";
 
 interface Props {
   courier: WorkspaceCourier;
@@ -26,6 +27,7 @@ interface Props {
 export function WorkspaceInfoCard({ courier, isOutbound, isInitiative, readOnly, persistCourierUpdate }: Props) {
   const [open, setOpen] = useState(false);
   const isConfidential = !!courier.is_confidential;
+  const iris = irisReplyLinkOf(courier);
 
   return (
     <Collapsible open={open} onOpenChange={setOpen} asChild>
@@ -34,7 +36,7 @@ export function WorkspaceInfoCard({ courier, isOutbound, isInitiative, readOnly,
           <h3 className="flex-1 text-base font-semibold leading-tight">Informations</h3>
           {!open && (
             <span className="text-xs text-muted-foreground">
-              {isOutbound ? "Référence, date…" : "Référence, canal…"}
+              {iris ? `Réponse à la demande Iris ${iris.reference ?? ""}` : isOutbound ? "Référence, date…" : "Référence, canal…"}
             </span>
           )}
           <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", open && "rotate-180")} />
@@ -95,6 +97,23 @@ export function WorkspaceInfoCard({ courier, isOutbound, isInitiative, readOnly,
             {courier.socle_organization?.name && (
               <InfoRow label="Organisation d'origine">{courier.socle_organization.name}</InfoRow>
             )}
+            {iris ? (
+              <InfoRow label="Demande Iris">
+                {iris.url ? (
+                  <a
+                    href={iris.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 text-primary hover:underline"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    {iris.reference ?? "Ouvrir dans Iris"}
+                  </a>
+                ) : (
+                  <span className="font-mono text-xs">{iris.reference ?? "—"}</span>
+                )}
+              </InfoRow>
+            ) : null}
             {isOutbound && courier.parent_courier_id && (
               <InfoRow label="Courrier lié">
                 <Link

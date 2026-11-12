@@ -257,6 +257,27 @@ périmètre ⇒ 404, comme une demande inexistante) ; rien n'est stocké ni mis 
 membres les lisent, comme les notes internes des courriers. Iris nomme les personnes et filtre
 le détail des événements par type — jamais d'e-mail ni d'identifiant d'agent.
 
+## 5 quater. Courrier de réponse validé dans Clara (2026-11-12, contrat Iris 2.12.0)
+
+Sens inverse du dépôt de demande : une démarche du Socle peut exiger que ses **courriers de
+réponse** passent par le circuit du courrier sortant de Clara (Socle
+`communication_config.replyLetters.claraOutbound`, contrat 1.46.0, grisé sans abonnement Clara).
+
+1. Dans Iris, l'agent ne résout pas : il **rédige** le courrier (issue positive / négative,
+   objet, texte, canal proposé). Iris le dépose par **`iris-reply-courier`** (clé
+   `IRIS_INTAKE_KEY`) ; la demande reste `en_instruction`, sous-état « Réponse en validation ».
+2. Clara le range en **sortant à l'initiative** de l'organisme de la demande, à l'état initial de
+   son workflow de réponse, avec le lien **« Demande Iris »** (carte Informations du courrier).
+   Il suit le circuit ordinaire : visa, signature, envoi courriel ou postal.
+3. Dès qu'il **part** (ou qu'il est **abandonné** : état archivé, suppression), un avis part
+   vers Iris (`notify-iris-reply`, file `iris_reply_notifications`). Iris applique l'issue
+   choisie par son agent — ou rend la demande à l'instruction.
+
+⚠️ **Clara ne décide jamais du statut de la demande** : elle transmet un fait ; l'issue est dans
+Iris. ⚠️ L'organisme émetteur doit avoir un **workflow de réponse** : sans lui, le dépôt est
+refusé (422 `no_reply_workflow`) et rien ne change dans Iris. ⚠️ Un courrier modifié dans Clara
+(texte, canal) reste lié : seul son départ ou son abandon compte.
+
 ## 6. Limites connues
 
 - **Pas de rattrapage des demandes déposées avant le 2026-09-11** : elles sont parties sans
