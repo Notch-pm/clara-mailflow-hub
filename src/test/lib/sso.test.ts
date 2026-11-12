@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+  hasKeycloakIdentity,
+  keycloakLogoutUrl,
   markSilentSso,
   readSilentSso,
   readSsoReturnError,
   SILENT_SSO_KEY,
   ssoSignInCredentials,
   ssoSilentSignInCredentials,
+  SSO_LOGOUT_PATH,
   SSO_PROVIDER,
+  ssoLogoutRedirect,
 } from "@/lib/sso";
 
 describe("ssoSignInCredentials", () => {
@@ -145,5 +149,41 @@ describe("connexion silencieuse", () => {
       readSsoReturnError("?error=access_denied&error_description=User+is+banned", "", { silent: true })
         ?.message,
     ).toMatch(/suspendu/);
+  });
+});
+
+describe("déconnexion unique", () => {
+  const kcUser = { app_metadata: { providers: ["email", "keycloak"] } };
+
+  it("reconnaît une identité Keycloak, et seulement elle", () => {
+    expect(hasKeycloakIdentity(kcUser)).toBe(true);
+    expect(hasKeycloakIdentity({ app_metadata: { providers: ["email"] } })).toBe(false);
+    expect(hasKeycloakIdentity({ app_metadata: {} })).toBe(false);
+    expect(hasKeycloakIdentity(null)).toBe(false);
+  });
+
+  it("construit l'adresse de déconnexion Keycloak avec le client et le retour", () => {
+    const url = new URL(keycloakLogoutUrl("app", "https://app.edilumen.fr/login"));
+    expect(`${url.origin}${url.pathname}`).toBe(
+      "https://auth.edilumen.fr/realms/edilumen/protocol/openid-connect/logout",
+    );
+    expect(url.searchParams.get("client_id")).toBe("app");
+    expect(url.searchParams.get("post_logout_redirect_uri")).toBe("https://app.edilumen.fr/login");
+  });
+
+  it("passe par Keycloak pour un compte relié, en https", () => {
+    const target = ssoLogoutRedirect(kcUser, "app", "https://app.edilumen.fr", "/login");
+    expect(target).toContain("/protocol/openid-connect/logout?client_id=app");
+  });
+
+  it("reste sur place pour un compte à mot de passe seul, ou en développement", () => {
+    expect(
+      ssoLogoutRedirect({ app_metadata: { providers: ["email"] } }, "app", "https://app.edilumen.fr", "/login"),
+    ).toBeNull();
+    expect(ssoLogoutRedirect(kcUser, "app", "http://localhost:5173", "/login")).toBeNull();
+  });
+
+  it("la page de déconnexion pour Keycloak a une adresse fixe (déclarée dans Keycloak)", () => {
+    expect(SSO_LOGOUT_PATH).toBe("/deconnexion-sso");
   });
 });

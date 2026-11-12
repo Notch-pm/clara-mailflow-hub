@@ -41,6 +41,9 @@ import MonProfil from "@/pages/MonProfil";
 import Contacts from "@/pages/Contacts";
 import RechercheCourrierPage from "@/pages/RechercheCourrierPage";
 import Login from "@/pages/Login";
+import { supabase } from "@/integrations/supabase/client";
+import SsoLogout from "@/pages/SsoLogout";
+import { SSO_LOGOUT_PATH } from "@/lib/sso";
 import ResetPassword from "@/pages/ResetPassword";
 import ActivateAccount from "@/pages/ActivateAccount";
 import SuperAdminDashboard from "@/pages/SuperAdminDashboard";
@@ -75,8 +78,9 @@ function LoadingScreen() {
 }
 
 function NoProfileFallback() {
-  const { signOut } = useAuth();
-  useEffect(() => { void signOut(); }, []);
+  // Déconnexion LOCALE seulement : un accès Clara manquant ne doit pas fermer la
+  // session Keycloak, donc déconnecter l'agent du Socle et d'Iris (déconnexion unique).
+  useEffect(() => { void supabase.auth.signOut(); }, []);
   return <LoadingScreen />;
 }
 
@@ -198,6 +202,8 @@ const App = () => (
           <AuthProvider>
             <Routes>
               <Route path="/connexion" element={<PublicRoute><Login /></PublicRoute>} />
+              {/* Déconnexion unique : chargée par Keycloak dans une iframe, hors PublicRoute. */}
+              <Route path={SSO_LOGOUT_PATH} element={<SsoLogout />} />
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/activer-compte" element={<ActivateAccount />} />
               <Route path="/accessibilite" element={<Accessibility />} />

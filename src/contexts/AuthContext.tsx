@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, useRef, ReactNode } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { ssoLogoutRedirect } from "@/lib/sso";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { recordLogin } from "@/pages/BoiteAuxLettres";
 import { forgetDevicePush } from "@/services/pushSubscriptionService";
@@ -221,7 +222,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Poste partagé d'accueil : l'appareil ne doit pas continuer à recevoir les
     // notifications de l'agent qui s'en va. Best effort — jamais bloquant.
     await forgetDevicePush();
+    // Déconnexion unique : on ferme aussi la session Keycloak (voir lib/sso.ts).
+    const { data } = await supabase.auth.getSession();
+    const keycloakLogout = ssoLogoutRedirect(data.session?.user, "clara", window.location.origin, "/connexion");
     await supabase.auth.signOut();
+    if (keycloakLogout) window.location.assign(keycloakLogout);
   }
 
   return (

@@ -147,3 +147,52 @@ export function ssoSilentSignInCredentials(origin: string): SignInWithOAuthCrede
     options: { ...credentials.options, queryParams: { prompt: "none" } },
   };
 }
+
+// ─── Déconnexion unique ───────────────────────────────────────────────────────
+// Se déconnecter d'une application ferme aussi la session Keycloak : sans cela,
+// la connexion silencieuse reconnecterait l'agent au prochain onglet. Keycloak
+// prévient ensuite les autres applications de la gamme où l'agent est connecté
+// (« front-channel logout ») en chargeant leur page `SSO_LOGOUT_PATH` dans une
+// iframe invisible, qui efface leur session.
+//
+// Réglages Keycloak, par client : « Valid post logout redirect URIs » = la page
+// de connexion de l'application ; « Front channel logout » activé, URL =
+// `<application>${SSO_LOGOUT_PATH}`. Le thème Edilumen valide tout seul la page
+// de confirmation de Keycloak (infra/keycloak, footer.ftl, côté Socle).
+
+/** Realm Keycloak de la gamme (même valeur que l'émetteur des jetons). */
+export const KEYCLOAK_REALM_URL = "https://auth.edilumen.fr/realms/edilumen";
+
+/** Page chargée par Keycloak dans une iframe pour fermer la session de l'application. */
+export const SSO_LOGOUT_PATH = "/deconnexion-sso";
+
+type UserWithProviders = { app_metadata?: { providers?: unknown } } | null | undefined;
+
+/** L'utilisateur a-t-il une identité Keycloak (sinon, rien à fermer chez Keycloak) ? */
+export function hasKeycloakIdentity(user: UserWithProviders): boolean {
+  const providers = user?.app_metadata?.providers;
+  return Array.isArray(providers) && providers.includes(SSO_PROVIDER);
+}
+
+/** Adresse de déconnexion Keycloak (OpenID Connect RP-initiated logout). */
+export function keycloakLogoutUrl(clientId: string, postLogoutRedirectUri: string): string {
+  const url = new URL(`${KEYCLOAK_REALM_URL}/protocol/openid-connect/logout`);
+  url.searchParams.set("client_id", clientId);
+  url.searchParams.set("post_logout_redirect_uri", postLogoutRedirectUri);
+  return url.toString();
+}
+
+/**
+ * Où envoyer le navigateur après la déconnexion locale, ou `null` pour rester :
+ * compte sans identité Keycloak (mot de passe seul), ou poste de développement
+ * (`http://localhost`, adresse que Keycloak ne connaît pas).
+ */
+export function ssoLogoutRedirect(
+  user: UserWithProviders,
+  clientId: string,
+  origin: string,
+  loginPath: string,
+): string | null {
+  if (!hasKeycloakIdentity(user) || !origin.startsWith("https://")) return null;
+  return keycloakLogoutUrl(clientId, `${origin}${loginPath}`);
+}
