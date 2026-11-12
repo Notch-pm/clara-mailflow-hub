@@ -210,7 +210,7 @@ export default function CourierActivityTab({
     const out: UnifiedEvent[] = [];
     // Un courrier à l'initiative porte son propre événement de création, plus
     // parlant (émettrice, destinataire) : pas de doublon.
-    const hasCreationEvent = events.some((e: { event_type: string }) => e.event_type === "outbound_created");
+    const hasCreationEvent = events.some((e: { event_type: string }) => e.event_type === "outbound_created" || e.event_type === "iris_reply_received");
     if (courier?.created_at && !hasCreationEvent) {
       out.push({
         id: `created-${courier.id}`,

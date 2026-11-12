@@ -226,3 +226,20 @@ export function getIrisRequest(
 ): Promise<IrisResponse<{ request?: IrisRequestDto; error?: unknown }>> {
   return callIris(integration, `/v1/requests/${encodeURIComponent(requestId)}`, { method: "GET" });
 }
+
+/**
+ * Avis sur un courrier de réponse déposé par Iris (contrat Iris 2.12.0) :
+ * `POST /v1/requests/{id}/reply-letter/events` — `sent` ou `cancelled`.
+ * Idempotent côté Iris (200 sur un rejeu) : la file `iris_reply_notifications`
+ * peut relancer sans risque.
+ */
+export function postIrisReplyLetterEvent(
+  integration: IrisIntegration,
+  irisRequestId: string,
+  body: { courier_id: string; event: "sent" | "cancelled"; occurred_at?: string },
+): Promise<IrisResponse<{ result?: string; status?: string | null; error?: { message?: string } }>> {
+  return callIris(integration, `/v1/requests/${irisRequestId}/reply-letter/events`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}

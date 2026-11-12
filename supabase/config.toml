@@ -47,6 +47,16 @@ verify_jwt = false
 [functions.iris-courrier]
 verify_jwt = false
 
+# Courrier de réponse déposé par Iris (2026-11-12) : clé IRIS_INTAKE_KEY,
+# de serveur à serveur.
+[functions.iris-reply-courier]
+verify_jwt = false
+
+# Avis à Iris (courrier de réponse parti / abandonné), appelé par pg_cron
+# (`x-cron-secret`) : sans cette entrée, la plateforme rejette l'appel.
+[functions.notify-iris-reply]
+verify_jwt = false
+
 # Facteur des notifications push, appelé par pg_cron (trigger_notifications_push),
 # qui n'envoie aucun en-tête Authorization. L'authentification réelle se fait dans
 # la fonction (x-cron-secret comparé à get_cron_secret()).
