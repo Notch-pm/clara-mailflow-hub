@@ -7,7 +7,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { LogIn, Loader2 } from "lucide-react";
 import notchLogo from "@/assets/logo-notch.svg";
-import { readSsoReturnError, ssoSignInCredentials } from "@/lib/sso";
+import {
+  markSilentSso,
+  readSilentSso,
+  readSsoReturnError,
+  silentSsoStorage,
+  ssoSignInCredentials,
+  ssoSilentSignInCredentials,
+} from "@/lib/sso";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -22,13 +29,40 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   // Erreur rapportée au retour de Keycloak (agent non provisionné, suspendu…),
   // lue une fois au montage, puis effacée de l'URL pour ne pas réapparaître.
+  // Connexion silencieuse : un agent déjà connecté à Keycloak par une autre
+  // application entre sans recliquer (une tentative par onglet, voir sso.ts).
+  const [storage] = useState(silentSsoStorage);
+  const [silent] = useState(() =>
+    readSilentSso(storage, window.location.search, window.location.hash),
+  );
+  const [silentFailed, setSilentFailed] = useState(false);
   const [ssoError, setSsoError] = useState<string | null>(
-    () => readSsoReturnError(window.location.search, window.location.hash)?.message ?? null,
+    () =>
+      readSsoReturnError(window.location.search, window.location.hash, {
+        silent: silent.returning,
+      })?.message ?? null,
   );
 
   useEffect(() => {
     if (ssoError) window.history.replaceState(null, "", window.location.pathname);
   }, [ssoError]);
+
+  useEffect(() => {
+    if (silent.returning) markSilentSso(storage, "done");
+  }, [silent.returning, storage]);
+
+  useEffect(() => {
+    if (!silent.attempt) return;
+    markSilentSso(storage, "pending");
+    void supabase.auth
+      .signInWithOAuth(ssoSilentSignInCredentials(window.location.origin))
+      .then(({ error }) => {
+        if (error) {
+          markSilentSso(storage, "done");
+          setSilentFailed(true);
+        }
+      });
+  }, [silent.attempt, storage]);
 
   async function handleSso() {
     setSsoError(null);
@@ -73,6 +107,14 @@ export default function Login() {
       });
       setMode("login");
     }
+  }
+
+  if (silent.attempt && !silentFailed) {
+    return (
+      <div className="min-h-dvh flex items-center justify-center bg-background p-4 text-sm text-muted-foreground">
+        Connexion…
+      </div>
+    );
   }
 
   return (

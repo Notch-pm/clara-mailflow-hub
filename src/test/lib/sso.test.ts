@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { readSsoReturnError, ssoSignInCredentials, SSO_PROVIDER } from "@/lib/sso";
+import {
+  markSilentSso,
+  readSilentSso,
+  readSsoReturnError,
+  SILENT_SSO_KEY,
+  ssoSignInCredentials,
+  ssoSilentSignInCredentials,
+  SSO_PROVIDER,
+} from "@/lib/sso";
 
 describe("ssoSignInCredentials", () => {
   it("demande le provider keycloak avec le scope openid et revient sur /connexion", () => {
@@ -53,5 +61,89 @@ describe("readSsoReturnError", () => {
 
   it("un code sans `error` suffit à signaler l'échec", () => {
     expect(readSsoReturnError("?error_code=unexpected_failure", "")).not.toBeNull();
+  });
+});
+
+describe("connexion silencieuse", () => {
+  function memoryStorage(initial?: string) {
+    const map = new Map<string, string>();
+    if (initial) map.set(SILENT_SSO_KEY, initial);
+    return {
+      getItem: (k: string) => map.get(k) ?? null,
+      setItem: (k: string, v: string) => void map.set(k, v),
+      map,
+    };
+  }
+
+  it("ajoute prompt=none aux options du bouton, sans rien d'autre", () => {
+    const creds = ssoSilentSignInCredentials("https://app.edilumen.fr");
+    const button = ssoSignInCredentials("https://app.edilumen.fr");
+    expect(creds).toEqual({
+      ...button,
+      options: { ...button.options, queryParams: { prompt: "none" } },
+    });
+  });
+
+  it("première arrivée de l'onglet → on tente", () => {
+    expect(readSilentSso(memoryStorage(), "", "")).toEqual({ attempt: true, returning: false });
+  });
+
+  it("une seule tentative par onglet : déjà faite → on ne retente pas", () => {
+    expect(readSilentSso(memoryStorage("done"), "", "")).toEqual({ attempt: false, returning: false });
+  });
+
+  it("retour d'une tentative → on ne retente pas, et on sait que c'en est un retour", () => {
+    expect(readSilentSso(memoryStorage("pending"), "#error=login_required", "")).toEqual({
+      attempt: false,
+      returning: true,
+    });
+  });
+
+  it("un résultat d'authentification dans l'URL → on ne tente pas", () => {
+    for (const [search, hash] of [
+      ["?error=access_denied", ""],
+      ["?error_code=signup_disabled", ""],
+      ["", "#access_token=abc"],
+      ["?code=xyz", ""],
+    ]) {
+      expect(readSilentSso(memoryStorage(), search, hash).attempt).toBe(false);
+    }
+  });
+
+  it("stockage inaccessible → jamais de tentative (pas de boucle possible)", () => {
+    expect(readSilentSso(null, "", "")).toEqual({ attempt: false, returning: false });
+    const throwing = {
+      getItem: () => {
+        throw new Error("SecurityError");
+      },
+      setItem: () => {
+        throw new Error("SecurityError");
+      },
+    };
+    expect(readSilentSso(throwing, "", "")).toEqual({ attempt: false, returning: false });
+    expect(() => markSilentSso(throwing, "pending")).not.toThrow();
+  });
+
+  it("markSilentSso note l'étape", () => {
+    const storage = memoryStorage();
+    markSilentSso(storage, "pending");
+    expect(storage.map.get(SILENT_SSO_KEY)).toBe("pending");
+  });
+
+  it("au retour silencieux, « pas de session » se tait…", () => {
+    expect(
+      readSsoReturnError("", "#error=login_required&error_description=Login+required", { silent: true }),
+    ).toBeNull();
+    expect(readSsoReturnError("?error=server_error", "", { silent: true })).toBeNull();
+  });
+
+  it("…mais « non provisionné » et « suspendu » s'affichent toujours", () => {
+    expect(
+      readSsoReturnError("?error=access_denied&error_code=signup_disabled", "", { silent: true }),
+    ).not.toBeNull();
+    expect(
+      readSsoReturnError("?error=access_denied&error_description=User+is+banned", "", { silent: true })
+        ?.message,
+    ).toMatch(/suspendu/);
   });
 });

@@ -4,6 +4,7 @@ import "../mocks/supabase";
 import { mockSupabase } from "../mocks/supabase";
 import { renderWithProviders } from "../utils/renderWithProviders";
 import Login from "@/pages/Login";
+import { SILENT_SSO_KEY } from "@/lib/sso";
 
 const toastMock = vi.fn();
 vi.mock("@/hooks/use-toast", () => ({
@@ -12,6 +13,9 @@ vi.mock("@/hooks/use-toast", () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Par défaut, la tentative silencieuse a déjà eu lieu dans cet onglet.
+  window.sessionStorage.clear();
+  window.sessionStorage.setItem(SILENT_SSO_KEY, "done");
 });
 
 /** Le mot de passe est en secours : on déplie « Autre méthode de connexion ». */
@@ -180,3 +184,30 @@ describe("Login", () => {
   });
 });
 
+
+describe("Login — connexion silencieuse (session Keycloak d'une autre application)", () => {
+  it("première arrivée de l'onglet : demande à Keycloak sans écran (prompt=none)", async () => {
+    window.sessionStorage.clear();
+    renderWithProviders(<Login />);
+    expect(screen.getByText("Connexion…")).toBeInTheDocument();
+    await waitFor(() => expect(mockSupabase.auth.signInWithOAuth).toHaveBeenCalledTimes(1));
+    expect(mockSupabase.auth.signInWithOAuth).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "keycloak",
+        options: expect.objectContaining({ queryParams: { prompt: "none" } }),
+      }),
+    );
+    expect(window.sessionStorage.getItem(SILENT_SSO_KEY)).toBe("pending");
+  });
+
+  it("retour sans session Keycloak : la page s'affiche, sans message d'erreur", () => {
+    window.sessionStorage.setItem(SILENT_SSO_KEY, "pending");
+    window.history.replaceState(null, "", "/connexion#error=login_required");
+    renderWithProviders(<Login />);
+    expect(screen.getByRole("button", { name: /compte de ma collectivité/i })).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(mockSupabase.auth.signInWithOAuth).not.toHaveBeenCalled();
+    expect(window.sessionStorage.getItem(SILENT_SSO_KEY)).toBe("done");
+    window.history.replaceState(null, "", "/");
+  });
+});
