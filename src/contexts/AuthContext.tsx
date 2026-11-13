@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, useRef, ReactNode } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
-import { ssoLogoutRedirect } from "@/lib/sso";
+import { isSupabaseSessionKey, ssoLogoutRedirect } from "@/lib/sso";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { recordLogin } from "@/pages/BoiteAuxLettres";
 import { forgetDevicePush } from "@/services/pushSubscriptionService";
@@ -217,6 +217,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     userIdRef.current = null; // repasser par l'écran de chargement
     void supabase.auth.getSession().then(({ data }) => syncAuthState(data.session));
   }
+
+  // Déconnexion unique : la page statique /deconnexion-sso (ou un autre onglet) a
+  // effacé la session du localStorage → cet onglet se déconnecte aussi.
+  useEffect(() => {
+    function onStorage(event: StorageEvent) {
+      if (isSupabaseSessionKey(event.key) && event.newValue === null) {
+        void supabase.auth.signOut({ scope: "local" });
+      }
+    }
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
 
   async function signOut() {
     // Poste partagé d'accueil : l'appareil ne doit pas continuer à recevoir les

@@ -1,6 +1,9 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   hasKeycloakIdentity,
+  isSupabaseSessionKey,
+  SUPABASE_SESSION_KEY_PATTERN,
   keycloakLogoutUrl,
   markSilentSso,
   readSilentSso,
@@ -185,5 +188,26 @@ describe("déconnexion unique", () => {
 
   it("la page de déconnexion pour Keycloak a une adresse fixe (déclarée dans Keycloak)", () => {
     expect(SSO_LOGOUT_PATH).toBe("/deconnexion-sso");
+  });
+});
+
+describe("page statique de déconnexion pour Keycloak", () => {
+  const html = readFileSync(`${process.cwd()}/public/deconnexion-sso.html`, "utf8");
+
+  it("reconnaît la clé de session supabase-js, et seulement elle", () => {
+    expect(isSupabaseSessionKey("sb-abcdefghijkl-auth-token")).toBe(true);
+    expect(isSupabaseSessionKey("sb-abcdefghijkl-auth-token-code-verifier")).toBe(false);
+    expect(isSupabaseSessionKey("edilumen.sso.silent")).toBe(false);
+    expect(isSupabaseSessionKey(null)).toBe(false);
+  });
+
+  it("efface avec le même motif que l'application", () => {
+    expect(html).toContain(`/${SUPABASE_SESSION_KEY_PATTERN.source}/.test(key)`);
+    expect(html).toContain("localStorage.removeItem(key)");
+  });
+
+  it("reste synchrone : aucun script chargé, aucune attente", () => {
+    expect(html).not.toMatch(/<script[^>]*src=/);
+    expect(html).not.toMatch(/await|setTimeout|fetch\(/);
   });
 });

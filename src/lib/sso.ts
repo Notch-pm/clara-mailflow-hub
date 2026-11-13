@@ -153,7 +153,9 @@ export function ssoSilentSignInCredentials(origin: string): SignInWithOAuthCrede
 // la connexion silencieuse reconnecterait l'agent au prochain onglet. Keycloak
 // prévient ensuite les autres applications de la gamme où l'agent est connecté
 // (« front-channel logout ») en chargeant leur page `SSO_LOGOUT_PATH` dans une
-// iframe invisible, qui efface leur session.
+// iframe invisible : une page STATIQUE (`public/deconnexion-sso.html`) qui efface
+// la session de façon synchrone, avant que Keycloak ne redirige. Les onglets
+// ouverts voient la clé disparaître (`isSupabaseSessionKey`) et se déconnectent.
 //
 // Réglages Keycloak, par client : « Valid post logout redirect URIs » = la page
 // de connexion de l'application ; « Front channel logout » activé, URL =
@@ -195,4 +197,14 @@ export function ssoLogoutRedirect(
 ): string | null {
   if (!hasKeycloakIdentity(user) || !origin.startsWith("https://")) return null;
   return keycloakLogoutUrl(clientId, `${origin}${loginPath}`);
+}
+
+/**
+ * Clé de session supabase-js dans le localStorage (`sb-<projet>-auth-token`).
+ * ⚠️ Même motif que `public/deconnexion-sso.html` (épinglé par test).
+ */
+export const SUPABASE_SESSION_KEY_PATTERN = /^sb-.+-auth-token$/;
+
+export function isSupabaseSessionKey(key: string | null): boolean {
+  return key !== null && SUPABASE_SESSION_KEY_PATTERN.test(key);
 }

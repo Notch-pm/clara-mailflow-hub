@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="robots" content="noindex" />
+    <title>Déconnexion</title>
+    <!--
+      Déconnexion unique (voir sso.ts) : Keycloak charge cette page dans une iframe
+      invisible quand l'agent se déconnecte d'une autre application de la gamme
+      (front-channel logout), puis redirige dès que les iframes sont CHARGÉES.
+      ⚠️ D'où une page statique et un effacement SYNCHRONE de la session
+      supabase-js, fini avant l'événement load. Une page React (chargement de
+      l'application, puis signOut asynchrone) perdait la course une fois sur deux.
+      Les onglets ouverts de l'application voient la clé disparaître (événement
+      `storage`, AuthProvider) et retombent sur la page de connexion.
+      ⚠️ Le motif ci-dessous est le même que `isSupabaseSessionKey` (test).
+    -->
+    <script>
+      try {
+        for (var i = localStorage.length - 1; i >= 0; i--) {
+          var key = localStorage.key(i);
+          if (key && /^sb-.+-auth-token$/.test(key)) localStorage.removeItem(key);
+        }
+      } catch (e) {
+        // Stockage inaccessible : rien à effacer.
+      }
+    </script>
+  </head>
+  <body></body>
+</html>
