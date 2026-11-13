@@ -78,17 +78,25 @@ export function readSsoReturnError(
 // ─── Connexion silencieuse ────────────────────────────────────────────────────
 // Un agent déjà connecté à Keycloak par une autre application de la gamme
 // (session « auth.edilumen.fr ») ne doit pas recliquer : en arrivant sur la page
-// de connexion, on demande discrètement à Keycloak s'il a une session
-// (`prompt=none`, standard OpenID Connect). Oui → retour connecté, sans écran.
-// Non → Keycloak répond aussitôt `login_required`, et la page s'affiche
-// normalement, sans message d'erreur.
+// de connexion (F5 compris), et en revenant sur un onglet resté sur cette page,
+// on demande discrètement à Keycloak s'il a une session (`prompt=none`, standard
+// OpenID Connect). Oui → retour connecté, sans écran. Non → Keycloak répond
+// aussitôt `login_required`, et la page s'affiche normalement, sans message.
 //
-// ⚠️ Une seule tentative par onglet (sessionStorage) : sans ce verrou, une
-// déconnexion relancerait aussitôt la connexion, et un échec bouclerait.
+// ⚠️ Pas plus d'une tentative toutes les `SILENT_SSO_RETRY_MS` par onglet
+// (sessionStorage) : une application qui déconnecte d'office un compte qu'elle
+// refuse (Clara, compte sans profil) le reconnecterait sinon en boucle. Le
+// retour d'une tentative ne relance jamais de tentative.
 // ⚠️ Lectures au rendu, écritures dans un effet (StrictMode rejoue les deux).
 
-/** Clé sessionStorage : absente = jamais tenté, `pending` = parti vers Keycloak, `done`. */
+/** Clé sessionStorage : `pending` = parti vers Keycloak, `done` = revenu. */
 export const SILENT_SSO_KEY = "edilumen.sso.silent";
+
+/** Clé sessionStorage : heure (ms) de la dernière tentative. */
+export const SILENT_SSO_AT_KEY = "edilumen.sso.silent.at";
+
+/** Délai minimal entre deux tentatives dans un même onglet. */
+export const SILENT_SSO_RETRY_MS = 15_000;
 
 export type SilentSsoStorage = Pick<Storage, "getItem" | "setItem">;
 
@@ -110,11 +118,23 @@ export interface SilentSsoState {
   returning: boolean;
 }
 
+/** Une nouvelle tentative est-elle permise (stockage lisible, délai écoulé) ? */
+export function silentSsoRetryAllowed(storage: SilentSsoStorage | null, now: number = Date.now()): boolean {
+  if (!storage) return false;
+  try {
+    const last = Number(storage.getItem(SILENT_SSO_AT_KEY) ?? 0);
+    return !(now - last < SILENT_SSO_RETRY_MS);
+  } catch {
+    return false;
+  }
+}
+
 /** Décide, sans rien écrire, s'il faut tenter la connexion silencieuse. */
 export function readSilentSso(
   storage: SilentSsoStorage | null,
   search: string,
   hash: string,
+  now: number = Date.now(),
 ): SilentSsoState {
   if (!storage) return { attempt: false, returning: false };
   let value: string | null;
@@ -124,18 +144,22 @@ export function readSilentSso(
     return { attempt: false, returning: false };
   }
   if (value === "pending") return { attempt: false, returning: true };
-  if (value) return { attempt: false, returning: false };
   const params = paramsOf(search, hash);
   const authResultInUrl = ["error", "error_code", "access_token", "code"].some((k) => params.has(k));
-  return { attempt: !authResultInUrl, returning: false };
+  return { attempt: !authResultInUrl && silentSsoRetryAllowed(storage, now), returning: false };
 }
 
-/** Note l'étape de la tentative (`pending` avant de partir, `done` au retour). */
-export function markSilentSso(storage: SilentSsoStorage | null, value: "pending" | "done"): void {
+/** Note l'étape de la tentative (`pending` avant de partir, avec l'heure ; `done` au retour). */
+export function markSilentSso(
+  storage: SilentSsoStorage | null,
+  value: "pending" | "done",
+  now: number = Date.now(),
+): void {
   try {
     storage?.setItem(SILENT_SSO_KEY, value);
+    if (value === "pending") storage?.setItem(SILENT_SSO_AT_KEY, String(now));
   } catch {
-    // Stockage refusé : la tentative n'aura simplement pas lieu deux fois de suite.
+    // Stockage refusé : readSilentSso ne tentera plus rien (pas de boucle possible).
   }
 }
 

@@ -4,7 +4,7 @@ import "../mocks/supabase";
 import { mockSupabase } from "../mocks/supabase";
 import { renderWithProviders } from "../utils/renderWithProviders";
 import Login from "@/pages/Login";
-import { SILENT_SSO_KEY } from "@/lib/sso";
+import { SILENT_SSO_AT_KEY, SILENT_SSO_KEY } from "@/lib/sso";
 
 const toastMock = vi.fn();
 vi.mock("@/hooks/use-toast", () => ({
@@ -13,9 +13,10 @@ vi.mock("@/hooks/use-toast", () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
-  // Par défaut, la tentative silencieuse a déjà eu lieu dans cet onglet.
+  // Par défaut, une tentative silencieuse vient d'avoir lieu dans cet onglet.
   window.sessionStorage.clear();
   window.sessionStorage.setItem(SILENT_SSO_KEY, "done");
+  window.sessionStorage.setItem(SILENT_SSO_AT_KEY, String(Date.now()));
 });
 
 /** Le mot de passe est en secours : on déplie « Autre méthode de connexion ». */

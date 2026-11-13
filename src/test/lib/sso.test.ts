@@ -8,7 +8,10 @@ import {
   markSilentSso,
   readSilentSso,
   readSsoReturnError,
+  SILENT_SSO_AT_KEY,
   SILENT_SSO_KEY,
+  SILENT_SSO_RETRY_MS,
+  silentSsoRetryAllowed,
   ssoSignInCredentials,
   ssoSilentSignInCredentials,
   SSO_LOGOUT_PATH,
@@ -95,8 +98,22 @@ describe("connexion silencieuse", () => {
     expect(readSilentSso(memoryStorage(), "", "")).toEqual({ attempt: true, returning: false });
   });
 
-  it("une seule tentative par onglet : déjà faite → on ne retente pas", () => {
-    expect(readSilentSso(memoryStorage("done"), "", "")).toEqual({ attempt: false, returning: false });
+  it("F5 après un échec, une fois le délai passé → on retente (connecté ailleurs entre-temps)", () => {
+    const storage = memoryStorage("done");
+    storage.setItem(SILENT_SSO_AT_KEY, "1000");
+    expect(readSilentSso(storage, "", "", 1000 + SILENT_SSO_RETRY_MS)).toEqual({
+      attempt: true,
+      returning: false,
+    });
+  });
+
+  it("tentative trop récente → on ne retente pas (pas de boucle avec une déconnexion d'office)", () => {
+    const storage = memoryStorage("done");
+    storage.setItem(SILENT_SSO_AT_KEY, "1000");
+    expect(readSilentSso(storage, "", "", 1000 + SILENT_SSO_RETRY_MS - 1).attempt).toBe(false);
+    expect(silentSsoRetryAllowed(storage, 1000 + SILENT_SSO_RETRY_MS - 1)).toBe(false);
+    expect(silentSsoRetryAllowed(storage, 1000 + SILENT_SSO_RETRY_MS)).toBe(true);
+    expect(silentSsoRetryAllowed(null)).toBe(false);
   });
 
   it("retour d'une tentative → on ne retente pas, et on sait que c'en est un retour", () => {
@@ -131,10 +148,13 @@ describe("connexion silencieuse", () => {
     expect(() => markSilentSso(throwing, "pending")).not.toThrow();
   });
 
-  it("markSilentSso note l'étape", () => {
+  it("markSilentSso note l'étape, et l'heure du départ", () => {
     const storage = memoryStorage();
-    markSilentSso(storage, "pending");
+    markSilentSso(storage, "pending", 42);
     expect(storage.map.get(SILENT_SSO_KEY)).toBe("pending");
+    expect(storage.map.get(SILENT_SSO_AT_KEY)).toBe("42");
+    markSilentSso(storage, "done", 99);
+    expect(storage.map.get(SILENT_SSO_AT_KEY)).toBe("42");
   });
 
   it("au retour silencieux, « pas de session » se tait…", () => {
