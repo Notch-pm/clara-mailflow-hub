@@ -5,6 +5,8 @@ import {
   irisNotifyOutcome,
   irisReplyBodyHtml,
   irisReplyEventBody,
+  irisReplyLetter,
+  irisLetterText,
   parseIrisReplyPayload,
 } from "../../../supabase/functions/_shared/irisReplyLogic";
 
@@ -65,6 +67,12 @@ describe("avis à Iris", () => {
     expect(irisReplyEventBody("c", "cancelled", null)).toEqual({ courier_id: "c", event: "cancelled" });
   });
 
+  it("joint le courrier parti à l'avis sent seulement (contrat Iris 2.13.0)", () => {
+    const letter = { channel: "email" as const, subject: "S", body: "B", recipient: null };
+    expect(irisReplyEventBody("c", "sent", null, letter)).toEqual({ courier_id: "c", event: "sent", letter });
+    expect(irisReplyEventBody("c", "cancelled", null, letter)).toEqual({ courier_id: "c", event: "cancelled" });
+  });
+
   it("distingue livré, refus définitif et nouvel essai", () => {
     expect(irisNotifyOutcome(200)).toBe("delivered");
     expect(irisNotifyOutcome(409)).toBe("rejected");
@@ -81,5 +89,32 @@ describe("avis à Iris", () => {
   it("lien de la fiche Clara en https seulement", () => {
     expect(claraCourierUrl("https://clara.edilumen.fr/", "abc")).toBe("https://clara.edilumen.fr/courrier/abc");
     expect(claraCourierUrl("http://localhost", "abc")).toBeNull();
+  });
+});
+
+describe("le courrier parti, pour Iris (2.13.0)", () => {
+  const html = '<p>Madame,</p><p>Votre projet est retenu&nbsp;: bravo &amp; merci.<br>Cordialement</p>'
+    + '<p><img src="data:image/png;base64,AAAA"></p>';
+
+  it("texte brut : paragraphes et sauts gardés, signature image écartée, entités décodées", () => {
+    expect(irisLetterText(html)).toBe("Madame,\nVotre projet est retenu : bravo & merci.\nCordialement");
+  });
+
+  it("courriel : la marque d'envoi fait foi, destinataire = adresse", () => {
+    expect(irisReplyLetter({
+      channel: "paper", subject: "Réponse", metadata: { body_html: html, sent_email_at: "2026-11-13T08:31:12Z" },
+      recipient: { email: "marie@example.org", name: "Marie Durand" },
+    })).toMatchObject({ channel: "email", subject: "Réponse", recipient: "marie@example.org" });
+  });
+
+  it("papier : destinataire = nom ; texte brut en repli quand le HTML manque", () => {
+    expect(irisReplyLetter({
+      channel: "email", subject: "Réponse", metadata: { body_text: "Bonjour", posted_at: "2026-11-13T08:31:12Z" },
+      recipient: { email: null, name: "Marie Durand" },
+    })).toEqual({ channel: "paper", subject: "Réponse", body: "Bonjour", recipient: "Marie Durand" });
+  });
+
+  it("rien d'exploitable : pas de letter (l'avis part sans trace plutôt que refusé)", () => {
+    expect(irisReplyLetter({ channel: "email", subject: "S", metadata: {}, recipient: null })).toBeNull();
   });
 });

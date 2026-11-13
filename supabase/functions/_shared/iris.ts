@@ -9,6 +9,7 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import type { IrisEnvelope, IrisRequestDto } from "./iris-envelope.ts";
 import type { IrisListedRequest, IrisTimeline } from "./iris-contact-requests.ts";
+import type { IrisReplyLetter } from "./irisReplyLogic.ts";
 
 /** Accusé de dépôt d'un fichier (`POST /v1/uploads`) — valable 24 h. */
 export interface IrisUploadReceipt {
@@ -236,7 +237,8 @@ export function getIrisRequest(
 export function postIrisReplyLetterEvent(
   integration: IrisIntegration,
   irisRequestId: string,
-  body: { courier_id: string; event: "sent" | "cancelled"; occurred_at?: string },
+  // `letter` (contrat Iris 2.13.0) : le courrier tel qu'il est parti, avec `sent` seulement.
+  body: { courier_id: string; event: "sent" | "cancelled"; occurred_at?: string; letter?: IrisReplyLetter },
 ): Promise<IrisResponse<{ result?: string; status?: string | null; error?: { message?: string } }>> {
   return callIris(integration, `/v1/requests/${irisRequestId}/reply-letter/events`, {
     method: "POST",

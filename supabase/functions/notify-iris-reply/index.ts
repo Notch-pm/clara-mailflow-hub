@@ -15,12 +15,76 @@
 import { createClient } from "npm:@supabase/supabase-js@2.45.0";
 import { postIrisReplyLetterEvent, resolveIrisIntegration } from "../_shared/iris.ts";
 import {
+  IRIS_LETTER_PDF_MAX_BYTES,
   IRIS_NOTIFY_MAX_ATTEMPTS,
   irisNotifyBackoffMinutes,
   irisNotifyOutcome,
   irisReplyEventBody,
+  irisReplyLetter,
   type IrisReplyEvent,
+  type IrisReplyLetter,
 } from "../_shared/irisReplyLogic.ts";
+import { bytesToBase64 } from "../_shared/merciFacteurLogic.ts";
+
+const DOCUMENTS_BUCKET = "clara-documents";
+
+/**
+ * Le courrier tel qu'il est PARTI, pour l'avis `sent` (contrat Iris 2.13.0) :
+ * Iris en garde la trace (échange, et PDF au dossier pour le papier). Toute
+ * lecture qui échoue dégrade — l'avis part sans `letter` ou sans PDF —, elle
+ * ne retarde jamais la clôture de la demande dans Iris.
+ */
+async function sentLetter(organizationId: string, courierId: string): Promise<IrisReplyLetter | null> {
+  try {
+    const { data: courier } = await admin
+      .from("couriers")
+      .select("channel, subject, metadata")
+      .eq("id", courierId)
+      .eq("organization_id", organizationId)
+      .maybeSingle();
+    if (!courier) return null;
+    const { data: parts } = await admin
+      .from("courier_participants")
+      .select("role, email, name")
+      .eq("courier_id", courierId);
+    const recipient = (parts ?? []).find((p) => p.role === "recipient") ?? null;
+    const metadata = (courier.metadata as Record<string, unknown> | null) ?? {};
+    const letter = irisReplyLetter({
+      channel: courier.channel as string | null,
+      subject: courier.subject as string | null,
+      metadata,
+      recipient: recipient ? { email: recipient.email ?? null, name: recipient.name ?? null } : null,
+    });
+    if (!letter || letter.channel !== "paper") return letter;
+
+    // Le PDF posté : celui que l'envoi a désigné, sinon le dernier PDF du courrier.
+    let query = admin
+      .from("courier_documents")
+      .select("file_name, mime_type, file_size, storage_key")
+      .eq("courier_id", courierId)
+      .eq("organization_id", organizationId)
+      .eq("mime_type", "application/pdf");
+    const postedId = typeof metadata.posted_document_id === "string" ? metadata.posted_document_id : null;
+    query = postedId ? query.eq("id", postedId) : query.order("created_at", { ascending: false });
+    const { data: docs } = await query.limit(1);
+    const doc = docs?.[0];
+    if (!doc?.storage_key || (doc.file_size ?? 0) > IRIS_LETTER_PDF_MAX_BYTES) return letter;
+    const { data: blob, error } = await admin.storage.from(DOCUMENTS_BUCKET).download(doc.storage_key);
+    if (error || !blob) {
+      console.warn(`${LOG} PDF du courrier ${courierId} illisible :`, error?.message);
+      return letter;
+    }
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    if (bytes.length > IRIS_LETTER_PDF_MAX_BYTES) return letter;
+    return {
+      ...letter,
+      document: { file_name: (doc.file_name as string | null) || "courrier.pdf", content_base64: bytesToBase64(bytes) },
+    };
+  } catch (e) {
+    console.warn(`${LOG} courrier ${courierId} non relu pour Iris :`, e);
+    return null;
+  }
+}
 
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 const LOG = "[notify-iris-reply]";
@@ -77,10 +141,11 @@ Deno.serve(async (req) => {
       detail = `Connexion Iris ${lookup.reason}`;
     } else {
       try {
+        const letter = row.event === "sent" ? await sentLetter(row.organization_id, row.courier_id) : null;
         const res = await postIrisReplyLetterEvent(
           lookup.integration,
           row.iris_request_id,
-          irisReplyEventBody(row.courier_id, row.event, row.occurred_at),
+          irisReplyEventBody(row.courier_id, row.event, row.occurred_at, letter),
         );
         status = res.status;
         const err = (res.body as { error?: { message?: string } } | null)?.error;

@@ -278,6 +278,14 @@ Iris. ⚠️ L'organisme émetteur doit avoir un **workflow de réponse** : sans
 refusé (422 `no_reply_workflow`) et rien ne change dans Iris. ⚠️ Un courrier modifié dans Clara
 (texte, canal) reste lié : seul son départ ou son abandon compte.
 
+**Trace du courrier parti** (contrat Iris 2.13.0, 2026-11-13) : l'avis `sent` porte `letter` —
+canal RÉEL (`sent_email_at` → courriel, `posted_at` → papier), objet, texte final (HTML de
+l'éditeur rendu en texte brut, signature image écartée — `irisReplyLetter`), destinataire
+(participant `recipient`), et pour le papier le PDF posté (`posted_document_id`, sinon le
+dernier PDF du courrier, 10 Mo au plus, en base64). Iris en fait un échange de la demande et,
+pour le papier, un document du dossier. Toute lecture qui échoue dégrade (avis sans `letter`
+ou sans PDF) : la clôture dans Iris n'attend jamais la trace.
+
 ## 6. Limites connues
 
 - **Pas de rattrapage des demandes déposées avant le 2026-09-11** : elles sont parties sans
