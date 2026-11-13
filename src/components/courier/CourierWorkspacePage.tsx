@@ -382,6 +382,8 @@ export default function CourierWorkspacePage({ courier, organizationId, onClose 
                     organizationId={organizationId}
                     parentSubject={courier.subject ?? null}
                     parentReceivedAt={courier.received_at ?? null}
+                    parentReference={courier.chrono ?? null}
+                    parentChannel={courier.channel ?? null}
                     assignedService={localAssignedService}
                     socleOrganizationId={localSocleOrgId}
                     sender={sender ?? null}

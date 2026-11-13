@@ -84,6 +84,15 @@ import { MaybeTooltip, OutboundTransitionsBar, type TransitionTarget } from "./O
 import { gestureBlocker, nextGesture, NO_EMAIL_REASON } from "./nextGesture";
 import { PostDeclarationDialog, type PostDeclaration } from "./PostDeclarationDialog";
 import { VisaWaitingNotice } from "./VisaWaitingNotice";
+import { EmailTemplatePicker, MissingVariablesNotice } from "./EmailTemplatePicker";
+import { listEmailTemplates } from "@/services/emailTemplateService";
+import {
+  applyEmailTemplate,
+  emailTemplateValues,
+  proposedTemplates,
+  type EmailTemplate,
+  type EmailTemplateContext,
+} from "@/lib/email-templates";
 
 type SendEmailResult = { error?: string; to?: string };
 
@@ -149,6 +158,11 @@ export interface OutboundEditorProps {
    * déclarer « posté ». Absente (réponse), l'envoi postal n'est pas bloqué.
    */
   recipientPostal?: OutboundRecipientInfo | null;
+  /**
+   * Le dossier dont les modèles de courriels tirent leurs variables `demande.*` : le
+   * courrier reçu pour une réponse, le sortant lui-même pour une initiative.
+   */
+  templateDossier?: EmailTemplateContext["dossier"];
 }
 
 /** Le vocabulaire de l'éditeur : une réponse, ou un courrier qui ne répond à rien. */
@@ -202,9 +216,10 @@ export function OutboundEditor({
   onChanged,
   onStateChange,
   recipientPostal = null,
+  templateDossier = null,
 }: OutboundEditorProps) {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const currentUserId = user?.id ?? null;
   const senderEmail = recipientEmail?.trim() || null;
   const canEmail = !!senderEmail;
@@ -222,6 +237,19 @@ export function OutboundEditor({
   const hasTemplate = !!templateData?.html;
 
   const [isPrintingWithTemplate, setIsPrintingWithTemplate] = useState(false);
+
+  // ─── Modèles de courriels (référentiel) proposés à l'émettrice ──────
+  const { data: emailTemplates = [] } = useQuery({
+    queryKey: ["email-templates", organizationId],
+    queryFn: () => listEmailTemplates(organizationId),
+    enabled: !!organizationId,
+    staleTime: 5 * 60_000,
+  });
+  const offeredTemplates = useMemo(
+    () => proposedTemplates(emailTemplates, currentService.socle_id),
+    [emailTemplates, currentService.socle_id],
+  );
+  const [templateNotice, setTemplateNotice] = useState<{ name: string; missing: string[] } | null>(null);
 
   // ─── Signatories (de l'organisation émettrice) ──────────────────────
   const { data: serviceSignatories = [] } = useQuery({
@@ -285,6 +313,7 @@ export function OutboundEditor({
       setSignatoryId("");
     }
     setVisaComment("");
+    setTemplateNotice(null);
     setDirty(false);
   }, [reply?.id, canEmail]);
 
@@ -419,6 +448,23 @@ export function OutboundEditor({
       body,
       buildSignatureBlock({ fullName, title: selectedSignatory.title, signatureDataUrl }),
     );
+  }
+
+  /** Pose un modèle dans l'éditeur : objet et texte, variables fusionnées pour ce courrier. */
+  function applyTemplate(template: EmailTemplate) {
+    const agentName = `${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim();
+    const values = emailTemplateValues({
+      recipient: sender ? { ...sender, email: senderEmail ?? sender.email } : null,
+      dossier: templateDossier,
+      serviceName: currentService.name,
+      agentName: agentName || null,
+      organizationName: organization?.name ?? null,
+    });
+    const applied = applyEmailTemplate(template, values);
+    setBody(applied.bodyHtml);
+    if (applied.subject) setSubject(applied.subject.slice(0, 200));
+    setDirty(true);
+    setTemplateNotice(applied.missing.length > 0 ? { name: template.name, missing: applied.missing } : null);
   }
 
   // ─── Mutations ──────────────────────────────────────────────────────
@@ -1024,6 +1070,23 @@ export function OutboundEditor({
           <Lock className="h-3 w-3 shrink-0" aria-hidden="true" />
           {words.frozen}
         </p>
+      )}
+
+      {/* Partir d'un modèle de courriel du référentiel (proposé à l'organisation émettrice). */}
+      {!editorDisabled && offeredTemplates.length > 0 && (
+        <EmailTemplatePicker
+          templates={offeredTemplates}
+          hasContent={visibleText(body) !== ""}
+          disabled={isBusy || assistant.isDrafting}
+          onApply={applyTemplate}
+        />
+      )}
+      {templateNotice && !editorDisabled && (
+        <MissingVariablesNotice
+          templateName={templateNotice.name}
+          missing={templateNotice.missing}
+          onDismiss={() => setTemplateNotice(null)}
+        />
       )}
 
       {/* Objet : celui du courriel envoyé et de la ligne « Objet » de la lettre. */}

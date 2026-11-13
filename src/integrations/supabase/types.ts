@@ -2065,6 +2065,53 @@ export type Database = {
           },
         ]
       }
+      socle_email_templates: {
+        Row: {
+          body: string
+          description: string | null
+          id: string
+          name: string
+          organization_id: string
+          socle_id: string
+          socle_organization_ids: string[]
+          socle_updated_at: string | null
+          subject: string
+          synced_at: string
+        }
+        Insert: {
+          body: string
+          description?: string | null
+          id?: string
+          name: string
+          organization_id: string
+          socle_id: string
+          socle_organization_ids?: string[]
+          socle_updated_at?: string | null
+          subject: string
+          synced_at?: string
+        }
+        Update: {
+          body?: string
+          description?: string | null
+          id?: string
+          name?: string
+          organization_id?: string
+          socle_id?: string
+          socle_organization_ids?: string[]
+          socle_updated_at?: string | null
+          subject?: string
+          synced_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "socle_email_templates_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       socle_organization_members: {
         Row: {
           created_at: string
@@ -3044,6 +3091,10 @@ export type Database = {
           p_socle_root_org_id: string
         }
         Returns: undefined
+      }
+      sync_email_templates_from_socle: {
+        Args: { p_org_id: string; p_templates: Json }
+        Returns: number
       }
       sync_smtp_settings_from_socle: {
         Args: {

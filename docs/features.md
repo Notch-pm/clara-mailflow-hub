@@ -446,6 +446,37 @@ Détail complet — contrat, raccordement des champs, périmètre, exploitation 
 - **Envoi SMTP** : edge function `send-courier-reply` envoie via le serveur d'envoi de l'org. Marque `metadata.sent_email_at`. Déclenchée par une transition vers un état de catégorie `processed`.
 - **D'où vient le relais** : du **Socle**, pas de Clara (depuis le 2026-08-23). Il se définit une fois pour toute la gamme sur l'organisation racine ; `sync-socle-referentiel` en recopie un miroir dans `smtp_settings`. Plus aucun écran de saisie ni test d'envoi dans Clara — le diagnostic se fait dans le référentiel. Conséquence : **un tenant sans relais déclaré n'expédie rien** (aucun relais de repli), et l'adresse d'expédition est celle du référentiel, pas celle qui avait pu être saisie à la main. Détail du miroir : `docs/data-model.md` § `smtp_settings`.
 
+### 5 ter. Modèles de courriels du référentiel (2026-11-13)
+
+Bases de rédaction des réponses **et** des courriers à l'initiative, pour ne pas tout retaper.
+
+- **Source** : le **Socle** (Paramètres de l'organisation principale › Modèles de courriels,
+  superadmin). Un modèle y est rédigé une fois pour la gamme ; il arrive dans Clara quand
+  l'application **Clara** est cochée. Seuls les **modèles créés** sont recopiés — les courriels
+  système (accusé de réception d'Iris…) sont des messages automatiques, pas des bases.
+- **Activation par organisme** : réglée **dans le Socle**, champ « Organismes où il est
+  proposé » (boutons *Tous* / *Aucun*), commune à la gamme. Pas de descendance : cocher la racine
+  n'ouvre pas ses services. Décision du 2026-11-13 : pas de seconde activation dans Clara.
+- **Paramètres › Modèles de courriels** (`EmailTemplatesSettings`) : liste en lecture seule —
+  titre, description, objet, texte brut, organisations où le modèle est proposé (« Proposé nulle
+  part » sinon), bouton « Synchroniser maintenant », et le chemin pour modifier dans le Socle.
+- **Éditeur des sortants** (`OutboundEditor`, donc réponses et initiatives) : sélecteur « Modèle —
+  Partir d'un modèle… » (`EmailTemplatePicker`) au-dessus de l'objet, affiché seulement si
+  l'éditeur est modifiable et qu'au moins un modèle est proposé à l'**organisation émettrice**
+  (`proposedTemplates`, égalité stricte sur `socle_id`). Le choix remplace l'objet et le texte
+  (confirmation si l'éditeur contient déjà du texte) ; rien ne part, le circuit visa / signature /
+  envoi est inchangé.
+- **Fusion** (`src/lib/email-templates.ts`, pur, testé) : moteur repris d'Iris (sections
+  `{{#cle}}` / `{{^cle}}`, puis variables) ; texte brut → paragraphes HTML échappés. Valeur
+  absente ⇒ jeton vide, et un bandeau liste les variables restées vides (hors sections écartées)
+  pour que l'agent complète. Variables remplies : `usager.*` (destinataire ; nom complet, sinon
+  raison sociale), `demande.reference` / `objet` / `date_depot` / `canal` (le courrier reçu pour une
+  réponse ; le sortant lui-même pour une initiative), `demande.destinataire` (organisation
+  émettrice), `agent.nom` (l'agent connecté), `organisation.nom`. ⚠️ La civilité n'est pas connue
+  de Clara : `usager.civilite` reste vide et `usager.salutation` vaut « Madame, Monsieur ».
+  `demande.statut`, `priorite`, `categorie`, `demarche`, les dates d'instruction et de clôture ne
+  sont pas remplies (vocabulaire d'Iris).
+
 ### 5 bis. Courriers sortants à l'initiative de la collectivité (2026-10-13)
 
 Un sortant **sans** `parent_courier_id` : la collectivité écrit la première (convocation,

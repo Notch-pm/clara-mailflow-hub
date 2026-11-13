@@ -22,6 +22,11 @@
 // `configured: false`) ⇒ la ligne est SUSPENDUE, identifiants conservés, par
 // suspend_arpege_integration_from_socle (voir arpege.ts).
 //
+// Et des MODÈLES DE COURRIELS depuis le 2026-11-13 :
+// `GET /v1/email-templates?organization_id={racine}&application=clara` est
+// recopié dans `socle_email_templates` par la RPC de service
+// sync_email_templates_from_socle (miroir strict ; voir emailTemplates.ts).
+//
 // Auth (3 voies) :
 //   - x-cron-secret (pg_cron via trigger_socle_sync) → privilégié
 //   - Bearer SERVICE_ROLE_KEY → privilégié
@@ -78,6 +83,7 @@ import {
   type SocleIntegrationDto,
 } from "./arpege.ts";
 import { irisPlan } from "./iris.ts";
+import { emailTemplateMirrorRows, emailTemplatesWarning } from "./emailTemplates.ts";
 import {
   brandingWarning,
   planBrandingUpdate,
@@ -686,6 +692,8 @@ interface OrgSyncResult {
     descriptifs_synchronises: number;
     /** Attributions internes réécrites dans le miroir des organisations (services internes compris). */
     attributions_synchronisees: number;
+    /** Modèles de courriels Clara présents dans le miroir après passage ; `null` = miroir laissé en l'état. */
+    modeles_courriels: number | null;
   };
   warnings?: string[];
   error?: string;
@@ -849,6 +857,10 @@ async function syncOrg(
     rootId ? allOrganizations.find((o) => o.id === rootId)?.applications : undefined,
     dryRun,
   );
+  // 1quinquies) Modèles de courriels cochés pour Clara (public-api 1.45.0) :
+  // bases de rédaction des sortants. Même motif que le SMTP : un échec laisse
+  // le miroir en l'état et se dit en avertissement.
+  const emailTemplates = await syncEmailTemplates(supabaseAdmin, org, rootId, dryRun);
 
   const categoriesCounters = await syncMirror(
     supabaseAdmin,
@@ -971,7 +983,7 @@ async function syncOrg(
     ? { created: 0, updated: 0, adopted: 0, obsoleted: 0, unchanged: 0 }
     : await syncActivations(supabaseAdmin, org, activations, muteOrgs, syncedAt);
 
-  const warnings = [...smtp.warnings, ...arpege.warnings, ...iris.warnings, ...branding.warnings, ...assistant.warnings, ...descriptions.warnings, ...attributions.warnings, ...plan.warnings];
+  const warnings = [...smtp.warnings, ...arpege.warnings, ...iris.warnings, ...emailTemplates.warnings, ...branding.warnings, ...assistant.warnings, ...descriptions.warnings, ...attributions.warnings, ...plan.warnings];
   if (muteOrgs.length > 0) {
     warnings.push(
       `Démarches illisibles pour ${muteOrgs.length} organisation(s) (${muteOrgs.join(", ")}) — leur miroir est inchangé.`,
@@ -995,6 +1007,7 @@ async function syncOrg(
       assistant_synchronise: assistant.synchronise,
       descriptifs_synchronises: descriptions.synchronises,
       attributions_synchronisees: attributions.synchronises,
+      modeles_courriels: emailTemplates.count,
     },
     warnings,
   };
@@ -1228,6 +1241,64 @@ async function syncSmtp(
     console.error(`[sync-socle] org ${org.name}: serveur d'envoi: ${message}`);
     warnings.push(`serveur d'envoi (${org.name}) : ${message} — miroir inchangé.`);
     return { synchronises: 0, retires: 0, warnings };
+  }
+}
+
+// ── Modèles de courriels (miroir du Socle) ──
+
+/**
+ * Recopie dans `socle_email_templates` les modèles créés de la racine du
+ * tenant, cochés pour Clara, avec leurs organismes. Miroir STRICT sur une
+ * réponse 200 (un modèle retiré disparaît) ; tout autre statut, une réponse
+ * illisible ou une erreur d'écriture laisse le miroir en l'état, avec un
+ * avertissement. Seul le 401 reste fatal, comme partout ailleurs.
+ */
+async function syncEmailTemplates(
+  supabaseAdmin: AdminClient,
+  org: ClaraOrg,
+  rootId: string | null,
+  dryRun: boolean,
+): Promise<{ count: number | null; warnings: string[] }> {
+  if (!rootId) {
+    return {
+      count: null,
+      warnings: [`modèles de courriels (${org.name}) : racine Socle introuvable — miroir inchangé.`],
+    };
+  }
+  try {
+    const response = await socleFetch(
+      `${socleBaseUrl()}/v1/email-templates?organization_id=${encodeURIComponent(rootId)}&application=clara`,
+    );
+    if (response.status === 401) {
+      await response.body?.cancel();
+      throw new SocleAuthError(
+        "Clé API Socle invalide ou révoquée (401) — synchronisation interrompue",
+      );
+    }
+    if (!response.ok) {
+      await response.body?.cancel();
+      return { count: null, warnings: [emailTemplatesWarning(org.name, response.status)] };
+    }
+    const rows = emailTemplateMirrorRows(rootId, await response.json());
+    if (rows === null) {
+      return {
+        count: null,
+        warnings: [`modèles de courriels (${org.name}) : réponse du Socle illisible — miroir inchangé.`],
+      };
+    }
+    if (dryRun) return { count: rows.length, warnings: [] };
+    const { data, error } = await supabaseAdmin.rpc("sync_email_templates_from_socle", {
+      p_org_id: org.id,
+      p_templates: rows,
+    });
+    if (error) throw new Error(error.message);
+    console.log(`[sync-socle] org ${org.name}: ${rows.length} modèle(s) de courriel synchronisé(s)`);
+    return { count: typeof data === "number" ? data : rows.length, warnings: [] };
+  } catch (e) {
+    if (e instanceof SocleAuthError) throw e;
+    const message = e instanceof Error ? e.message : String(e);
+    console.error(`[sync-socle] org ${org.name}: modèles de courriels: ${message}`);
+    return { count: null, warnings: [`modèles de courriels (${org.name}) : ${message} — miroir inchangé.`] };
   }
 }
 

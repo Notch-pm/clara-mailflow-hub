@@ -170,6 +170,15 @@ Aucun changement de frontend ni d'edge function.
 | 1 | `20261013142643_courriers_sortants_ecran.sql` (RPC `outbound_couriers`, SECURITY DEFINER gardée par `is_member_of`) | **Appliqué** via `apply_migration` — registre `20261013142643` (fichier renommé pour coller). SNA27, en membre : 27 sortants, 8 envoyés, 0 visa, 4 signature, 10 prêts à l'envoi |
 | 2 | Frontend : `/courriers-sortants` réécrit (onglets par étape, panneau `ParapheurDetail`) | Après la migration |
 
+### Lot « modèles de courriels du Socle » (2026-11-13) — migration appliquée, fonction à déployer
+
+| # | Étape | État |
+|---|---|---|
+| 1 | `20261113112525_modeles_courriels_socle.sql` : table miroir `socle_email_templates` (lecture `is_member_of`, aucune écriture cliente) et RPC de service `sync_email_templates_from_socle`. Rejouable | **Appliqué** le 2026-11-13 via `apply_migration` — registre `20261113112525` (fichier renommé pour coller). Vérifié en base : RLS active, `authenticated` en SELECT seul, `anon` sans droit, RPC exécutable par `service_role` seul ; essai de la RPC dans un bloc annulé (insertion, remplacement strict) conforme |
+| 2 | `supabase functions deploy sync-socle-referentiel --project-ref aullweizxcjbvtdspjli` (nouveau module `emailTemplates.ts`) | **À déployer** — APRÈS l'étape 1 : sans la RPC, la synchro avertit (« modèles de courriels … miroir inchangé ») sans échouer |
+| 3 | Lancer une synchronisation (Paramètres › Modèles de courriels › « Synchroniser maintenant ») et vérifier `socle_sync_runs.counters.modeles_courriels` | À faire. Attendu en production le 2026-11-13 : 1 modèle chez Agglomération Normandie Démo (« Courrier de réponse positive (complet) », 12 organismes), 0 ailleurs |
+| 4 | Frontend : section Paramètres « Modèles de courriels », sélecteur « Partir d'un modèle » dans l'éditeur des sortants | **Poussé** sur `main` le 2026-11-13 — sans les étapes 2 et 3, la section est vide et le sélecteur ne s'affiche pas (aucune erreur visible : une table absente fait échouer la requête, le sélecteur reste masqué) |
+
 ### Lot « recherche par référence » (2026-11-06) — appliqué le 2026-11-06
 
 | # | Étape | État |

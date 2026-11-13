@@ -243,6 +243,7 @@ export function InitiativeComposer({ organizationId, courier, readOnly, onStateC
         onChanged={refresh}
         onStateChange={onStateChange}
         recipientPostal={recipientPostal}
+        templateDossier={{ reference: courier.chrono ?? null, subject: courier.subject ?? null }}
       />
     </div>
   );

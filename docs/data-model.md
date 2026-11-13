@@ -524,6 +524,31 @@ tables `usagers` et `quartiers` (et leurs RPC, enums, colonnes `organizations.do
 
 ---
 
+### Modèles de courriels
+
+#### `socle_email_templates`
+**MIROIR** des modèles de courriels **créés** dans le Socle et cochés pour l'application `clara`
+(`GET /v1/email-templates?organization_id={racine}&application=clara`, public-api ≥ 1.45.0,
+scope `read`). Migration `20261113112525_modeles_courriels_socle.sql`.
+
+| Colonne | Notes |
+|---|---|
+| `organization_id` | Tenant Clara. Unique avec `socle_id`. |
+| `socle_id` | Identifiant du modèle dans le Socle. |
+| `name` / `description` | Titre et description saisis dans le Socle. |
+| `subject` / `body` | Texte brut **non fusionné**, variables `{{domaine.cle}}` du catalogue unique du Socle, sections `{{#cle}}…{{/cle}}` ; une ligne vide sépare deux paragraphes. Fusion dans le navigateur (`src/lib/email-templates.ts`). |
+| `socle_organization_ids` | Organisations **Socle** où le modèle est proposé, cochées nommément (comparer à `socle_organizations.socle_id`, pas à `id`). Vide = proposé nulle part. |
+| `socle_updated_at` / `synced_at` | Dernière modification côté Socle ; passage de synchronisation qui a écrit la ligne. |
+
+- **Lecture** : policy `socle_email_templates_select` (`is_member_of`). **Aucune écriture
+  cliente** (INSERT/UPDATE/DELETE révoqués).
+- **Écriture** : RPC `sync_email_templates_from_socle(p_org_id, p_templates jsonb)`,
+  `SECURITY DEFINER`, `service_role` seul — **miroir strict** du tenant (le jeu reçu remplace
+  l'existant). Appelée uniquement sur une réponse 200 du Socle : un Socle muet laisse le miroir
+  en l'état.
+
+---
+
 ### Configuration email
 
 #### `smtp_settings`

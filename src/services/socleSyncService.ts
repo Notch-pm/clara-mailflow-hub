@@ -66,6 +66,11 @@ export interface SocleSyncCounters {
   /** Attributions internes réécrites (services internes compris). Absent avant le 2026-10-01. */
   attributions_synchronisees?: number;
   /**
+   * Modèles de courriels cochés pour Clara présents dans le miroir après passage ;
+   * `null` = miroir laissé en l'état (avertissement). Absent avant le 2026-11-13.
+   */
+  modeles_courriels?: number | null;
+  /**
    * Ce qui n'a pas pu être fait sans faire échouer la synchronisation
    * (ex. relais illisible : clé sans le scope requis, organisation hors
    * périmètre). Absent quand tout s'est bien passé.

@@ -35,6 +35,10 @@ interface Props {
   parentSubject: string | null;
   /** Date de réception du courrier : mention obligatoire de l'accusé de réception. */
   parentReceivedAt?: string | null;
+  /** Référence (chrono) du courrier reçu — variable `{{demande.reference}}` des modèles de courriels. */
+  parentReference?: string | null;
+  /** Canal de réception du courrier — variable `{{demande.canal}}`. */
+  parentChannel?: string | null;
   assignedService: string | null;
   /** UUID de l'organisation gestionnaire (miroir Socle) — clé de résolution. */
   socleOrganizationId?: string | null;
@@ -68,6 +72,8 @@ export default function ReplyComposer({
   organizationId,
   parentSubject,
   parentReceivedAt = null,
+  parentReference = null,
+  parentChannel = null,
   assignedService,
   socleOrganizationId,
   sender,
@@ -230,6 +236,12 @@ export default function ReplyComposer({
         recipientEmail={senderEmail}
         defaultSubject={defaultReplySubject(parentSubject)}
         receivedAt={parentReceivedAt}
+        templateDossier={{
+          reference: parentReference,
+          subject: parentSubject,
+          receivedAt: parentReceivedAt,
+          channel: parentChannel,
+        }}
         title={reply ? `Réponse n°${replies.indexOf(reply) + 1}` : "Nouvelle réponse"}
         onBack={() => setView("list")}
         readOnly={readOnly}
